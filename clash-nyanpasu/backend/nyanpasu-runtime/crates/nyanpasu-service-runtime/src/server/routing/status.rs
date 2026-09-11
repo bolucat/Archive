@@ -21,6 +21,7 @@ pub async fn status(State(state): State<AppState>) -> (StatusCode, Json<StatusRe
     let status = state.core_manager.status().await;
     let res = RBuilder::success(StatusResBody {
         version: Cow::Borrowed(crate::consts::APP_VERSION),
+        log_query_version: Some(nyanpasu_ipc::api::log::LOG_QUERY_VERSION),
         core_infos: status,
         runtime_infos: RuntimeInfos {
             service_data_dir: Cow::Owned(state.runtime.service_data_dir.clone()),

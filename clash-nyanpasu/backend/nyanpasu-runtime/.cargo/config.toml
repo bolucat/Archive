@@ -15,3 +15,31 @@ rustflags = [
     "-C",
     "target-feature=-crt-static",
 ]
+
+# The shared logging index uses gxhash and requires hardware AES.
+# Keep explicit triples aligned with build.yml and publish.yml, including musl.
+# RUSTFLAGS overrides this configuration and must preserve these CPU features.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+neon"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+neon"]
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+aes,+neon"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+neon"]

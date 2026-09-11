@@ -1,18 +1,14 @@
 find_program(XMLTO_EXECUTABLE NAMES xmlto)
 find_program(ASCIIDOC_EXECUTABLE NAMES asciidoc asciidoc.py)
 
-# Opt-in doc build option
-if (NOT XMLTO_EXECUTABLE OR NOT ASCIIDOC_EXECUTABLE)
-    option(WITH_DOC_MAN "Build manpage doc" OFF)
-else ()
-    option(WITH_DOC_MAN "Build manpage doc" ON)
-endif ()
-
-if (NOT ASCIIDOC_EXECUTABLE)
-    option(WITH_DOC_HTML "Build html doc" OFF)
-else ()
-    option(WITH_DOC_HTML "Build html doc" ON)
-endif ()
+option(WITH_DOC_MAN "Build manpage documentation" OFF)
+option(WITH_DOC_HTML "Build HTML documentation" OFF)
+if((WITH_DOC_MAN OR WITH_DOC_HTML) AND NOT ASCIIDOC_EXECUTABLE)
+    message(FATAL_ERROR "Documentation generation requires asciidoc")
+endif()
+if(WITH_DOC_MAN AND NOT XMLTO_EXECUTABLE)
+    message(FATAL_ERROR "Manpage generation requires xmlto")
+endif()
 
 # NOTE For brew user, we have to setup this env var. see `brew info asciidoc'
 set(XMLTO_ENV)
@@ -31,7 +27,7 @@ set(ASCIIDOC_XML_OPTS -b docbook -d manpage -f ${DOC_DIR}/asciidoc.conf -aversio
 set(ASCIIDOC_HTML_OPTS -b html4 -d article -f ${DOC_DIR}/asciidoc.conf -aversion=${PROJECT_VERSION})
 
 
-set(MAN_NAMES ss-local.1 ss-manager.1 ss-nat.1 ss-redir.1 ss-server.1 ss-tunnel.1 shadowsocks-libev.8)
+set(MAN_NAMES ss-local.1 ss-manager.1 ss-nat.1 ss-redir.1 ss-server.1 ss-tunnel.1 shadowsocks-c.8)
 set(MAN_FILES)
 set(HTML_FILES)
 
@@ -90,3 +86,6 @@ endif ()
 # This is required for custom command
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/man)
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/html)
+
+# Retain the former manual lookup name.
+file(WRITE "${PROJECT_BINARY_DIR}/man/shadowsocks-libev.8" ".so man8/shadowsocks-c.8\n")

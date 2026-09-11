@@ -50,6 +50,35 @@ pub trait IpcOperation {
 /// The response envelope of `Op`, as it is decoded by the client.
 pub type OpResponse<Op> = R<'static, <Op as IpcOperation>::Data>;
 
+pub struct LogFiles;
+impl IpcOperation for LogFiles {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = super::log::LOG_FILES_ENDPOINT;
+    type Req<'a> = ();
+    type Data = nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>>;
+}
+pub struct LogOpen;
+impl IpcOperation for LogOpen {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = super::log::LOG_OPEN_ENDPOINT;
+    type Req<'a> = super::log::OwnedLogRequest<nyanpasu_logging::OpenLogs>;
+    type Data = nyanpasu_logging::LogResult<nyanpasu_logging::LogSession>;
+}
+pub struct LogQuery;
+impl IpcOperation for LogQuery {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = super::log::LOG_QUERY_ENDPOINT;
+    type Req<'a> = super::log::OwnedLogRequest<nyanpasu_logging::QueryLogs>;
+    type Data = nyanpasu_logging::LogResult<nyanpasu_logging::LogPage>;
+}
+pub struct LogClose;
+impl IpcOperation for LogClose {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = super::log::LOG_CLOSE_ENDPOINT;
+    type Req<'a> = super::log::OwnedLogRequest<String>;
+    type Data = nyanpasu_logging::LogResult<()>;
+}
+
 /// `GET /status`
 pub struct Status;
 

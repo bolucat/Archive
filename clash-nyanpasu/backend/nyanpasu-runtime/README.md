@@ -4,6 +4,12 @@ The runtime monorepo for Nyanpasu ([hitokoto-osc/nyanpasu-runtime](https://githu
 
 ## Nyanpasu Service
 
+The logging index uses gxhash. Distributed x86_64 binaries require AES-NI, and
+aarch64 binaries require the ARM AES extension. `.cargo/config.toml` enables these
+features for the supported GNU, musl, macOS and Windows targets. Builds that set
+`RUSTFLAGS` must preserve `+aes,+sse2` (x86_64) or `+aes,+neon` (aarch64), along
+with the existing runtime cfgs. gxhash has no scalar fallback.
+
 A Service for Nyanpasu to make it easier to operate the privileged actions.
 
 ### Relations

@@ -5,9 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "test_helpers.h"
 
 int verbose = 0;
 
@@ -115,6 +113,7 @@ test_get_sockaddr_rejects_invalid_ip_literal_ports(void)
     struct sockaddr_in *addr4 = (struct sockaddr_in *)&storage;
 
     memset(&storage, 0, sizeof(storage));
+    assert(get_sockaddr("localhost", "8388", &storage, 0, 0) == -1);
     assert(get_sockaddr("127.0.0.1", "8388", &storage, 0, 0) == 0);
     assert(addr4->sin_family == AF_INET);
     assert(ntohs(addr4->sin_port) == 8388);
@@ -129,6 +128,7 @@ test_get_sockaddr_rejects_invalid_ip_literal_ports(void)
 int
 main(void)
 {
+    test_network_init();
     test_get_sockaddr_len();
     test_sockaddr_cmp();
     test_sockaddr_cmp_addr();

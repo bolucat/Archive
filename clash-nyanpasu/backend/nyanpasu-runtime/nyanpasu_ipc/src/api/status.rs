@@ -151,17 +151,9 @@ pub struct CoreInfos {
 /// account the service runs under plus local administrators, so a caller
 /// running as an ordinary user generally cannot read them — surface the path
 /// for a support request rather than building a tail on it. Live core output is
-/// on the event stream; the service's own logs are not streamed at all.
-///
-/// TODO: that restriction is the open question here, not a settled posture. A
-/// user-level GUI reading the archive would need one of: a widened DACL (which
-/// means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
-/// a second acceptable shape — the verifier rejects user-readable DACLs today,
-/// so both move together or directory creation starts failing), some other
-/// grant mechanism, or an RPC that serves the archive so the directory stays
-/// closed. All three are acceptable; none is chosen yet. The two sites that
-/// would change are `log_sink::prepare_dir` and the service's own log directory
-/// setup.
+/// on the event stream. The service's own files are queried through the bounded
+/// `/v1/logs/*` session RPCs when `log_query_version` is present; directory
+/// permissions remain unchanged and these logs never enter the event stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct LogPathsInfo {
@@ -196,6 +188,9 @@ pub struct StatusResBody<'a> {
     /// existing golden literal stays unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logs: Option<LogPathsInfo>,
+    /// Optional viewer protocol; absence does not affect core control compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_query_version: Option<u32>,
 }
 
 pub type StatusRes<'a> = R<'a, StatusResBody<'a>>;

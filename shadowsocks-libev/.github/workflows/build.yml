@@ -15,23 +15,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install mbedtls@3 libsodium libev c-ares pcre2
+        run: brew install mbedtls@3 libsodium libuv c-ares pcre2
 
       - name: Build
         run: |
           mkdir -p build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF
           jobs="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
           make -j"$jobs"
 
@@ -39,15 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
           sudo apt-get install -y --no-install-recommends \
-            build-essential debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
+            build-essential cmake debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
 
       - name: Debian package build test
         run: bash tests/test_deb_build.sh

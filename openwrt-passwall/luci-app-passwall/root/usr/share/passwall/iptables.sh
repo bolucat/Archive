@@ -391,16 +391,16 @@ load_acl() {
 							local shunt_id
 							for shunt_id in $shunt_ids; do
 								[ "${shunt_group}" != "$(config_n_get ${shunt_id} group)" ] && continue
-								config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $shunt_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-								config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $shunt6_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+								config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv4_REGEX" | sed -e "s/^/add $shunt_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+								config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv6_REGEX" | sed -e "s/^/add $shunt6_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 								[ "$USE_GEOVIEW" = "1" ] && {
 									local geoip_code=$(config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 									[ -n "$geoip_code" ] && GEOIP_CODE="${GEOIP_CODE:+$GEOIP_CODE,}$geoip_code"
 								}
 							done
 							if [ -n "$GEOIP_CODE" ]; then
-								get_geoip $GEOIP_CODE ipv4 | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $shunt_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-								get_geoip $GEOIP_CODE ipv6 | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $shunt6_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+								get_geoip $GEOIP_CODE ipv4 | sed -e "s/^/add $shunt_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+								get_geoip $GEOIP_CODE ipv6 | sed -e "s/^/add $shunt6_set_name &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 							fi
 						}
 					}
@@ -417,7 +417,7 @@ load_acl() {
 					[ "$_ipv4" != "1" ] && $ip6t_n -A PSW_DNS $(comment "$remarks") -p udp ${_ipt_source} --dport 53 -j REDIRECT --to-ports ${dns_redirect} 2>/dev/null
 					$ipt_n -A PSW_DNS $(comment "$remarks") -p tcp ${_ipt_source} --dport 53 -j REDIRECT --to-ports ${dns_redirect}
 					[ "$_ipv4" != "1" ] && $ip6t_n -A PSW_DNS $(comment "$remarks") -p tcp ${_ipt_source} --dport 53 -j REDIRECT --to-ports ${dns_redirect} 2>/dev/null
-					[ -z "$(get_cache_var "ACL_${sid}_default")" ] && echolog "     - ${msg}与全局配置不同节点，DNS 重定向到专用 DNS 服务器 [${dns_redirect}]。"
+					[ -z "$(get_cache_var "ACL_${sid}_default")" ] && echolog "     - ${msg}节点不同于全局配置，DNS 重定向到专用服务器[${dns_redirect}]。"
 				fi
 
 				[ -n "$tcp_port" ] || [ -n "$udp_port" ] && {
@@ -763,12 +763,12 @@ filter_haproxy() {
 
 filter_vpsip() {
 	local vps_addrs=$(uci show $CONFIG | grep -E "(\.address=|\.download_address=|\.domain_resolver_dns=|\.domain_resolver_dns_https=)" | cut -d "'" -f 2 | grep -Ev "$EXCLUDE_VPSIP")
-	local ipv4_addrs=$(echo "$vps_addrs" | grep -Eo "([0-9]{1,3}\.){3}[0-9]{1,3}")
+	local ipv4_addrs=$(echo "$vps_addrs" | grep -Eo "$IPv4_REGEX")
 	[ -n "$ipv4_addrs" ] && {
 		echo "$ipv4_addrs" | sed "s/^/add $IPSET_VPS /" | awk '1; END{print "COMMIT"}' | ipset -! -R
 		echolog "  - [$?]加入所有IPv4节点服务器IP到ipset[$IPSET_VPS]直连完成"
 	}
-	local ipv6_addrs=$(echo "$vps_addrs" | grep -Eo "\[?[A-Fa-f0-9:]*:[A-Fa-f0-9:]+\]?")
+	local ipv6_addrs=$(echo "$vps_addrs" | grep -Eo "$IPv6_REGEX")
 	[ -n "$ipv6_addrs" ] && {
 		echo "$ipv6_addrs" | sed "s/^/add $IPSET_VPS6 /" | awk '1; END{print "COMMIT"}' | ipset -! -R
 		echolog "  - [$?]加入所有IPv6节点服务器IP到ipset[$IPSET_VPS6]直连完成"
@@ -776,8 +776,8 @@ filter_vpsip() {
 	#订阅方式为直连时
 	local subscribe_host=$(get_subscribe_host | grep -Ev "$EXCLUDE_VPSIP")
 	[ -n "$subscribe_host" ] && {
-		echo "$subscribe_host" | grep -Eo "([0-9]{1,3}\.){3}[0-9]{1,3}" | sed "s/^/add $IPSET_VPS /" | awk '{print $0} END{print "COMMIT"}' | ipset -! -R
-		echo "$subscribe_host" | grep -Eo "\[?[A-Fa-f0-9:]*:[A-Fa-f0-9:]+\]?" | sed "s/^/add $IPSET_VPS6 /" | awk '{print $0} END{print "COMMIT"}' | ipset -! -R
+		echo "$subscribe_host" | grep -Eo "$IPv4_REGEX" | sed "s/^/add $IPSET_VPS /" | awk '{print $0} END{print "COMMIT"}' | ipset -! -R
+		echo "$subscribe_host" | grep -Eo "$IPv6_REGEX" | sed "s/^/add $IPSET_VPS6 /" | awk '{print $0} END{print "COMMIT"}' | ipset -! -R
 	}
 }
 
@@ -785,8 +785,8 @@ filter_server_port() {
 	local address="$1"
 	local port=$(echo "$2" | tr '-' ':' | tr -d ' ')
 	local stream=$(echo "$3" | tr 'A-Z' 'a-z')
-	local ipt_tmp="$ipt_n" _is_tproxy _ipt_cmd _ver multi_ports p ports
-	[ "$(config_n_get @global_forwarding[0] tcp_proxy_way redirect)" = "tproxy" ] && _is_tproxy="TPROXY"
+	local _is_tproxy="$4"
+	local ipt_tmp="$ipt_n" _ipt_cmd _ver multi_ports p ports
 	[ "$stream" = "udp" ] && _is_tproxy="TPROXY"
 	[ -n "$_is_tproxy" ] && ipt_tmp="$ipt_m"
 	for _ver in 4 6; do
@@ -813,7 +813,7 @@ filter_server_port() {
 }
 
 filter_node() {
-	local node="$1" stream="$2"
+	local node="$1" stream="$2" _is_tproxy="$3"
 	[ -z "$node" ] && return 1
 	local address=$(config_n_get "$node" address)
 	local port=$(config_n_get "$node" port)
@@ -822,13 +822,15 @@ filter_node() {
 	[ -z "$address" ] && return 1
 	echo "$address" | grep -Eq "$EXCLUDE_VPSIP" && return 1
 	[ -z "$port" ] && return 1
-	filter_server_port "$address" "$port" "$stream"
+	filter_server_port "$address" "$port" "$stream" "$_is_tproxy"
 }
 
 filter_direct_node_list() {
 	[ ! -s "$TMP_PATH/direct_node_list" ] && return
+	local _is_tproxy
+	[ "$(config_n_get @global_forwarding[0] tcp_proxy_way redirect)" = "tproxy" ] && _is_tproxy="TPROXY"
 	awk '!seen[$0]++' "$TMP_PATH/direct_node_list" | while read -r _node_id; do
-		filter_node "$_node_id" TCP
+		filter_node "$_node_id" TCP "$_is_tproxy"
 		filter_node "$_node_id" UDP
 		unset _node_id
 	done
@@ -927,13 +929,13 @@ add_firewall_rule() {
 
 	#直连列表
 	[ "$USE_DIRECT_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_WHITE &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-		cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_WHITE6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv4_REGEX" | sed -e "s/^/add $IPSET_WHITE &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv6_REGEX" | sed -e "s/^/add $IPSET_WHITE6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 		[ "$USE_GEOVIEW" = "1" ] && {
 			local GEOIP_CODE=$(cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
-				get_geoip $GEOIP_CODE ipv4 | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_WHITE &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-				get_geoip $GEOIP_CODE ipv6 | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_WHITE6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv4 | sed -e "s/^/add $IPSET_WHITE &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv6 | sed -e "s/^/add $IPSET_WHITE6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 				echolog "  - [$?]解析并加入[直连列表] GeoIP 到 IPSET 完成"
 			fi
 		}
@@ -941,13 +943,13 @@ add_firewall_rule() {
 
 	#代理列表
 	[ "$USE_PROXY_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_BLACK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-		cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_BLACK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv4_REGEX" | sed -e "s/^/add $IPSET_BLACK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv6_REGEX" | sed -e "s/^/add $IPSET_BLACK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 		[ "$USE_GEOVIEW" = "1" ] && {
 			local GEOIP_CODE=$(cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
-				get_geoip $GEOIP_CODE ipv4 | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_BLACK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-				get_geoip $GEOIP_CODE ipv6 | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_BLACK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv4 | sed -e "s/^/add $IPSET_BLACK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv6 | sed -e "s/^/add $IPSET_BLACK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 				echolog "  - [$?]解析并加入[代理列表] GeoIP 到 IPSET 完成"
 			fi
 		}
@@ -955,13 +957,13 @@ add_firewall_rule() {
 
 	#屏蔽列表
 	[ "$USE_BLOCK_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_BLOCK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-		cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_BLOCK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv4_REGEX" | sed -e "s/^/add $IPSET_BLOCK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+		cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv6_REGEX" | sed -e "s/^/add $IPSET_BLOCK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 		[ "$USE_GEOVIEW" = "1" ] && {
 			local GEOIP_CODE=$(cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
-				get_geoip $GEOIP_CODE ipv4 | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_BLOCK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-				get_geoip $GEOIP_CODE ipv6 | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_BLOCK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv4 | sed -e "s/^/add $IPSET_BLOCK &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+				get_geoip $GEOIP_CODE ipv6 | sed -e "s/^/add $IPSET_BLOCK6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 				echolog "  - [$?]解析并加入[屏蔽列表] GeoIP 到 IPSET 完成"
 			fi
 		}
@@ -975,16 +977,16 @@ add_firewall_rule() {
 		local shunt_id
 		for shunt_id in $shunt_ids; do
 			[ "${shunt_group}" != "$(config_n_get ${shunt_id} group)" ] && continue
-			config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_SHUNT &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-			config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | grep -v "^#" | sed -e "/^$/d" | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_SHUNT6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+			config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv4_REGEX" | sed -e "s/^/add $IPSET_SHUNT &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+			config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed 's/#.*//' | grep -E "$IPv6_REGEX" | sed -e "s/^/add $IPSET_SHUNT6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 			[ "$USE_GEOVIEW" = "1" ] && {
 				local geoip_code=$(config_n_get $shunt_id ip_list | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 				[ -n "$geoip_code" ] && GEOIP_CODE="${GEOIP_CODE:+$GEOIP_CODE,}$geoip_code"
 			}
 		done
 		if [ -n "$GEOIP_CODE" ]; then
-			get_geoip $GEOIP_CODE ipv4 | grep -E "(\.((2(5[0-5]|[0-4][0-9]))|[0-1]?[0-9]{1,2})){3}" | sed -e "s/^/add $IPSET_SHUNT &/g" -e "s/$/ timeout 0/g" | ipset -! -R
-			get_geoip $GEOIP_CODE ipv6 | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" | sed -e "s/^/add $IPSET_SHUNT6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+			get_geoip $GEOIP_CODE ipv4 | sed -e "s/^/add $IPSET_SHUNT &/g" -e "s/$/ timeout 0/g" | ipset -! -R
+			get_geoip $GEOIP_CODE ipv6 | sed -e "s/^/add $IPSET_SHUNT6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 			echolog "  - [$?]解析并加入[分流节点] GeoIP 到 IPSET 完成"
 		fi
 	}

@@ -95,8 +95,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # cargo-llvm-cov sets RUSTFLAGS, which overrides .cargo/config.toml's
-      # [build] rustflags; restate the cfgs the tree is compiled with.
-      RUSTFLAGS: "--cfg tokio_unstable --cfg tracing_unstable"
+      # rustflags; restate the runtime cfgs and gxhash CPU features.
+      RUSTFLAGS: "--cfg tokio_unstable --cfg tracing_unstable -C target-feature=+aes,+sse2"
 
     steps:
       - name: Set git to use LF

@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 edition = "2024"
 
 [[test]]
@@ -11,6 +11,7 @@ required-features = ["client", "server"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+nyanpasu-logging = { path = "../crates/nyanpasu-logging" }
 nyanpasu-core-metadata = { path = "../crates/nyanpasu-core-metadata" }
 nyanpasu-utils = {
   path = "../crates/nyanpasu-utils",
@@ -51,4 +52,4 @@ windows = { workspace = true }
 [features]
 client = ["dep:futures-util", "dep:reqwest", "dep:reqwest-websocket"]
 server = ["dep:axum", "dep:axum-extra", "dep:tower", "dep:widestring"]
-specta = ["dep:specta", "nyanpasu-utils/specta"]
+specta = ["dep:specta", "nyanpasu-utils/specta", "nyanpasu-logging/specta"]

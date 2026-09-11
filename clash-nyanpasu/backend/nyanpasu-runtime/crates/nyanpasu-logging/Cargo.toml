@@ -1,0 +1,24 @@
+[package]
+name = "nyanpasu-logging"
+version = "0.1.1-rc.1"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json = "1"
+lasso = "0.7.3"
+gxhash = "3"
+ractor = "0.16"
+tokio.workspace = true
+uuid = { version = "1", features = ["v4"] }
+file-id = "0.2"
+thiserror.workspace = true
+specta = { version = "^2.0.0-rc.25", features = ["derive"], optional = true }
+
+[features]
+specta = ["dep:specta"]
+
+[dev-dependencies]
+tempfile = "3"

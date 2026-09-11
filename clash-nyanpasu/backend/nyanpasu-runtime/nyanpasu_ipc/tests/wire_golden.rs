@@ -312,6 +312,7 @@ fn the_logs_response_is_pinned() {
 #[test]
 fn the_status_response_is_pinned() {
     let body = StatusResBody {
+        log_query_version: None,
         version: Cow::Borrowed("9.9.9-golden"),
         core_infos: CoreInfos {
             instance_id: None,
@@ -581,6 +582,7 @@ fn the_config_revision_info_is_pinned() {
 #[test]
 fn the_enriched_status_response_is_pinned() {
     let body = StatusResBody {
+        log_query_version: None,
         version: Cow::Borrowed("9.9.9-golden"),
         core_infos: CoreInfos {
             instance_id: None,

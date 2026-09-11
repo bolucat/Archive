@@ -24,20 +24,17 @@
 #define _MANAGER_H
 
 #include <time.h>
-#include <libcork/ds.h>
+#include "core.h"
+#include "uthash.h"
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #include "jconf.h"
 
 #include "common.h"
 
 struct manager_ctx {
-    ev_io io;
+    ss_io io;
     int fd;
     int fast_open;
     int no_delay;
@@ -66,6 +63,7 @@ struct manager_ctx {
 };
 
 struct server {
+    UT_hash_handle hh;
     char port[8];
     char password[128];
     char fast_open[8];

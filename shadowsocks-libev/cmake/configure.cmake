@@ -16,7 +16,7 @@ include(CheckCCompilerFlag)
 
 # Set CONNECT_IN_PROGRESS based on platform
 if(MINGW)
-    set(CONNECT_IN_PROGRESS "WSAEWOULDBLOCK")
+    set(CONNECT_IN_PROGRESS "EWOULDBLOCK")
 else()
     set(CONNECT_IN_PROGRESS "EINPROGRESS")
 endif()
@@ -26,7 +26,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL Darwin)
 endif ()
 
 check_include_files(dlfcn.h HAVE_DLFCN_H)
-check_include_files(ev.h HAVE_EV_H)
 check_include_files(fcntl.h HAVE_FCNTL_H)
 check_function_exists(fork HAVE_FORK)
 check_function_exists(getpwnam_r HAVE_GETPWNAM_R)
@@ -180,18 +179,3 @@ endif ()
 if (NOT HAVE_WORKING_VFORK)
     set(vfork fork)
 endif ()
-
-# Stack protector detection
-option(DISABLE_SSP "Disable -fstack-protector" OFF)
-if(NOT DISABLE_SSP)
-    check_c_compiler_flag(-fstack-protector HAS_STACK_PROTECTOR)
-    if(HAS_STACK_PROTECTOR)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector")
-        message(STATUS "Stack protector enabled")
-    endif()
-endif()
-
-# MinGW/Cygwin compiler flags
-if(MINGW OR CYGWIN)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mno-ms-bitfields")
-endif()

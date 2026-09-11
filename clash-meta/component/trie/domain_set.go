@@ -25,7 +25,7 @@ type DomainSet struct {
 	ranks, selects      []int32
 }
 
-type qElt struct{ s, e, col int }
+type qElt struct{ s, e int }
 
 // DomainSetBuilder incrementally collects domain patterns for a DomainSet.
 // Its zero value is ready to use.
@@ -107,31 +107,35 @@ func buildDomainSet(keys []string, onTerminal func(string)) *DomainSet {
 	ss := &DomainSet{}
 	lIdx := 0
 
-	queue := []qElt{{0, len(keys), 0}}
-	for i := 0; i < len(queue); i++ {
-		elt := queue[i]
-		if elt.col == len(keys[elt.s]) {
-			if onTerminal != nil {
-				onTerminal(keys[elt.s])
+	nodeID := 0
+	queue := make([]qElt, 1, len(keys))
+	queue[0] = qElt{0, len(keys)}
+	next := make([]qElt, 0, len(keys))
+	for col := 0; len(queue) > 0; col++ {
+		for _, elt := range queue {
+			if col == len(keys[elt.s]) {
+				if onTerminal != nil {
+					onTerminal(keys[elt.s])
+				}
+				elt.s++
+				// a leaf node
+				setBit(&ss.leaves, nodeID, 1)
 			}
-			elt.s++
-			// a leaf node
-			setBit(&ss.leaves, i, 1)
-		}
 
-		for j := elt.s; j < elt.e; {
-
-			frm := j
-
-			for ; j < elt.e && keys[j][elt.col] == keys[frm][elt.col]; j++ {
+			for j := elt.s; j < elt.e; {
+				frm := j
+				for ; j < elt.e && keys[j][col] == keys[frm][col]; j++ {
+				}
+				next = append(next, qElt{frm, j})
+				ss.labels = append(ss.labels, keys[frm][col])
+				setBit(&ss.labelBitmap, lIdx, 0)
+				lIdx++
 			}
-			queue = append(queue, qElt{frm, j, elt.col + 1})
-			ss.labels = append(ss.labels, keys[frm][elt.col])
-			setBit(&ss.labelBitmap, lIdx, 0)
+			setBit(&ss.labelBitmap, lIdx, 1)
 			lIdx++
+			nodeID++
 		}
-		setBit(&ss.labelBitmap, lIdx, 1)
-		lIdx++
+		queue, next = next, queue[:0]
 	}
 
 	ss.init()

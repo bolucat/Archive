@@ -1874,7 +1874,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clash-api"
-version = "1.0.0-rc.4"
+version = "1.0.0-rc.5"
 dependencies = [
  "backon",
  "chrono",
@@ -1912,7 +1912,6 @@ dependencies = [
  "boa_engine",
  "boa_utils",
  "bolt-load",
- "bumpalo",
  "bytes",
  "camino",
  "chrono",
@@ -1924,7 +1923,6 @@ dependencies = [
  "dashmap",
  "deelevate",
  "delay_timer",
- "derive_builder",
  "dirs 7.0.0",
  "display-info",
  "dunce",
@@ -1957,6 +1955,7 @@ dependencies = [
  "nyanpasu-core-manager",
  "nyanpasu-egui",
  "nyanpasu-ipc",
+ "nyanpasu-logging",
  "nyanpasu-macro",
  "nyanpasu-utils",
  "objc2 0.6.4",
@@ -4541,6 +4540,10 @@ name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash",
+ "allocator-api2",
+]
 
 [[package]]
 name = "hashbrown"
@@ -5647,6 +5650,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lasso"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e14eda50a3494b3bf7b9ce51c52434a761e383d7238ce1dd5dcec2fbc13e9fb"
+dependencies = [
+ "hashbrown 0.14.5",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6562,7 +6574,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.4"
+version = "1.0.0-rc.5"
 dependencies = [
  "camino",
  "chrono",
@@ -6586,7 +6598,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.0-rc.4"
+version = "1.0.0-rc.5"
 dependencies = [
  "constcat",
  "enumset",
@@ -6629,7 +6641,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6638,6 +6650,7 @@ dependencies = [
  "indexmap 2.14.2",
  "interprocess",
  "nyanpasu-core-metadata",
+ "nyanpasu-logging",
  "nyanpasu-utils",
  "reqwest 0.13.4",
  "reqwest-websocket",
@@ -6649,6 +6662,23 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "nyanpasu-logging"
+version = "0.1.1-rc.1"
+dependencies = [
+ "chrono",
+ "file-id",
+ "gxhash",
+ "lasso",
+ "ractor",
+ "serde",
+ "serde_json",
+ "specta",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -9563,11 +9593,11 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "3.22.0"
+version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee78f1fbe43ac4a0e47aadb3dbd357b69eb0d3793e948624cd03dd2750ab1c0a"
+checksum = "935177bb8c0cd8ca1a4e6d1a2ac8988bea69cab4f9d3a31311e012ad27868ea4"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bs58",
  "chrono",
  "hex",
@@ -9584,14 +9614,14 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "3.22.0"
+version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8705578779c2b6bd90d84d66eb2e206b708b1a4d7b9f17641b293545bf1c7e46"
+checksum = "1d607aa01a3cb0ad757d6fd216136910db3c97b102fe686585689615a02dbcdc"
 dependencies = [
- "darling 0.23.0",
+ "darling 0.24.1",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.5",
 ]
 
 [[package]]

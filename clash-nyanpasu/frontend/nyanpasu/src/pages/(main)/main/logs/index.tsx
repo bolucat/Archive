@@ -1,4 +1,3 @@
-import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -7,175 +6,163 @@ import {
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { ContextMenuItem } from '@/components/ui/context-menu'
-import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { useClashLogs } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import LogLevelBadge from './_modules/log-level-badge'
+import FileLogs from './_modules/file-logs'
+import {
+  LogClearButton,
+  LogEmptyState,
+  LogFollowButton,
+  logPanelClass,
+  LogRecord,
+  LogSearch,
+} from './_modules/log-viewer'
+import { LogsLayout } from './_modules/logs-layout'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/logs/')({
   component: RouteComponent,
 })
 
-const Viewer = ({ search }: { search: string }) => {
+const Viewer = ({
+  search,
+  following,
+  setFollowing,
+}: {
+  search: string
+  following: boolean
+  setFollowing: (value: boolean) => void
+}) => {
   const { level } = IndexRoute.useSearch()
-
   const { data: logs } = useClashLogs()
-
   const filteredLogs = useMemo(() => {
-    if (!logs) {
-      return []
-    }
-
-    if (!level) {
-      return logs
-    }
-
-    return logs.filter((log) => log.type.toLowerCase() === level)
+    if (!logs) return []
+    if (!level) return logs
+    return logs.filter(
+      (log) =>
+        log.type.toLowerCase().replace('warning', 'warn') ===
+        level.replace('warning', 'warn'),
+    )
   }, [logs, level])
-
-  const { isBottom, viewportRef } = useScrollArea()
-
+  const { isBottom, viewportRef, scrollDirection } = useScrollArea()
   const rowVirtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => 110,
     overscan: 5,
-    measureElement: (element) => element?.getBoundingClientRect().height,
+    useFlushSync: false,
+    useAnimationFrameWithResizeObserver: true,
   })
-
-  const virtualItems = rowVirtualizer.getVirtualItems()
-
+  const totalSize = rowVirtualizer.getTotalSize()
   useEffect(() => {
-    if (isBottom && filteredLogs.length > 0) {
-      rowVirtualizer.scrollToIndex(filteredLogs.length - 1, {
-        align: 'end',
-        behavior: 'smooth',
-      })
-    }
-  }, [filteredLogs, isBottom, rowVirtualizer])
-
-  if (filteredLogs.length === 0) {
-    return (
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center gap-4"
-        data-slot="logs-no-logs"
-      >
-        <BoxOutlineRounded className="text-surface-variant size-16" />
-
-        <p
-          className="text-surface-variant text-sm"
-          data-slot="logs-no-logs-message"
-        >
-          {m.logs_empty_message()}
-        </p>
-      </div>
+    // ScrollArea attaches its viewport ref after this child's layout effects.
+    rowVirtualizer.measure()
+  }, [rowVirtualizer])
+  useEffect(() => {
+    if (scrollDirection === 'up' && !isBottom) setFollowing(false)
+  }, [scrollDirection, isBottom, setFollowing])
+  useEffect(() => {
+    if (!following || !filteredLogs.length) return
+    const frame = requestAnimationFrame(() =>
+      rowVirtualizer.scrollToIndex(filteredLogs.length - 1, { align: 'end' }),
     )
-  }
-
+    return () => cancelAnimationFrame(frame)
+  }, [filteredLogs, following, rowVirtualizer, totalSize])
   return (
-    <div
-      className={cn(
-        'relative mx-4 flex flex-col',
-        'divide-outline-variant divide-y',
-      )}
-      data-slot="logs-virtual-list"
-      style={{
-        height: `${rowVirtualizer.getTotalSize()}px`,
-      }}
-    >
-      {virtualItems.map((virtualItem) => {
-        const log = filteredLogs[virtualItem.index]
-
-        if (!log) {
-          return null
-        }
-
-        return (
-          <div
-            key={virtualItem.key}
-            ref={rowVirtualizer.measureElement}
-            data-index={virtualItem.index}
-            data-slot="logs-virtual-item"
-            className={cn(
-              'absolute top-0 left-0 w-full select-text',
-              'font-mono break-all',
-              'flex flex-col py-2',
-            )}
-            style={{
-              transform: `translateY(${virtualItem.start}px)`,
-            }}
-          >
-            <div className="flex items-center gap-1">
-              <HighlightText searchText={search}>
-                {log.time || ''}
-              </HighlightText>
-
-              <LogLevelBadge searchText={search}>{log.type}</LogLevelBadge>
+    <div>
+      {!filteredLogs.length && <LogEmptyState />}
+      <div
+        className="relative"
+        data-slot="logs-virtual-list"
+        style={{ height: totalSize }}
+      >
+        {rowVirtualizer.getVirtualItems().map((item) => {
+          const log = filteredLogs[item.index]
+          if (!log) return null
+          return (
+            <div
+              key={item.key}
+              ref={rowVirtualizer.measureElement}
+              data-index={item.index}
+              data-slot="logs-virtual-item"
+              className="absolute top-0 left-0 w-full select-text"
+              style={{
+                transform: `translateY(${item.start}px)`,
+              }}
+            >
+              <LogRecord
+                time={log.time || ''}
+                level={log.type}
+                message={log.payload || ''}
+                raw={JSON.stringify(log, null, 2)}
+                search={search}
+                onInspect={() => setFollowing(false)}
+              />
             </div>
-
-            <div className="font-normal text-wrap">
-              <HighlightText searchText={search}>
-                {log.payload || ''}
-              </HighlightText>
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function RouteComponent() {
+function KernelLogs() {
+  const [following, setFollowing] = useState(true)
   const [search, setSearch] = useState('')
-
   const { data: logs, clean } = useClashLogs()
-
   const handleClearLogs = useLockFn(async () => {
     await clean.mutateAsync()
   })
-
   return (
-    <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      <RegisterContextMenu>
-        <RegisterContextMenuTrigger asChild>
-          <ScrollArea className="min-h-0 flex-1">
-            <Viewer search={search} />
-          </ScrollArea>
-        </RegisterContextMenuTrigger>
-
-        <RegisterContextMenuContent>
-          <ContextMenuItem
-            disabled={logs?.length === 0}
-            onClick={handleClearLogs}
-          >
-            <DeleteForeverOutlineRounded className="size-4" />
-            <span>{m.logs_action_clear_log()}</span>
-          </ContextMenuItem>
-        </RegisterContextMenuContent>
-      </RegisterContextMenu>
-
-      <div
-        className="bg-mixed-background flex h-16 shrink-0 items-center px-4"
-        data-slot="logs-search"
-      >
-        <input
-          type="text"
-          className={cn(
-            'bg-surface-variant dark:bg-surface-variant/30',
-            'h-10 w-full rounded-full px-4 pr-10 text-sm outline-none',
-          )}
-          data-slot="logs-search-input-field"
-          placeholder={m.logs_search_placeholder()}
+    <LogsLayout
+      source="core"
+      actions={
+        <LogClearButton disabled={!logs?.length} onClick={handleClearLogs} />
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <LogSearch
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
+          placeholder={m.logs_search_placeholder()}
         />
+        <div className={logPanelClass}>
+          <RegisterContextMenu>
+            <RegisterContextMenuTrigger asChild>
+              <ScrollArea className="min-h-0 flex-1">
+                <Viewer
+                  search={search}
+                  following={following}
+                  setFollowing={setFollowing}
+                />
+              </ScrollArea>
+            </RegisterContextMenuTrigger>
+            <RegisterContextMenuContent>
+              <ContextMenuItem
+                disabled={logs?.length === 0}
+                onClick={handleClearLogs}
+              >
+                <DeleteForeverOutlineRounded className="size-4" />
+                <span>{m.logs_action_clear_log()}</span>
+              </ContextMenuItem>
+            </RegisterContextMenuContent>
+          </RegisterContextMenu>
+          {!following && <LogFollowButton onClick={() => setFollowing(true)} />}
+        </div>
       </div>
-    </div>
+    </LogsLayout>
+  )
+}
+
+function RouteComponent() {
+  const { source = 'core' } = IndexRoute.useSearch()
+  return source === 'core' ? (
+    <KernelLogs />
+  ) : (
+    <FileLogs key={source} source={source} />
   )
 }

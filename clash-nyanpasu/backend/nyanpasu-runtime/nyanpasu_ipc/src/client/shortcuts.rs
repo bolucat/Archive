@@ -25,6 +25,49 @@ use super::{ClientError, Result};
 pub use super::Client;
 
 impl Client {
+    pub async fn log_files(
+        &self,
+    ) -> Result<nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>>> {
+        self.call::<api::contract::LogFiles>(None)
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: api::log::LOG_FILES_ENDPOINT,
+            })
+    }
+    pub async fn open_logs(
+        &self,
+        request: &api::log::OwnedLogRequest<nyanpasu_logging::OpenLogs>,
+    ) -> Result<nyanpasu_logging::LogResult<nyanpasu_logging::LogSession>> {
+        self.call::<api::contract::LogOpen>(Some(request))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: api::log::LOG_OPEN_ENDPOINT,
+            })
+    }
+    pub async fn query_logs(
+        &self,
+        request: &api::log::OwnedLogRequest<nyanpasu_logging::QueryLogs>,
+    ) -> Result<nyanpasu_logging::LogResult<nyanpasu_logging::LogPage>> {
+        self.call::<api::contract::LogQuery>(Some(request))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: api::log::LOG_QUERY_ENDPOINT,
+            })
+    }
+    pub async fn close_logs(
+        &self,
+        request: &api::log::OwnedLogRequest<String>,
+    ) -> Result<nyanpasu_logging::LogResult<()>> {
+        self.call::<api::contract::LogClose>(Some(request))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: api::log::LOG_CLOSE_ENDPOINT,
+            })
+    }
     pub async fn status(&self) -> Result<api::status::StatusResBody<'static>> {
         self.call::<Status>(None)
             .await?

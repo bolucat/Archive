@@ -536,7 +536,7 @@ type domainMapBenchmarkQuery struct {
 	found bool
 }
 
-func domainMapBenchmarkDomains(count int) []string {
+func domainMapLookupDomains(count int) []string {
 	domains := make([]string, count)
 	for index := range domains {
 		domain := "host" + strconv.Itoa(index) + ".example.com"
@@ -558,7 +558,7 @@ func domainMapBenchmarkDomains(count int) []string {
 
 func BenchmarkDomainMapLookup(benchmark *testing.B) {
 	const deepDomain = "api.service.region.cluster.internal.prod.company.example.com"
-	domains := append(domainMapBenchmarkDomains(10000),
+	domains := append(domainMapLookupDomains(10000),
 		"*.*.overlap.example.com",
 		"dead.*.a.overlap.example.com",
 		"dead.b.a.overlap.example.com",
@@ -668,7 +668,7 @@ func benchmarkDomainMapLookup[T any](benchmark *testing.B, domains []string, que
 
 func BenchmarkDomainMapBuild(benchmark *testing.B) {
 	for _, count := range []int{100, 10000} {
-		domains := domainMapBenchmarkDomains(count)
+		domains := domainBuildBenchmarkDomains(count)
 		benchmark.Run(fmt.Sprintf("%d/map", count), func(benchmark *testing.B) {
 			benchmark.ReportAllocs()
 			var before, after runtime.MemStats

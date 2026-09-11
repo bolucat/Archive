@@ -21,6 +21,7 @@ pub struct AppState {
     pub hub: EventHub,
     pub runtime: Arc<RuntimeInfos>,
     pub logger: Logger<'static>,
+    pub logs: nyanpasu_logging::LogsClient,
 }
 
 #[instrument(skip(state))]
@@ -39,6 +40,9 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .merge(operations)
         .merge(ws::setup())
+        .layer(tracing_layer)
+        // Successful viewer polls must not generate more service log records.
+        .merge(logs::sessions())
         .fallback(middleware::not_found)
         .method_not_allowed_fallback(middleware::method_not_allowed)
         .with_state(state)
@@ -46,7 +50,6 @@ pub fn create_router(state: AppState) -> Router {
             middleware::PanicEnvelope,
         ))
         .layer(tower_http::request_id::PropagateRequestIdLayer::x_request_id())
-        .layer(tracing_layer)
         .layer(tower_http::request_id::SetRequestIdLayer::x_request_id(
             tower_http::request_id::MakeRequestUuid,
         ))

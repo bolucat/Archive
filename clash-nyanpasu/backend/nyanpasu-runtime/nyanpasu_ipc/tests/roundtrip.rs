@@ -64,6 +64,92 @@ use nyanpasu_utils::core::{ClashCoreType, CoreType};
 
 const TEST_VERSION: &str = "9.9.9-roundtrip";
 
+#[tokio::test]
+async fn viewer_protocol_roundtrips_over_local_transport() {
+    use nyanpasu_ipc::{
+        api::{
+            contract::{LogClose, LogFiles, LogOpen, LogQuery},
+            log::OwnedLogRequest,
+        },
+        server::RegisterOperation,
+    };
+    use nyanpasu_logging::*;
+    let router = Router::new()
+        .register(LogFiles, || async {
+            Json(RBuilder::success(Ok::<_, LogError>(
+                Vec::<LogFileInfo>::new(),
+            )))
+        })
+        .register(
+            LogOpen,
+            |Json(body): Json<OwnedLogRequest<OpenLogs>>| async move {
+                assert_eq!(body.owner, "test/window");
+                assert_eq!(body.request.request_id, "open-1");
+                Json(RBuilder::success(Ok::<_, LogError>(LogSession {
+                    id: "session-1".into(),
+                    lease_ms: 45000,
+                })))
+            },
+        )
+        .register(
+            LogQuery,
+            |Json(body): Json<OwnedLogRequest<QueryLogs>>| async move {
+                assert_eq!(body.request.session, "session-1");
+                Json(RBuilder::success(Err::<LogPage, _>(
+                    LogError::SessionExpired,
+                )))
+            },
+        )
+        .register(
+            LogClose,
+            |Json(body): Json<OwnedLogRequest<String>>| async move {
+                assert_eq!(body.request, "session-1");
+                Json(RBuilder::success(Ok::<_, LogError>(())))
+            },
+        );
+    let name = format!("nyanpasu-log-query-test-{}", std::process::id());
+    let Some(shutdown) = spawn_server(&name, router) else {
+        return;
+    };
+    let client = Client::new(&name).unwrap();
+    assert!(client.log_files().await.unwrap().unwrap().is_empty());
+    let session = client
+        .open_logs(&OwnedLogRequest {
+            owner: "test/window".into(),
+            request: OpenLogs {
+                request_id: "open-1".into(),
+                file: None,
+            },
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let result = client
+        .query_logs(&OwnedLogRequest {
+            owner: "test/window".into(),
+            request: QueryLogs {
+                session: session.id.clone(),
+                filter: Filter::default(),
+                direction: Direction::Latest,
+                cursor: None,
+                limit: 200,
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(result.unwrap_err(), LogError::SessionExpired);
+    client
+        .close_logs(&OwnedLogRequest {
+            owner: "test/window".into(),
+            request: session.id,
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let _ = shutdown.send(());
+    cleanup(&name);
+}
+
 // ---------------------------------------------------------------------------
 // Transport glue
 // ---------------------------------------------------------------------------
@@ -203,6 +289,7 @@ type SharedCapture = Arc<Mutex<Option<CapturedRequest>>>;
 
 fn test_status_body() -> StatusResBody<'static> {
     StatusResBody {
+        log_query_version: None,
         version: Cow::Borrowed(TEST_VERSION),
         core_infos: CoreInfos {
             instance_id: None,

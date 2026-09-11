@@ -67,6 +67,15 @@ impl TestEnv {
             hub: EventHub::new(),
             runtime,
             logger: Logger::new(),
+            logs: nyanpasu_logging::LogsClient::start(
+                Arc::new(nyanpasu_logging::FsLogFiles::new(
+                    root.join("service-logs"),
+                    "nyanpasu-service".into(),
+                )),
+                Arc::new(nyanpasu_logging::MonotonicClock::default()),
+            )
+            .await
+            .unwrap(),
         };
         Self { state, _dir: dir }
     }
@@ -75,6 +84,96 @@ impl TestEnv {
 async fn body_of<T: DeserializeOwned>(response: Response) -> T {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+async fn viewer_rpc_reads_files_and_scopes_sessions() {
+    use nyanpasu_ipc::api::{R, log::*};
+    use nyanpasu_logging::*;
+    let env = TestEnv::new().await;
+    let directory = env._dir.path().join("service-logs");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        directory.join("nyanpasu-service.2026-09-11.app.log"),
+        b"{\"level\":\"INFO\",\"fields\":{\"message\":\"service own log\"}}\n",
+    )
+    .unwrap();
+    let app = create_router(env.state.clone());
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(LOG_FILES_ENDPOINT)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let catalog: R<'static, LogResult<Vec<LogFileInfo>>> = body_of(response).await;
+    assert_eq!(catalog.data.unwrap().unwrap().len(), 1);
+    let post = |endpoint: &str, body: serde_json::Value| {
+        Request::builder()
+            .method(Method::POST)
+            .uri(endpoint)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    let response=app.clone().oneshot(post(LOG_OPEN_ENDPOINT,serde_json::json!({"owner":"client/window","request":{"request_id":"open","file":null}}))).await.unwrap();
+    let opened: R<'static, LogResult<LogSession>> = body_of(response).await;
+    let session = opened.data.unwrap().unwrap();
+    let request = QueryLogs {
+        session: session.id.clone(),
+        filter: Filter::default(),
+        direction: Direction::Latest,
+        cursor: None,
+        limit: 200,
+    };
+    let page = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let response = app
+                .clone()
+                .oneshot(post(
+                    LOG_QUERY_ENDPOINT,
+                    serde_json::json!({"owner":"client/window","request":request}),
+                ))
+                .await
+                .unwrap();
+            let page: R<'static, LogResult<LogPage>> = body_of(response).await;
+            let page = page.data.unwrap().unwrap();
+            if !page.building {
+                break page;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(page.rows[0].message, "service own log");
+    let response = app
+        .clone()
+        .oneshot(post(
+            LOG_QUERY_ENDPOINT,
+            serde_json::json!({"owner":"another-client","request":request}),
+        ))
+        .await
+        .unwrap();
+    let rejected: R<'static, LogResult<LogPage>> = body_of(response).await;
+    assert_eq!(
+        rejected.data.unwrap().unwrap_err(),
+        LogError::SessionExpired
+    );
+    let response = app
+        .oneshot(post(
+            LOG_CLOSE_ENDPOINT,
+            serde_json::json!({"owner":"client/window","request":session.id}),
+        ))
+        .await
+        .unwrap();
+    let closed: R<'static, LogResult<()>> = body_of(response).await;
+    assert!(closed.data.unwrap().is_ok());
+    env.state.logs.shutdown().await.unwrap();
+    env.state.core_manager.shutdown().await;
 }
 
 #[tokio::test]

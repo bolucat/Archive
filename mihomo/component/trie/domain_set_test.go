@@ -1,6 +1,7 @@
 package trie_test
 
 import (
+	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
@@ -297,7 +298,15 @@ func BenchmarkDomainSetHas(b *testing.B) {
 	}
 }
 
-func BenchmarkDomainSetBuild(b *testing.B) {
+func domainBenchmarkHash(value uint32) uint32 {
+	value ^= value >> 16
+	value *= 0x7feb352d
+	value ^= value >> 15
+	value *= 0x846ca68b
+	return value ^ (value >> 16)
+}
+
+func domainBuildBenchmarkDomains(count int) []string {
 	suffixes := [...]string{
 		"google.com",
 		"github.io",
@@ -307,26 +316,47 @@ func BenchmarkDomainSetBuild(b *testing.B) {
 		"apple.com",
 		"telegram.org",
 		"example.co.uk",
+		"example.com.au",
+		"example.com.tw",
+		"example.co.jp",
+		"example.de",
 	}
-	domains := make([]string, 10000)
-	for i := range domains {
-		domain := strconv.Itoa(i) + "." + suffixes[i%len(suffixes)]
-		switch i % 20 {
+	hosts := [...]string{
+		"api%d",
+		"cdn%d",
+		"img%d",
+		"static-%d",
+		"region-%d",
+		"production-download-%d",
+		"service%d.edge",
+		"download%d.assets.eu-west-1",
+	}
+	domains := make([]string, count)
+	for index := range domains {
+		hash := domainBenchmarkHash(uint32(index))
+		if index > 0 && hash%50 == 0 {
+			domains[index] = domains[int(uint64(hash>>8)%uint64(index))]
+			continue
+		}
+		domain := fmt.Sprintf(hosts[(hash>>8)%uint32(len(hosts))], index) + "." + suffixes[(hash>>12)%uint32(len(suffixes))]
+		switch (hash >> 24) % 20 {
 		case 0:
-			domains[i] = domain
+			domains[index] = domain
 		case 1:
-			domains[i] = "." + domain
+			domains[index] = "." + domain
 		case 2:
-			domains[i] = "*." + domain
+			domains[index] = "*." + domain
 		case 3:
-			domains[i] = "stun.*." + domain
+			domains[index] = "service.*." + domain
 		default:
-			domains[i] = "+." + domain
-		}
-		if i%50 == 49 {
-			domains[i] = domains[i-1]
+			domains[index] = "+." + domain
 		}
 	}
+	return domains
+}
+
+func BenchmarkDomainSetBuild(b *testing.B) {
+	domains := domainBuildBenchmarkDomains(10000)
 
 	b.Run("via_trie", func(b *testing.B) {
 		b.ReportAllocs()

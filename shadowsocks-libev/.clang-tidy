@@ -1,5 +1,5 @@
-# clang-tidy configuration for shadowsocks-libev project sources (src/ only).
-# Bundled submodules (libcork/, libipset/, libbloom/) are third-party code and
+# clang-tidy configuration for shadowsocks-c project sources (src/ only).
+# Bundled sources under third_party/ and src/blake3/ are third-party code and
 # are excluded by the file regex used in CI:
 #   run-clang-tidy -p build '/src/[^/]+\.c$'
 #
@@ -8,7 +8,7 @@
 # Checks disabled below are either stylistic churn (macro-parentheses,
 # reserved-identifier: the codebase uses _prefixed names and vendored
 # uthash.h/generated config.h trip them ~600 times) or produce false
-# positives with the libev callback style (casting-through-void,
+# positives with the event callback style (casting-through-void,
 # multi-level-implicit-pointer-conversion).
 Checks: >
   clang-analyzer-*,
