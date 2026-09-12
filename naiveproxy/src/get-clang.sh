@@ -31,6 +31,11 @@ if [ ! -d third_party/llvm-build/Release+Asserts/bin ]; then
   clang_path="clang-$CLANG_REVISION.tar.xz"
   clang_url="https://commondatastorage.googleapis.com/chromium-browser-clang/$WITH_CLANG/$clang_path"
   curl "$clang_url" | tar xJf - -C third_party/llvm-build/Release+Asserts
+  if [ "$target_os" = android ]; then
+    clang_path="clang-android-runtime-library-$CLANG_REVISION.tar.xz"
+    clang_url="https://commondatastorage.googleapis.com/chromium-browser-clang/$WITH_CLANG/$clang_path"
+    curl "$clang_url" | tar xJf - -C third_party/llvm-build/Release+Asserts
+  fi
 fi
 
 # sccache

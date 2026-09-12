@@ -62,8 +62,8 @@ BASE_EXPORT void SetFileTags(const FilePath& file_path,
 
 // The following two functions return the version of the macOS currently
 // running. MacOSVersion() returns the full trio of version numbers, packed into
-// one int (e.g. macOS 12.6.5 returns 12'06'05), and MacOSMajorVersion() returns
-// only the major version number (e.g. macOS 12.6.5 returns 12). Use for runtime
+// one int (e.g. macOS 14.8.7 returns 14'08'07), and MacOSMajorVersion() returns
+// only the major version number (e.g. macOS 14.8.7 returns 14). Use for runtime
 // OS version checking. Prefer to use @available in Objective-C files. Note that
 // this does not include any Rapid Security Response (RSR) suffixes (the "(a)"
 // at the end of version numbers.)
@@ -74,6 +74,21 @@ inline __attribute__((const)) int MacOSMajorVersion() {
 
 // Returns true if Mac is running in a virtual machine.
 BASE_EXPORT bool IsVirtualMachine();
+
+// LINT.IfChange(MacOS26LiquidGlassPreferredLook)
+enum class MacOS26LiquidGlassPreferredLook {
+  kDefault = 0,
+  kClear = 1,
+  kTint = 2,
+  kMaxValue = kTint,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/mac/enums.xml:MacOS26LiquidGlassPreferredLook)
+
+// Returns the preferred look for the macOS 26 liquid glass effect (clear or
+// tint). CHECKs on non macOS 26 os versions since there is no expectation that
+// this setting exists or is valid outside of version 26.
+BASE_EXPORT MacOS26LiquidGlassPreferredLook
+GetMacOS26LiquidGlassPreferredLook();
 
 enum class CPUType {
   kIntel,

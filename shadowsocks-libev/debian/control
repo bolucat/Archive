@@ -8,15 +8,14 @@ Uploaders:
  Roger Shimizu <rosh@debian.org>
 Build-Depends:
  cmake (>= 3.20),
- asciidoc-base | asciidoc,
+ doxygen (>= 1.9.4),
  debhelper (>= 10),
  libc-ares-dev,
  libuv1-dev,
  libmbedtls-dev,
  libpcre2-dev,
  libsodium-dev (>= 1.0.12),
- pkg-config,
- xmlto
+ pkg-config
 Standards-Version: 4.1.1
 Rules-Requires-Root: no
 Homepage: https://www.shadowsocks.org

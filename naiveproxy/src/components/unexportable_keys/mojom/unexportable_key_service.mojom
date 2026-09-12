@@ -54,11 +54,11 @@ enum BackgroundTaskPriority {
 };
 
 // LINT.ThenChange(/components/unexportable_keys/background_task_priority.h)
-struct UnexportableKeyId {
+struct UnexportableSigningKeyId {
   mojo_base.mojom.UnguessableToken key_id;
 };
 
-struct UnexportableSigningKeyId {
+struct UnexportableAttestationKeyId {
   mojo_base.mojom.UnguessableToken key_id;
 };
 
@@ -71,16 +71,27 @@ struct NewKeyMetadata {
   mojo_base.mojom.Time? creation_time;
 };
 
-// A struct that holds a key ID and its metadata.
-struct NewKeyData {
-  UnexportableKeyId key_id;
-  NewKeyMetadata metadata;
-};
-
 // A struct that holds a signing key ID and its metadata.
 struct NewSigningKeyData {
   UnexportableSigningKeyId key_id;
   NewKeyMetadata metadata;
+};
+
+// A struct that holds an attestation key ID and its metadata.
+struct NewAttestationKeyData {
+  UnexportableAttestationKeyId key_id;
+  NewKeyMetadata metadata;
+};
+
+enum AttestationFormat {
+  kTpm,
+  kSecureEnclave,
+};
+
+struct AttestationStatement {
+  AttestationFormat format;
+  array<uint8> statement;
+  array<uint8> signature;
 };
 
 // Interface for proxying calls to UnexportableKeyService from less privileged
@@ -105,6 +116,24 @@ interface UnexportableKeyService {
       array<uint8> wrapped_key, BackgroundTaskPriority priority)
       => result<NewSigningKeyData, ServiceError>;
 
+  // Generates a new attestation key.
+  //
+  // The first supported value of `acceptable_algorithms` determines the type of
+  // the key. The task will be executed at the requested priority. In success, a
+  // NewAttestationKeyData struct will be returned. If there was a failure a
+  // ServiceError will be returned instead.
+  GenerateAttestationKey(array<SignatureAlgorithm> acceptable_algorithms,
+                         BackgroundTaskPriority priority)
+      => result<NewAttestationKeyData, ServiceError>;
+
+  // Loads an attestation key from the wrapped_key object. The task will be
+  // executed at the requested priority. In success, a NewAttestationKeyData
+  // struct will be returned. If there was a failure a ServiceError will be
+  // returned instead.
+  FromWrappedAttestationKey(
+      array<uint8> wrapped_key, BackgroundTaskPriority priority)
+      => result<NewAttestationKeyData, ServiceError>;
+
   // Signs the data using the key identified by key_id, at the requested
   // priority. Retries up to max_retries times before returning an error. In
   // success the serialized signature will be returned. If there was a
@@ -113,18 +142,27 @@ interface UnexportableKeyService {
        array<uint8> data,
        BackgroundTaskPriority priority) => result<array<uint8>, ServiceError>;
 
+  // Certifies the signing key identified by signing_key_id using the
+  // attestation key identified by attestation_key_id, with a challenge. In
+  // success, the AttestationStatement will be returned. If there was a failure,
+  // a ServiceError will be returned instead.
+  Certify(UnexportableAttestationKeyId attestation_key_id,
+          UnexportableSigningKeyId signing_key_id,
+          array<uint8> challenge,
+          BackgroundTaskPriority priority)
+      => result<AttestationStatement, ServiceError>;
+
   // Returns all keys currently stored by the OS that are being managed by this
-  // service. In success an array of NewKeyData will be returned. If there was a
-  // failure a ServiceError will be returned instead.
+  // service. In success an array of NewSigningKeyData will be returned. If
+  // there was a failure a ServiceError will be returned instead.
   GetAllKeysForGarbageCollection(BackgroundTaskPriority priority)
-      => result<array<NewKeyData>, ServiceError>;
+      => result<array<NewSigningKeyData>, ServiceError>;
 
   // Deletes the keys identified by key_ids.
   // On success the number of keys deleted is returned. On error a ServiceError
   // is returned instead.
-  DeleteKeys(
-      array<UnexportableKeyId> key_ids, BackgroundTaskPriority priority)
-      => result<uint64, ServiceError>;
+  DeleteKeys(array<UnexportableSigningKeyId> key_ids,
+             BackgroundTaskPriority priority) => result<uint64, ServiceError>;
 
   // Delete all keys.
   // On success the number of keys deleted is returned. On error a ServiceError

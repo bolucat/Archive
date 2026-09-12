@@ -46,6 +46,12 @@ std::optional<FilePath> ResolveToVirtualDocumentPath(const FilePath& path) {
   return FilePath(vp->ToString());
 }
 
+std::optional<std::string> CopyFileToDownloadsCollection(
+    const FilePath& file_path,
+    const std::string& mime_type) {
+  return std::nullopt;
+}
+
 }  // namespace base
 
 DEFINE_JNI(FileUtils)

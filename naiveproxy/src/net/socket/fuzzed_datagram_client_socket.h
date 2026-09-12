@@ -5,16 +5,16 @@
 #ifndef NET_SOCKET_FUZZED_DATAGRAM_CLIENT_SOCKET_H_
 #define NET_SOCKET_FUZZED_DATAGRAM_CLIENT_SOCKET_H_
 
-#include "base/memory/raw_ptr.h"
-#include "net/socket/datagram_client_socket.h"
-
 #include <stdint.h>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/network_handle.h"
 #include "net/log/net_log_with_source.h"
+#include "net/socket/datagram_client_socket.h"
+#include "net/socket/read_multiple_emulator.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 
 class FuzzedDataProvider;
@@ -66,6 +66,12 @@ class FuzzedDatagramClientSocket : public DatagramClientSocket {
   int Read(IOBuffer* buf,
            int buf_len,
            CompletionOnceCallback callback) override;
+  base::expected<DatagramsMetadata, Error> ReadMultiple(
+      IOBuffer* buf,
+      size_t buf_len,
+      size_t maximum_packet_size,
+      base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+          callback) override;
   int Write(IOBuffer* buf,
             int buf_len,
             CompletionOnceCallback callback,
@@ -90,6 +96,8 @@ class FuzzedDatagramClientSocket : public DatagramClientSocket {
   NetLogWithSource net_log_;
 
   IPEndPoint remote_address_;
+
+  ReadMultipleEmulator read_multiple_emulator_{this};
 
   base::WeakPtrFactory<FuzzedDatagramClientSocket> weak_factory_{this};
 };

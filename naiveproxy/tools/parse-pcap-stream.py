@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 
 if len(sys.argv) != 3:
     print(f'Usage: {sys.argv[0]} PCAP_FILE DOMAIN')
-    os.exit(1)
+    sys.exit(1)
 
 file = sys.argv[1]
 domain = sys.argv[2]

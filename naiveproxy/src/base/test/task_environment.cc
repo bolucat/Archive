@@ -460,7 +460,7 @@ TaskEnvironment::TaskEnvironment(
                                     : nullptr),
       scoped_lazy_task_runner_list_for_testing_(
           std::make_unique<internal::ScopedLazyTaskRunnerListForTesting>()),
-      // TODO(crbug.com/41435712): Enable Run() timeouts even for
+      // TODO(crbug.com/40625086): Enable Run() timeouts even for
       // instances created with TimeSource::MOCK_TIME.
       run_loop_timeout_(
           mock_time_domain_
@@ -514,7 +514,8 @@ TaskEnvironment::TestTaskTracker* TaskEnvironment::CreateThreadPool() {
   auto thread_pool = std::make_unique<internal::ThreadPoolImpl>(
       std::string(), std::move(task_tracker),
       /*use_background_threads=*/false,
-      /*monitor_worker_thread_priorities=*/false);
+      /*monitor_worker_thread_priorities=*/false,
+      ThreadPoolInstance::RecordLockContention::kDisabled);
   ThreadPoolInstance::Set(std::move(thread_pool));
   DCHECK(!g_task_tracker);
   g_task_tracker = raw_task_tracker;

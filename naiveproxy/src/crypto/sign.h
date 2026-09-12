@@ -9,11 +9,12 @@
 #include "crypto/crypto_export.h"
 #include "crypto/keypair.h"
 #include "third_party/boringssl/src/include/openssl/base.h"
-#include "third_party/boringssl/src/include/openssl/evp.h"
 
 namespace crypto::sign {
 
 enum SignatureKind {
+  // Deprecated: don't use SHA-1. If you need to add new uses of this, talk to
+  // a member of //CRYPTO_OWNERS.
   RSA_PKCS1_SHA1,
   RSA_PKCS1_SHA256,
   RSA_PKCS1_SHA384,
@@ -25,6 +26,8 @@ enum SignatureKind {
   RSA_PSS_SHA384,
   RSA_PSS_SHA512,
 
+  // Deprecated: don't use SHA-1. If you need to add new uses of this, talk to
+  // a member of //CRYPTO_OWNERS.
   ECDSA_SHA1,
   ECDSA_SHA256,
   ECDSA_SHA384,
@@ -37,6 +40,8 @@ enum SignatureKind {
   // Note: ML-DSA cannot be used in streaming modes and has to be passed the
   // entire message to sign; it does not take a separate hash function.
   MLDSA_44,
+  MLDSA_65,
+  MLDSA_87,
 };
 
 // One-shot signature function: produce a signature of `data` using `key`.

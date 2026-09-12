@@ -318,6 +318,16 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="Recovered"/>
 </enum>
 
+<!-- LINT.IfChange(AutoPictureInPictureSafeBrowsingCheckResult) -->
+
+<enum name="AutoPictureInPictureSafeBrowsingCheckResult">
+  <int value="0" label="Safe"/>
+  <int value="1" label="Unsafe"/>
+  <int value="2" label="Timeout"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/picture_in_picture/auto_picture_in_picture_safe_browsing_checker_client.h:AutoPictureInPictureSafeBrowsingCheckResult) -->
+
 <enum name="AutoplayPolicyStatus">
   <int value="0" label="AllowedByEnterprisePolicy"/>
   <int value="1" label="AllowedByDelegatedEnterprisePolicy"/>
@@ -553,6 +563,15 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Success"/>
   <int value="1" label="In Use"/>
   <int value="2" label="Failure"/>
+</enum>
+
+<enum name="CodedSizeGuessStatus">
+  <int value="0" label="None Correct"/>
+  <int value="1" label="Guess Correct"/>
+  <int value="2" label="MediaFormat Correct"/>
+  <int value="3" label="Both Correct"/>
+  <int value="4" label="Didn't guess and MediaFormat is correct"/>
+  <int value="5" label="Didn't guess and MediaFormat is not correct"/>
 </enum>
 
 <enum name="ContentProtectionWindowStatus">
@@ -1239,6 +1258,7 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="kSuccess"/>
   <int value="1" label="kFailedToFindBundleId"/>
   <int value="2" label="kFailedToFindBrowserForPWA"/>
+  <int value="3" label="kInvalidBundleId"/>
 </enum>
 
 <enum name="GetAppMainProcessIdWinResult">
@@ -1378,6 +1398,18 @@ chromium-metrics-reviews@google.com.
   <int value="4" label="Error: Failed to create a stream object"/>
 </enum>
 
+<!-- LINT.IfChange(MediaAutoPictureInPictureHappinessTrackingSurveyTriggerResult) -->
+
+<enum name="MediaAutoPictureInPictureHappinessTrackingSurveyTriggerResult">
+  <int value="0" label="Launched"/>
+  <int value="1" label="Finch segment mismatch"/>
+  <int value="2" label="Missing prompt result"/>
+  <int value="3" label="Browser initiated skipped"/>
+  <int value="4" label="HatsService null"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/picture_in_picture/hats/auto_picture_in_picture_hats_service.h:SurveyTriggerResult) -->
+
 <enum name="MediaAutoPictureInPicturePromptResult">
   <int value="0" label="Ignored"/>
   <int value="1" label="Block"/>
@@ -1515,11 +1547,24 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Interacted"/>
 </enum>
 
+<!-- LINT.IfChange(MediaDrmProvisioningNetworkRetryResult) -->
+
+<enum name="MediaDrmProvisioningNetworkRetryResult">
+  <int value="0" label="RetryAttempted"/>
+  <int value="1" label="IgnoredByBackoff"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/media/android/cdm/media_drm_origin_id_manager.cc:ProvisioningNetworkRetryResult) -->
+
+<!-- LINT.IfChange(MediaDrmProvisioningResult) -->
+
 <enum name="MediaDrmProvisioningResult">
   <int value="0" label="Success"/>
   <int value="1" label="FailedWhileOnline"/>
   <int value="2" label="FailedWhileOffline"/>
 </enum>
+
+<!-- LINT.ThenChange(//chrome/browser/media/android/cdm/media_drm_origin_id_manager.cc:ProvisioningResult) -->
 
 <enum name="MediaEncryptionScheme">
   <int value="0" label="CENC"/>
@@ -1636,6 +1681,7 @@ chromium-metrics-reviews@google.com.
   <int value="10" label="Close device list for casting"/>
   <int value="11" label="Enter picture in picture"/>
   <int value="12" label="Exit picture in picture"/>
+  <int value="13" label="Save video frame"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/global_media_controls/public/views/media_item_ui_updated_view.h:MediaItemUIUpdatedViewAction) -->
@@ -2106,6 +2152,15 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/picture_in_picture/picture_in_picture_window_manager.h:PictureInPictureDisallowedType) -->
 
+<!-- LINT.IfChange(PictureInPictureSizeConstraintResult) -->
+
+<enum name="PictureInPictureSizeConstraintResult">
+  <int value="0" label="SizeConstraintMet"/>
+  <int value="1" label="SizeConstraintNotMet"/>
+</enum>
+
+<!-- LINT.ThenChange(//third_party/blink/renderer/core/html/media/html_video_element.cc:PictureInPictureSizeConstraintResult) -->
+
 <!-- LINT.IfChange(PictureInPictureTuckedTypeEnum) -->
 
 <enum name="PictureInPictureTuckedType">
@@ -2143,6 +2198,7 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="DuplicateCallBeforePromiseResolution"/>
   <int value="4" label="DuplicateCallAfterPromiseResolution"/>
   <int value="5" label="ElementAndMediaDevicesNotInSameExecutionContext"/>
+  <int value="6" label="FencedFrameNotAllowed"/>
 </enum>
 
 <enum name="ProduceTargetPromiseResult">
@@ -2170,6 +2226,7 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="System permissions error"/>
   <int value="4" label="Device in use error"/>
   <int value="5" label="Previous stream error"/>
+  <int value="6" label="Device removed error"/>
 </enum>
 
 <enum name="RemotingCompatibility">
@@ -2254,20 +2311,6 @@ chromium-metrics-reviews@google.com.
 <enum name="RequestMediaKeySystemAccessStatus">
   <int value="0" label="Requested"/>
   <int value="1" label="Supported"/>
-</enum>
-
-<enum name="ResolutionComparison">
-  <int value="0" label="Requested width larger than capture"/>
-  <int value="1" label="Requested width smaller than capture"/>
-  <int value="2" label="Requested height larger than capture"/>
-  <int value="3" label="Requested height smaller than capture"/>
-  <int value="4" label="Requested resolution equals capture"/>
-  <int value="5" label="Requested width and height larger than capture"/>
-  <int value="6"
-      label="Requested width smaller, and height larger than capture"/>
-  <int value="7"
-      label="Requested width larger and height smaller than capture"/>
-  <int value="8" label="Requested width and height smaller than capture"/>
 </enum>
 
 <enum name="RTCVideoDecoderFallbackReason">
@@ -2647,6 +2690,7 @@ chromium-metrics-reviews@google.com.
   <int value="148" label="kScreenCaptureKitResetStreamError"/>
   <int value="149" label="kWinMediaFoundationCameraBusy"/>
   <int value="150" label="kWebRtcStartCaptureFailed"/>
+  <int value="151" label="kDesktopCaptureDeviceGpuAdapterChanged"/>
 </enum>
 
 <enum name="VideoCaptureFrameDropReason">
@@ -2694,12 +2738,6 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="kStarted"/>
   <int value="1" label="kTimedout"/>
   <int value="2" label="kFailed"/>
-</enum>
-
-<enum name="VideoEffectStatus">
-  <int value="0" label="Unsupported"/>
-  <int value="1" label="Supported"/>
-  <int value="2" label="Enabled"/>
 </enum>
 
 <enum name="VideoFrameStorageType">

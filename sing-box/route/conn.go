@@ -76,8 +76,9 @@ func (m *ConnectionManager) Close() error {
 
 func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {
 	tracked := &trackedConn{
-		Conn:    conn,
-		manager: m,
+		Conn:        conn,
+		socketOwner: socketOwner{original: conn},
+		manager:     m,
 	}
 	m.access.Lock()
 	tracked.element = m.connections.PushBack(tracked)
@@ -88,6 +89,7 @@ func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {
 func (m *ConnectionManager) TrackPacketConn(conn net.PacketConn) net.PacketConn {
 	tracked := &trackedPacketConn{
 		NetPacketConn: bufio.NewPacketConn(conn),
+		socketOwner:   socketOwner{original: conn},
 		manager:       m,
 	}
 	m.access.Lock()
@@ -410,25 +412,27 @@ func (m *ConnectionManager) packetConnectionCopy(ctx context.Context, source N.P
 }
 
 type socketOwner struct {
-	access sync.Mutex
-	owner  io.Closer
-	closed bool
+	access   sync.Mutex
+	original io.Closer
+	owner    io.Closer
+	closed   bool
 }
 
-func (o *socketOwner) Attach(closer io.Closer) bool {
+func (o *socketOwner) Attach(closer io.Closer) (io.Closer, bool) {
 	o.access.Lock()
 	defer o.access.Unlock()
-	if o.closed {
-		return false
+	if o.closed || o.owner != nil {
+		return nil, false
 	}
 	o.owner = closer
-	return true
+	return o.original, true
 }
 
-func (o *socketOwner) Detach() {
+func (o *socketOwner) detach() bool {
 	o.access.Lock()
+	defer o.access.Unlock()
 	o.owner = nil
-	o.access.Unlock()
+	return o.closed
 }
 
 func (o *socketOwner) close() bool {
@@ -456,6 +460,12 @@ func (c *trackedConn) SyscallConn() (syscall.RawConn, error) {
 		return nil, os.ErrInvalid
 	}
 	return syscallConn.SyscallConn()
+}
+
+func (c *trackedConn) Detach() {
+	if c.socketOwner.detach() {
+		c.Conn.Close()
+	}
 }
 
 func (c *trackedConn) Close() error {
@@ -493,6 +503,12 @@ func (c *trackedPacketConn) SyscallConn() (syscall.RawConn, error) {
 		return nil, os.ErrInvalid
 	}
 	return syscallConn.SyscallConn()
+}
+
+func (c *trackedPacketConn) Detach() {
+	if c.socketOwner.detach() {
+		c.NetPacketConn.Close()
+	}
 }
 
 func (c *trackedPacketConn) Close() error {

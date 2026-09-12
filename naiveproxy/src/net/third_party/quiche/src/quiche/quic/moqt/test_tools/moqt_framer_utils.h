@@ -13,6 +13,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_parser.h"
 #include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_data_reader.h"
 #include "quiche/common/quiche_mem_slice.h"
@@ -20,14 +21,12 @@
 namespace moqt::test {
 
 using AnyMoqtControlMessage =
-    std::variant<MoqtClientSetup, MoqtServerSetup, MoqtRequestOk,
-                 MoqtRequestError, MoqtSubscribe, MoqtSubscribeOk,
-                 MoqtUnsubscribe, MoqtPublishDone, MoqtRequestUpdate,
-                 MoqtPublishNamespace, MoqtPublishNamespaceDone,
-                 MoqtPublishNamespaceCancel, MoqtTrackStatus, MoqtGoAway,
-                 MoqtSubscribeNamespace, MoqtMaxRequestId, MoqtFetch,
-                 MoqtFetchCancel, MoqtFetchOk, MoqtRequestsBlocked, MoqtPublish,
-                 MoqtNamespace, MoqtNamespaceDone, MoqtObjectAck>;
+    std::variant<MoqtSetup, MoqtRequestOk, MoqtRequestError, MoqtSubscribe,
+                 MoqtSubscribeOk, MoqtPublishDone, MoqtRequestUpdate,
+                 MoqtPublishNamespace, MoqtTrackStatus, MoqtGoAway,
+                 MoqtSubscribeNamespace, MoqtSubscribeTracks, MoqtMaxRequestId,
+                 MoqtFetch, MoqtFetchCancel, MoqtFetchOk, MoqtRequestsBlocked,
+                 MoqtPublish, MoqtNamespace, MoqtNamespaceDone, MoqtObjectAck>;
 
 std::string SerializeGenericMessage(const AnyMoqtControlMessage& frame,
                                     bool use_webtrans = false);
@@ -53,7 +52,7 @@ MATCHER_P(ControlMessageOfType, expected_type,
   std::string merged_message = absl::StrJoin(data_written, "");
   quiche::QuicheDataReader reader(merged_message);
   uint64_t type_raw;
-  if (!reader.ReadVarInt62(&type_raw)) {
+  if (!reader.ReadMoqVarInt(&type_raw)) {
     *result_listener << "Failed to extract type from the message";
     return false;
   }
@@ -65,6 +64,15 @@ MATCHER_P(ControlMessageOfType, expected_type,
     return false;
   }
   return true;
+}
+
+// Parses `message` into a MoqtRawControlMessage.  Assumes `message` is exactly
+// one message; reports a test failure if not.
+MoqtRawControlMessage UnframeRawControlMessage(absl::string_view message);
+
+inline MoqtRawControlMessage GenericMessageToRawControlMessage(
+    const AnyMoqtControlMessage& message) {
+  return UnframeRawControlMessage(SerializeGenericMessage(message));
 }
 
 }  // namespace moqt::test

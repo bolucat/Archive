@@ -31,6 +31,7 @@
 #include "net/http/transport_security_state.h"
 #include "net/http/transport_security_state_test_util.h"
 #include "net/log/net_log.h"
+#include "net/nqe/network_quality_estimator_test_util.h"
 #include "net/quic/crypto/proof_verifier_chromium.h"
 #include "net/quic/mock_crypto_client_stream_factory.h"
 #include "net/quic/mock_quic_context.h"
@@ -52,6 +53,9 @@ namespace net::test {
 
 class TestConnectionChangeObserver : public ConnectionChangeNotifier::Observer {
  public:
+  void OnConnectionEstablished(
+      const ConnectionChangeNotifier::EstablishedConnectionInfo& info)
+      override {}
   void OnSessionClosed(bool was_ever_used_to_create_streams) override;
   void OnConnectionFailed() override;
   void OnNetworkEvent(NetworkChangeEvent event) override;
@@ -70,7 +74,35 @@ class TestConnectionChangeObserver : public ConnectionChangeNotifier::Observer {
   std::optional<NetworkChangeEvent> last_network_event_;
 };
 
-class QuicSessionPoolTestBase : public WithTaskEnvironment {
+// Helper base class to ensure `base::test::ScopedFeatureList` is initialized
+// before `WithTaskEnvironment` starts the task environment and destroyed only
+// after `WithTaskEnvironment` shuts down and joins its worker threads.
+//
+// In C++, base classes are constructed in the order of declaration and
+// destructed in reverse order. Inheriting `QuicSessionPoolFeatureInitializer`
+// before `WithTaskEnvironment` prevents `base::FeatureList` from being deleted
+// while background threads in the task environment are still running and
+// querying feature flags.
+class QuicSessionPoolFeatureInitializer {
+ public:
+  QuicSessionPoolFeatureInitializer(
+      std::vector<base::test::FeatureRef> enabled_features,
+      const std::vector<base::test::FeatureRef>& disabled_features,
+      std::vector<base::test::FeatureRefAndParams>
+          enabled_features_with_params);
+  ~QuicSessionPoolFeatureInitializer();
+
+ protected:
+  base::test::ScopedFeatureList& scoped_feature_list() {
+    return scoped_feature_list_;
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+class QuicSessionPoolTestBase : private QuicSessionPoolFeatureInitializer,
+                                public WithTaskEnvironment {
  public:
   static constexpr char kDefaultServerHostName[] = "www.example.org";
   static constexpr char kServer2HostName[] = "mail.example.org";
@@ -93,10 +125,18 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
   static constexpr uint64_t kConnectUdpContextId = 0;
 
  protected:
+  // `time_source` is passed to the task environment. Tests that drive timers
+  // pass MOCK_TIME and advance the clock themselves.
+  // `enabled_features_with_params` is for features that need field trial
+  // params. All feature state must be decided here, before any test activity.
   explicit QuicSessionPoolTestBase(
       quic::ParsedQuicVersion version,
       std::vector<base::test::FeatureRef> enabled_features = {},
-      std::vector<base::test::FeatureRef> disabled_features = {});
+      std::vector<base::test::FeatureRef> disabled_features = {},
+      base::test::TaskEnvironment::TimeSource time_source =
+          base::test::TaskEnvironment::TimeSource::DEFAULT,
+      std::vector<base::test::FeatureRefAndParams>
+          enabled_features_with_params = {});
   ~QuicSessionPoolTestBase();
 
   void Initialize();
@@ -145,8 +185,11 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
     bool require_dns_https_alpn = false;
     int cert_verify_flags = 0;
     GURL url = GURL(kDefaultUrl);
+    handles::NetworkHandle target_network = handles::kInvalidNetworkHandle;
     NetLogWithSource net_log;
     NetErrorDetails net_error_details;
+    MultiplexedSessionCreationInitiator session_creation_initiator =
+        MultiplexedSessionCreationInitiator::kUnknown;
     CompletionOnceCallback failed_on_default_network_callback;
     CompletionOnceCallback callback;
 
@@ -166,7 +209,8 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
       const ProxyChain& proxy_chain = ProxyChain::Direct(),
       SessionUsage session_usage = SessionUsage::kDestination,
       bool require_dns_https_alpn = false,
-      bool disable_cert_verification_network_fetches = false);
+      bool disable_cert_verification_network_fetches = false,
+      handles::NetworkHandle target_network = handles::kInvalidNetworkHandle);
   bool HasActiveJob(const url::SchemeHostPort& scheme_host_port,
                     const PrivacyMode privacy_mode,
                     bool require_dns_https_alpn = false);
@@ -182,7 +226,8 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
       const ProxyChain& proxy_chain = ProxyChain::Direct(),
       SessionUsage session_usage = SessionUsage::kDestination,
       bool require_dns_https_alpn = false,
-      bool disable_cert_verification_network_fetches = false);
+      bool disable_cert_verification_network_fetches = false,
+      handles::NetworkHandle target_network = handles::kInvalidNetworkHandle);
 
   int GetSourcePortForNewSessionAndGoAway(
       const url::SchemeHostPort& destination);
@@ -287,6 +332,7 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
   QuicTestPacketMaker client_maker_;
   QuicTestPacketMaker server_maker_;
   std::unique_ptr<HttpServerProperties> http_server_properties_;
+  std::unique_ptr<TestNetworkQualityEstimator> test_network_quality_estimator_;
   std::unique_ptr<MockCertVerifier> cert_verifier_;
   TransportSecurityState transport_security_state_;
   std::unique_ptr<TestProxyDelegate> proxy_delegate_;
@@ -305,7 +351,6 @@ class QuicSessionPoolTestBase : public WithTaskEnvironment {
   std::unique_ptr<TestConnectionChangeObserver> connection_change_observer_;
 
   raw_ptr<QuicParams> quic_params_;
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 }  // namespace net::test

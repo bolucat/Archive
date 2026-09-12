@@ -47,7 +47,7 @@ class QUICHE_EXPORT HuffmanBitBuffer {
 
   // Add as many whole bytes to the accumulator (accumulator_) as possible,
   // returning the number of bytes added.
-  size_t AppendBytes(absl::string_view input);
+  size_t AppendBytes(absl::string_view input, bool enable_optimizations);
 
   // Get the bits of the accumulator.
   HuffmanAccumulator value() const { return accumulator_; }
@@ -121,7 +121,10 @@ class QUICHE_EXPORT HpackHuffmanDecoder {
   std::string DebugString() const;
 
  private:
+  bool DecodeOld(absl::string_view input, std::string* output);
+
   HuffmanBitBuffer bit_buffer_;
+  const bool enable_optimizations_;
 };
 
 inline std::ostream& operator<<(std::ostream& out,

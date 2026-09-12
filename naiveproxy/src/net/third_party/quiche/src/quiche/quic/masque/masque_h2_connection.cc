@@ -100,6 +100,13 @@ MasqueH2Connection::~MasqueH2Connection() {}
 
 void MasqueH2Connection::Abort(absl::Status error) {
   QUICHE_CHECK(!error.ok());
+  if (has_closed_gracefully_) {
+    QUICHE_LOG(INFO)
+        << ENDPOINT
+        << "Connection already closed gracefully, ignoring new error: "
+        << error.message();
+    return;
+  }
   if (aborted()) {
     QUICHE_LOG(ERROR) << ENDPOINT
                       << "Connection already aborted, ignoring new error: "
@@ -377,6 +384,9 @@ int32_t MasqueH2Connection::SendRequest(const quiche::HttpHeaderBlock& headers,
                      body.size(), ", headers: ", headers.DebugString())));
     return -1;
   }
+  if (stream_id > highest_stream_id_) {
+    highest_stream_id_ = stream_id;
+  }
   QUICHE_LOG(INFO) << ENDPOINT << "Sending request on stream ID " << stream_id
                    << " with body of length " << body.size()
                    << ", headers: " << headers.DebugString();
@@ -549,6 +559,31 @@ bool MasqueH2Connection::OnGoAway(Http2StreamId last_accepted_stream_id,
                    << last_accepted_stream_id
                    << " error_code: " << Http2ErrorCodeToString(error_code)
                    << " opaque_data length: " << opaque_data.size();
+  if (last_accepted_stream_id <= highest_stream_id_) {
+    draining_ = true;
+  }
+  for (auto it = h2_streams_.begin(); it != h2_streams_.end();) {
+    if (it->first > last_accepted_stream_id) {
+      if (!it->second->callback_fired) {
+        visitor_->OnStreamFailure(
+            this, it->first,
+            absl::InternalError(
+                absl::StrCat("Stream ", it->first,
+                             " cancelled due to GOAWAY with error code ",
+                             Http2ErrorCodeToString(error_code))));
+      }
+      h2_streams_.erase(it++);
+    } else {
+      ++it;
+    }
+  }
+  if (h2_streams_.empty() && !has_closed_gracefully_) {
+    QUICHE_LOG(INFO) << ENDPOINT
+                     << "Received GOAWAY and all streams closed, closing "
+                        "connection gracefully";
+    has_closed_gracefully_ = true;
+    visitor_->OnConnectionFinished(this, absl::OkStatus());
+  }
   return true;
 }
 

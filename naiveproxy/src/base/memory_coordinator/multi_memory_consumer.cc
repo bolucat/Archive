@@ -5,6 +5,7 @@
 #include "base/memory_coordinator/multi_memory_consumer.h"
 
 #include "base/check.h"
+#include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory_coordinator/async_memory_consumer_registration.h"
 
@@ -40,15 +41,10 @@ class MultiMemoryConsumerRegistration::HelperConsumer
  public:
   HelperConsumer(MultiMemoryConsumer* parent,
                  std::string_view name,
-                 std::optional<MemoryConsumerTraits> traits,
-                 CheckUnregister check_unregister,
-                 CheckRegistryExists check_registry_exists)
+                 MemoryConsumerTraits traits,
+                 CheckUnregister check_unregister)
       : internal::ForwardingMemoryConsumer(parent, name),
-        registration_(name,
-                      traits,
-                      this,
-                      check_unregister,
-                      check_registry_exists) {}
+        registration_(name, traits, this, check_unregister) {}
 
   ~HelperConsumer() override = default;
 
@@ -61,8 +57,7 @@ class MultiMemoryConsumerRegistration::HelperConsumer
 MultiMemoryConsumerRegistration::MultiMemoryConsumerRegistration(
     base::span<const Intervention> interventions,
     MultiMemoryConsumer* consumer,
-    CheckUnregister check_unregister,
-    CheckRegistryExists check_registry_exists) {
+    CheckUnregister check_unregister) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(consumer);
   for (const auto& intervention : interventions) {
@@ -70,7 +65,7 @@ MultiMemoryConsumerRegistration::MultiMemoryConsumerRegistration(
         consumers_.emplace(std::string(intervention.name),
                            std::make_unique<HelperConsumer>(
                                consumer, intervention.name, intervention.traits,
-                               check_unregister, check_registry_exists));
+                               check_unregister));
     CHECK(inserted);
   }
 }
@@ -79,7 +74,7 @@ MultiMemoryConsumerRegistration::~MultiMemoryConsumerRegistration() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
-int MultiMemoryConsumerRegistration::GetMemoryLimit(
+MemoryLimit MultiMemoryConsumerRegistration::GetMemoryLimit(
     std::string_view name) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto it = consumers_.find(name);
@@ -102,15 +97,10 @@ class AsyncMultiMemoryConsumerRegistration::HelperConsumer
  public:
   HelperConsumer(MultiMemoryConsumer* parent,
                  std::string_view name,
-                 std::optional<MemoryConsumerTraits> traits,
-                 CheckUnregister check_unregister,
-                 CheckRegistryExists check_registry_exists)
+                 MemoryConsumerTraits traits,
+                 CheckUnregister check_unregister)
       : internal::ForwardingMemoryConsumer(parent, name),
-        registration_(name,
-                      traits,
-                      this,
-                      check_unregister,
-                      check_registry_exists) {}
+        registration_(name, traits, this, check_unregister) {}
 
   ~HelperConsumer() override = default;
 
@@ -123,8 +113,7 @@ class AsyncMultiMemoryConsumerRegistration::HelperConsumer
 AsyncMultiMemoryConsumerRegistration::AsyncMultiMemoryConsumerRegistration(
     base::span<const Intervention> interventions,
     MultiMemoryConsumer* consumer,
-    CheckUnregister check_unregister,
-    CheckRegistryExists check_registry_exists) {
+    CheckUnregister check_unregister) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(consumer);
   for (const auto& intervention : interventions) {
@@ -132,7 +121,7 @@ AsyncMultiMemoryConsumerRegistration::AsyncMultiMemoryConsumerRegistration(
         consumers_.emplace(std::string(intervention.name),
                            std::make_unique<HelperConsumer>(
                                consumer, intervention.name, intervention.traits,
-                               check_unregister, check_registry_exists));
+                               check_unregister));
     CHECK(inserted);
   }
 }
@@ -141,7 +130,7 @@ AsyncMultiMemoryConsumerRegistration::~AsyncMultiMemoryConsumerRegistration() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
-int AsyncMultiMemoryConsumerRegistration::GetMemoryLimit(
+MemoryLimit AsyncMultiMemoryConsumerRegistration::GetMemoryLimit(
     std::string_view name) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto it = consumers_.find(name);

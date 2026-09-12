@@ -8,23 +8,31 @@
 #include <optional>
 #include <vector>
 
+#include "base/containers/fixed_flat_map.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/span.h"
+#include "base/containers/transparent_hash.h"
 #include "base/time/time.h"
 #include "base/version.h"
 #include "crypto/sha2.h"
+#include "net/base/bssl_refcounted.h"
 #include "net/base/net_export.h"
+#include "net/cert/root_store_proto_lite/signer_set.pb.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "third_party/boringssl/src/pki/path_builder.h"
+#include "third_party/boringssl/src/pki/signature_algorithm.h"
 #include "third_party/boringssl/src/pki/trust_store.h"
 #include "third_party/boringssl/src/pki/trust_store_in_memory.h"
 
 namespace chrome_root_store {
 class RootStore;
 class MtcMetadata;
+class SignerSet;
 }
 
 namespace net {
+
+class NetLogWithSource;
 
 // Represents a ConstraintSet for compiled-in version of the root store.
 // This is a separate struct from ChromeRootCertConstraints since the in-memory
@@ -105,6 +113,107 @@ struct NET_EXPORT ChromeRootCertConstraints {
   std::optional<base::Time> validity_starts_after;
 };
 
+struct NET_EXPORT SignerStateChange {
+  SignerStateChange();
+  SignerStateChange(chrome_root_store::SignerState state,
+                    base::Time state_start);
+  ~SignerStateChange();
+  SignerStateChange(const SignerStateChange&);
+  SignerStateChange(SignerStateChange&&);
+  SignerStateChange& operator=(const SignerStateChange&);
+  SignerStateChange& operator=(SignerStateChange&&);
+
+  chrome_root_store::SignerState state;
+  base::Time state_start;
+};
+
+struct NET_EXPORT SignerOperatorChange {
+  SignerOperatorChange();
+  SignerOperatorChange(std::string name, base::Time operator_start);
+  ~SignerOperatorChange();
+  SignerOperatorChange(const SignerOperatorChange&);
+  SignerOperatorChange(SignerOperatorChange&&);
+  SignerOperatorChange& operator=(const SignerOperatorChange&);
+  SignerOperatorChange& operator=(SignerOperatorChange&&);
+
+  std::string name;
+  base::Time operator_start;
+};
+
+struct NET_EXPORT SignerOperator {
+  SignerOperator();
+  SignerOperator(std::string name, std::vector<std::string> email);
+  ~SignerOperator();
+  SignerOperator(const SignerOperator&);
+  SignerOperator(SignerOperator&&);
+  SignerOperator& operator=(const SignerOperator&);
+  SignerOperator& operator=(SignerOperator&&);
+
+  std::string name;
+  std::vector<std::string> email;
+};
+
+struct NET_EXPORT Signer {
+  Signer();
+  ~Signer();
+  Signer(const Signer&);
+  Signer(Signer&&);
+  Signer& operator=(const Signer&);
+  Signer& operator=(Signer&&);
+
+  // Returns a Signer initialized with the provided values. Other fields will
+  // be initialized to defaults that are sufficient for the signer to be
+  // considered usable. Tests can further modify the returned object if needed.
+  static Signer CreateForTesting(chrome_root_store::SignerType type,
+                                 base::span<const uint8_t> base_id);
+
+  std::string friendly_name;
+  std::vector<uint8_t> base_id;
+  std::vector<SignerStateChange> state_history;
+  std::vector<SignerOperatorChange> operator_history;
+  BsslRefcounted<CRYPTO_BUFFER> key;
+  chrome_root_store::SignerType type = chrome_root_store::SIGNER_TYPE_UNSET;
+  chrome_root_store::Realm realm = chrome_root_store::REALM_UNSET;
+  std::optional<base::TimeDelta> max_cert_lifetime;
+  std::vector<ChromeRootCertConstraints> constraints;
+  std::optional<int32_t> crs_root_id;
+  int32_t min_log_number = 0;
+  bssl::SignatureAlgorithm signature_algorithm =
+      bssl::SignatureAlgorithm::kMldsa44;
+};
+
+class NET_EXPORT ChromeRootStoreSignerSet {
+ public:
+  ChromeRootStoreSignerSet();
+  ~ChromeRootStoreSignerSet();
+  ChromeRootStoreSignerSet(const ChromeRootStoreSignerSet&);
+  ChromeRootStoreSignerSet(ChromeRootStoreSignerSet&&);
+  ChromeRootStoreSignerSet& operator=(const ChromeRootStoreSignerSet&);
+  ChromeRootStoreSignerSet& operator=(ChromeRootStoreSignerSet&&);
+
+  static std::optional<ChromeRootStoreSignerSet> CreateFromProto(
+      const chrome_root_store::SignerSet& proto);
+
+  static ChromeRootStoreSignerSet CreateFromCompiled();
+
+  const base::Time& timestamp() const { return timestamp_; }
+  const std::string& version() const { return version_; }
+  const std::vector<SignerOperator>& operators() const { return operators_; }
+  const std::vector<Signer>& trusted_issuers() const {
+    return trusted_issuers_;
+  }
+  const std::vector<Signer>& trusted_mirrors() const {
+    return trusted_mirrors_;
+  }
+
+ private:
+  base::Time timestamp_;
+  std::string version_;
+  std::vector<SignerOperator> operators_;
+  std::vector<Signer> trusted_issuers_;
+  std::vector<Signer> trusted_mirrors_;
+};
+
 // ChromeRootStoreData is a container class that stores the Chrome Root Store
 // data which is updated by the RootStore and MtcMetadata protos.
 class NET_EXPORT ChromeRootStoreData {
@@ -133,22 +242,6 @@ class NET_EXPORT ChromeRootStoreData {
     std::optional<int32_t> crs_root_id;
   };
 
-  struct NET_EXPORT MtcAnchor {
-    MtcAnchor(std::vector<uint8_t> log_id,
-              std::vector<ChromeRootCertConstraints> constraints,
-              std::optional<int32_t> crs_root_id);
-    ~MtcAnchor();
-
-    MtcAnchor(const MtcAnchor& other);
-    MtcAnchor(MtcAnchor&& other);
-    MtcAnchor& operator=(const MtcAnchor& other);
-    MtcAnchor& operator=(MtcAnchor&& other);
-
-    std::vector<uint8_t> log_id;
-    std::vector<ChromeRootCertConstraints> constraints;
-    std::optional<int32_t> crs_root_id;
-  };
-
   // CreateFromRootStoreProto converts |proto| into a usable
   // ChromeRootStoreData object. Returns std::nullopt if the passed in
   // proto has errors in it (e.g. an unparsable DER-encoded certificate).
@@ -163,7 +256,6 @@ class NET_EXPORT ChromeRootStoreData {
   static ChromeRootStoreData CreateForTesting(
       base::span<const ChromeRootCertInfo> certs,
       base::span<const base::span<const uint8_t>> eutl_certs,
-      base::span<const ChromeMtcAnchorInfo> mtc_anchors,
       int64_t version);
 
   ~ChromeRootStoreData();
@@ -175,8 +267,17 @@ class NET_EXPORT ChromeRootStoreData {
 
   const std::vector<Anchor>& trust_anchors() const { return trust_anchors_; }
   const std::vector<Anchor>& eutl_certs() const { return eutl_certs_; }
-  const std::vector<MtcAnchor>& mtc_trust_anchors() const {
-    return mtc_trust_anchors_;
+  const std::optional<ChromeRootStoreSignerSet>& signer_set() const {
+    return signer_set_;
+  }
+  void SetSignerSet(ChromeRootStoreSignerSet signer_set) {
+    signer_set_ = std::move(signer_set);
+  }
+  bool disable_mtc_mirroring_requirements() const {
+    return disable_mtc_mirroring_requirements_;
+  }
+  void SetDisableMtcMirroringRequirements(bool disable) {
+    disable_mtc_mirroring_requirements_ = disable;
   }
   int64_t version() const { return version_; }
 
@@ -184,13 +285,13 @@ class NET_EXPORT ChromeRootStoreData {
   ChromeRootStoreData();
   ChromeRootStoreData(base::span<const ChromeRootCertInfo> certs,
                       base::span<const base::span<const uint8_t>> eutl_certs,
-                      base::span<const ChromeMtcAnchorInfo> mtc_anchors,
                       bool certs_are_static,
                       int64_t version);
 
   std::vector<Anchor> trust_anchors_;
   std::vector<Anchor> eutl_certs_;
-  std::vector<MtcAnchor> mtc_trust_anchors_;
+  std::optional<ChromeRootStoreSignerSet> signer_set_;
+  bool disable_mtc_mirroring_requirements_ = false;
   int64_t version_;
 };
 
@@ -206,19 +307,16 @@ class NET_EXPORT ChromeRootStoreMtcMetadata {
     MtcAnchorData& operator=(const MtcAnchorData& other);
     MtcAnchorData& operator=(MtcAnchorData&& other);
 
-    std::vector<uint8_t> log_id;
+    std::vector<bssl::LogTrustedSubtrees> trusted_subtrees;
 
-    // The landmark info isn't needed in the verifier, but keep track of it so
-    // that it can be displayed in the root store UI.
-    std::vector<uint8_t> landmark_base_id;
-    uint64_t landmark_min_inclusive;
-    uint64_t landmark_max_inclusive;
+    struct LogLandmarkRange {
+      uint16_t log_number;
+      uint64_t landmark_min_inclusive;
+      uint64_t landmark_max_inclusive;
+    };
+    std::vector<LogLandmarkRange> trusted_landmark_ranges;
 
-    std::vector<bssl::TrustedSubtree> trusted_subtrees;
-
-    // The revocation map key is the end index (exclusive) and the value is the
-    // start index (inclusive).
-    base::flat_map<uint64_t, uint64_t> revoked_indices;
+    base::flat_map<uint64_t, uint64_t> revoked_serials;
   };
 
   // CreateFromMtcMetadataProto converts |proto| into a usable
@@ -244,7 +342,7 @@ class NET_EXPORT ChromeRootStoreMtcMetadata {
  private:
   ChromeRootStoreMtcMetadata();
 
-  // Map from a Merkle Tree Anchor log_id to the data for that anchor.
+  // Map from a CA ID to the MtcAnchorData for that anchor.
   absl::flat_hash_map<std::vector<uint8_t>, MtcAnchorData> mtc_anchor_data_;
   base::Time update_time_;
 };
@@ -275,20 +373,19 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
   // Additional data about MTC anchors that isn't represented in
   // bssl::MTCAnchor.
   struct NET_EXPORT MtcAnchorExtraData {
-    MtcAnchorExtraData();
+    explicit MtcAnchorExtraData(Signer signer_config);
     ~MtcAnchorExtraData();
     MtcAnchorExtraData(const MtcAnchorExtraData& other);
     MtcAnchorExtraData(MtcAnchorExtraData&& other);
     MtcAnchorExtraData& operator=(const MtcAnchorExtraData& other);
     MtcAnchorExtraData& operator=(MtcAnchorExtraData&& other);
 
-    std::optional<int32_t> crs_root_id;
+    // The revocation map key is the end serial (exclusive) and the value is the
+    // start serial (inclusive).
+    base::flat_map<uint64_t, uint64_t> revoked_serials;
 
-    // The revocation map key is the end index (exclusive) and the value is the
-    // start index (inclusive).
-    base::flat_map<uint64_t, uint64_t> revoked_indices;
-
-    std::vector<ChromeRootCertConstraints> constraints;
+    // The Signer data from the SignerSet for this issuer.
+    Signer signer_config;
 
     // TODO(crbug.com/452986180): support constraint overrides for MTC anchors.
   };
@@ -332,12 +429,15 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
   GetTrustAnchorIDsFromCompiledInRootStore(
       base::span<const ChromeRootCertInfo> cert_list_for_testing = {});
 
-  // Returns the list of MTC log IDs from the compiled-in root store.
+  // Returns the list of MTC CA IDs from the compiled-in root store.
   // If |anchor_list_for_testing| is non-empty, it will override the
   // compiled-in production root store.
   static std::vector<std::vector<uint8_t>>
-  GetTrustedMtcLogIDsFromCompiledInRootStore(
-      base::span<const ChromeMtcAnchorInfo> anchor_list_for_testing = {});
+  GetTrustedMtcCaIDsFromCompiledInRootStore();
+
+  static std::vector<std::vector<uint8_t>>
+  GetTrustedMtcCaIDsFromCompiledInRootStoreForTesting(
+      const ChromeRootStoreSignerSet& signer_set);
 
   // Creates a TrustStoreChrome that uses the compiled in Chrome Root Store.
   TrustStoreChrome();
@@ -374,15 +474,36 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
   base::span<const ChromeRootCertConstraints> GetConstraintsForCert(
       const bssl::CertPathBuilderResultPath* path) const;
 
-  // Returns additional data about the MTC anchor with log id `log_id`, or null
+  // Returns additional data about the MTC anchor with CA id `ca_id`, or null
   // if the anchor isn't known or has no additional data.
   const MtcAnchorExtraData* GetMTCAnchorData(
-      base::span<const uint8_t> log_id) const;
+      base::span<const uint8_t> ca_id) const;
 
   int64_t version() const { return version_; }
+  std::optional<base::Time> signer_set_timestamp() const {
+    return signer_set_timestamp_;
+  }
   std::optional<base::Time> mtc_metadata_update_time() const {
     return mtc_metadata_update_time_;
   }
+
+  // Returns the public key and signature algorithm of the MTC mirror with id
+  // `cosigner_id`, if any.
+  std::optional<bssl::VerifyCertificateChainDelegate::MTCCosigner>
+  GetMtcMirrorKey(base::span<const uint8_t> cosigner_id) const;
+
+  // Returns true if the MTC cosigner policy, when evaluated at `current_time`,
+  // is satisfied for `target_cert`, which has a valid CA signature from
+  // `mtc_anchor` and valid co-signatures from the mirrors with cosigner IDs
+  // specified in `valid_additional_cosigners`.
+  // This method only evaluates the policy, the signatures must have been
+  // checked already by the caller.
+  bool IsMtcCosignerPolicySatisfied(
+      const bssl::ParsedCertificate& target_cert,
+      base::Time current_time,
+      const bssl::MTCAnchor* mtc_anchor,
+      base::span<const std::vector<uint8_t>> valid_additional_cosigners,
+      const NetLogWithSource& net_log) const;
 
   // Parses a string specifying constraint overrides, in the format expected by
   // the `kTestCrsConstraintsSwitch` command line switch.
@@ -392,6 +513,10 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
   bssl::TrustStore* eutl_trust_store() { return &eutl_trust_store_; }
 
  private:
+  static std::vector<std::vector<uint8_t>>
+  GetTrustedMtcCaIDsFromCompiledInRootStore(
+      const ChromeRootStoreSignerSet& signer_set);
+
   TrustStoreChrome(const ChromeRootStoreData& root_store_data,
                    const ChromeRootStoreMtcMetadata* mtc_metadata,
                    ConstraintOverrideMap override_constraints);
@@ -413,17 +538,12 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
 
   bssl::TrustStoreInMemory trust_store_;
 
-  // Hasher that allows heterogeneous lookup from span<const uint8_t>.
-  struct ByteSpanHash
-      : absl::DefaultHashContainerHash<base::span<const uint8_t>> {
-    using is_transparent = void;
-  };
-  // Map from log_id to additional data for the MTC anchor with the
-  // matching log id. This stores data that isn't handled in bssl:MTCAnchor.
+  // Map from ca_id to additional data for the MTC anchor with the
+  // matching CA id. This stores data that isn't handled in bssl:MTCAnchor.
   absl::flat_hash_map<std::vector<uint8_t>,
                       MtcAnchorExtraData,
-                      ByteSpanHash,
-                      std::ranges::equal_to>
+                      base::TransparentHashAs<base::span<const uint8_t>>,
+                      base::TransparentEqualAs<base::span<const uint8_t>>>
       mtc_anchor_extra_data_;
 
   // Map from certificate DER bytes to additional data (if any) for that
@@ -440,12 +560,27 @@ class NET_EXPORT TrustStoreChrome : public bssl::TrustStore {
 
   int64_t version_;
 
+  // The SignerSet timestamp may be nullopt if MTCs are not enabled.
+  // TODO(crbug.com/548727801): make this non-optional when MTCs are no longer
+  // feature-gated.
+  std::optional<base::Time> signer_set_timestamp_;
+  absl::flat_hash_map<std::vector<uint8_t>,
+                      Signer,
+                      base::TransparentHashAs<base::span<const uint8_t>>,
+                      base::TransparentEqualAs<base::span<const uint8_t>>>
+      signer_set_mirrors_;
+  bool disable_mtc_mirroring_requirements_ = false;
+
   std::optional<base::Time> mtc_metadata_update_time_;
 };
 
 // Returns the version # of the Chrome Root Store that was compiled into the
 // binary.
 NET_EXPORT int64_t CompiledChromeRootStoreVersion();
+
+// Returns the timestamp (seconds since epoch) of the SignerSet that was
+// compiled into the binary.
+NET_EXPORT int64_t CompiledSignerSetTimestampSeconds();
 
 }  // namespace net
 

@@ -34,7 +34,7 @@ chromium-metrics-reviews@google.com.
 </variants>
 
 <histogram name="OSCrypt.AppBoundEncryption.SupportLevel"
-    enum="AppBoundEncryptionSupportLevel" expires_after="2026-11-15">
+    enum="AppBoundEncryptionSupportLevel" expires_after="2027-01-17">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -44,7 +44,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.AppBoundProvider.Decrypt.ResultCode" enum="Hresult"
-    expires_after="2026-09-27">
+    expires_after="2027-01-31">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -56,7 +56,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.AppBoundProvider.Decrypt.ResultLastError"
-    enum="WinGetLastError" expires_after="2026-11-15">
+    enum="WinGetLastError" expires_after="2027-01-17">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -69,7 +69,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.AppBoundProvider.Encrypt.ResultCode" enum="Hresult"
-    expires_after="2026-09-27">
+    expires_after="2027-02-07">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -82,7 +82,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.AppBoundProvider.Encrypt.ResultLastError"
-    enum="WinGetLastError" expires_after="2026-10-11">
+    enum="WinGetLastError" expires_after="2026-12-16">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -106,7 +106,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.AsyncInitialization.Time" units="ms"
-    expires_after="2026-11-22">
+    expires_after="2027-01-24">
   <owner>wfh@chromium.org</owner>
   <owner>nparker@chromium.org</owner>
   <summary>
@@ -114,16 +114,6 @@ chromium-metrics-reviews@google.com.
     attempt to initialize the keyring during browser process initialization.
     Recorded once per browser start, if the OSCrypt Async completes the
     initialization attempt before the browser shuts down.
-  </summary>
-</histogram>
-
-<histogram name="OSCrypt.BackendUsage" enum="LinuxPasswordStoreUsage"
-    expires_after="2026-08-09">
-  <owner>mamir@chromium.org</owner>
-  <owner>chrome-password-manager-metrics-alerts@google.com</owner>
-  <summary>
-    The backend selected for this user and whether it was initialised
-    successfully.
   </summary>
 </histogram>
 
@@ -150,7 +140,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.EncryptorKeyCount{EncryptorKeyType}" units="key count"
-    expires_after="2026-09-06">
+    expires_after="2027-02-07">
   <owner>wfh@chromium.org</owner>
   <owner>chrome-platform-security-core@google.com</owner>
   <summary>
@@ -175,31 +165,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="OSCrypt.FreedesktopSecretKeyProvider.{InitStatus}.ErrorDetail"
-    enum="FreedesktopSecretKeyProviderErrorDetail" expires_after="2026-08-30">
-  <owner>thomasanderson@chromium.org</owner>
-  <owner>thestig@chromium.org</owner>
-  <summary>
-    The detailed error cause for each InitStatus for the org.freedesktop.secrets
-    OSCrypt Async Key Provider initialization, recorded once during browser
-    startup in case of failure (Linux only).
-  </summary>
-  <token key="InitStatus">
-    <variant name="CreateCollectionFailed"/>
-    <variant name="CreateItemFailed"/>
-    <variant name="EmptySecret"/>
-    <variant name="GetSecretFailed"/>
-    <variant name="GnomeKeyringDeadlock"/>
-    <variant name="NoService"/>
-    <variant name="ReadAliasFailed"/>
-    <variant name="SearchItemsFailed"/>
-    <variant name="SessionFailure"/>
-    <variant name="UnlockFailed"/>
-  </token>
-</histogram>
-
 <histogram name="OSCrypt.Mac.FindGenericPasswordError"
-    enum="MacSecurityFrameworkOSStatus" expires_after="2026-10-11">
+    enum="MacSecurityFrameworkOSStatus" expires_after="2027-02-14">
   <owner>avi@chromium.org</owner>
   <owner>lgrey@chromium.org</owner>
   <owner>markrowe@chromium.org</owner>
@@ -217,7 +184,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.Mac.FindGenericPasswordResult"
-    enum="FindGenericPasswordResult" expires_after="2026-10-11">
+    enum="FindGenericPasswordResult" expires_after="2027-02-14">
   <owner>avi@chromium.org</owner>
   <owner>lgrey@chromium.org</owner>
   <owner>markrowe@chromium.org</owner>
@@ -325,7 +292,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OSCrypt.Win.KeyDecryptionError" enum="WinGetLastError"
-    expires_after="2026-09-27">
+    expires_after="2027-02-07">
   <owner>wfh@chromium.org</owner>
   <owner>forshaw@chromium.org</owner>
   <summary>
@@ -435,7 +402,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.HttpsFirstMode.InterstitialReason"
-    enum="HttpsFirstModeInterstitialReason" expires_after="2026-11-01">
+    enum="HttpsFirstModeInterstitialReason" expires_after="2027-01-03">
   <owner>meacer@chromium.org</owner>
   <owner>trusty-transport@chromium.org</owner>
   <summary>
@@ -458,7 +425,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.HttpsFirstMode.SettingChanged2"
-    enum="HttpsFirstModeSetting" expires_after="2026-11-01">
+    enum="HttpsFirstModeSetting" expires_after="2027-01-03">
   <owner>cthomp@chromium.org</owner>
   <owner>trusty-transport@chromium.org</owner>
   <summary>
@@ -486,7 +453,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.HttpsFirstMode.SettingEnabledAtStartup2"
-    enum="HttpsFirstModeSetting" expires_after="2026-11-15">
+    enum="HttpsFirstModeSetting" expires_after="2027-01-17">
   <owner>cthomp@chromium.org</owner>
   <owner>trusty-transport@chromium.org</owner>
   <summary>
@@ -592,7 +559,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.iOS.KeychainMigration.Result"
-    enum="IOSKeychainMigrationResult" expires_after="2026-10-20">
+    enum="IOSKeychainMigrationResult" expires_after="2027-02-21">
   <owner>marq@chromium.org</owner>
   <owner>bling-flags@google.com</owner>
   <summary>
@@ -604,18 +571,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Security.iOS.KeychainMigration.UserStatus"
-    enum="IOSKeychainMigrationUserStatus" expires_after="2026-10-20">
-  <owner>marq@chromium.org</owner>
-  <owner>bling-flags@google.com</owner>
-  <summary>
-    Tracks the overall migration status of the keychain for a user. Recorded
-    once per cold start on iOS.
-  </summary>
-</histogram>
-
 <histogram name="Security.NavigationRequestSecurityLevel"
-    enum="NavigationRequestSecurityLevel" expires_after="2026-11-15">
+    enum="NavigationRequestSecurityLevel" expires_after="2027-01-17">
   <owner>jdeblasio@chromium.org</owner>
   <owner>trusty-transport@chromium.org</owner>
   <summary>
@@ -641,7 +598,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.PageInfo.AboutThisSiteInteraction"
-    enum="AboutThisSiteInteraction" expires_after="2026-11-15">
+    enum="AboutThisSiteInteraction" expires_after="2027-01-17">
   <owner>dullweber@chromium.org</owner>
   <owner>olesiamarukhno@chromium.org</owner>
   <summary>
@@ -670,16 +627,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Security.PageInfo.AdPersonalizationRowShown" enum="Boolean"
-    expires_after="2026-04-26">
-  <owner>dullweber@chromium.org</owner>
-  <owner>sauski@google.com</owner>
-  <summary>
-    Tracks whether the Ads Personalization section was shown. Recorded every
-    time PageInfo is opened.
-  </summary>
-</histogram>
-
 <histogram name="Security.PageInfo.Cookies.HasFPSInfo" enum="Boolean"
     expires_after="2025-09-10">
   <owner>tommasin@chromium.org</owner>
@@ -694,7 +641,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.PageInfo.MerchantTrustEngagement.{Event}"
-    units="EngagementScore" expires_after="2026-10-11">
+    units="EngagementScore" expires_after="2027-02-14">
   <owner>tommasin@chromium.org</owner>
   <owner>privacy-on-the-web@google.com</owner>
   <summary>
@@ -709,7 +656,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.PageInfo.MerchantTrustInteraction.{SiteFamiliarity}"
-    enum="MerchantTrustInteraction" expires_after="2026-10-11">
+    enum="MerchantTrustInteraction" expires_after="2027-02-14">
   <owner>tommasin@chromium.org</owner>
   <owner>privacy-on-the-web@google.com</owner>
   <summary>
@@ -798,7 +745,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Security.PrivateNetworkAccess.CheckResult"
-    enum="LocalNetworkAccessCheckResult" expires_after="2026-11-15">
+    enum="LocalNetworkAccessCheckResult" expires_after="2027-01-17">
   <owner>hchao@chromium.org</owner>
   <owner>clamy@chromium.org</owner>
   <owner>cthomp@chromium.org</owner>
@@ -809,22 +756,6 @@ chromium-metrics-reviews@google.com.
     Result of the Local Network Access Check on a new connection. Recorded once
     per call to network::URLLoader::OnConnected(), which may be more than once
     per URL request.
-  </summary>
-</histogram>
-
-<histogram name="Security.PrivateNetworkAccess.PrivateIpResolveMatch"
-    enum="Boolean" expires_after="2026-07-05">
-  <owner>hchao@chromium.org</owner>
-  <owner>clamy@chromium.org</owner>
-  <owner>cthomp@chromium.org</owner>
-  <owner>estark@chromium.org</owner>
-  <owner>jdeblasio@chromium.org</owner>
-  <owner>src/chrome/browser/local_network_access/OWNERS</owner>
-  <summary>
-    Records whether a request to a literal private IP address resolved to that
-    private IP address. Recorded at most once per call to
-    `network::URLLoader::OnConnected()`, which may be more than once per URL
-    request.
   </summary>
 </histogram>
 
@@ -863,6 +794,18 @@ chromium-metrics-reviews@google.com.
 
     Records the status of the Landlock LSM on the system, whether it is enabled,
     available but disabled, not available, or undetermined.
+  </summary>
+</histogram>
+
+<histogram name="Security.ScreenOrientation.LockRequestIsSandboxed"
+    enum="Boolean" expires_after="2027-01-27">
+  <owner>alexmos@chromium.org</owner>
+  <owner>helmut@januschka.com</owner>
+  <summary>
+    Records whether the requesting frame lacks the allow-orientation-lock
+    sandbox permission for each browser-side screen orientation lock request.
+    This measures how often media controls request orientation locks from
+    sandboxed frames before browser-side enforcement is reconsidered.
   </summary>
 </histogram>
 
@@ -1086,17 +1029,17 @@ chromium-metrics-reviews@google.com.
 
 <histogram name="SiteIsolation.BrowsingInstance.MaxCountPerProcess"
     units="units" expires_after="2026-11-17">
-  <owner>wjmaclean@chromium.org</owner>
+  <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <summary>
     The maximum number of BrowsingInstances seen in a RenderProcessHost over its
     lifetime. Recorded once when
-    ChildProcessImpl::SecurityState::~SecurityState() is invoked.
+    ChildProcessSecurityPolicyImpl::ProcessState::~ProcessState() is invoked.
   </summary>
 </histogram>
 
 <histogram name="SiteIsolation.BrowsingInstanceCount" units="units"
-    expires_after="2026-06-21">
+    expires_after="2027-06-21">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <summary>
@@ -1133,8 +1076,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.IsolatableSandboxedIframes" units="processes"
-    expires_after="2026-10-11">
-  <owner>wjmaclean@chromium.org</owner>
+    expires_after="2027-07-26">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <summary>
@@ -1152,8 +1094,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.IsolatableSandboxedIframes.UniqueOrigins"
-    units="processes" expires_after="2026-10-11">
-  <owner>wjmaclean@chromium.org</owner>
+    units="processes" expires_after="2027-07-26">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <summary>
@@ -1167,8 +1108,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.IsolatableSandboxedIframes.UniqueSites"
-    units="processes" expires_after="2026-07-26">
-  <owner>wjmaclean@chromium.org</owner>
+    units="processes" expires_after="2027-07-26">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <summary>
@@ -1180,7 +1120,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.IsPasswordFormSubmittedInDedicatedProcess"
-    enum="SiteIsolationIsDedicatedProcess" expires_after="2026-05-24">
+    enum="SiteIsolationIsDedicatedProcess" expires_after="2027-05-24">
   <owner>alexmos@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
   <summary>
@@ -1191,7 +1131,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.IsSitePerProcessOrStricter" enum="Boolean"
-    expires_after="2026-10-25">
+    expires_after="2026-12-27">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>wenz@chromium.org</owner>
@@ -1230,7 +1170,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.MissedReuseOpportunity.Found.MainFrame"
-    enum="Boolean" expires_after="2026-11-22">
+    enum="Boolean" expires_after="2027-01-24">
   <owner>aattar@google.com</owner>
   <owner>olivierli@chromium.org</owner>
   <summary>
@@ -1242,7 +1182,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.MissedReuseOpportunity.Found.Subframe"
-    enum="Boolean" expires_after="2026-11-22">
+    enum="Boolean" expires_after="2027-01-24">
   <owner>aattar@google.com</owner>
   <owner>olivierli@chromium.org</owner>
   <summary>
@@ -1254,7 +1194,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.OutOfProcessIframes" units="oopifs"
-    expires_after="2026-10-25">
+    expires_after="2027-02-07">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1265,7 +1205,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.OutOfProcessInnerFrameTrees" units="frame trees"
-    expires_after="2026-07-21">
+    expires_after="2027-07-21">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1289,7 +1229,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.ProxyCount" units="proxies"
-    expires_after="2026-10-18">
+    expires_after="2027-02-21">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1299,7 +1239,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.ProxyCountPerBrowsingInstance" units="units"
-    expires_after="2026-07-09">
+    expires_after="2027-07-09">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1324,7 +1264,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SiteIsolation.ReusePendingOrCommittedSite.TimeSinceReusableProcessDestroyed.MainFrame2"
-    units="ms" expires_after="2026-11-22">
+    units="ms" expires_after="2027-01-24">
   <owner>aattar@google.com</owner>
   <owner>olivierli@chromium.org</owner>
   <summary>
@@ -1338,7 +1278,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SiteIsolation.ReusePendingOrCommittedSite.TimeSinceReusableProcessDestroyed.Subframe2"
-    units="ms" expires_after="2026-10-25">
+    units="ms" expires_after="2026-12-27">
   <owner>aattar@google.com</owner>
   <owner>olivierli@chromium.org</owner>
   <summary>
@@ -1351,7 +1291,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.SavedOAuthSites.Size" units="origins"
-    expires_after="2026-06-28">
+    expires_after="2027-07-28">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1363,7 +1303,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.SavedUserTriggeredIsolatedOrigins.Size"
-    units="origins" expires_after="2026-10-25">
+    units="origins" expires_after="2027-07-28">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1376,7 +1316,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.SavedWebTriggeredIsolatedOrigins.Size"
-    units="origins" expires_after="2025-12-07">
+    units="origins" expires_after="2027-07-28">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -1389,7 +1329,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SiteIsolation.SiteInstancesPerBrowsingInstance" units="units"
-    expires_after="2026-10-25">
+    expires_after="2026-12-27">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>

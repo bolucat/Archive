@@ -63,13 +63,14 @@ chromium-metrics-reviews@google.com.
   <int value="10" label="kCodeCaches"/>
   <int value="11" label="kNetworkErrorLogging"/>
   <int value="12" label="kTrustTokens"/>
-  <int value="13" label="kConversions"/>
+  <int value="13" label="(obsolete) kConversions"/>
   <int value="14" label="(obsolete) kDeferredCookies"/>
   <int value="15" label="kSharedStorage"/>
   <int value="16" label="kPreflightCache"/>
   <int value="17" label="kSharedDictionary"/>
   <int value="18" label="kPrefetchCache"/>
   <int value="19" label="kPrerenderCache"/>
+  <int value="20" label="kDownloads"/>
 </enum>
 
 <!-- LINT.ThenChange(//tools/metrics/histograms/metadata/history/histograms.xml:History.ClearBrowsingData.Duration.Task.Task) -->
@@ -125,6 +126,7 @@ chromium-metrics-reviews@google.com.
   <int value="44" label="kWebrtcVideoPerfHistory"/>
   <int value="45" label="kMediaDeviceSalts"/>
   <int value="46" label="kDisableAutoSigninForAccountPasswords"/>
+  <int value="47" label="kPrivateVerificationTokens"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/browsing_data/chrome_browsing_data_remover_delegate.h:TracingDataType) -->
@@ -302,14 +304,15 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="kSessionStorage"/>
   <int value="6" label="kShaderCache"/>
   <int value="7" label="kPluginPrivate"/>
-  <int value="8" label="kConversions"/>
+  <int value="8" label="(obsolete) kConversions"/>
   <int value="9" label="kAggregationService"/>
   <int value="10" label="kSharedStorage"/>
   <int value="11" label="kGpuCache"/>
   <int value="12" label="kPrivateAggregation"/>
-  <int value="13" label="kInterestGroups"/>
+  <int value="13" label="kInterestGroups (deprecated)"/>
   <int value="14" label="kCdmStorage"/>
   <int value="15" label="kDeviceBoundSessions"/>
+  <int value="16" label="kDeclarativePerformanceObserver"/>
 </enum>
 
 <!-- LINT.ThenChange(//content/browser/storage_partition_impl.cc:TracingDataType) -->
@@ -320,6 +323,7 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="More from this site clicked"/>
   <int value="1" label="Remove from history clicked"/>
   <int value="2" label="Remove bookmark clicked"/>
+  <int value="3" label="Review Gemini activity clicked"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/resources/history/constants.ts:VisitContextMenuAction) -->

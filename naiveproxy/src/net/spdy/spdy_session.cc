@@ -38,6 +38,7 @@
 #include "net/base/privacy_mode.h"
 #include "net/base/proxy_chain.h"
 #include "net/base/proxy_string_util.h"
+#include "net/base/session_usage.h"
 #include "net/base/url_util.h"
 #include "net/cert/asn1_util.h"
 #include "net/cert/cert_verify_result.h"
@@ -1302,13 +1303,14 @@ LoadState SpdySession::GetLoadState() const {
 
 int SpdySession::GetRemoteEndpoint(IPEndPoint* endpoint) {
   int rv = GetPeerAddress(endpoint);
+  base::UmaHistogramSparse("Net.SpdySession.GetRemoteEndpointResult", -rv);
   if (rv == ERR_SOCKET_NOT_CONNECTED &&
       base::FeatureList::IsEnabled(
           features::kDrainSpdySessionSynchronouslyOnRemoteEndpointDisconnect)) {
     // If the underlying socket is disconnected, proactively drain the session.
     // This ensures the session is immediately removed from the SpdySessionPool
     // before a caller (like HttpNetworkTransaction) can attempt to reuse it.
-    DoDrainSession(ERR_CONNECTION_CLOSED, "Remote endpoint disconnected");
+    DoDrainSessionAsync(ERR_CONNECTION_CLOSED, "Remote endpoint disconnected");
   }
   return rv;
 }
@@ -3221,6 +3223,14 @@ void SpdySession::OnAltSvc(
     spdy::SpdyStreamId stream_id,
     std::string_view origin,
     const spdy::SpdyAltSvcWireFormat::AlternativeServiceVector& altsvc_vector) {
+  // For sessions carrying proxy traffic, the peer is not authoritative for the
+  // origins associated with the carried streams. Except for stream 0, which
+  // must specify the origin in the ALTSVC frame itself.
+  // https://datatracker.ietf.org/doc/html/rfc7838#section-4.
+  if (spdy_session_key_.session_usage() == SessionUsage::kProxy &&
+      stream_id != 0) {
+    return;
+  }
   url::SchemeHostPort scheme_host_port;
   if (stream_id == 0) {
     if (origin.empty())

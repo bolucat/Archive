@@ -63,6 +63,7 @@ QuicChromiumClientStream::Handle::max_stream_limit_pending_delay() const {
 }
 
 QuicChromiumClientStream::Handle::~Handle() {
+  UnregisterHttp3DatagramVisitor();
   if (stream_) {
     stream_->ClearHandle();
     // TODO(rch): If stream_ is still valid, it should probably be Reset()
@@ -156,6 +157,7 @@ void QuicChromiumClientStream::Handle::OnClose() {
 
 void QuicChromiumClientStream::Handle::OnError(int error) {
   net_error_ = error;
+  UnregisterHttp3DatagramVisitor();
   if (stream_)
     SaveState();
   stream_ = nullptr;
@@ -372,6 +374,7 @@ void QuicChromiumClientStream::Handle::SetPriority(
 
 void QuicChromiumClientStream::Handle::Reset(
     quic::QuicRstStreamErrorCode error_code) {
+  UnregisterHttp3DatagramVisitor();
   if (stream_)
     stream_->Reset(error_code);
 }
@@ -380,12 +383,14 @@ void QuicChromiumClientStream::Handle::RegisterHttp3DatagramVisitor(
     Http3DatagramVisitor* visitor) {
   if (stream_) {
     stream_->RegisterHttp3DatagramVisitor(visitor);
+    datagram_visitor_registered_ = true;
   }
 }
 
 void QuicChromiumClientStream::Handle::UnregisterHttp3DatagramVisitor() {
-  if (stream_) {
+  if (stream_ && datagram_visitor_registered_) {
     stream_->UnregisterHttp3DatagramVisitor();
+    datagram_visitor_registered_ = false;
   }
 }
 
@@ -868,6 +873,11 @@ int QuicChromiumClientStream::DeliverInitialHeaders(
   if (initial_headers_.empty()) {
     return ERR_INVALID_RESPONSE;
   }
+
+  // During proxy Fast Open, DeliverInitialHeaders() queued from
+  // OnInitialHeadersComplete() can be delayed after OnBodyAvailable(),
+  // which then does nothing and stalls ReadBody(). Resumes it here.
+  OnBodyAvailable();
 
   net_log_.AddEvent(
       NetLogEventType::QUIC_CHROMIUM_CLIENT_STREAM_READ_RESPONSE_HEADERS,

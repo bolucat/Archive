@@ -10,6 +10,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_program(VALGRIND_EXECUTABLE NAMES valgrind)
 endif()
 
+# Some hosts (notably macOS, whose default soft limit is 256) start test
+# processes with too few file descriptors for descriptor-heavy tests such as
+# test_event. Raise the soft limit before exec'ing each test; a failure to
+# raise it (hard limit too low) is ignored so the test still runs.
+if(NOT WIN32)
+    set(SS_TEST_LAUNCHER sh -c "ulimit -n 1024 2>/dev/null\; exec \"$0\" \"$@\"")
+endif()
+
 # Helper function to add a unit test
 function(ss_add_test name sources libs)
     if(WIN32 AND "${sources}" MATCHES "utils.c")
@@ -28,12 +36,12 @@ function(ss_add_test name sources libs)
     else()
         target_compile_options(${name} PRIVATE -UNDEBUG)
     endif()
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${SS_TEST_LAUNCHER} $<TARGET_FILE:${name}>)
     set_tests_properties(${name} PROPERTIES LABELS "unit")
 
     if(VALGRIND_EXECUTABLE)
         add_test(NAME memcheck_${name}
-            COMMAND ${VALGRIND_EXECUTABLE}
+            COMMAND ${SS_TEST_LAUNCHER} ${VALGRIND_EXECUTABLE}
                 --tool=memcheck
                 --leak-check=full
                 --show-leak-kinds=definite,indirect
@@ -206,3 +214,13 @@ ss_add_test(test_resolv_async
     "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.c;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
+
+if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_cli
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cli.py
+                    --bin-dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        set_tests_properties(test_cli PROPERTIES LABELS "integration" TIMEOUT 60)
+    endif()
+endif()

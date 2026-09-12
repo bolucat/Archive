@@ -11,6 +11,7 @@
 #include "base/debug/alias.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "base/types/pass_key.h"
@@ -135,6 +136,7 @@ std::unique_ptr<URLRequest> URLRequestContext::CreateRequest(
     RequestPriority priority,
     URLRequest::Delegate* delegate) const {
   return CreateRequest(url, priority, delegate, MISSING_TRAFFIC_ANNOTATION,
+                       handles::kInvalidNetworkHandle,
                        /*is_for_websockets=*/false);
 }
 #endif
@@ -144,14 +146,12 @@ std::unique_ptr<URLRequest> URLRequestContext::CreateRequest(
     RequestPriority priority,
     URLRequest::Delegate* delegate,
     NetworkTrafficAnnotationTag traffic_annotation,
+    handles::NetworkHandle target_network,
     bool is_for_websockets,
     const std::optional<net::NetLogSource> net_log_source) const {
-  // TODO(crbug.com/495684670): Expose target_network once URLRequest fully
-  // supports network binding.
   return std::make_unique<URLRequest>(
       base::PassKey<URLRequestContext>(), url, priority, delegate, this,
-      traffic_annotation, is_for_websockets, handles::kInvalidNetworkHandle,
-      net_log_source);
+      traffic_annotation, is_for_websockets, target_network, net_log_source);
 }
 
 void URLRequestContext::AssertNoURLRequests() const {

@@ -901,11 +901,13 @@ constexpr char kTestProofHostname[] = "test.example.com";
 
 class TestProofSource : public ProofSourceX509 {
  public:
-  explicit TestProofSource(const std::string& trust_anchor_id)
+  explicit TestProofSource(const std::string& trust_anchor_id,
+                           int num_certs_in_chain = 1)
       : ProofSourceX509(
             quiche::QuicheReferenceCountedPointer<ProofSource::Chain>(
                 new ProofSource::Chain(
-                    std::vector<std::string>{std::string(kTestCertificate)},
+                    std::vector<std::string>(num_certs_in_chain,
+                                             std::string(kTestCertificate)),
                     trust_anchor_id)),
             std::move(*CertificatePrivateKey::LoadFromDer(
                 kTestCertificatePrivateKey))) {
@@ -951,14 +953,16 @@ class TestProofVerifier : public ProofVerifier {
     }
 
     uint8_t out_alert;
-    return VerifyCertChain(hostname, port, certs, /*ocsp_response=*/"",
-                           cert_sct, context, error_details, details,
-                           &out_alert, std::move(callback));
+    return VerifyCertChain(
+        hostname, port,
+        std::vector<absl::string_view>(certs.begin(), certs.end()),
+        /*ocsp_response=*/"", cert_sct, context, error_details, details,
+        &out_alert, std::move(callback));
   }
 
   QuicAsyncStatus VerifyCertChain(
       const std::string& hostname, const uint16_t /*port*/,
-      const std::vector<std::string>& certs,
+      const std::vector<absl::string_view>& certs,
       const std::string& /*ocsp_response*/, const std::string& /*cert_sct*/,
       const ProofVerifyContext* /*context*/, std::string* error_details,
       std::unique_ptr<ProofVerifyDetails>* details, uint8_t* /*out_alert*/,
@@ -989,8 +993,8 @@ class TestProofVerifier : public ProofVerifier {
 }  // namespace
 
 std::unique_ptr<ProofSource> ProofSourceForTesting(
-    const std::string& trust_anchor_id) {
-  return std::make_unique<TestProofSource>(trust_anchor_id);
+    const std::string& trust_anchor_id, int num_certs_in_chain) {
+  return std::make_unique<TestProofSource>(trust_anchor_id, num_certs_in_chain);
 }
 
 std::unique_ptr<ProofVerifier> ProofVerifierForTesting() {

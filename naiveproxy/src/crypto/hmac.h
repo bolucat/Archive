@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Utility class for calculating the HMAC for a given message. We currently only
-// support SHA-1 and SHA-256 for the hash algorithm, but this can be extended
-// easily. Prefer the base::span and std::vector overloads over the
-// std::string_view and std::string overloads.
-
 #ifndef CRYPTO_HMAC_H_
 #define CRYPTO_HMAC_H_
 
@@ -32,6 +27,8 @@ namespace hmac {
 // generic over hash kinds, you should use the convenience interfaces that are
 // named after a specific kind, since they allow compile-time error checking of
 // the hmac size.
+// Deprecated: don't use SHA-1. Consult a CRYPTO_OWNERS member before adding
+// new uses. See https://crbug.com/527094641.
 CRYPTO_EXPORT std::array<uint8_t, crypto::hash::kSha1Size> SignSha1(
     base::span<const uint8_t> key,
     base::span<const uint8_t> data);
@@ -44,6 +41,8 @@ CRYPTO_EXPORT std::array<uint8_t, crypto::hash::kSha512Size> SignSha512(
     base::span<const uint8_t> key,
     base::span<const uint8_t> data);
 
+// Deprecated: don't use SHA-1. Consult a CRYPTO_OWNERS member before adding
+// new uses. See https://crbug.com/527094641.
 [[nodiscard]] CRYPTO_EXPORT bool VerifySha1(
     base::span<const uint8_t> key,
     base::span<const uint8_t> data,

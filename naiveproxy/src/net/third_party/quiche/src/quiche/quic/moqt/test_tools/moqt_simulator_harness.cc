@@ -31,17 +31,16 @@ namespace moqt::test {
 namespace {
 MoqtSessionParameters CreateParameters(quic::Perspective perspective,
                                        absl::string_view version) {
-  MoqtSessionParameters parameters(perspective, "", "");
+  MoqtSessionParameters parameters(perspective, "/foo", "example.com");
   parameters.version = version;
   parameters.deliver_partial_objects = false;
   return parameters;
 }
 
 MoqtSessionCallbacks CreateCallbacks(quic::simulator::Simulator* simulator) {
-  return MoqtSessionCallbacks(
-      +[] {}, +[](absl::string_view) {}, +[](absl::string_view) {}, +[] {},
-      DefaultIncomingPublishNamespaceCallback,
-      DefaultIncomingSubscribeNamespaceCallback, simulator->GetClock());
+  MoqtSessionCallbacks callbacks;
+  callbacks.clock = simulator->GetClock();
+  return callbacks;
 }
 }  // namespace
 

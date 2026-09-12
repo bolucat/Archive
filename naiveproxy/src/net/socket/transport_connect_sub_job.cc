@@ -101,7 +101,8 @@ int TransportConnectSubJob::DoTransportConnect() {
   const NetLogWithSource& net_log = parent_job_->net_log();
   transport_socket_ =
       parent_job_->client_socket_factory()->CreateTransportClientSocket(
-          one_address, std::move(socket_performance_watcher),
+          one_address, parent_job_->params_->target_network(),
+          std::move(socket_performance_watcher),
           parent_job_->network_quality_estimator(), net_log.net_log(),
           net_log.source());
 
@@ -120,7 +121,8 @@ int TransportConnectSubJob::DoTransportConnect() {
   if (parent_job_->websocket_endpoint_lock_manager()) {
     transport_socket_ = std::make_unique<WebSocketStreamSocket>(
         *parent_job_->websocket_endpoint_lock_manager(), CurrentAddress(),
-        std::move(transport_socket_));
+        std::move(transport_socket_),
+        parent_job_->params_->network_anonymization_key());
   }
 
   // This use of base::Unretained() is safe because transport_socket_ is

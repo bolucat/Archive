@@ -7,6 +7,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/trace_event/trace_event.h"
 #include "net/base/completion_once_callback.h"
+#include "net/base/ech_mode.h"
 #include "net/base/network_change_notifier.h"
 #include "net/base/network_handle.h"
 #include "net/base/request_priority.h"
@@ -19,6 +20,7 @@
 #include "net/quic/quic_http_stream.h"
 #include "net/quic/quic_session_pool.h"
 #include "net/spdy/multiplexed_session_creation_initiator.h"
+#include "net/ssl/ssl_config_service.h"
 #include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
 
 namespace net {
@@ -35,6 +37,7 @@ QuicSessionPool::DirectJob::DirectJob(
     bool require_dns_https_alpn,
     int cert_verify_flags,
     MultiplexedSessionCreationInitiator session_creation_initiator,
+    QuicConnectionReuseDetails quic_connection_reuse_details,
     std::optional<ConnectionManagementConfig> connection_management_config,
     const NetLogWithSource& net_log)
     : QuicSessionPool::Job::Job(
@@ -42,6 +45,7 @@ QuicSessionPool::DirectJob::DirectJob(
           std::move(key),
           std::move(client_config_handle),
           priority,
+          quic_connection_reuse_details,
           NetLogWithSource::Make(
               net_log.net_log(),
               NetLogSourceType::QUIC_SESSION_POOL_DIRECT_JOB)),
@@ -138,7 +142,7 @@ int QuicSessionPool::DirectJob::DoResolveHost() {
   parameters.secure_dns_policy = key_.session_key().secure_dns_policy();
   resolve_host_request_ = host_resolver_->CreateRequest(
       key_.destination(), key_.session_key().network_anonymization_key(),
-      net_log_, parameters);
+      key_.session_key().target_network(), net_log_, parameters);
   // Unretained is safe because |this| owns the request, ensuring cancellation
   // on destruction.
   return resolve_host_request_->Start(
@@ -219,7 +223,8 @@ int QuicSessionPool::DirectJob::DoAttemptSession() {
       resolve_host_request_->GetResolutionDetails(),
       retry_on_alternate_network_before_handshake_, use_dns_aliases_,
       std::move(dns_aliases), /*crypto_client_config_handle=*/nullptr,
-      session_creation_initiator_, connection_management_config_);
+      session_creation_initiator_, quic_connection_reuse_details_,
+      connection_management_config_);
 
   return session_attempt_->Start(
       base::BindOnce(&DirectJob::OnSessionAttemptComplete, GetWeakPtr()));
@@ -252,7 +257,8 @@ bool QuicSessionPool::DirectJob::IsSvcbOptional(
   // If SVCB/HTTPS resolution succeeded, the client supports ECH, and all
   // alternative endpoints support ECH, disable the A/AAAA fallback. See
   // Section 5.1 of draft-ietf-tls-svcb-ech-08.
-  if (!pool_->ssl_config_service_->GetSSLContextConfig().ech_enabled) {
+  if (pool_->ssl_config_service_->GetEchMode(key().session_key().host()) ==
+      EchMode::kDisabled) {
     return true;  // ECH is not supported for this request.
   }
 

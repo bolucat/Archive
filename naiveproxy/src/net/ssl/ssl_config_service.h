@@ -10,10 +10,10 @@
 #include <vector>
 
 #include "base/observer_list.h"
+#include "net/base/ech_mode.h"
 #include "net/base/net_export.h"
 #include "net/cert/x509_certificate.h"
 #include "net/ssl/ssl_config.h"
-#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 
 namespace net {
 
@@ -28,6 +28,16 @@ struct NET_EXPORT SSLNamedGroupInfo {
   bool send_key_share = false;
 
   bool operator==(const SSLNamedGroupInfo&) const = default;
+};
+
+struct NET_EXPORT TimeBoundTrustAnchorIDs {
+  // The latest time this set of Trust Anchor IDs should be used.
+  base::Time max_usable_time;
+
+  // The set of Trust Anchor IDs, in TLS encoded form.
+  std::vector<uint8_t> trust_anchor_ids;
+
+  bool operator==(const TimeBoundTrustAnchorIDs&) const = default;
 };
 
 // Configuration options for SSL connections.
@@ -61,23 +71,9 @@ struct NET_EXPORT SSLContextConfig {
 
   // Helper function to select TLS Trust Anchor IDs to advertise in the TLS
   // handshake, so that the server can serve a certificate that the client
-  // trusts. `server_advertised_trust_anchor_ids` is a list of Trust Anchor IDs,
-  // in binary representation, that the server has provided out-of-band (e.g. in
-  // a DNS record). The intersection with `trust_anchor_ids` is returned in wire
-  // format (a series of 8-bit length prefixed non-empty strings) such that it
-  // can be passed into BoringSSL.
-  std::vector<uint8_t> SelectTrustAnchorIDs(
-      const std::vector<std::vector<uint8_t>>&
-          server_advertised_trust_anchor_ids) const;
-
-  // Helper function to select TLS Trust Anchor IDs to advertise in a retry
-  // attempt if the initial certificate the server sent could not be verified.
-  // If the result is nullopt, the connection should not be retried.
-  std::optional<std::vector<uint8_t>> SelectTrustAnchorIDsForRetry(
-      X509Certificate* server_cert,
-      const std::vector<std::vector<uint8_t>>&
-          server_advertised_trust_anchor_ids,
-      bool* used_mtc_fallback) const;
+  // trusts. The list is returned in wire format (a series of 8-bit length
+  // prefixed non-empty strings) such that it can be passed into BoringSSL.
+  const std::vector<uint8_t>& SelectAllTrustAnchorIDs() const;
 
   // The minimum and maximum protocol versions that are enabled.
   // (Use the SSL_PROTOCOL_VERSION_xxx enumerators defined in ssl_config.h.)
@@ -105,21 +101,14 @@ struct NET_EXPORT SSLContextConfig {
   // default.
   std::vector<SSLNamedGroupInfo> supported_named_groups;
 
-  // Controls whether ECH is enabled.
-  bool ech_enabled = true;
+  // An optional, preferred, set of trusted TLS Trust Anchor IDs which should be
+  // used if the system time is not after the `max_usable_time`.
+  std::optional<TimeBoundTrustAnchorIDs> time_bound_trust_anchor_ids;
 
-  // TLS Trust Anchor IDs that are configured as trusted, as a list of Trust
-  // Anchor IDs in binary representation.
-  absl::flat_hash_set<std::vector<uint8_t>> trust_anchor_ids;
-
-  // MTC TLS Trust Anchor IDs that are configured as trusted, as a list of
-  // Trust Anchor IDs in binary representation.
-  std::vector<std::vector<uint8_t>> mtc_trust_anchor_ids;
-
-  // The time (represented as seconds since the unix epoch) that the latest
-  // MtcMetadata was generated. See MtcMetadata.update_time_seconds in
-  // net/cert/root_store.proto.
-  int64_t mtc_update_time_seconds = 0;
+  // TLS Trust Anchor IDs that are configured as trusted, in TLS encoded form.
+  // This should be used if `time_bound_trust_anchor_ids` is not present or if
+  // the system time is after `time_bound_trust_anchor_ids->max_usable_time`.
+  std::vector<uint8_t> trust_anchor_ids;
 };
 
 // The interface for retrieving global SSL configuration.  This interface
@@ -143,6 +132,9 @@ class NET_EXPORT SSLConfigService {
 
   // May not be thread-safe, should only be called on the IO thread.
   virtual SSLContextConfig GetSSLContextConfig() = 0;
+
+  // Returns the host-specific EchMode for `hostname`.
+  virtual EchMode GetEchMode(std::string_view hostname) const = 0;
 
   // Returns true if connections to |hostname| can reuse, or are permitted to
   // reuse, connections on which a client cert has been negotiated. Note that

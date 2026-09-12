@@ -67,8 +67,9 @@ chromium-metrics-reviews@google.com.
   <int value="46" label="ActionsBlockedByEnterprisePolicy"/>
   <int value="47" label="ActionsBlockedForScheme"/>
   <int value="48" label="ActionsBlockedOnErrorPage"/>
-  <int value="49" label="ActionBlockedByEnterpriseContentScan"/>
+  <int value="49" label="UnrecoverableError"/>
   <int value="50" label="UserNavigatedAway"/>
+  <int value="51" label="ActionBlockedByEnterpriseContentScan"/>
   <int value="100" label="NavigateInvalidUrl"/>
   <int value="101" label="NavigateFailedToStart"/>
   <int value="102" label="NavigateCommittedErrorPage"/>
@@ -86,6 +87,8 @@ chromium-metrics-reviews@google.com.
   <int value="500" label="ScrollNoScrollingElement"/>
   <int value="501" label="ScrollTargetNotUserScrollable"/>
   <int value="502" label="ScrollOffsetDidNotChange"/>
+  <int value="503" label="ScrollMissingDirection"/>
+  <int value="504" label="ScrollMissingDistance"/>
   <int value="600" label="SelectInvalidElement"/>
   <int value="601" label="SelectNoSuchOption"/>
   <int value="602" label="SelectOptionDisabled"/>
@@ -143,6 +146,27 @@ chromium-metrics-reviews@google.com.
   <int value="1208" label="ScriptToolNavigationCommittedErrorPage"/>
   <int value="1209" label="ScriptToolNavigationFailedLoad"/>
   <int value="1300" label="ActorUiError"/>
+  <int value="1400" label="OtpRetrievalTimeout"/>
+  <int value="1401" label="OtpRetrievalError"/>
+  <int value="1402" label="OtpFillFailure"/>
+  <int value="1403" label="OtpRetrievalMismatch"/>
+  <int value="1404" label="OtpGmailConsentRequired"/>
+  <int value="1405" label="OtpGoogleConsentRequired"/>
+  <int value="1406" label="OtpDmaConsentRequired"/>
+  <int value="1407" label="OtpNoCodeFound"/>
+  <int value="1408" label="OtpExpired"/>
+  <int value="1409" label="OtpServiceUnavailable"/>
+  <int value="1410" label="OtpSigninContextMismatch"/>
+  <int value="1411" label="OtpInsecureContext"/>
+  <int value="1412" label="OtpUnableToFill"/>
+  <int value="1413" label="OtpUserDeclinedOptingIntoFilling"/>
+  <int value="1414" label="OtpTargetFrameNotFound"/>
+  <int value="1415" label="OtpNoLastTabObservation"/>
+  <int value="1416" label="OtpFieldNotFound"/>
+  <int value="1500" label="TranslateServiceUnavailable"/>
+  <int value="1501" label="TranslateUnsupportedLanguage"/>
+  <int value="1600" label="BookmarkModelNotLoaded"/>
+  <int value="1700" label="FindAndHighlightTextNotFound"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/actor/public/mojom/actor_types.mojom:ActionResultCode) -->
@@ -310,6 +334,22 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/glic/actor/glic_actor_policy_checker.h:CannotActReason) -->
 
+<!-- LINT.IfChange(ActorTaskState) -->
+
+<enum name="ActorTaskState">
+  <int value="0" label="Created"/>
+  <int value="1" label="Acting"/>
+  <int value="2" label="Reflecting"/>
+  <int value="3" label="PausedByActor"/>
+  <int value="4" label="PausedByUser"/>
+  <int value="5" label="Cancelled"/>
+  <int value="6" label="Finished"/>
+  <int value="7" label="WaitingOnUser"/>
+  <int value="8" label="Failed"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/actor/actor_task.h:State, histograms.xml:ActorTaskState) -->
+
 <!-- LINT.IfChange(ActorUiTabControllerError) -->
 
 <enum name="ActorUiTabControllerError">
@@ -348,6 +388,7 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="kNeedsAsyncCheck"/>
   <int value="4" label="kAllowByContainerConfig"/>
   <int value="5" label="kBlockByContainerConfig"/>
+  <int value="6" label="kBlockByDangerousMimeType"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/actor/execution_engine.h:GatingDecision) -->
@@ -387,7 +428,7 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="kMojoDisconnected"/>
 </enum>
 
-<!-- LINT.ThenChange(//chrome/common/actor/page_stability_metrics_common.h:PageStabilityOutcome) -->
+<!-- LINT.ThenChange(//components/actor/core/page_stability_metrics_common.h:PageStabilityOutcome) -->
 
 <!-- LINT.IfChange(RendererResolvedTargetResult) -->
 
@@ -436,6 +477,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Started new chat"/>
   <int value="7" label="Loaded previous chat"/>
   <int value="8" label="User navigated away"/>
+  <int value="9" label="Timeout"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/actor/actor_task.h:StoppedReason) -->

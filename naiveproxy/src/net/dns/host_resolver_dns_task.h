@@ -21,8 +21,10 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
+#include "net/base/ech_mode.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_export.h"
+#include "net/base/network_handle.h"
 #include "net/base/request_priority.h"
 #include "net/dns/dns_transaction.h"
 #include "net/dns/host_resolver.h"
@@ -45,7 +47,8 @@ class HostResolverInternalErrorResult;
 class NET_EXPORT_PRIVATE HostResolverDnsTask final {
  public:
   using Results = std::set<std::unique_ptr<HostResolverInternalResult>>;
-  using ResultRefs = std::set<const HostResolverInternalResult*>;
+  using ResultRefs =
+      std::set<raw_ptr<const HostResolverInternalResult, DanglingUntriaged>>;
 
   // Represents a single transaction results.
   struct NET_EXPORT_PRIVATE SingleTransactionResults {
@@ -97,6 +100,7 @@ class NET_EXPORT_PRIVATE HostResolverDnsTask final {
                       ResolveContext* resolve_context,
                       DnsTransactionFactory::AttemptMode attempt_mode,
                       SecureDnsMode secure_dns_mode,
+                      handles::NetworkHandle target_network,
                       Delegate* delegate,
                       const NetLogWithSource& job_net_log,
                       const base::TickClock* tick_clock,
@@ -261,6 +265,8 @@ class NET_EXPORT_PRIVATE HostResolverDnsTask final {
   const DnsTransactionFactory::AttemptMode attempt_mode_;
   const SecureDnsMode secure_dns_mode_;
 
+  const handles::NetworkHandle target_network_ = handles::kInvalidNetworkHandle;
+
   // The listener to the results of this DnsTask.
   const raw_ptr<Delegate> delegate_;
   const NetLogWithSource net_log_;
@@ -276,6 +282,7 @@ class NET_EXPORT_PRIVATE HostResolverDnsTask final {
   // For histograms.
   base::TimeTicks a_record_end_time_;
   base::TimeTicks aaaa_record_end_time_;
+  base::TimeTicks https_record_end_time_;
 
   Results saved_results_;
   std::unique_ptr<HostResolverInternalErrorResult> deferred_failure_;
@@ -295,6 +302,11 @@ class NET_EXPORT_PRIVATE HostResolverDnsTask final {
   bool fallback_available_;
 
   const HostResolver::HttpsSvcbOptions https_svcb_options_;
+  const EchMode ech_mode_;
+
+  // If true, the task will wait for the pending HTTPS query and treat
+  // certain HTTPS query errors as fatal.
+  const bool https_svcb_required_;
 
   // Set to true when HTTPS query is disabled.
   bool https_disabled_ = false;

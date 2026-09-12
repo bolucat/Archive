@@ -35,6 +35,8 @@ static void must_not_run(struct ss_loop *loop, ss_io *io, int events)
 int main(void)
 {
     test_network_init();
+    /* 256 receivers + sender + loop internals must fit under RLIMIT_NOFILE. */
+    test_raise_fd_limit(512);
     struct ss_loop *loop = ss_loop_new(0);
     assert(loop);
 #ifdef _WIN32
@@ -48,8 +50,10 @@ int main(void)
     /* Exceed Winsock select's default 64 descriptors. */
     struct receiver receivers[256] = {0};
     ss_socket_t sender = socket(AF_INET, SOCK_DGRAM, 0);
+    assert((int)sender >= 0);
     for (unsigned i = 0; i < 256; i++) {
         int fd = (int)socket(AF_INET, SOCK_DGRAM, 0);
+        assert(fd >= 0);
         struct sockaddr_in address = {0};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

@@ -204,7 +204,14 @@ source_set("asan_raw_ptr_service") {
 
     deps += [
       ":compiler_specific",
+      ":dcheck_is_on",
+      ":debugging_buildflags",
+      ":feature_buildflags",
+      ":fuzzing_buildflags",
+      ":synchronization_buildflags",
+      ":tracing_buildflags",
       "//base/allocator/partition_allocator/src/partition_alloc",
+      "//build:blink_buildflags",
       "//third_party/abseil-cpp:absl",
       "//third_party/perfetto:libperfetto",
     ]
@@ -257,11 +264,8 @@ component("base") {
     "base64url.cc",
     "base64url.h",
     "base_switches.h",
-    "big_endian.h",
     "bit_cast.h",
     "bits.h",
-    "byte_count.cc",
-    "byte_count.h",
     "byte_size.cc",
     "byte_size.h",
     "callback_list.cc",
@@ -290,6 +294,7 @@ component("base") {
     "containers/flat_map.h",
     "containers/flat_set.h",
     "containers/flat_tree.h",
+    "containers/hashing_lru_cache.h",
     "containers/heap_array.h",
     "containers/id_map.h",
     "containers/intrusive_heap.cc",
@@ -297,6 +302,7 @@ component("base") {
     "containers/linked_list.cc",
     "containers/linked_list.h",
     "containers/lru_cache.h",
+    "containers/lru_cache_internal.h",
     "containers/map_util.h",
     "containers/ring_buffer.h",
     "containers/small_map.h",
@@ -306,8 +312,10 @@ component("base") {
     "containers/span_reader.h",
     "containers/span_writer.h",
     "containers/stack.h",
+    "containers/to_array.h",
     "containers/to_value_list.h",
     "containers/to_vector.h",
+    "containers/transparent_hash.h",
     "containers/unique_ptr_adapters.h",
     "containers/vector_buffer.h",
     "containers/weak_value_table.h",
@@ -334,6 +342,8 @@ component("base") {
     "feature_internal.h",
     "feature_list.cc",
     "feature_list.h",
+    "feature_list_internal.cc",
+    "feature_list_internal.h",
     "feature_visitor.h",
     "features.cc",
     "features.h",
@@ -448,6 +458,7 @@ component("base") {
     "memory/safety_checks.h",
     "memory/scoped_policy.h",
     "memory/scoped_refptr.h",
+    "memory/self_deleting.h",
     "memory/shared_memory_hooks.h",
     "memory/shared_memory_mapper.cc",
     "memory/shared_memory_mapper.h",
@@ -473,6 +484,8 @@ component("base") {
     "memory/writable_shared_memory_region.h",
     "memory_coordinator/async_memory_consumer_registration.cc",
     "memory_coordinator/async_memory_consumer_registration.h",
+    "memory_coordinator/dummy_memory_consumer_registry.cc",
+    "memory_coordinator/dummy_memory_consumer_registry.h",
     "memory_coordinator/memory_consumer.cc",
     "memory_coordinator/memory_consumer.h",
     "memory_coordinator/memory_consumer_registry.cc",
@@ -480,6 +493,8 @@ component("base") {
     "memory_coordinator/memory_consumer_registry_destruction_observer.h",
     "memory_coordinator/memory_coordinator_features.cc",
     "memory_coordinator/memory_coordinator_features.h",
+    "memory_coordinator/memory_limit.cc",
+    "memory_coordinator/memory_limit.h",
     "memory_coordinator/multi_memory_consumer.cc",
     "memory_coordinator/multi_memory_consumer.h",
     "memory_coordinator/traits.cc",
@@ -494,6 +509,8 @@ component("base") {
     "message_loop/message_pump_for_io.h",
     "message_loop/message_pump_for_ui.h",
     "message_loop/message_pump_type.h",
+    "message_loop/message_pump_wakeup_counter.cc",
+    "message_loop/message_pump_wakeup_counter.h",
     "message_loop/work_id_provider.cc",
     "message_loop/work_id_provider.h",
     "metrics/bucket_ranges.cc",
@@ -536,11 +553,11 @@ component("base") {
     "metrics/persistent_memory_allocator.h",
     "metrics/persistent_sample_map.cc",
     "metrics/persistent_sample_map.h",
-    "metrics/puma_histogram_functions.cc",
-    "metrics/puma_histogram_functions.h",
     "metrics/ranges_manager.cc",
     "metrics/ranges_manager.h",
     "metrics/record_histogram_checker.h",
+    "metrics/runtime_field_trial_overrides.cc",
+    "metrics/runtime_field_trial_overrides.h",
     "metrics/sample_map.cc",
     "metrics/sample_map.h",
     "metrics/sample_map_iterator.h",
@@ -648,6 +665,8 @@ component("base") {
     "sampling_heap_profiler/lock_free_bloom_filter.h",
     "sampling_heap_profiler/poisson_allocation_sampler.cc",
     "sampling_heap_profiler/poisson_allocation_sampler.h",
+    "sampling_heap_profiler/sampling_heap_churn_profiler.cc",
+    "sampling_heap_profiler/sampling_heap_churn_profiler.h",
     "sampling_heap_profiler/sampling_heap_profiler.cc",
     "sampling_heap_profiler/sampling_heap_profiler.h",
     "scoped_add_feature_flags.cc",
@@ -673,6 +692,7 @@ component("base") {
     "strings/durable_string_view.h",
     "strings/escape.cc",
     "strings/escape.h",
+    "strings/join_string_internal.h",
     "strings/lazy_string_builder.cc",
     "strings/lazy_string_builder.h",
     "strings/levenshtein_distance.cc",
@@ -695,7 +715,6 @@ component("base") {
     "strings/string_tokenizer.h",
     "strings/string_util.cc",
     "strings/string_util.h",
-    "strings/string_util_constants.cc",
     "strings/string_util_impl_helpers.h",
     "strings/string_util_internal.h",
     "strings/string_view_util.h",
@@ -705,6 +724,7 @@ component("base") {
     "strings/sys_string_conversions.h",
     "strings/to_string.cc",
     "strings/to_string.h",
+    "strings/trim_string_internal.h",
     "strings/utf_offset_string_conversions.cc",
     "strings/utf_offset_string_conversions.h",
     "strings/utf_ostream_operators.cc",
@@ -713,6 +733,7 @@ component("base") {
     "strings/utf_string_conversion_utils.h",
     "strings/utf_string_conversions.cc",
     "strings/utf_string_conversions.h",
+    "strings/whitespace_constants.h",
     "substring_set_matcher/matcher_string_pattern.cc",
     "substring_set_matcher/matcher_string_pattern.h",
     "substring_set_matcher/substring_set_matcher.cc",
@@ -729,7 +750,9 @@ component("base") {
     "synchronization/lock_impl.h",
     "synchronization/lock_metrics_recorder.cc",
     "synchronization/lock_metrics_recorder.h",
+    "synchronization/lock_metrics_recorder_tags.h",
     "synchronization/lock_subtle.h",
+    "synchronization/tagged_metric_lock.h",
     "synchronization/waitable_event.cc",
     "synchronization/waitable_event.h",
     "synchronization/waitable_event_watcher.h",
@@ -992,7 +1015,6 @@ component("base") {
     "types/to_address.h",
     "types/token_type.h",
     "types/variant_util.h",
-    "types/zip.h",
     "unguessable_token.cc",
     "unguessable_token.h",
     "uuid.cc",
@@ -1762,7 +1784,6 @@ component("base") {
       "strings/strcat_win.h",
       "strings/string_number_conversions_win.cc",
       "strings/string_number_conversions_win.h",
-      "strings/string_split_win.cc",
       "strings/string_split_win.h",
       "strings/string_util_win.cc",
       "strings/string_util_win.h",
@@ -1801,6 +1822,7 @@ component("base") {
       "win/dark_mode_support.h",
       "win/default_apps_util.cc",
       "win/default_apps_util.h",
+      "win/delayload_helpers.cc",
       "win/delayload_helpers.h",
       "win/elevation_util.cc",
       "win/elevation_util.h",
@@ -1875,6 +1897,8 @@ component("base") {
       "win/scoped_windows_thread_environment.h",
       "win/scoped_winrt_initializer.cc",
       "win/scoped_winrt_initializer.h",
+      "win/scoped_wintrust_data.cc",
+      "win/scoped_wintrust_data.h",
       "win/security_descriptor.cc",
       "win/security_descriptor.h",
       "win/security_util.cc",
@@ -1888,6 +1912,8 @@ component("base") {
       "win/sid.h",
       "win/startup_information.cc",
       "win/startup_information.h",
+      "win/trust_util.cc",
+      "win/trust_util.h",
       "win/variant_conversions.h",
       "win/variant_vector.cc",
       "win/variant_vector.h",
@@ -1927,6 +1953,7 @@ component("base") {
 
     libs += [
       "cfgmgr32.lib",
+      "crypt32.lib",
       "ntdll.lib",
       "onecore.lib",
       "pdh.lib",
@@ -1938,6 +1965,7 @@ component("base") {
       "userenv.lib",
       "wbemuuid.lib",
       "winmm.lib",
+      "wintrust.lib",
     ]
     all_dependent_configs += [
       ":base_win_linker_flags",
@@ -2233,14 +2261,6 @@ component("base") {
         "profiler/frame_pointer_unwinder.h",
         "profiler/suspendable_thread_delegate_mac.cc",
         "profiler/suspendable_thread_delegate_mac.h",
-      ]
-    }
-    if (!use_allocator_shim) {
-      sources -= [
-        "sampling_heap_profiler/poisson_allocation_sampler.cc",
-        "sampling_heap_profiler/poisson_allocation_sampler.h",
-        "sampling_heap_profiler/sampling_heap_profiler.cc",
-        "sampling_heap_profiler/sampling_heap_profiler.h",
       ]
     }
 
@@ -2689,10 +2709,7 @@ buildflag_header("anchor_functions_buildflags") {
   header = "anchor_functions_buildflags.h"
   header_dir = "base/android/library_loader"
 
-  flags = [
-    "USE_LLD=$use_lld",
-    "SUPPORTS_CODE_ORDERING=$_enable_code_ordering",
-  ]
+  flags = [ "SUPPORTS_CODE_ORDERING=$_enable_code_ordering" ]
 }
 
 buildflag_header("clang_profiling_buildflags") {

@@ -424,7 +424,6 @@ set(
   crypto/fuzzer_mode.cc
   crypto/hpke/hpke.cc
   crypto/hrss/hrss.cc
-  crypto/kyber/kyber.cc
   crypto/lhash/lhash.cc
   crypto/md4/md4.cc
   crypto/md5/md5.cc
@@ -524,6 +523,7 @@ set(
   crypto/x509/x509_def.cc
   crypto/x509/x509_ext.cc
   crypto/x509/x509_lu.cc
+  crypto/x509/x509_mtc.cc
   crypto/x509/x509_obj.cc
   crypto/x509/x509_req.cc
   crypto/x509/x509_set.cc
@@ -577,6 +577,7 @@ set(
   include/openssl/cmac.h
   include/openssl/cms.h
   include/openssl/conf.h
+  include/openssl/configuration.h
   include/openssl/cpu.h
   include/openssl/crypto.h
   include/openssl/ctrdrbg.h
@@ -641,6 +642,7 @@ set(
   include/openssl/tls_prf.h
   include/openssl/trust_token.h
   include/openssl/type_check.h
+  include/openssl/types.h
   include/openssl/x509.h
   include/openssl/x509_vfy.h
   include/openssl/x509v3.h
@@ -697,7 +699,6 @@ set(
   crypto/fipsmodule/tls/internal.h
   crypto/hrss/internal.h
   crypto/internal.h
-  crypto/kyber/internal.h
   crypto/lhash/internal.h
   crypto/md5/internal.h
   crypto/mem_internal.h
@@ -822,7 +823,6 @@ set(
   crypto/hpke/hpke_test.cc
   crypto/hrss/hrss_test.cc
   crypto/impl_dispatch_test.cc
-  crypto/kyber/kyber_test.cc
   crypto/lhash/lhash_test.cc
   crypto/md5/md5_test.cc
   crypto/mem_test.cc
@@ -848,6 +848,7 @@ set(
   crypto/test/gtest_main.cc
   crypto/thread_test.cc
   crypto/trust_token/trust_token_test.cc
+  crypto/x509/x509_extension_test.cc
   crypto/x509/x509_test.cc
   crypto/x509/x509_time_test.cc
   crypto/xwing/xwing_test.cc
@@ -936,7 +937,6 @@ set(
   crypto/hmac/hmac_tests.txt
   crypto/hpke/hpke_test_vectors.txt
   crypto/hpke/hpke_test_vectors_pq.txt
-  crypto/kyber/kyber_tests.txt
   crypto/mldsa/mldsa_nist_keygen_44_tests.txt
   crypto/mldsa/mldsa_nist_keygen_65_tests.txt
   crypto/mldsa/mldsa_nist_keygen_87_tests.txt
@@ -1033,6 +1033,24 @@ set(
   crypto/x509/test/many_names1.pem
   crypto/x509/test/many_names2.pem
   crypto/x509/test/many_names3.pem
+  crypto/x509/test/mtc/ca_cert.pem
+  crypto/x509/test/mtc/cert_10_0.pem
+  crypto/x509/test/mtc/cert_10_1.pem
+  crypto/x509/test/mtc/cert_2034_0.pem
+  crypto/x509/test/mtc/cert_2035_0.pem
+  crypto/x509/test/mtc/cert_2_0.pem
+  crypto/x509/test/mtc/cert_32_0.pem
+  crypto/x509/test/mtc/cert_33_0.pem
+  crypto/x509/test/mtc/cert_33_1.pem
+  crypto/x509/test/mtc/cert_33_2.pem
+  crypto/x509/test/mtc/cert_33_3.pem
+  crypto/x509/test/mtc/cert_33_4.pem
+  crypto/x509/test/mtc/cert_33_5.pem
+  crypto/x509/test/mtc/cert_33_6.pem
+  crypto/x509/test/mtc/cert_33_7.pem
+  crypto/x509/test/mtc/cert_33_8.pem
+  crypto/x509/test/mtc/cert_33_9.pem
+  crypto/x509/test/mtc/cert_5036_0.pem
   crypto/x509/test/policy_intermediate.pem
   crypto/x509/test/policy_intermediate_any.pem
   crypto/x509/test/policy_intermediate_duplicate.pem
@@ -1151,6 +1169,14 @@ set(
   third_party/wycheproof_testvectors/mldsa_87_sign_noseed_test.txt
   third_party/wycheproof_testvectors/mldsa_87_sign_seed_test.txt
   third_party/wycheproof_testvectors/mldsa_87_verify_test.txt
+  third_party/wycheproof_testvectors/mlkem_1024_encaps_test.txt
+  third_party/wycheproof_testvectors/mlkem_1024_keygen_seed_test.txt
+  third_party/wycheproof_testvectors/mlkem_1024_semi_expanded_decaps_test.txt
+  third_party/wycheproof_testvectors/mlkem_1024_test.txt
+  third_party/wycheproof_testvectors/mlkem_768_encaps_test.txt
+  third_party/wycheproof_testvectors/mlkem_768_keygen_seed_test.txt
+  third_party/wycheproof_testvectors/mlkem_768_semi_expanded_decaps_test.txt
+  third_party/wycheproof_testvectors/mlkem_768_test.txt
   third_party/wycheproof_testvectors/primality_test.txt
   third_party/wycheproof_testvectors/rsa_oaep_2048_sha1_mgf1sha1_test.txt
   third_party/wycheproof_testvectors/rsa_oaep_2048_sha224_mgf1sha1_test.txt
@@ -2229,6 +2255,7 @@ set(
   pki/testdata/ocsp_unittest/bad_status.pem
   pki/testdata/ocsp_unittest/future_response.pem
   pki/testdata/ocsp_unittest/good_response.pem
+  pki/testdata/ocsp_unittest/good_response_invalid_serial.pem
   pki/testdata/ocsp_unittest/good_response_next_update.pem
   pki/testdata/ocsp_unittest/good_response_sha256.pem
   pki/testdata/ocsp_unittest/has_critical_ct_extension.pem
@@ -2379,9 +2406,14 @@ set(
   pki/testdata/path_builder_unittest/key_id_prioritization/int_no_ski_c.pem
   pki/testdata/path_builder_unittest/key_id_prioritization/root.pem
   pki/testdata/path_builder_unittest/key_id_prioritization/target.pem
-  pki/testdata/path_builder_unittest/mtc/leaf.pem
-  pki/testdata/path_builder_unittest/mtc/mtc-ica.pem
-  pki/testdata/path_builder_unittest/mtc/mtc-leaf.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/leaf.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-ica.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-3cosigners.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-cosigner_wrong_order.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-duplicate_ca_signer.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-no_ca_signer.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone.pem
+  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf.pem
   pki/testdata/path_builder_unittest/multi-root-A-by-B.pem
   pki/testdata/path_builder_unittest/multi-root-B-by-C.pem
   pki/testdata/path_builder_unittest/multi-root-B-by-F.pem
@@ -2956,6 +2988,17 @@ set(
   RUST_BSSL_SYS_SOURCES
 
   rust/bssl-sys/src/lib.rs
+)
+
+set(
+  RUST_BSSL_TLS_TOKIO_SOURCES
+
+  rust/bssl-tls-tokio/src/hyper.rs
+  rust/bssl-tls-tokio/src/lib.rs
+  rust/bssl-tls-tokio/src/tests.rs
+  rust/bssl-tls-tokio/src/tests/convenience.rs
+  rust/bssl-tls-tokio/src/tests/datagram.rs
+  rust/bssl-tls-tokio/src/tests/transport.rs
 )
 
 set(

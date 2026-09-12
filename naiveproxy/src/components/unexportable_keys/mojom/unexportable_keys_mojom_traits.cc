@@ -131,20 +131,6 @@ EnumTraits<unexportable_keys::mojom::ServiceError,
   NOTREACHED();
 }
 
-bool StructTraits<unexportable_keys::mojom::UnexportableKeyIdDataView,
-                  unexportable_keys::UnexportableKeyId>::
-    Read(unexportable_keys::mojom::UnexportableKeyIdDataView data,
-         unexportable_keys::UnexportableKeyId* output) {
-  base::UnguessableToken key_id;
-  if (!data.ReadKeyId(&key_id)) {
-    // Failed to read the underlying UnguessableToken.
-    return false;
-  }
-  // Construct the base::TokenType from the UnguessableToken.
-  *output = unexportable_keys::UnexportableKeyId(key_id);
-  return true;
-}
-
 bool StructTraits<unexportable_keys::mojom::UnexportableSigningKeyIdDataView,
                   unexportable_keys::UnexportableSigningKeyId>::
     Read(unexportable_keys::mojom::UnexportableSigningKeyIdDataView data,
@@ -156,6 +142,60 @@ bool StructTraits<unexportable_keys::mojom::UnexportableSigningKeyIdDataView,
   }
   // Construct the base::TokenType from the UnguessableToken.
   *output = unexportable_keys::UnexportableSigningKeyId(key_id);
+  return true;
+}
+
+bool StructTraits<
+    unexportable_keys::mojom::UnexportableAttestationKeyIdDataView,
+    unexportable_keys::UnexportableAttestationKeyId>::
+    Read(unexportable_keys::mojom::UnexportableAttestationKeyIdDataView data,
+         unexportable_keys::UnexportableAttestationKeyId* output) {
+  base::UnguessableToken key_id;
+  if (!data.ReadKeyId(&key_id)) {
+    return false;
+  }
+  *output = unexportable_keys::UnexportableAttestationKeyId(key_id);
+  return true;
+}
+
+unexportable_keys::mojom::AttestationFormat
+EnumTraits<unexportable_keys::mojom::AttestationFormat,
+           crypto::AttestationStatement::Format>::
+    ToMojom(crypto::AttestationStatement::Format format) {
+  switch (format) {
+    case crypto::AttestationStatement::Format::kTpm:
+      return unexportable_keys::mojom::AttestationFormat::kTpm;
+    case crypto::AttestationStatement::Format::kSecureEnclave:
+      return unexportable_keys::mojom::AttestationFormat::kSecureEnclave;
+  }
+}
+
+crypto::AttestationStatement::Format
+EnumTraits<unexportable_keys::mojom::AttestationFormat,
+           crypto::AttestationStatement::Format>::
+    FromMojom(unexportable_keys::mojom::AttestationFormat mojo_format) {
+  switch (mojo_format) {
+    case unexportable_keys::mojom::AttestationFormat::kTpm:
+      return crypto::AttestationStatement::Format::kTpm;
+    case unexportable_keys::mojom::AttestationFormat::kSecureEnclave:
+      return crypto::AttestationStatement::Format::kSecureEnclave;
+  }
+  NOTREACHED();
+}
+
+bool StructTraits<unexportable_keys::mojom::AttestationStatementDataView,
+                  crypto::AttestationStatement>::
+    Read(unexportable_keys::mojom::AttestationStatementDataView data,
+         crypto::AttestationStatement* output) {
+  if (!data.ReadFormat(&output->format)) {
+    return false;
+  }
+  if (!data.ReadStatement(&output->statement)) {
+    return false;
+  }
+  if (!data.ReadSignature(&output->signature)) {
+    return false;
+  }
   return true;
 }
 }  // namespace mojo

@@ -1,4 +1,4 @@
-# Copyright 2024 The Chromium Authors. All rights reserved.
+# Copyright 2024 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """This provides an easy way to access args.gn."""
@@ -16,7 +16,8 @@ def _find_root(output_dir):
         nextdir = os.path.join(curdir, "..")
         if os.path.abspath(curdir) == os.path.abspath(nextdir):
             raise Exception(
-                'Could not find checkout in any parent of the current path.')
+                "Could not find checkout in any parent of the current path."
+            )
         curdir = nextdir
 
 
@@ -33,29 +34,35 @@ def _gn_lines(output_dir, path):
                 raw_import_path = match.groups()[0]
                 if raw_import_path[:2] == "//":
                     import_path = os.path.normpath(
-                        os.path.join(_find_root(output_dir),
-                                     raw_import_path[2:]))
-                elif raw_import_path.startswith('/'):
+                        os.path.join(
+                            _find_root(output_dir), raw_import_path[2:]
+                        )
+                    )
+                elif raw_import_path.startswith("/"):
                     # GN uses "/"-prefix as absolute path,
                     # https://gn.googlesource.com/gn/+/main/docs/reference.md#labels
                     # e.g.
                     #  /usr/local/foo:bar
                     #  /C:/Program Files/MyLibs:bar
                     # but Win32's absolute path doesn't have "/"-prefix.
-                    if sys.platform.startswith('win32'):
+                    if sys.platform.startswith("win32"):
                         import_path = raw_import_path[1:]
                     else:
                         import_path = raw_import_path
                     if not os.path.isabs(import_path):
-                        raise Exception('Wrong absolute path for import %s' %
-                                        raw_import_path)
+                        raise Exception(
+                            "Wrong absolute path for import %s"
+                            % raw_import_path
+                        )
                 else:
                     if os.path.isabs(raw_import_path):
-                        raise Execption(
-                            'Absolute path "%s" should start with "/" in GN' %
-                            raw_import_path)
+                        raise Execption(  # noqa: F821
+                            'Absolute path "%s" should start with "/" in GN'
+                            % raw_import_path
+                        )
                     import_path = os.path.normpath(
-                        os.path.join(os.path.dirname(path), raw_import_path))
+                        os.path.join(os.path.dirname(path), raw_import_path)
+                    )
                 yield from _gn_lines(output_dir, import_path)
             else:
                 yield line

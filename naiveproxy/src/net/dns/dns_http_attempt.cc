@@ -6,13 +6,15 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
-#include <unordered_map>
 
 #include "base/base64url.h"
+#include "base/byte_size.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/values.h"
 #include "net/base/completion_once_callback.h"
@@ -26,6 +28,7 @@
 #include "net/dns/dns_names_util.h"
 #include "net/dns/dns_query.h"
 #include "net/dns/dns_response.h"
+#include "net/dns/host_resolver.h"
 #include "net/dns/public/dns_protocol.h"
 #include "net/dns/public/resolution_details.h"
 #include "net/dns/resolve_context.h"
@@ -36,6 +39,7 @@
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "url/gurl.h"
 
 namespace net {
@@ -46,8 +50,8 @@ const char kDnsOverHttpResponseContentType[] = "application/dns-message";
 
 // The maximum size of the DNS message for DoH, per
 // https://datatracker.ietf.org/doc/html/rfc8484#section-6
-constexpr base::ByteCount kDnsOverHttpResponseMaximumSize =
-    base::ByteCount(65535);
+constexpr base::ByteSize kDnsOverHttpResponseMaximumSize =
+    base::ByteSize(65535);
 
 }  // namespace
 
@@ -67,10 +71,11 @@ DnsHTTPAttempt::DnsHTTPAttempt(base::WeakPtr<ResolveContext> resolve_context,
                                const GURL& gurl_without_parameters,
                                bool use_post,
                                URLRequestContext* url_request_context,
-                               RequestPriority request_priority_,
+                               RequestPriority request_priority,
                                bool is_probe)
     : DnsAttempt(doh_server_index),
       is_probe_(is_probe),
+      request_priority_(request_priority),
       query_(std::move(query)),
       net_log_(NetLogWithSource::Make(NetLog::Get(),
                                       NetLogSourceType::DNS_OVER_HTTPS)) {
@@ -86,7 +91,7 @@ DnsHTTPAttempt::DnsHTTPAttempt(base::WeakPtr<ResolveContext> resolve_context,
   } else {
     // Set url for a GET request
     std::string url_string;
-    std::unordered_map<std::string, std::string> parameters;
+    absl::flat_hash_map<std::string, std::string> parameters;
     std::string encoded_query;
     base::Base64UrlEncode(std::string_view(query_->io_buffer()->data(),
                                            query_->io_buffer()->size()),
@@ -152,7 +157,8 @@ DnsHTTPAttempt::DnsHTTPAttempt(base::WeakPtr<ResolveContext> resolve_context,
                                         "is disabled by default"
       }
     )"),
-      /*is_for_websockets=*/false, net_log_.source());
+      handles::kInvalidNetworkHandle, /*is_for_websockets=*/false,
+      net_log_.source());
 
   if (use_post) {
     request_->set_method("POST");
@@ -182,9 +188,9 @@ int DnsHTTPAttempt::Start(CompletionOnceCallback callback) {
   callback_ = std::move(callback);
   // Start the request asynchronously to avoid reentrancy in
   // the network stack.
-  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindOnce(&DnsHTTPAttempt::StartAsync, weak_factory_.GetWeakPtr()));
+  HostResolver::GetTaskRunner(request_priority_)
+      ->PostTask(FROM_HERE, base::BindOnce(&DnsHTTPAttempt::StartAsync,
+                                           weak_factory_.GetWeakPtr()));
   return ERR_IO_PENDING;
 }
 
@@ -233,7 +239,7 @@ void DnsHTTPAttempt::OnResponseStarted(net::URLRequest* request,
 
   buffer_ = base::MakeRefCounted<GrowableIOBuffer>();
 
-  std::optional<base::ByteCount> content_length =
+  std::optional<base::ByteSize> content_length =
       request_->response_headers()->GetContentLength();
   if (content_length.has_value()) {
     if (content_length.value() > kDnsOverHttpResponseMaximumSize) {
@@ -280,7 +286,7 @@ void DnsHTTPAttempt::OnReadCompleted(net::URLRequest* request, int bytes_read) {
 
   if (bytes_read > 0) {
     if (buffer_->offset() + bytes_read >
-        kDnsOverHttpResponseMaximumSize.InBytes()) {
+        static_cast<int>(kDnsOverHttpResponseMaximumSize.InBytes())) {
       ResponseCompleted(ERR_DNS_MALFORMED_RESPONSE);
       return;
     }
@@ -307,10 +313,10 @@ void DnsHTTPAttempt::OnReadCompleted(net::URLRequest* request, int bytes_read) {
     } else {
       // Else, trigger OnReadCompleted asynchronously to avoid starving the IO
       // thread in case the URLRequest can provide data synchronously.
-      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-          FROM_HERE, base::BindOnce(&DnsHTTPAttempt::OnReadCompleted,
-                                    weak_factory_.GetWeakPtr(), request_.get(),
-                                    read_result));
+      HostResolver::GetTaskRunner(request_priority_)
+          ->PostTask(FROM_HERE, base::BindOnce(&DnsHTTPAttempt::OnReadCompleted,
+                                               weak_factory_.GetWeakPtr(),
+                                               request_.get(), read_result));
     }
   } else {
     // URLRequest reported an EOF. Call ResponseCompleted.

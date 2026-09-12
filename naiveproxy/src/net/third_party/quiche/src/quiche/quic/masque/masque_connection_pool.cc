@@ -73,13 +73,18 @@ class SimpleFetcher : public MasqueConnectionPool::Visitor {
   static absl::StatusOr<Message> Fetch(const Message& request,
                                        absl::string_view info_string,
                                        const DnsConfig& dns_config,
-                                       bool disable_certificate_verification) {
+                                       bool disable_certificate_verification,
+                                       SSL_CTX* ssl_ctx) {
     SimpleFetcher fetcher;
     std::unique_ptr<QuicEventLoop> event_loop =
         GetDefaultEventLoop()->Create(QuicDefaultClock::Get());
-    QUICHE_ASSIGN_OR_RETURN(bssl::UniquePtr<SSL_CTX> ssl_ctx,
-                            MasqueConnectionPool::CreateSslCtx("", ""));
-    MasqueConnectionPool pool(event_loop.get(), ssl_ctx.get(),
+    bssl::UniquePtr<SSL_CTX> local_ssl_ctx;
+    if (ssl_ctx == nullptr) {
+      QUICHE_ASSIGN_OR_RETURN(local_ssl_ctx,
+                              MasqueConnectionPool::CreateSslCtx("", ""));
+      ssl_ctx = local_ssl_ctx.get();
+    }
+    MasqueConnectionPool pool(event_loop.get(), ssl_ctx,
                               disable_certificate_verification, dns_config,
                               &fetcher, info_string);
     QUICHE_RETURN_IF_ERROR(pool.SendRequest(request).status());
@@ -99,7 +104,8 @@ class SimpleFetcher : public MasqueConnectionPool::Visitor {
   static absl::StatusOr<Message> Get(absl::string_view url_string,
                                      absl::string_view info_string,
                                      const DnsConfig& dns_config,
-                                     bool disable_certificate_verification) {
+                                     bool disable_certificate_verification,
+                                     SSL_CTX* ssl_ctx) {
     Message request;
     QuicUrl url(url_string, "https");
     if (url.host().empty() && !absl::StrContains(url_string, "://")) {
@@ -110,7 +116,7 @@ class SimpleFetcher : public MasqueConnectionPool::Visitor {
     request.headers[":authority"] = url.HostPort();
     request.headers[":path"] = url.PathParamsQuery();
     return Fetch(std::move(request), info_string, dns_config,
-                 disable_certificate_verification);
+                 disable_certificate_verification, ssl_ctx);
   }
 
   // From MasqueConnectionPool::Visitor.
@@ -148,17 +154,17 @@ class SimpleFetcher : public MasqueConnectionPool::Visitor {
 absl::StatusOr<MasqueConnectionPool::Message> MasqueSimpleFetch(
     const MasqueConnectionPool::Message& request, absl::string_view info_string,
     const MasqueConnectionPool::DnsConfig& dns_config,
-    bool disable_certificate_verification) {
+    bool disable_certificate_verification, SSL_CTX* ssl_ctx) {
   return SimpleFetcher::Fetch(request, info_string, dns_config,
-                              disable_certificate_verification);
+                              disable_certificate_verification, ssl_ctx);
 }
 
 absl::StatusOr<MasqueConnectionPool::Message> MasqueSimpleGet(
     absl::string_view url_string, absl::string_view info_string,
     const MasqueConnectionPool::DnsConfig& dns_config,
-    bool disable_certificate_verification) {
+    bool disable_certificate_verification, SSL_CTX* ssl_ctx) {
   return SimpleFetcher::Get(url_string, info_string, dns_config,
-                            disable_certificate_verification);
+                            disable_certificate_verification, ssl_ctx);
 }
 
 // static
@@ -289,6 +295,7 @@ void MasqueConnectionPool::OnResponse(MasqueH2Connection* connection,
       Message response;
       response.headers = headers.Clone();
       response.body = body;
+      response.draining = connection->draining();
       if (end_stream) {
         pending_request.response_done = true;
       }
@@ -358,7 +365,8 @@ MasqueConnectionPool::SendRequest(const Message& request, bool mtls,
       ConnectionState * connection,
       GetOrCreateConnectionState(std::string(authority->second), mtls));
   auto pending_request = std::make_unique<PendingRequest>();
-  if (connection->connection() != nullptr) {
+  if (connection->connection() != nullptr &&
+      !connection->connection()->aborted()) {
     QUICHE_LOG(INFO) << ENDPOINT << "Reusing existing connection "
                      << connection->connection()->info() << " to "
                      << authority->second;
@@ -509,6 +517,8 @@ MasqueConnectionPool::ConnectionState::ConnectionState(
 
 MasqueConnectionPool::ConnectionState::~ConnectionState() {
   if (socket_ != kInvalidSocketFd) {
+    QUICHE_LOG(INFO) << ENDPOINT << "Closing socket fd " << socket_ << " for "
+                     << authority_;
     if (!connection_pool_->event_loop()->UnregisterSocket(socket_)) {
       QUICHE_LOG(ERROR) << ENDPOINT << "Failed to unregister socket";
     }
@@ -546,14 +556,15 @@ absl::Status MasqueConnectionPool::ConnectionState::SetupSocket(
                                             create_result.status().message()));
   }
   socket_ = create_result.value();
+  QUICHE_LOG(INFO) << ENDPOINT << "Socket fd " << socket_
+                   << " starting connect to " << socket_address << " for "
+                   << authority_;
   // Ignore result because asynchronous connect is expected to fail.
   (void)socket_api::Connect(socket_, socket_address);
   if (!connection_pool_->event_loop()->RegisterSocket(
           socket_, kSocketEventReadable | kSocketEventWritable, this)) {
     return absl::InternalError("Failed to register socket with the event loop");
   }
-  QUICHE_LOG(INFO) << ENDPOINT << "Socket fd " << socket_
-                   << " connect in progress to " << socket_address;
 
   if (disable_certificate_verification) {
     proof_verifier_ = std::make_unique<FakeProofVerifier>();
@@ -615,6 +626,7 @@ void MasqueConnectionPool::ConnectionState::OnSocketEvent(
       connection_ = std::make_unique<MasqueH2Connection>(
           ssl_.get(), /*is_server=*/false, connection_pool_,
           connection_pool_->info());
+      info_ = connection_->info();
       connection_pool_->AttachConnectionToPendingRequests(authority_,
                                                           connection_.get());
       connection_->OnTransportReadable();
@@ -640,11 +652,11 @@ MasqueConnectionPool::ConnectionState::VerifyCertificate(SSL* ssl,
     *out_alert = SSL_AD_INTERNAL_ERROR;
     return ssl_verify_invalid;
   }
-  std::vector<std::string> certs;
+  std::vector<absl::string_view> certs;
   for (CRYPTO_BUFFER* cert : cert_chain) {
-    certs.push_back(
-        std::string(reinterpret_cast<const char*>(CRYPTO_BUFFER_data(cert)),
-                    CRYPTO_BUFFER_len(cert)));
+    certs.push_back(absl::string_view(
+        reinterpret_cast<const char*>(CRYPTO_BUFFER_data(cert)),
+        CRYPTO_BUFFER_len(cert)));
   }
   const uint8_t* ocsp_response_raw;
   size_t ocsp_response_len;

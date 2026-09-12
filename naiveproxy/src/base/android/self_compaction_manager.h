@@ -16,9 +16,6 @@
 
 namespace base::android {
 
-BASE_EXPORT BASE_DECLARE_FEATURE(kShouldFreezeSelf);
-BASE_EXPORT BASE_DECLARE_FEATURE(kUseRunningCompact);
-
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
 enum class CompactCancellationReason {
@@ -106,10 +103,9 @@ class BASE_EXPORT SelfCompactionManager {
    public:
     CompactionState(scoped_refptr<SequencedTaskRunner> task_runner,
                     base::TimeTicks triggered_at,
-                    uint64_t max_bytes);
+                    base::ByteSize max_bytes);
     virtual ~CompactionState();
 
-    virtual bool IsFeatureEnabled() const = 0;
     virtual std::string GetMetricName(std::string_view name) const = 0;
     void MaybeReadProcMaps();
     virtual scoped_refptr<CompactionMetric> MakeCompactionMetric(
@@ -119,7 +115,7 @@ class BASE_EXPORT SelfCompactionManager {
     scoped_refptr<SequencedTaskRunner> task_runner_;
     std::vector<debug::MappedMemoryRegion> regions_;
     const base::TimeTicks triggered_at_;
-    const uint64_t max_bytes_;
+    const base::ByteSize max_bytes_;
   };
 
  private:
@@ -185,10 +181,10 @@ class BASE_EXPORT SelfCompactionManager {
   static void ResetCompactionForTesting();
   static std::unique_ptr<CompactionState> GetSelfCompactionStateForTesting(
       scoped_refptr<SequencedTaskRunner> task_runner,
-      const TimeTicks& triggered_at);
+      TimeTicks triggered_at);
   static std::unique_ptr<CompactionState> GetRunningCompactionStateForTesting(
       scoped_refptr<SequencedTaskRunner> task_runner,
-      const TimeTicks& triggered_at);
+      TimeTicks triggered_at);
 
   // Whether or not we should continue self compaction. There are two reasons
   // why we would cancel:

@@ -272,7 +272,7 @@ int PreambleGetter::DoConnectServerComplete(size_t preamble_index, int result) {
   // Only cares about decoding the first preamble request
   if (preamble_index == 0) {
     std::vector<SourceStreamType> types =
-        FilterSourceStream::GetContentEncodingTypes(std::nullopt, *headers);
+        FilterSourceStream::GetContentEncodingTypes(*headers);
     req.upstream = FilterSourceStream::CreateDecodingSourceStream(
         std::make_unique<PreambleGetterSourceStream>(
             req.server_socket_handle->socket()),

@@ -173,7 +173,7 @@ Se você estiver usando o CentOS 7, precisará instalar estes pré-requisitos pa
 
 ```bash
 yum install epel-release -y
-yum install gcc gettext autoconf libtool automake make pcre-devel asciidoc xmlto c-ares-devel libev-devel libsodium-devel mbedtls-devel -y
+yum install gcc gettext autoconf libtool automake make pcre-devel doxygen c-ares-devel libev-devel libsodium-devel mbedtls-devel -y
 ```
 
 ### Archlinux & Manjaro
@@ -208,8 +208,7 @@ Em geral, você precisa das seguintes dependências de compilação:
 * libpcre3 (antiga biblioteca pcre)
 * libev
 * libc-ares
-* asciidoc (somente para documentação)
-* xmlto (apenas para documentação)
+* Doxygen 1.9.4+ (somente para documentação)
 
 Notas: Fedora 26 libsodium versão >= 1.0.12, então você pode instalar via dnf install libsodium em vez de compilar a partir da fonte.
 
@@ -222,11 +221,11 @@ Para algumas das distribuições, você pode instalar dependências de compilaç
 ```bash
 # Instalação de dependências básicas de compilação
 ## Debian / Ubuntu
-sudo apt-get install --no-install-recommends gettext build-essential autoconf libtool libpcre3-dev asciidoc xmlto libev-dev libc-ares-dev automake libmbedtls-dev libsodium-dev pkg-config
+sudo apt-get install --no-install-recommends gettext build-essential autoconf libtool libpcre3-dev doxygen libev-dev libc-ares-dev automake libmbedtls-dev libsodium-dev pkg-config
 ## CentOS / Fedora / RHEL
-sudo yum install gettext gcc autoconf libtool automake make asciidoc xmlto c-ares-devel libev-devel
+sudo yum install gettext gcc autoconf libtool automake make doxygen c-ares-devel libev-devel
 ## Arch
-sudo pacman -S gettext gcc autoconf libtool automake make asciidoc xmlto c-ares libev
+sudo pacman -S gettext gcc autoconf libtool automake make doxygen c-ares libev
 
 # Instalação do libsodium
 export LIBSODIUM_VER=1.0.16

@@ -19,6 +19,7 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/message_loop/message_pump_wakeup_counter.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/posix/eintr_wrapper.h"
@@ -422,7 +423,7 @@ void MessagePumpEpoll::UnregisterInterest(
 
   EpollEventEntry& entry = entry_it->second;
   auto& interests = entry.interests;
-  auto* it = std::ranges::find(interests, interest);
+  auto it = std::ranges::find(interests, interest);
   CHECK(it != interests.end());
   interests.erase(it);
 
@@ -477,6 +478,10 @@ bool MessagePumpEpoll::WaitForEpollEvents(TimeDelta timeout) {
 
     ready_events =
         span(epoll_events).first(base::checked_cast<size_t>(epoll_result));
+  }
+
+  if (!ready_events.empty()) {
+    MessagePumpWakeupCounter::GetForCurrentThread().RecordWakeup();
   }
 
   for (epoll_event& e : ready_events) {

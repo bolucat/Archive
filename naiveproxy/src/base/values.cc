@@ -21,6 +21,7 @@
 #include "base/check_op.h"
 #include "base/containers/checked_iterators.h"
 #include "base/containers/map_util.h"
+#include "base/containers/span.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -413,11 +414,11 @@ void DictValue::clear() {
 }
 
 DictValue::iterator DictValue::erase(iterator pos) {
-  return iterator(storage_.erase(pos.GetUnderlyingIteratorDoNotUse()));
+  return iterator(storage_.erase(pos.dict_iter_));
 }
 
 DictValue::iterator DictValue::erase(const_iterator pos) {
-  return iterator(storage_.erase(pos.GetUnderlyingIteratorDoNotUse()));
+  return iterator(storage_.erase(pos.dict_iter_));
 }
 
 DictValue DictValue::Clone() const {

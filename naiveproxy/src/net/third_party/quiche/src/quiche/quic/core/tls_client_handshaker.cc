@@ -162,6 +162,13 @@ bool TlsClientHandshaker::CryptoConnect() {
 
   SSL_set_enable_ech_grease(ssl(),
                             tls_connection_.ssl_config().ech_grease_enabled);
+#if BORINGSSL_API_VERSION >= 43
+  if (GetQuicReloadableFlag(quic_reject_unusable_ech_config)) {
+    QUIC_RELOADABLE_FLAG_COUNT(quic_reject_unusable_ech_config);
+    SSL_set_reject_unusable_ech_config(
+        ssl(), tls_connection_.ssl_config().reject_unusable_ech_config);
+  }
+#endif
   if (!tls_connection_.ssl_config().ech_config_list.empty() &&
       !SSL_set1_ech_config_list(
           ssl(),
@@ -408,6 +415,19 @@ ssl_early_data_reason_t TlsClientHandshaker::EarlyDataReason() const {
   return TlsHandshaker::EarlyDataReason();
 }
 
+std::optional<QuicWallTime> TlsClientHandshaker::GetSessionTicketCreationTime()
+    const {
+  if (cached_state_ && cached_state_->tls_session) {
+    // SSL_SESSION_get_time returns the time the session was originally
+    // established (i.e. when the ticket was issued in the previous connection).
+    // It remains fixed to that creation time and is not updated when the
+    // session is reused/resumed.
+    return QuicWallTime::FromUNIXSeconds(
+        SSL_SESSION_get_time(cached_state_->tls_session.get()));
+  }
+  return std::nullopt;
+}
+
 bool TlsClientHandshaker::ReceivedInchoateReject() const {
   QUIC_BUG_IF(quic_bug_12736_3, !one_rtt_keys_available());
   // REJ messages are a QUIC crypto feature, so TLS always returns false.
@@ -556,7 +576,7 @@ void TlsClientHandshaker::OnHandshakeConfirmed() {
 }
 
 QuicAsyncStatus TlsClientHandshaker::VerifyCertChain(
-    const std::vector<std::string>& certs, std::string* error_details,
+    const std::vector<absl::string_view>& certs, std::string* error_details,
     std::unique_ptr<ProofVerifyDetails>* details, uint8_t* out_alert,
     std::unique_ptr<ProofVerifierCallback> callback) {
   matched_trust_anchor_id_ = SSL_peer_matched_trust_anchor(ssl());

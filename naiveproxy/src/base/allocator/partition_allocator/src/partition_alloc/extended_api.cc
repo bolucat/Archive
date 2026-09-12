@@ -50,26 +50,26 @@ void EnablePartitionAllocThreadCacheForRootIfDisabled(
 void DisablePartitionAllocThreadCacheForProcess() {
   PA_CHECK(allocator_shim::internal::PartitionAllocMalloc::
                AllocatorConfigurationFinalized());
-  for (size_t alloc_token = 0; alloc_token < allocator_shim::kNumPartitions;
-       alloc_token++) {
+  for (size_t partition_index = 0;
+       partition_index < allocator_shim::kNumPartitions; partition_index++) {
     DisableThreadCacheForRootIfEnabled(
         allocator_shim::internal::PartitionAllocMalloc::Allocator(
-            allocator_shim::AllocToken(alloc_token)));
+            partition_index));
     DisableThreadCacheForRootIfEnabled(
         allocator_shim::internal::PartitionAllocMalloc::OriginalAllocator(
-            allocator_shim::AllocToken(alloc_token)));
+            partition_index));
   }
 }
 
 void EnablePartitionAllocThreadCacheForProcess() {
   PA_CHECK(allocator_shim::internal::PartitionAllocMalloc::
                AllocatorConfigurationFinalized());
-  for (size_t alloc_token = 0; alloc_token < allocator_shim::kNumPartitions;
-       alloc_token++) {
+  for (size_t partition_index = 0;
+       partition_index < allocator_shim::kNumPartitions; partition_index++) {
     EnablePartitionAllocThreadCacheForRootIfDisabled(
         allocator_shim::internal::PartitionAllocMalloc::Allocator(
-            allocator_shim::AllocToken(alloc_token)),
-        alloc_token);
+            partition_index),
+        partition_index);
   }
 }
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
@@ -153,9 +153,13 @@ ThreadCacheProcessScopeForTesting::~ThreadCacheProcessScopeForTesting() {
                                     kDefaultRootThreadCacheIndex);
       }
     }
+    if (regular_allocator != root_) {
+      DisableThreadCacheForRootIfEnabled(root_);
+    }
   } else {
     // ThreadCache for all processes was disabled.
     DisableThreadCacheForRootIfEnabled(regular_allocator);
+    DisableThreadCacheForRootIfEnabled(root_);
     ThreadCache::SwapForTesting(nullptr, kDefaultRootThreadCacheIndex);
   }
 #else

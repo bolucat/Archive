@@ -73,7 +73,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AdaptiveToolbarButton.ChosenRanking" units="rank"
-    expires_after="2026-09-20">
+    expires_after="2027-01-24">
   <owner>jinsukkiim@google.com</owner>
   <owner>clank-app-team@google.com</owner>
   <summary>
@@ -106,7 +106,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AdaptiveToolbarButton.HiddenReason"
-    enum="CustomTabsMtbHiddenReason" expires_after="2026-11-22">
+    enum="CustomTabsMtbHiddenReason" expires_after="2027-01-24">
   <owner>jinsukkiim@google.com</owner>
   <owner>clank-app-team@google.com</owner>
   <summary>
@@ -117,7 +117,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AdaptiveToolbarButton.Shown"
-    enum="AdaptiveToolbarButtonVariant" expires_after="2026-10-04">
+    enum="AdaptiveToolbarButtonVariant" expires_after="2027-02-07">
   <owner>jinsukkiim@google.com</owner>
   <owner>clank-app-team@google.com</owner>
   <summary>
@@ -136,30 +136,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="CustomTabs.AuthTab.ExternalNavigationScheme"
-    enum="CustomTabsAuthScheme" expires_after="2026-10-25">
-  <owner>sinansahin@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Records the scheme of the external navigation URL for Custom Tabs that were
-    launched with a redirect_uri param. Not recorded for Auth Tabs. Recorded
-    when a URL is sent as an intent to the system. Android only.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.AuthTab.RedirectUriScheme"
-    enum="CustomTabsAuthScheme" expires_after="2026-06-22">
-  <owner>sinansahin@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Records the scheme of the redirect_uri param within the URL used to launch
-    the Custom Tab. Recorded when the Custom Tab receives and handles the
-    initial intent. Android only.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.AuthTab.TimeToDalVerification.SinceFlowCompletion"
-    units="ms" expires_after="2026-06-22">
+<histogram name="CustomTabs.AuthTab.TimeToDalVerification.SinceFlowCompletion2"
+    units="ms" expires_after="2027-06-16">
   <owner>sinansahin@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -171,8 +149,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="CustomTabs.AuthTab.TimeToDalVerification.SinceStart"
-    units="ms" expires_after="2026-06-22">
+<histogram name="CustomTabs.AuthTab.TimeToDalVerification.SinceStart2"
+    units="ms" expires_after="2027-06-16">
   <owner>sinansahin@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -182,7 +160,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AuthView.UrlParams" units="bit field"
-    expires_after="2026-11-22">
+    expires_after="2027-01-24">
   <owner>sinansahin@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -232,7 +210,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ClientAppId" enum="ClientAppId"
-    expires_after="2026-09-27">
+    expires_after="2027-01-31">
   <owner>yusufo@chromium.org</owner>
   <summary>
     Android: AppId declared by the launching application in EXTRA_APPLICATION_ID
@@ -264,7 +242,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.CloseCause" enum="CustomTabsCloseCause"
-    expires_after="2026-09-27">
+    expires_after="2026-11-29">
   <owner>jinsukkim@chromium.org</owner>
   <owner>twellington@chromium.org</owner>
   <owner>cct-team@google.com</owner>
@@ -341,7 +319,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.DetachedResourceRequest.FinalStatus"
-    enum="NetErrorCodes" expires_after="2026-10-18">
+    enum="NetErrorCodes" expires_after="2027-02-21">
   <owner>lizeb@chromium.org</owner>
   <owner>cct-team@google.com</owner>
   <summary>
@@ -380,7 +358,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.FeatureUsage" enum="CustomTabsFeatureUsed"
-    expires_after="2026-11-15">
+    expires_after="2027-01-17">
   <owner>donnd@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -524,10 +502,9 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="CustomTabs.IncognitoCCTCallerId" enum="IncognitoCCTCallerId"
-    expires_after="2026-03-23">
-  <owner>dullweber@google.com</owner>
-  <owner>arabm@google.com</owner>
+<histogram name="CustomTabs.IncognitoCctCallerId" enum="IncognitoCCTCallerId"
+    expires_after="2026-12-05">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-incognito@google.com</owner>
   <owner>cct-team@google.com</owner>
   <summary>
@@ -535,6 +512,9 @@ chromium-metrics-reviews@google.com.
     feature name is recorded, for external calls, either Google App or
     Non-Google App categories are recorded. The metric is recorded when an
     Incognito CCT opening intent is received.
+
+    Warning: this histogram was expired from 2026-03-23 to 2026-12-04; data may
+    be missing.
   </summary>
 </histogram>
 
@@ -566,7 +546,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Minimized.MinimizeSuccess" enum="Boolean"
-    expires_after="2026-11-15">
+    expires_after="2027-01-17">
   <owner>sinansahin@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -598,7 +578,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.NavigationEvent" enum="CustomTabsNavigationEvent"
-    expires_after="2026-10-25">
+    expires_after="2026-12-27">
   <owner>jinsukkim@chromium.org</owner>
   <owner>clank-app-team@chromium.org</owner>
   <summary>
@@ -632,7 +612,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Omnibox.NumNavigationsPerSession" units="count"
-    expires_after="2026-11-01">
+    expires_after="2027-01-03">
   <owner>ender@google.com</owner>
   <owner>sinansahin@google.com</owner>
   <summary>
@@ -650,6 +630,42 @@ chromium-metrics-reviews@google.com.
     Records how CCT was opened i.e. opened as a new one, opened on top of Google
     search widget results via CCT omnibox, or restored from a disk state file.
     Recored once per CCT when it is initialized. Android only.
+  </summary>
+</histogram>
+
+<histogram name="CustomTabs.PageContent.Eligibility"
+    enum="CustomTabsPageContentEligibility" expires_after="2027-02-14">
+  <owner>jinsukkim@google.com</owner>
+  <owner>tivi@google.com</owner>
+  <owner>chrome-connective-tissue@google.com</owner>
+  <summary>
+    Records Custom Tab page content features eligibility, detailing if it was
+    enabled by embedder, by Chrome developer experiment, or disqualified.
+    Android only. Logged once per button click.
+  </summary>
+</histogram>
+
+<histogram name="CustomTabs.PageContent.Outcome"
+    enum="CustomTabsPageContentExtractionResult" expires_after="2027-02-14">
+  <owner>jinsukkim@google.com</owner>
+  <owner>tivi@google.com</owner>
+  <owner>chrome-connective-tissue@google.com</owner>
+  <summary>
+    Records the detailed outcome of requesting/generating page content values
+    (annotated page content URI, screenshots, or file content URIs) for Custom
+    Tabs actions. Android only. Logged once per button click.
+  </summary>
+</histogram>
+
+<histogram name="CustomTabs.PageContent.RequestedTypes"
+    enum="CustomTabsPageContentRequestedType" expires_after="2027-02-14">
+  <owner>jinsukkim@google.com</owner>
+  <owner>tivi@google.com</owner>
+  <owner>chrome-connective-tissue@google.com</owner>
+  <summary>
+    Records each content type (APC, Screenshot, or File) requested inside the
+    custom bottom bar view click map from Embedder. Android only. Logged once
+    per button click.
   </summary>
 </histogram>
 
@@ -726,7 +742,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ResetTimeout.ElapsedTimeInMinutesOnReturn"
-    units="minutes" expires_after="2026-10-18">
+    units="minutes" expires_after="2026-12-20">
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -742,7 +758,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ResetTimeout.IsFromEmbedder" enum="Boolean"
-    expires_after="2026-10-18">
+    expires_after="2026-12-20">
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -753,7 +769,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ResetTimeout.Outcome"
-    enum="CustomTabsResetTimeoutOutcome" expires_after="2026-10-18">
+    enum="CustomTabsResetTimeoutOutcome" expires_after="2026-12-20">
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -865,7 +881,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Startup.StartedNavigationEarly" enum="Boolean"
-    expires_after="2026-11-15">
+    expires_after="2027-01-17">
   <owner>mthiesse@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -875,7 +891,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Startup.TimeToFirstCommitNavigation2.{suffix}"
-    units="ms" expires_after="2026-10-25">
+    units="ms" expires_after="2027-01-03">
   <owner>mthiesse@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -896,7 +912,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Startup.TimeToFirstContentfulPaint.{suffix}"
-    units="ms" expires_after="2026-10-25">
+    units="ms" expires_after="2027-01-03">
   <owner>mthiesse@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -917,7 +933,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Startup.TimeToLargestContentfulPaint2.{suffix}"
-    units="ms" expires_after="2026-10-25">
+    units="ms" expires_after="2027-02-07">
   <owner>mthiesse@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -938,7 +954,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.TimeSpentInEngagementEventIpc" units="ms"
-    expires_after="2026-11-01">
+    expires_after="2027-01-03">
   <owner>nafisabedin@google.com</owner>
   <summary>
     The time spent in milliseconds processing IPCs on the UI thread related to
@@ -968,7 +984,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.WarmupStateOnLaunch" enum="WarmupStateOnLaunch"
-    expires_after="2026-09-27">
+    expires_after="2027-01-31">
   <owner>lizeb@chromium.org</owner>
   <summary>
     Recorded only on Android. Reports whether warmup() has been called when a
@@ -1061,11 +1077,14 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="TrustedWebActivity.LaunchHandler.ClientMode"
-    enum="TwaLaunchHandlerClientMode" expires_after="2026-05-01">
+    enum="TwaLaunchHandlerClientMode" expires_after="2027-06-13">
   <owner>tkachenkoo@google.com</owner>
   <owner>sselyvon@google.com</owner>
   <owner>lt-web-apps-team@google.com</owner>
   <summary>
+    Warning: this histogram was expired from 2026-05-01 to 2026-07; data may be
+    missing.
+
     Records the client mode of a web app launched through Trusted Web Activity.
     Client mode is a part of Launch Handler API. Recorded on Trusted Web
     Activity startup if the Launch Handler API is enabled.
@@ -1073,11 +1092,14 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="TrustedWebActivity.LaunchHandler.FailureReason"
-    enum="TwaLaunchHandlerFailureReason" expires_after="2026-05-01">
+    enum="TwaLaunchHandlerFailureReason" expires_after="2027-06-13">
   <owner>tkachenkoo@google.com</owner>
   <owner>sselyvon@google.com</owner>
   <owner>lt-web-apps-team@google.com</owner>
   <summary>
+    Warning: this histogram was expired from 2026-05-01 to 2026-07; data may be
+    missing.
+
     Records the verification failure that caused launch queue to not be notified
     in Trusted Web Activity, if any. Recorded on Trusted Web Activity startup if
     the Launch Handler API is enabled.
@@ -1085,11 +1107,14 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="TrustedWebActivity.LaunchHandler.FileHandling"
-    enum="TwaLaunchHandlerFileHandling" expires_after="2026-05-01">
+    enum="TwaLaunchHandlerFileHandling" expires_after="2027-06-13">
   <owner>tkachenkoo@google.com</owner>
   <owner>sselyvon@google.com</owner>
   <owner>lt-web-apps-team@google.com</owner>
   <summary>
+    Warning: this histogram was expired from 2026-05-01 to 2026-07; data may be
+    missing.
+
     Records the usage of file handling API in Trusted Web Activities, as part of
     Launch Handler API. Recorded on Trusted Web Activity startup if the Launch
     Handler API is enabled. If file handling is not used, NO_FILES will be
@@ -1098,12 +1123,15 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="TrustedWebActivity.Notification.PermissionRequestResult"
-    enum="ContentSetting" expires_after="2026-02-01">
+    enum="ContentSetting" expires_after="2027-06-13">
   <owner>peconn@chromium.org</owner>
   <owner>
     src/chrome/android/java/src/org/chromium/chrome/browser/browserservices/OWNERS
   </owner>
   <summary>
+    Warning: this histogram was expired from 2026-02-01 to 2026-07; data may be
+    missing.
+
     The result of a TWA notification permission request for the purpose of
     notification delegation. This is logged when the
     NotificationPermissionUpdater receives the result from the

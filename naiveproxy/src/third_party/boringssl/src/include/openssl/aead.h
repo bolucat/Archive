@@ -15,7 +15,7 @@
 #ifndef OPENSSL_HEADER_AEAD_H
 #define OPENSSL_HEADER_AEAD_H
 
-#include <openssl/base.h>   // IWYU pragma: export
+#include <openssl/base.h>  // IWYU pragma: export
 
 #if defined(__cplusplus)
 extern "C" {
@@ -326,7 +326,7 @@ OPENSSL_EXPORT int EVP_AEAD_CTX_seal(const EVP_AEAD_CTX *ctx, uint8_t *out,
 //
 // At most `in_len` bytes are written to `out`. In order to ensure success,
 // `max_out_len` should be at least `in_len`. On successful return, `*out_len`
-// is set to the the actual number of bytes written.
+// is set to the actual number of bytes written.
 //
 // The length of `nonce`, `nonce_len`, must be equal to the result of
 // `EVP_AEAD_nonce_length` for this AEAD.
@@ -398,26 +398,20 @@ OPENSSL_EXPORT int EVP_AEAD_CTX_open_gather(
     size_t in_tag_len, const uint8_t *ad, size_t ad_len);
 
 // crypto_ivec_st (aka `CRYPTO_IVEC`) combines a pointer to input data with its
-// length. It is usually passed as an array of length of at most
-// `CRYPTO_IOVEC_MAX`.
+// length. It is usually passed as an array.
 struct crypto_ivec_st {
   const uint8_t *in;
   size_t len;
 };
 
 // crypto_iovec_st (aka `CRYPTO_IOVEC` combines a pointer to input data and a
-// pointer to an output buffer with their common length. It is usually passed
-// as an array of length of at most `CRYPTO_IOVEC_MAX`.
+// pointer to an output buffer with their common length.
 struct crypto_iovec_st {
   // `out` and `in` must be disjoint or equal
   uint8_t *out;
   const uint8_t *in;
   size_t len;
 };
-
-// CRYPTO_IOVEC_MAX is the maximum number of entries in an `CRYPTO_IOVEC` or
-// `CRYPTO_IVEC` parameter.
-#define CRYPTO_IOVEC_MAX 16
 
 // EVP_AEAD_CTX_sealv encrypts and authenticates the `in` bytes from `iovec`
 // and authenticates the `aadvec` bytes. It writes the same amount of
@@ -450,8 +444,6 @@ struct crypto_iovec_st {
 // directly or via `iovec` and `aadvec`, with the one exception that it is
 // permitted for the same `iovec` member's `in` and `out` members to be equal
 // (in-place operation).
-//
-// `num_iovec` and `num_aadvec` must be <= `CRYPTO_IOVEC_MAX`.
 OPENSSL_EXPORT
 int EVP_AEAD_CTX_sealv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
                        size_t num_iovec, uint8_t *out_tag, size_t *out_tag_len,
@@ -493,8 +485,6 @@ int EVP_AEAD_CTX_sealv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
 // directly or via `iovec` and `aadvec`, with the one exception that it is
 // permitted for the same `iovec` member's `in` and `out` members to be equal
 // (in-place operation).
-//
-// `num_iovec` and `num_aadvec` must be <= `CRYPTO_IOVEC_MAX`.
 OPENSSL_EXPORT
 int EVP_AEAD_CTX_openv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
                        size_t num_iovec, size_t *out_total_bytes,
@@ -531,8 +521,6 @@ int EVP_AEAD_CTX_openv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
 // directly or via `iovec` and `aadvec`, with the one exception that it is
 // permitted for the same `iovec` member's `in` and `out` members to be equal
 // (in-place operation).
-//
-// `num_iovec` and `num_aadvec` must be <= `CRYPTO_IOVEC_MAX`.
 OPENSSL_EXPORT
 int EVP_AEAD_CTX_openv_detached(const EVP_AEAD_CTX *ctx,
                                 const CRYPTO_IOVEC *iovec, size_t num_iovec,
@@ -547,38 +535,54 @@ OPENSSL_EXPORT const EVP_AEAD *EVP_AEAD_CTX_aead(const EVP_AEAD_CTX *ctx);
 
 // TLS-specific AEAD algorithms.
 //
-// These AEAD primitives do not meet the definition of generic AEADs. They are
-// all specific to TLS and should not be used outside of that context. They must
-// be initialized with `EVP_AEAD_CTX_init_with_direction`, are stateful, and may
-// not be used concurrently. Any nonces are used as IVs, so they must be
-// unpredictable. They only accept an `ad` parameter of length 11 (the standard
-// TLS one with length omitted).
+// WARNING: These `EVP_AEAD` objects primitives do not meet the definition of
+// generic AEADs. They are all specific to TLS and should not be used outside of
+// that context. They break the usual guarantees around `EVP_AEAD_CTX`,
+// including statefulness, thread-safety, initialization conventions, and
+// security requirements around the nonce parameter.
 
+// The following functions implement legacy TLS CBC cipher suites.
+//
+// WARNING: These functions are effectively internal implementation details of
+// libssl, not general-purpose constructions. They are not true AEADs and differ
+// from a normal `EVP_AEAD` in many ways:
+//
+// * They must be initialized with `EVP_AEAD_CTX_init_with_direction`, not
+//   `EVP_AEAD_CTX_init`.
+//
+// * The resulting `EVP_AEAD_CTX`s are stateful. Neither `EVP_AEAD_CTX_open*`
+//   nor `EVP_AEAD_CTX_seal*` can be called concurrently.
+//
+// * The `ad` parameter must have length 11 (the standard TLS one with length
+//   omitted).
+//
+// * The `nonce` parameter is used as a CBC IV and must be unpredictable, not
+//   just unique.
+//
+// * The `*_implicit_iv` variants implicitly set the IV to the last block of the
+//   previous message. They are vulnerable the BEAST attack unless the caller
+//   applies record-splitting mitigations externally.
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls(void);
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls_implicit_iv(void);
-
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_128_cbc_sha256_tls(void);
-
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls(void);
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls_implicit_iv(void);
-
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls(void);
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls_implicit_iv(void);
 
-// EVP_aead_aes_128_gcm_tls12 is AES-128 in Galois Counter Mode using the TLS
-// 1.2 nonce construction.
+// The following functions behave like `EVP_aead_aes_128_gcm` or
+// `EVP_aead_aes_256_gcm`, except that seal operations fail if nonces do not
+// match the TLS 1.2 or TLS 1.3 nonce construction.
+//
+// These functions are only applicable for callers that want an extra AEAD-level
+// nonce check. `EVP_aead_aes_128_gcm` and `EVP_aead_aes_256_gcm` are otherwise
+// suitable for implementing TLS and will produce the same output.
+//
+// WARNING: `EVP_AEAD_CTX` objects initialized with these `EVP_AEAD`s are
+// stateful. `EVP_AEAD_CTX_seal*` cannot be called concurrently.
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_128_gcm_tls12(void);
-
-// EVP_aead_aes_256_gcm_tls12 is AES-256 in Galois Counter Mode using the TLS
-// 1.2 nonce construction.
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_256_gcm_tls12(void);
-
-// EVP_aead_aes_128_gcm_tls13 is AES-128 in Galois Counter Mode using the TLS
-// 1.3 nonce construction.
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_128_gcm_tls13(void);
-
-// EVP_aead_aes_256_gcm_tls13 is AES-256 in Galois Counter Mode using the TLS
-// 1.3 nonce construction.
 OPENSSL_EXPORT const EVP_AEAD *EVP_aead_aes_256_gcm_tls13(void);
 
 
@@ -591,8 +595,7 @@ enum evp_aead_direction_t {
 };
 
 // EVP_AEAD_CTX_init_with_direction calls `EVP_AEAD_CTX_init` for normal
-// AEADs. For TLS-specific and SSL3-specific AEADs, it initializes `ctx` for a
-// given direction.
+// AEADs. For TLS-specific AEADs, it initializes `ctx` for a given direction.
 OPENSSL_EXPORT int EVP_AEAD_CTX_init_with_direction(
     EVP_AEAD_CTX *ctx, const EVP_AEAD *aead, const uint8_t *key, size_t key_len,
     size_t tag_len, enum evp_aead_direction_t dir);
@@ -631,9 +634,9 @@ extern "C++" {
 
 BSSL_NAMESPACE_BEGIN
 
-using ScopedEVP_AEAD_CTX =
-    internal::StackAllocated<EVP_AEAD_CTX, void, EVP_AEAD_CTX_zero,
-                             EVP_AEAD_CTX_cleanup>;
+BORINGSSL_MAKE_STACK_TRAITS(EVP_AEAD_CTX, EVP_AEAD_CTX_zero,
+                            EVP_AEAD_CTX_cleanup)
+using ScopedEVP_AEAD_CTX = internal::StackAllocated<EVP_AEAD_CTX>;
 
 BORINGSSL_MAKE_DELETER(EVP_AEAD_CTX, EVP_AEAD_CTX_free)
 

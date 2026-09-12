@@ -16,6 +16,7 @@
 #include "base/logging.h"
 #include "base/memory_coordinator/memory_consumer.h"
 #include "base/memory_coordinator/memory_coordinator_features.h"
+#include "base/memory_coordinator/traits.h"
 #include "base/memory_coordinator/utils.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/system/sys_info.h"
@@ -45,7 +46,7 @@ int32_t CalculateDefaultMaxSize() {
 
   // We want to use up to 2% of the computer's memory, with a limit of 50 MB,
   // reached on system with more than 2.5 GB of RAM.
-  if (total_memory >= base::MiBU(2500)) {
+  if (total_memory >= base::MiB(2500)) {
     return kMaxMemoryCacheSize;
   }
 
@@ -66,6 +67,16 @@ base::LinkNode<MemEntryImpl>* NextSkippingChildren(
   return node;
 }
 
+constexpr base::MemoryConsumerTraits kMemBackendImplTraits(
+    // Scales with system RAM up to a cap in the tens of MBs.
+    base::MemoryConsumerTraits::EstimatedMemoryUsage::kMedium,
+    // Eviction traverses linked list and erases map entries.
+    base::MemoryConsumerTraits::ReleaseMemoryCost::kRequiresTraversal,
+    // Evicted entries can be re-fetched from network.
+    base::MemoryConsumerTraits::InformationRetention::kLossless,
+    // Eviction runs inline synchronously.
+    base::MemoryConsumerTraits::ExecutionType::kSynchronous);
+
 }  // namespace
 
 MemBackendImpl::MemBackendImpl(net::NetLog* net_log)
@@ -73,11 +84,9 @@ MemBackendImpl::MemBackendImpl(net::NetLog* net_log)
       net_log_(net_log),
       memory_consumer_registration_(
           "MemBackendImpl",
-          std::nullopt,  // TODO(crbug.com/489671163): Add traits.
+          kMemBackendImplTraits,
           this,
-          base::AsyncMemoryConsumerRegistration::CheckUnregister::kDisabled,
-          base::AsyncMemoryConsumerRegistration::CheckRegistryExists::
-              kDisabled) {}
+          base::AsyncMemoryConsumerRegistration::CheckUnregister::kDisabled) {}
 
 MemBackendImpl::~MemBackendImpl() {
   while (!entries_.empty())
@@ -317,6 +326,20 @@ void MemBackendImpl::OnExternalCacheHit(const std::string& key) {
     it->second->UpdateStateOnUse();
 }
 
+void MemBackendImpl::SetMaxBytes(base::ByteSize max_bytes) {
+  max_size_ = base::saturated_cast<int32_t>(max_bytes.InBytes());
+  if (base::FeatureList::IsEnabled(base::kStatefulMemoryPressure)) {
+    current_max_size_ = CalculateTargetMemoryLimit();
+  } else {
+    current_max_size_ = max_size_;
+  }
+  EvictTill(current_max_size_);
+}
+
+base::ByteSize MemBackendImpl::GetMaxBytesForTesting() const {
+  return base::ByteSize(base::checked_cast<uint64_t>(max_size_));
+}
+
 void MemBackendImpl::Init(int32_t max_bytes) {
   max_size_ = max_bytes ? max_bytes : CalculateDefaultMaxSize();
   current_max_size_ = max_size_;
@@ -344,17 +367,17 @@ void MemBackendImpl::EvictTill(int target_size) {
 }
 
 int32_t MemBackendImpl::CalculateTargetMemoryLimit() const {
-  if (memory_limit() <= base::kModerateMemoryPressureThreshold) {
+  if (memory_limit() <= base::MemoryLimit::ModeratePressureThreshold()) {
     // Under moderate pressure or worse, we use linear interpolation to ensure
     // the cache is never completely cleared. We map the [0, 50] memory limit
     // range to [10%, 50%] of max_size_.
     float min = max_size_ / 10.0f;
     float max = max_size_ / 2.0f;
     return base::checked_cast<int32_t>(
-        std::lerp(min, max, memory_limit_ratio() / 0.5));
+        std::lerp(min, max, memory_limit().ratio() / 0.5));
   }
 
-  return base::ScaleByMemoryLimit(max_size_, memory_limit());
+  return memory_limit().Scale(max_size_);
 }
 
 void MemBackendImpl::OnUpdateMemoryLimit() {
@@ -374,9 +397,10 @@ void MemBackendImpl::OnReleaseMemory() {
     EvictTill(current_max_size_);
   } else {
     // Stateless behavior, evict to specific limits.
-    if (memory_limit() <= base::kCriticalMemoryPressureThreshold) {
+    if (memory_limit() <= base::MemoryLimit::CriticalPressureThreshold()) {
       EvictTill(max_size_ / 10);
-    } else if (memory_limit() <= base::kModerateMemoryPressureThreshold) {
+    } else if (memory_limit() <=
+               base::MemoryLimit::ModeratePressureThreshold()) {
       EvictTill(max_size_ / 2);
     }
   }

@@ -1065,7 +1065,12 @@ bool QuicSentPacketManager::MaybeUpdateRTT(QuicPacketNumber largest_acked,
 
   QuicTime::Delta send_delta = ack_receive_time - transmission_info.sent_time;
   const bool min_rtt_available = !rtt_stats_.min_rtt().IsZero();
-  rtt_stats_.UpdateRtt(send_delta, ack_delay_time, ack_receive_time);
+  const bool rtt_updated =
+      rtt_stats_.UpdateRtt(send_delta, ack_delay_time, ack_receive_time);
+  if (rtt_updated && network_change_visitor_ != nullptr) {
+    network_change_visitor_->OnRttSampleAvailable(
+        QuicRttSample{.latest_rtt = rtt_stats_.latest_rtt()});
+  }
 
   if (!min_rtt_available && !rtt_stats_.min_rtt().IsZero()) {
     loss_algorithm_->OnMinRttAvailable();
@@ -1287,10 +1292,7 @@ QuicSentPacketManager::OnConnectionMigration(bool reset_send_algorithm) {
         MarkForRetransmission(packet_number, PATH_RETRANSMISSION);
         QUICHE_DCHECK_EQ(it->state, NOT_CONTRIBUTING_RTT);
       }
-      if (neuter_packets_on_migration_) {
-        QUIC_RELOADABLE_FLAG_COUNT(quic_neuter_packets_on_migration);
-        old_send_algorithm->OnPacketNeutered(packet_number);
-      }
+      old_send_algorithm->OnPacketNeutered(packet_number);
     }
     it->state = NOT_CONTRIBUTING_RTT;
   }

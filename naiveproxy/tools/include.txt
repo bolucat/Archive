@@ -79,6 +79,7 @@
 ^third_party/zstd
 ^tools/cfi
 ^tools/clang/scripts/update.py
+^tools/generate_shim_headers
 ^tools/grit
 ^tools/gritsettings
 ^tools/metrics

@@ -249,6 +249,12 @@ TlsServerHandshaker::TlsServerHandshaker(
     SSL_set1_group_ids(ssl(), crypto_config->preferred_groups().data(),
                        crypto_config->preferred_groups().size());
   }
+
+#if BORINGSSL_API_VERSION >= 41
+  if (tls_connection_.ssl_config().server_padding_enabled) {
+    SSL_set_server_padding_enabled(ssl(), 1);
+  }
+#endif
 }
 
 TlsServerHandshaker::~TlsServerHandshaker() { CancelOutstandingCallbacks(); }
@@ -630,6 +636,10 @@ void TlsServerHandshaker::SetWriteSecret(
     }
     crypto_negotiated_params_->key_exchange_group = SSL_get_curve_id(ssl());
     crypto_negotiated_params_->encrypted_client_hello = SSL_ech_accepted(ssl());
+#if BORINGSSL_API_VERSION >= 41
+    crypto_negotiated_params_->signature_algorithm_used =
+        SSL_get_signature_algorithm_used(ssl());
+#endif
   }
   TlsHandshaker::SetWriteSecret(level, cipher, write_secret);
 }
@@ -683,7 +693,7 @@ void TlsServerHandshaker::FinishHandshake() {
 // proof verifier is not set, the method will assume the certificate chain is
 // valid and return QUIC_SUCCESS.
 QuicAsyncStatus TlsServerHandshaker::VerifyCertChain(
-    const std::vector<std::string>& certs, std::string* error_details,
+    const std::vector<absl::string_view>& certs, std::string* error_details,
     std::unique_ptr<ProofVerifyDetails>* details, uint8_t* out_alert,
     std::unique_ptr<ProofVerifierCallback> callback) {
   if (proof_verifier_ == nullptr) {

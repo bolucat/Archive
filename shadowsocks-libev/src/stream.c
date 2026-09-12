@@ -96,6 +96,7 @@
 #define CHACHA20IETF        20
 
 const char *supported_stream_ciphers[STREAM_CIPHER_NUM] = {
+    // [cli-stream-ciphers]
     "table",
     "rc4",
     "rc4-md5",
@@ -117,6 +118,7 @@ const char *supported_stream_ciphers[STREAM_CIPHER_NUM] = {
     "salsa20",
     "chacha20",
     "chacha20-ietf"
+    // [cli-stream-ciphers]
 };
 
 static const char *supported_stream_ciphers_mbedtls[STREAM_CIPHER_NUM] = {

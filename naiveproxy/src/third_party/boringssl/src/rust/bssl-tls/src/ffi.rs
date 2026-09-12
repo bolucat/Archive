@@ -13,27 +13,27 @@
 // limitations under the License.
 
 use core::{
+    iter::FusedIterator,
     marker::PhantomData,
-    mem::MaybeUninit,
+    mem::{
+        MaybeUninit,
+        forget, //
+    },
     ptr::{
         NonNull,
         null,
         null_mut, //
-    },
-    slice::{
-        from_raw_parts,
-        from_raw_parts_mut, //
     }, //
 };
 
-use bssl_crypto::FfiSlice;
+use bssl_crypto::{
+    FfiSlice,
+    FromFfiSlice, //
+};
 
 use crate::{
     context::CertificateCache,
-    errors::{
-        Error,
-        IoError, //
-    }, //
+    errors::Error, //
 };
 
 pub(crate) fn slice_into_ffi_raw_parts<T>(slice: &[T]) -> (*const T, usize) {
@@ -62,50 +62,6 @@ impl<T> Drop for Alloc<T> {
             // Safety: `self.0` is still valid at dropping, even if it is `NULL`.
             bssl_sys::OPENSSL_free(self.0 as _);
         }
-    }
-}
-
-/// Sanitize the data pointer and length and reconstitute the slice.
-///
-/// This method returns an empty slice if the length is 0 or the pointer is NULL.
-/// # Safety
-/// Caller must ensure that `'a` outlives `input`.
-#[inline]
-pub(crate) unsafe fn sanitize_slice<'a, T>(input: *const T, len: usize) -> Option<&'a [T]> {
-    if len == 0 || input.is_null() {
-        return Some(&[]);
-    }
-    if !input.is_aligned() || len.checked_mul(size_of::<T>())? > isize::MAX as usize {
-        return None;
-    }
-    unsafe {
-        // Safety: the pointer and the size has been sanitised.
-        Some(from_raw_parts(input, len))
-    }
-}
-
-/// Sanitize the data pointer and length and reconstitute the mutable slice.
-///
-/// `capacity` counts the number of `T`s that `out` can hold, **not number of bytes**.
-///
-/// This method returns an empty slice if the length is 0 or the pointer is NULL.
-/// # Safety
-/// Caller must ensure that `'a` outlives `input`.
-#[inline]
-pub(crate) unsafe fn sanitise_mut_byteslice<'a>(
-    out: *mut u8,
-    capacity: usize,
-) -> Option<&'a mut [u8]> {
-    if capacity == 0 || out.is_null() {
-        return Some(&mut []);
-    }
-    if capacity > isize::MAX as usize {
-        return None;
-    }
-    unsafe {
-        // Safety: `out` is 1-aligned and `0` is a valid pattern for `u8`.
-        core::ptr::write_bytes(out, 0, capacity);
-        Some(from_raw_parts_mut(out, capacity))
     }
 }
 
@@ -138,21 +94,18 @@ impl<'a> Bio<'a> {
         Bio(bio, PhantomData)
     }
 
-    pub fn from_bytes(buf: &'a [u8]) -> Result<Self, Error> {
-        let len = if let Ok(len) = buf.len().try_into() {
-            len
-        } else {
-            return Err(Error::Io(IoError::TooLong));
-        };
+    pub fn from_bytes(buf: &'a [u8]) -> Self {
+        #[allow(clippy::expect_used, reason = "breach of fundamental invariant")]
+        let len = buf.len().try_into().expect("impossible allocation size");
         let mem_buf = unsafe {
             // Safety: buf is still valid
             bssl_sys::BIO_new_mem_buf(buf.as_ffi_void_ptr(), len)
         };
         let mem_buf = NonNull::new(mem_buf).expect("allocation failure");
-        Ok(unsafe {
+        unsafe {
             // Safety: our returned object is outlived by the input buffer.
             Self::new(mem_buf)
-        })
+        }
     }
 
     pub fn ptr(&mut self) -> *mut bssl_sys::BIO {
@@ -176,6 +129,9 @@ pub struct ReceiveBuffer<'a> {
     cursor: usize,
     _p: PhantomData<&'a mut [u8]>,
 }
+
+// Safety: by construction `ReceiveBuffer` owns the buffer region for exclusive access.
+unsafe impl Send for ReceiveBuffer<'_> {}
 
 impl<'a> ReceiveBuffer<'a> {
     /// Create a new receiver buffer, with uninitialised bytes.
@@ -249,7 +205,7 @@ impl<'a> ReceiveBuffer<'a> {
         unsafe {
             // Safety: `self` still exclusively owns the buffer region and the range of bytes
             // is known to be initialised by us. See `advance`.
-            sanitize_slice(self.ptr, self.cursor).unwrap_or(&[])
+            u8::from_ffi_ptr(self.ptr, self.cursor)
         }
     }
 
@@ -271,3 +227,178 @@ impl core::ops::Deref for ReceiveBuffer<'_> {
         self.filled()
     }
 }
+
+pub(crate) trait CryptoBufferWrapper {
+    /// Safety: `buf` must be exclusively owned.
+    unsafe fn from_crypto_buffer(buf: core::ptr::NonNull<::bssl_sys::CRYPTO_BUFFER>) -> Self;
+}
+
+pub(crate) unsafe trait BsslStack: Sized {
+    type Element: StackElement;
+
+    fn new() -> *mut Self;
+
+    /// Safety: `this` handle must be a live `stack_st_*` handle.
+    unsafe fn size(this: *const Self) -> usize;
+
+    /// Safety: `this` handle must be live and `idx` must be in bounds.
+    unsafe fn index(this: *const Self, idx: usize) -> *const Self::Element;
+
+    /// Safety: both `this` and `elem` cannot be aliased.
+    unsafe fn push(this: *mut Self, elem: *mut Self::Element);
+
+    const POP_FREE: unsafe extern "C" fn(
+        *mut Self,
+        Option<unsafe extern "C" fn(*mut Self::Element)>,
+    );
+}
+
+unsafe impl BsslStack for bssl_sys::stack_st_CRYPTO_BUFFER {
+    type Element = bssl_sys::CRYPTO_BUFFER;
+
+    fn new() -> *mut Self {
+        let st = unsafe {
+            // Safety: this call only allocates memory
+            bssl_sys::sk_CRYPTO_BUFFER_new_null()
+        };
+        if st.is_null() {
+            panic!("allocation failed")
+        }
+        st
+    }
+
+    unsafe fn size(this: *const Self) -> usize {
+        unsafe {
+            // Safety: `this` is still live and valid.
+            bssl_sys::sk_CRYPTO_BUFFER_num(this)
+        }
+    }
+
+    unsafe fn index(this: *const Self, idx: usize) -> *const Self::Element {
+        unsafe {
+            // Safety: `this` is valid and live
+            bssl_sys::sk_CRYPTO_BUFFER_value(this, idx)
+        }
+    }
+
+    unsafe fn push(this: *mut Self, elem: *mut bssl_sys::CRYPTO_BUFFER) {
+        let rc = unsafe {
+            // Safety: `this` and `elem` are exclusively owned and valid.
+            bssl_sys::sk_CRYPTO_BUFFER_push(this, elem)
+        };
+        if rc == 0 {
+            panic!("allocation failed")
+        }
+    }
+
+    const POP_FREE: unsafe extern "C" fn(
+        *mut Self,
+        Option<unsafe extern "C" fn(*mut Self::Element)>,
+    ) = bssl_sys::sk_CRYPTO_BUFFER_pop_free;
+}
+
+pub(crate) unsafe trait StackElement: Sized {
+    type Stack: BsslStack<Element = Self>;
+
+    const FREE: unsafe extern "C" fn(*mut Self);
+}
+
+unsafe impl StackElement for bssl_sys::CRYPTO_BUFFER {
+    type Stack = bssl_sys::stack_st_CRYPTO_BUFFER;
+
+    const FREE: unsafe extern "C" fn(*mut Self) = bssl_sys::CRYPTO_BUFFER_free;
+}
+
+pub(crate) struct Stack<T: StackElement> {
+    inner: *mut T::Stack,
+    _p: PhantomData<T>,
+}
+
+impl<T: StackElement> Drop for Stack<T> {
+    fn drop(&mut self) {
+        unsafe {
+            // Safety: we still own the stack at this moment
+            T::Stack::POP_FREE(self.inner, Some(T::FREE))
+        }
+    }
+}
+
+impl<T: StackElement> Stack<T> {
+    pub fn new() -> Self {
+        Self {
+            inner: T::Stack::new(),
+            _p: PhantomData,
+        }
+    }
+
+    // Safety: `elem` must not alias because its ownership will be transferred.
+    pub unsafe fn push(&mut self, elem: *mut T) {
+        unsafe {
+            // Safety: `this` is owned by the caller.
+            T::Stack::push(self.inner, elem);
+        }
+    }
+
+    pub fn into_raw(self) -> *mut T::Stack {
+        let ptr = self.inner;
+        forget(self);
+        ptr
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct StackIterator<'a, T: StackElement> {
+    sk: *const T::Stack,
+    len: usize,
+    curr: usize,
+    _p: PhantomData<&'a fn() -> T>,
+}
+
+impl<'a, T: StackElement> StackIterator<'a, T> {
+    /// Safety: caller must ensure that `sk` outlives `'a`.
+    pub(crate) unsafe fn new(sk: *const T::Stack) -> Self {
+        let len = if sk.is_null() {
+            0
+        } else {
+            unsafe {
+                // Safety: `sk` is valid now.
+                T::Stack::size(sk)
+            }
+        };
+        Self {
+            sk,
+            len,
+            curr: 0,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: StackElement> Iterator for StackIterator<'a, T> {
+    type Item = *const T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr >= self.len {
+            return None;
+        }
+        let elem = unsafe {
+            // Safety: `self.sk` is still valid now and `self.curr` is within the bound.
+            T::Stack::index(self.sk, self.curr)
+        };
+        self.curr += 1;
+        if elem.is_null() {
+            // Fuse the iterator.
+            self.curr = self.len;
+            return None;
+        }
+        Some(elem)
+    }
+}
+
+impl<T: StackElement> ExactSizeIterator for StackIterator<'_, T> {
+    fn len(&self) -> usize {
+        self.len - self.curr
+    }
+}
+
+impl<T: StackElement> FusedIterator for StackIterator<'_, T> {}

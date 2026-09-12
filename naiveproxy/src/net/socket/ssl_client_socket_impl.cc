@@ -36,6 +36,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "crypto/openssl_util.h"
+#include "net/base/ech_mode.h"
 #include "net/base/features.h"
 #include "net/base/ip_address.h"
 #include "net/base/ip_endpoint.h"
@@ -58,6 +59,7 @@
 #include "net/ssl/openssl_ssl_util.h"
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_cipher_suite_names.h"
+#include "net/ssl/ssl_config_service.h"
 #include "net/ssl/ssl_connection_status_flags.h"
 #include "net/ssl/ssl_handshake_details.h"
 #include "net/ssl/ssl_info.h"
@@ -115,22 +117,23 @@ base::DictValue NetLogSSLInfoParams(SSLClientSocketImpl* socket) {
       .Set("received_server_padding", ssl_info.server_padding_received);
 }
 
-base::DictValue NetLogSSLAlertParams(const void* bytes, size_t len) {
-  return base::DictValue().Set("bytes", NetLogBinaryValue(bytes, len));
+base::DictValue NetLogSSLAlertParams(base::span<const uint8_t> bytes) {
+  base::DictValue dict;
+  dict.Set("bytes", NetLogBinaryValue(bytes));
+  return dict;
 }
 
 base::DictValue NetLogSSLMessageParams(bool is_write,
-                                       const void* bytes,
-                                       size_t len,
+                                       base::span<const uint8_t> bytes,
                                        NetLogCaptureMode capture_mode) {
-  if (len == 0) {
+  if (bytes.empty()) {
     NOTREACHED();
   }
 
   base::DictValue dict;
   // The handshake message type is the first byte. Include it so elided messages
   // still report their type.
-  uint8_t type = reinterpret_cast<const uint8_t*>(bytes)[0];
+  uint8_t type = bytes[0];
   dict.Set("type", type);
 
   // Elide client certificate messages unless logging socket bytes. The client
@@ -139,7 +142,7 @@ base::DictValue NetLogSSLMessageParams(bool is_write,
   // information on the user's identity.
   if (!is_write || type != SSL3_MT_CERTIFICATE ||
       NetLogCaptureIncludesSocketBytes(capture_mode)) {
-    dict.Set("bytes", NetLogBinaryValue(bytes, len));
+    dict.Set("bytes", NetLogBinaryValue(bytes));
   }
 
   return dict;
@@ -205,6 +208,9 @@ class SSLClientSocketImpl::SSLContext {
     SSL_CTX_set_timeout(ssl_ctx_.get(), 1 * 60 * 60 /* one hour */);
 
     SSL_CTX_set_grease_enabled(ssl_ctx_.get(), 1);
+    if (base::FeatureList::IsEnabled(features::kTlsGreaseSigalgs)) {
+      SSL_CTX_set_grease_sigalgs_enabled(ssl_ctx_.get(), 1);
+    }
 
     // Deduplicate all certificates minted from the SSL_CTX in memory.
     SSL_CTX_set0_buffer_pool(ssl_ctx_.get(), x509_util::GetBufferPool());
@@ -263,7 +269,11 @@ class SSLClientSocketImpl::SSLContext {
                               SSL* ssl,
                               void* arg) {
     SSLClientSocketImpl* socket = GetInstance()->GetClientSocketFromSSL(ssl);
-    return socket->MessageCallback(is_write, content_type, buf, len);
+    // SAFETY: BoringSSL calls this method with a valid pointer `buf` and
+    // corresponding length `len`.
+    return socket->MessageCallback(
+        is_write, content_type,
+        UNSAFE_BUFFERS(base::span(static_cast<const uint8_t*>(buf), len)));
   }
 
   // This is the index used with SSL_get_ex_data to retrieve the owner
@@ -313,8 +323,8 @@ std::vector<uint8_t> SSLClientSocketImpl::GetECHRetryConfigs() {
   // https://commondatastorage.googleapis.com/chromium-boringssl-docs/ssl.h.html#SSL_get0_ech_retry_configs
   // says `retry_configs` and `retry_configs_len` define a buffer containing a
   // serialized ECHConfigList.
-  return UNSAFE_BUFFERS(
-      std::vector<uint8_t>(retry_configs, retry_configs + retry_configs_len));
+  return base::ToVector(
+      UNSAFE_BUFFERS(base::span(retry_configs, retry_configs_len)));
 }
 
 std::vector<std::vector<uint8_t>>
@@ -328,8 +338,9 @@ SSLClientSocketImpl::GetServerTrustAnchorIDs() {
   // says `available_trust_anchor_ids` and `available_trust_anchor_ids_len`
   // define a buffer containing a list of Trust Anchor IDs in wire format
   // (length-prefixed non-empty strings);
-  base::span<const uint8_t> wire_ids(UNSAFE_BUFFERS(base::span<const uint8_t>(
-      available_trust_anchor_ids, available_trust_anchor_ids_len)));
+  base::span<const uint8_t> wire_ids =
+      UNSAFE_BUFFERS(base::span(available_trust_anchor_ids,
+                                available_trust_anchor_ids_len));
   return x509_util::ParseTlsTrustAnchorIDs(wire_ids);
 }
 
@@ -572,8 +583,8 @@ void SSLClientSocketImpl::GetSSLCertRequestInfo(
   // SAFETY: The comment of `SSL_get0_peer_verify_algorithms` says that
   // `algorithms` is set to an array, and its return value is the length of the
   // array.
-  UNSAFE_BUFFERS(cert_request_info->signature_algorithms.assign(
-      algorithms, algorithms + num_algorithms));
+  cert_request_info->signature_algorithms = base::ToVector(
+      UNSAFE_BUFFERS(base::span(algorithms, num_algorithms)));
 }
 
 void SSLClientSocketImpl::ApplySocketTag(const SocketTag& tag) {
@@ -784,12 +795,6 @@ int SSLClientSocketImpl::Init() {
   // TODO(crbug.com/boringssl/699): Once the default is flipped in BoringSSL, we
   // no longer need to override it.
   static const uint16_t kVerifyPrefs[] = {
-      SSL_SIGN_ECDSA_SECP256R1_SHA256, SSL_SIGN_RSA_PSS_RSAE_SHA256,
-      SSL_SIGN_RSA_PKCS1_SHA256,       SSL_SIGN_ECDSA_SECP384R1_SHA384,
-      SSL_SIGN_RSA_PSS_RSAE_SHA384,    SSL_SIGN_RSA_PKCS1_SHA384,
-      SSL_SIGN_RSA_PSS_RSAE_SHA512,    SSL_SIGN_RSA_PKCS1_SHA512,
-  };
-  static const uint16_t kVerifyPrefsWithMlDsa[] = {
       SSL_SIGN_ML_DSA_44,
       SSL_SIGN_ML_DSA_65,
       SSL_SIGN_ML_DSA_87,
@@ -802,16 +807,9 @@ int SSLClientSocketImpl::Init() {
       SSL_SIGN_RSA_PSS_RSAE_SHA512,
       SSL_SIGN_RSA_PKCS1_SHA512,
   };
-  if (base::FeatureList::IsEnabled(features::kTlsMldsaSignatures)) {
-    if (!SSL_set_verify_algorithm_prefs(ssl_.get(), kVerifyPrefsWithMlDsa,
-                                        std::size(kVerifyPrefsWithMlDsa))) {
-      return ERR_UNEXPECTED;
-    }
-  } else {
-    if (!SSL_set_verify_algorithm_prefs(ssl_.get(), kVerifyPrefs,
-                                        std::size(kVerifyPrefs))) {
-      return ERR_UNEXPECTED;
-    }
+  if (!SSL_set_verify_algorithm_prefs(ssl_.get(), kVerifyPrefs,
+                                      std::size(kVerifyPrefs))) {
+    return ERR_UNEXPECTED;
   }
 
   SSL_set_alps_use_new_codepoint(
@@ -859,21 +857,8 @@ int SSLClientSocketImpl::Init() {
         host_and_port_, &client_cert_, &client_private_key_);
   }
 
-  if (context_->config().ech_enabled) {
-    // TODO(crbug.com/41482204): Enable this unconditionally.
-    SSL_set_enable_ech_grease(ssl_.get(), 1);
-  }
-  if (!ssl_config_.ech_config_list.empty()) {
-    DCHECK(context_->config().ech_enabled);
-    net_log_.AddEvent(NetLogEventType::SSL_ECH_CONFIG_LIST, [&] {
-      return base::DictValue().Set(
-          "bytes", NetLogBinaryValue(ssl_config_.ech_config_list));
-    });
-    if (!SSL_set1_ech_config_list(ssl_.get(),
-                                  ssl_config_.ech_config_list.data(),
-                                  ssl_config_.ech_config_list.size())) {
-      return ERR_INVALID_ECH_CONFIG_LIST;
-    }
+  if (int rv = ConfigureEch(); rv != OK) {
+    return rv;
   }
 
   SSL_set_permute_extensions(ssl_.get(), 1);
@@ -954,6 +939,7 @@ int SSLClientSocketImpl::DoHandshake() {
 
     OpenSSLErrorInfo error_info;
     net_error = MapLastOpenSSLError(ssl_error, err_tracer, &error_info);
+    MaybeClearEarlyDataCache(net_error);
     if (net_error == ERR_IO_PENDING) {
       // If not done, stay in this state
       next_handshake_state_ = STATE_HANDSHAKE;
@@ -1381,6 +1367,7 @@ int SSLClientSocketImpl::DoPayloadRead(base::span<uint8_t> buf) {
     } else {
       pending_read_error_ = MapLastOpenSSLError(
           pending_read_ssl_error_, err_tracer, &pending_read_error_info_);
+      MaybeClearEarlyDataCache(pending_read_error_);
     }
 
     // Many servers do not reliably send a close_notify alert when shutting down
@@ -1436,6 +1423,7 @@ int SSLClientSocketImpl::DoPayloadWrite() {
     return ERR_IO_PENDING;
   OpenSSLErrorInfo error_info;
   int net_error = MapLastOpenSSLError(ssl_error, err_tracer, &error_info);
+  MaybeClearEarlyDataCache(net_error);
 
   if (net_error != ERR_IO_PENDING) {
     NetLogOpenSSLError(net_log_, NetLogEventType::SSL_WRITE_ERROR, net_error,
@@ -1487,11 +1475,7 @@ void SSLClientSocketImpl::DoPeek() {
     // On early data reject, clear early data on any other sessions in the
     // cache, so retries do not get stuck attempting 0-RTT. See
     // https://crbug.com/1066623.
-    if (err == ERR_EARLY_DATA_REJECTED ||
-        err == ERR_WRONG_VERSION_ON_EARLY_DATA) {
-      context_->ssl_client_session_cache()->ClearEarlyData(
-          GetSessionCacheKey(std::nullopt));
-    }
+    MaybeClearEarlyDataCache(err);
 
     handled_early_data_result_ = true;
 
@@ -1675,6 +1659,15 @@ bool SSLClientSocketImpl::IsCachingEnabled() const {
   return context_->ssl_client_session_cache() != nullptr;
 }
 
+void SSLClientSocketImpl::MaybeClearEarlyDataCache(int error) {
+  if ((error == ERR_EARLY_DATA_REJECTED ||
+       error == ERR_WRONG_VERSION_ON_EARLY_DATA) &&
+      IsCachingEnabled()) {
+    context_->ssl_client_session_cache()->ClearEarlyData(
+        GetSessionCacheKey(std::nullopt));
+  }
+}
+
 ssl_private_key_result_t SSLClientSocketImpl::PrivateKeySignCallback(
     uint16_t algorithm,
     base::span<const uint8_t> input) {
@@ -1747,27 +1740,26 @@ void SSLClientSocketImpl::OnPrivateKeyComplete(
 
 void SSLClientSocketImpl::MessageCallback(int is_write,
                                           int content_type,
-                                          const void* buf,
-                                          size_t len) {
+                                          base::span<const uint8_t> bytes) {
   switch (content_type) {
     case SSL3_RT_ALERT:
       net_log_.AddEvent(is_write ? NetLogEventType::SSL_ALERT_SENT
                                  : NetLogEventType::SSL_ALERT_RECEIVED,
-                        [&] { return NetLogSSLAlertParams(buf, len); });
+                        [&] { return NetLogSSLAlertParams(bytes); });
       break;
     case SSL3_RT_HANDSHAKE:
       net_log_.AddEvent(
           is_write ? NetLogEventType::SSL_HANDSHAKE_MESSAGE_SENT
                    : NetLogEventType::SSL_HANDSHAKE_MESSAGE_RECEIVED,
           [&](NetLogCaptureMode capture_mode) {
-            return NetLogSSLMessageParams(!!is_write, buf, len, capture_mode);
+            return NetLogSSLMessageParams(!!is_write, bytes, capture_mode);
           });
       break;
     case SSL3_RT_CLIENT_HELLO_INNER:
       DCHECK(is_write);
       net_log_.AddEvent(NetLogEventType::SSL_ENCRYPTED_CLIENT_HELLO,
                         [&](NetLogCaptureMode capture_mode) {
-                          return NetLogSSLMessageParams(!!is_write, buf, len,
+                          return NetLogSSLMessageParams(!!is_write, bytes,
                                                         capture_mode);
                         });
       break;
@@ -1824,6 +1816,38 @@ int SSLClientSocketImpl::MapLastOpenSSLError(
   }
 
   return net_error;
+}
+
+int SSLClientSocketImpl::ConfigureEch() {
+  EchMode ech_mode = context_->GetEchMode(host_and_port_.host());
+
+  switch (ech_mode) {
+    case EchMode::kDisabled:
+      DCHECK(ssl_config_.ech_config_list.empty());
+      return OK;
+    case EchMode::kStrict:
+      if (ssl_config_.ech_config_list.empty()) {
+        return ERR_STRICT_ECH_REQUIRED;
+      }
+      SSL_set_reject_unusable_ech_config(ssl_.get(), 1);
+      [[fallthrough]];
+    case EchMode::kOpportunistic:
+      // TODO(crbug.com/41482204): Enable this unconditionally.
+      SSL_set_enable_ech_grease(ssl_.get(), 1);
+      if (!ssl_config_.ech_config_list.empty()) {
+        net_log_.AddEvent(NetLogEventType::SSL_ECH_CONFIG_LIST, [&] {
+          return base::DictValue().Set(
+              "bytes", NetLogBinaryValue(ssl_config_.ech_config_list));
+        });
+        if (!SSL_set1_ech_config_list(ssl_.get(),
+                                      ssl_config_.ech_config_list.data(),
+                                      ssl_config_.ech_config_list.size())) {
+          return ERR_INVALID_ECH_CONFIG_LIST;
+        }
+      }
+      return OK;
+  }
+  NOTREACHED();
 }
 
 std::string_view SSLClientSocketImpl::GetECHNameOverride() const {

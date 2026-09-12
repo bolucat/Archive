@@ -161,11 +161,18 @@ class ABSL_ATTRIBUTE_OWNER node_hash_set
   //   // Move is guaranteed efficient
   //   absl::node_hash_set<std::string> set5(std::move(set4));
   //
+  //   // After the move, set4 is in a valid but unspecified state. The only
+  //   // operations guaranteed to be safe on a moved-from set are destruction,
+  //   // assignment, and clear(). Any other operation (e.g. size(), empty(),
+  //   // iteration) results in undefined behavior.
+  //
   // * Move assignment operator
   //
   //   // May be efficient if allocators are compatible
   //   absl::node_hash_set<std::string> set6;
   //   set6 = std::move(set5);
+  //
+  //   // Same moved-from guarantees apply to set5 after this operation.
   //
   // * Range constructor
   //
@@ -575,9 +582,9 @@ struct NodeHashSetPolicy
 
   static size_t element_space_used(const T*) { return sizeof(T); }
 
-  template <class Hash, bool kIsDefault>
+  template <class Hash, bool kIsDefault, size_t kSeedShift>
   static constexpr HashSlotFn get_hash_slot_fn() {
-    return &TypeErasedDerefAndApplyToSlotFn<Hash, T, kIsDefault>;
+    return &TypeErasedDerefAndApplyToSlotFn<Hash, T, kIsDefault, kSeedShift>;
   }
 };
 }  // namespace container_internal

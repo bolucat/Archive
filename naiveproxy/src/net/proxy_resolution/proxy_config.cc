@@ -9,6 +9,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/json/values_util.h"
 #include "base/notreached.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
@@ -313,6 +314,11 @@ ProxyConfig& ProxyConfig::operator=(ProxyConfig&& config) = default;
 ProxyConfig::~ProxyConfig() = default;
 
 bool ProxyConfig::Equals(const ProxyConfig& other) const {
+  return dynamic_routing_config_ == other.dynamic_routing_config_ &&
+         EqualsIgnoringDynamicRouting(other);
+}
+
+bool ProxyConfig::EqualsIgnoringDynamicRouting(const ProxyConfig& other) const {
   return proxy_override_rules_ == other.proxy_override_rules_ &&
          auto_detect_ == other.auto_detect_ && pac_url_ == other.pac_url_ &&
          pac_mandatory_ == other.pac_mandatory_ &&
@@ -391,7 +397,69 @@ base::Value ProxyConfig::ToValue() const {
     dict.Set("override_rules", std::move(override_rules));
   }
 
+  // Output dynamic routing config.
+  if (!dynamic_routing_config_.routing_rules.empty() ||
+      dynamic_routing_config_.is_update_in_progress) {
+    base::DictValue config_dict;
+    if (dynamic_routing_config_.is_update_in_progress) {
+      config_dict.Set("is_update_in_progress", true);
+    }
+    base::ListValue rules_list;
+    for (const auto& rule : dynamic_routing_config_.routing_rules) {
+      base::DictValue rule_dict;
+      base::ListValue matchers_list;
+      for (const auto& rule_str : rule.destination_matchers.rules()) {
+        matchers_list.Append(rule_str->ToString());
+      }
+      rule_dict.Set("destination_matchers", std::move(matchers_list));
+      rule_dict.Set("proxy_list", rule.proxy_list.ToValue());
+      rules_list.Append(std::move(rule_dict));
+    }
+    config_dict.Set("routing_rules", std::move(rules_list));
+    dict.Set("dynamic_routing_config", std::move(config_dict));
+  }
+
   return base::Value(std::move(dict));
 }
+
+ProxyConfig::DynamicRoutingRule::DynamicRoutingRule() = default;
+ProxyConfig::DynamicRoutingRule::DynamicRoutingRule(
+    const DynamicRoutingRule& other) = default;
+ProxyConfig::DynamicRoutingRule& ProxyConfig::DynamicRoutingRule::operator=(
+    const DynamicRoutingRule& other) = default;
+ProxyConfig::DynamicRoutingRule::DynamicRoutingRule(
+    DynamicRoutingRule&& other) = default;
+ProxyConfig::DynamicRoutingRule& ProxyConfig::DynamicRoutingRule::operator=(
+    DynamicRoutingRule&& other) = default;
+ProxyConfig::DynamicRoutingRule::~DynamicRoutingRule() = default;
+
+bool ProxyConfig::DynamicRoutingRule::operator==(
+    const DynamicRoutingRule& other) const {
+  return destination_matchers == other.destination_matchers &&
+         proxy_list.Equals(other.proxy_list);
+}
+
+base::DictValue ProxyConfig::DynamicRoutingRule::ToDict() const {
+  base::DictValue dict;
+  dict.Set("destination_matchers", destination_matchers.ToString());
+  dict.Set("proxy_list", proxy_list.ToValue());
+  return dict;
+}
+
+bool ProxyConfig::DynamicRoutingRule::MatchesDestination(
+    const GURL& url) const {
+  return destination_matchers.Matches(url);
+}
+
+ProxyConfig::DynamicRoutingConfig::DynamicRoutingConfig() = default;
+ProxyConfig::DynamicRoutingConfig::DynamicRoutingConfig(
+    const DynamicRoutingConfig& other) = default;
+ProxyConfig::DynamicRoutingConfig& ProxyConfig::DynamicRoutingConfig::operator=(
+    const DynamicRoutingConfig& other) = default;
+ProxyConfig::DynamicRoutingConfig::DynamicRoutingConfig(
+    DynamicRoutingConfig&& other) = default;
+ProxyConfig::DynamicRoutingConfig& ProxyConfig::DynamicRoutingConfig::operator=(
+    DynamicRoutingConfig&& other) = default;
+ProxyConfig::DynamicRoutingConfig::~DynamicRoutingConfig() = default;
 
 }  // namespace net

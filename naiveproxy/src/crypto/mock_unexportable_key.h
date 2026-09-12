@@ -16,7 +16,7 @@ class MockUnexportableSigningKey : public UnexportableSigningKey,
   MockUnexportableSigningKey();
   ~MockUnexportableSigningKey() override;
 
-  // UnexportableKey:
+  // UnexportableSigningKey:
   MOCK_METHOD(SignatureVerifier::SignatureAlgorithm,
               Algorithm,
               (),
@@ -30,13 +30,10 @@ class MockUnexportableSigningKey : public UnexportableSigningKey,
 #if BUILDFLAG(IS_APPLE)
   MOCK_METHOD(SecKeyRef, GetSecKeyRef, (), (const, override));
 #endif  // BUILDFLAG(IS_APPLE)
+#if BUILDFLAG(IS_WIN)
+  MOCK_METHOD(NCRYPT_KEY_HANDLE, GetNCryptKeyHandle, (), (const, override));
+#endif  // BUILDFLAG(IS_WIN)
   MOCK_METHOD(const StatefulKey*, AsStatefulKey, (), (const, override));
-
-  // StatefulKey:
-  MOCK_METHOD(std::string, GetKeyTag, (), (const, override));
-  MOCK_METHOD(base::Time, GetCreationTime, (), (const, override));
-
-  // UnexportableSigningKey:
   MOCK_METHOD(std::optional<std::vector<uint8_t>>,
               SignSlowly,
               (base::span<const uint8_t> data),
@@ -44,6 +41,10 @@ class MockUnexportableSigningKey : public UnexportableSigningKey,
 #if BUILDFLAG(IS_WIN)
   MOCK_METHOD(bool, SupportsTls13, (), (override));
 #endif  // BUILDFLAG(IS_WIN)
+
+  // StatefulKey:
+  MOCK_METHOD(std::string, GetKeyTag, (), (const, override));
+  MOCK_METHOD(base::Time, GetCreationTime, (), (const, override));
 };
 
 class MockUnexportableAttestationKey : public UnexportableAttestationKey,
@@ -52,7 +53,7 @@ class MockUnexportableAttestationKey : public UnexportableAttestationKey,
   MockUnexportableAttestationKey();
   ~MockUnexportableAttestationKey() override;
 
-  // UnexportableKey:
+  // UnexportableSigningKey:
   MOCK_METHOD(SignatureVerifier::SignatureAlgorithm,
               Algorithm,
               (),
@@ -66,7 +67,17 @@ class MockUnexportableAttestationKey : public UnexportableAttestationKey,
 #if BUILDFLAG(IS_APPLE)
   MOCK_METHOD(SecKeyRef, GetSecKeyRef, (), (const, override));
 #endif  // BUILDFLAG(IS_APPLE)
+#if BUILDFLAG(IS_WIN)
+  MOCK_METHOD(NCRYPT_KEY_HANDLE, GetNCryptKeyHandle, (), (const, override));
+#endif  // BUILDFLAG(IS_WIN)
   MOCK_METHOD(const StatefulKey*, AsStatefulKey, (), (const, override));
+  MOCK_METHOD(std::optional<std::vector<uint8_t>>,
+              SignSlowly,
+              (base::span<const uint8_t> data),
+              (override));
+#if BUILDFLAG(IS_WIN)
+  MOCK_METHOD(bool, SupportsTls13, (), (override));
+#endif  // BUILDFLAG(IS_WIN)
 
   // StatefulKey:
   MOCK_METHOD(std::string, GetKeyTag, (), (const, override));

@@ -227,9 +227,7 @@ bool TlsHandshaker::ShouldCloseConnectionOnUnexpectedError(int /*ssl_error*/) {
 }
 
 size_t TlsHandshaker::BufferSizeLimitForLevel(EncryptionLevel level) const {
-  if (GetQuicRestartFlag(quic_shed_tls_handshake_config) &&
-      level != ENCRYPTION_FORWARD_SECURE && !SSL_in_init(ssl())) {
-    QUIC_RESTART_FLAG_COUNT_N(quic_shed_tls_handshake_config, 1, 2);
+  if (level != ENCRYPTION_FORWARD_SECURE && !SSL_in_init(ssl())) {
     // TODO(crbug.com/459517298): Remove this branch when BoringSSL is fixed.
     return 0;
   }
@@ -258,12 +256,11 @@ enum ssl_verify_result_t TlsHandshaker::VerifyCert(uint8_t* out_alert) {
     *out_alert = SSL_AD_INTERNAL_ERROR;
     return ssl_verify_invalid;
   }
-  // TODO(nharper): Pass the CRYPTO_BUFFERs into the QUIC stack to avoid copies.
-  std::vector<std::string> certs;
+  std::vector<absl::string_view> certs;
   for (CRYPTO_BUFFER* cert : cert_chain) {
-    certs.push_back(
-        std::string(reinterpret_cast<const char*>(CRYPTO_BUFFER_data(cert)),
-                    CRYPTO_BUFFER_len(cert)));
+    certs.push_back(absl::string_view(
+        reinterpret_cast<const char*>(CRYPTO_BUFFER_data(cert)),
+        CRYPTO_BUFFER_len(cert)));
   }
   QUIC_DVLOG(1) << "VerifyCert: peer cert_chain length: " << certs.size();
 

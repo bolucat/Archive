@@ -23,8 +23,6 @@ component("crypto") {
     "aes_cbc.h",
     "aes_ctr.cc",
     "aes_ctr.h",
-    "cose.cc",
-    "cose.h",
     "crypto_export.h",
     "ecdsa_utils.cc",
     "ecdsa_utils.h",
@@ -36,14 +34,14 @@ component("crypto") {
     "features.h",
     "hash.cc",
     "hash.h",
-    "hkdf.cc",
-    "hkdf.h",
     "hmac.cc",
     "hmac.h",
     "hpke.cc",
     "hpke.h",
     "kdf.cc",
     "kdf.h",
+    "kem.cc",
+    "kem.h",
     "kex.cc",
     "kex.h",
     "keypair.cc",
@@ -73,17 +71,11 @@ component("crypto") {
     "signature_verifier.h",
     "subtle_passkey.cc",
     "subtle_passkey.h",
-    "unexportable_key.cc",
-    "unexportable_key.h",
-    "unexportable_key_metrics.cc",
-    "unexportable_key_metrics.h",
-    "unexportable_key_software_unsecure.cc",
     "user_verifying_key.cc",
     "user_verifying_key.h",
   ]
 
   deps = [
-    "//components/cbor",
   ]
 
   public_deps = [
@@ -135,14 +127,14 @@ component("crypto") {
     sources += [
       "scoped_capi_types.h",
       "scoped_cng_types.h",
-      "unexportable_key_win.cc",
-      "unexportable_key_win.h",
       "user_verifying_key_win.cc",
     ]
     libs = [
       "crypt32.lib",
       "ncrypt.lib",
+      "tbs.lib",
     ]
+    ldflags = [ "/DELAYLOAD:tbs.dll" ]
   }
 
   # Some files are built when NSS is used for the platform certificate library.

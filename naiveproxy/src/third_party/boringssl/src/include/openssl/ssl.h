@@ -616,6 +616,11 @@ OPENSSL_EXPORT int SSL_version(const SSL *ssl);
 // client's.
 #define SSL_OP_CIPHER_SERVER_PREFERENCE 0x00400000L
 
+// SSL_OP_ALL is the set of options that are enabled by default. It is safe, but
+// not necessary, to pass this value to `SSL_CTX_set_options`.
+// TODO(crbug.com/41393419): Disable SSL_OP_LEGACY_SERVER_CONNECT by default.
+#define SSL_OP_ALL SSL_OP_LEGACY_SERVER_CONNECT
+
 // The following flags toggle individual protocol versions. This is deprecated.
 // Use `SSL_CTX_set_min_proto_version` and `SSL_CTX_set_max_proto_version`
 // instead.
@@ -787,6 +792,11 @@ OPENSSL_EXPORT void SSL_CTX_set1_buffer_pool(SSL_CTX *ctx,
 // example, a callback could evaluate application-specific SNI rules to filter
 // down to an ECDSA and RSA credential, then configure both for BoringSSL to
 // select between the two.
+//
+// On the server, the credential is selected before resumption. By default,
+// sessions established when using one credential can be resumed on other
+// credentials. Callers can partition sessions with
+// `SSL_CREDENTIAL_set1_session_id_context`.
 
 // SSL_CREDENTIAL_new_x509 returns a new, empty X.509 credential, or NULL on
 // error. Callers should release the result with `SSL_CREDENTIAL_free` when
@@ -851,8 +861,8 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_ocsp_response(SSL_CREDENTIAL *cred,
                                                      CRYPTO_BUFFER *ocsp);
 
 // SSL_CREDENTIAL_set1_certificate_properties parses
-// `certificate_property_list` as a CertificatePropertyList (see Section 6 of
-// draft-ietf-tls-trust-anchor-ids-00) and applies recognized properties to
+// `certificate_property_list` as a CertificatePropertyList (see Section 7 of
+// draft-ietf-tls-trust-anchor-ids-04) and applies recognized properties to
 // `cred`. It returns one on success and zero on error. It is an error if
 // `certificate_property_list` does not parse correctly, or if any recognized
 // properties from `certificate_property_list` cannot be applied to `cred`.
@@ -863,7 +873,9 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_ocsp_response(SSL_CREDENTIAL *cred,
 // logic, without requiring application changes for each property defined.
 //
 // BoringSSL currently supports the following properties:
-// * trust_anchor_identifier (see `SSL_CREDENTIAL_set1_trust_anchor_id`)
+// * trust_anchor_id (see `SSL_CREDENTIAL_set1_trust_anchor_id`)
+// * trust_anchor_group_inclusions (see
+//   `SSL_CREDENTIAL_add1_trust_anchor_group_inclusion`)
 //
 // Note this function does not automatically enable issuer matching. Callers
 // must separately call `SSL_CREDENTIAL_set_must_match_issuer` if desired.
@@ -900,6 +912,19 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_signed_cert_timestamp_list(
 // that do not.
 OPENSSL_EXPORT void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred,
                                                          int match);
+
+// SSL_CREDENTIAL_set1_session_id_context sets `cred`'s session ID context to
+// `sid_ctx`. It returns one on success and zero on error. The session ID
+// context is an application-defined opaque byte string used to partition
+// session resumption. A session will not be used in a connection without a
+// matching session ID context.
+//
+// If unset on a server credential, the session ID context configured on the
+// `SSL` (or `SSL_CTX`) will be used. See `SSL_CTX_set_session_id_context`.
+//
+// This setting is only applicable to server credentials.
+OPENSSL_EXPORT int SSL_CREDENTIAL_set1_session_id_context(
+    SSL_CREDENTIAL *cred, const uint8_t *sid_ctx, size_t sid_ctx_len);
 
 // SSL_CTX_add1_credential appends `cred` to `ctx`'s credential list. It returns
 // one on success and zero on error. The credential list is maintained in order
@@ -1746,6 +1771,7 @@ OPENSSL_EXPORT int SSL_set_cipher_list(SSL *ssl, const char *str);
 
 // SSL_CTX_get_ciphers returns the cipher list for `ctx`, in order of
 // preference.
+// TODO(crbug.com/550501994): This should return a const pointer.
 OPENSSL_EXPORT STACK_OF(SSL_CIPHER) *SSL_CTX_get_ciphers(const SSL_CTX *ctx);
 
 // SSL_CTX_cipher_in_group returns one if the `i`th cipher (see
@@ -1754,6 +1780,7 @@ OPENSSL_EXPORT STACK_OF(SSL_CIPHER) *SSL_CTX_get_ciphers(const SSL_CTX *ctx);
 OPENSSL_EXPORT int SSL_CTX_cipher_in_group(const SSL_CTX *ctx, size_t i);
 
 // SSL_get_ciphers returns the cipher list for `ssl`, in order of preference.
+// TODO(crbug.com/550501994): This should return a const pointer.
 OPENSSL_EXPORT STACK_OF(SSL_CIPHER) *SSL_get_ciphers(const SSL *ssl);
 
 
@@ -1901,8 +1928,6 @@ OPENSSL_EXPORT int SSL_export_keying_material(const SSL *ssl, uint8_t *out,
 // connections within an application-level session will reuse TLS sessions. TLS
 // sessions may be dropped by the client or ignored by the server at any time.
 
-DECLARE_PEM_rw(SSL_SESSION, SSL_SESSION)
-
 // SSL_SESSION_new returns a newly-allocated blank `SSL_SESSION` or NULL on
 // error. This may be useful when writing tests but should otherwise not be
 // used.
@@ -1934,6 +1959,27 @@ OPENSSL_EXPORT int SSL_SESSION_to_bytes_for_ticket(const SSL_SESSION *in,
 OPENSSL_EXPORT SSL_SESSION *SSL_SESSION_from_bytes(const uint8_t *in,
                                                    size_t in_len,
                                                    const SSL_CTX *ctx);
+
+// PEM_read_bio_SSL_SESSION reads an `SSL_SESSION` as a PEM block of type "SSL
+// SESSION PARAMETERS", as described in `PEM_read_bio_SAMPLE`.
+OPENSSL_EXPORT SSL_SESSION *PEM_read_bio_SSL_SESSION(BIO *bio,
+                                                     SSL_SESSION **out,
+                                                     pem_password_cb *cb,
+                                                     void *userdata);
+
+// PEM_read_SSL_SESSION behaves like `PEM_read_bio_SSL_SESSION` but reads from
+// `fp`.
+OPENSSL_EXPORT SSL_SESSION *PEM_read_SSL_SESSION(FILE *fp, SSL_SESSION **out,
+                                                 pem_password_cb *cb,
+                                                 void *userdata);
+
+// PEM_write_bio_SSL_SESSION writes `in` to `bio` as a PEM block of type "SSL
+// SESSION PARAMETERS", as described in `PEM_write_bio_SAMPLE`.
+OPENSSL_EXPORT int PEM_write_bio_SSL_SESSION(BIO *bio, const SSL_SESSION *in);
+
+// PEM_write_SSL_SESSION behaves like `PEM_write_bio_SSL_SESSION` but writes to
+// `fp`.
+OPENSSL_EXPORT int PEM_write_SSL_SESSION(FILE *fp, const SSL_SESSION *in);
 
 // SSL_SESSION_get_version returns a string describing the TLS or DTLS version
 // `session` was established at. For example, "TLSv1.2" or "DTLSv1".
@@ -1999,8 +2045,7 @@ SSL_SESSION_get0_peer_certificates(const SSL_SESSION *session);
 
 // SSL_SESSION_get0_peer_rpk returns the peer raw public key stored in
 // `session`, or NULL if the peer did not send a raw public key.
-OPENSSL_EXPORT const EVP_PKEY *SSL_SESSION_get0_peer_rpk(
-    const SSL_SESSION *session);
+OPENSSL_EXPORT EVP_PKEY *SSL_SESSION_get0_peer_rpk(const SSL_SESSION *session);
 
 // SSL_SESSION_get0_signed_cert_timestamp_list sets `*out` and `*out_len` to
 // point to `*out_len` bytes of SCT information stored in `session`. This is
@@ -2158,7 +2203,8 @@ OPENSSL_EXPORT int SSL_SESSION_is_resumable_across_names(
 // be cached under different keys. A client that connects to the same host with,
 // e.g., different cipher suite settings or client certificates should also use
 // separate session caches between those contexts. Servers should also partition
-// session caches between SNI hosts with `SSL_CTX_set_session_id_context`.
+// session caches between SNI hosts with `SSL_CTX_set_session_id_context` or
+// `SSL_CREDENTIAL_set1_session_id_context`.
 //
 // Note also, in TLS 1.2 and earlier, offering sessions allows passive observers
 // to correlate different client connections. TLS 1.3 and later fix this,
@@ -2248,11 +2294,11 @@ OPENSSL_EXPORT uint32_t SSL_CTX_get_timeout(const SSL_CTX *ctx);
 
 // SSL_CTX_set_session_id_context sets `ctx`'s session ID context to `sid_ctx`.
 // It returns one on success and zero on error. The session ID context is an
-// application-defined opaque byte string. A session will not be used in a
-// connection without a matching session ID context.
+// application-defined opaque byte string used to partition session resumption.
+// A session will not be used in a connection without a matching session ID
+// context.
 //
-// For a server, if `SSL_VERIFY_PEER` is enabled, it is an error to not set a
-// session ID context.
+// See also `SSL_CREDENTIAL_set1_session_id_context`.
 OPENSSL_EXPORT int SSL_CTX_set_session_id_context(SSL_CTX *ctx,
                                                   const uint8_t *sid_ctx,
                                                   size_t sid_ctx_len);
@@ -2287,7 +2333,10 @@ OPENSSL_EXPORT size_t SSL_CTX_sess_number(const SSL_CTX *ctx);
 
 // SSL_CTX_add_session inserts `session` into `ctx`'s internal session cache. It
 // returns one on success and zero on error or if `session` is already in the
-// cache. The caller retains its reference to `session`.
+// cache. The caller retains its reference to `session`. A `session` can be
+// only in one `ctx` at any given time; it is an error to add it to more.
+//
+// TODO(crbug.com/527997772): Remove this restriction.
 OPENSSL_EXPORT int SSL_CTX_add_session(SSL_CTX *ctx, SSL_SESSION *session);
 
 // SSL_CTX_remove_session removes `session` from `ctx`'s internal session cache.
@@ -2590,7 +2639,6 @@ OPENSSL_EXPORT size_t SSL_CTX_get_num_tickets(const SSL_CTX *ctx);
 #define SSL_GROUP_SECP521R1 25
 #define SSL_GROUP_X25519 29
 #define SSL_GROUP_X25519_MLKEM768 0x11ec
-#define SSL_GROUP_X25519_KYBER768_DRAFT00 0x6399
 #define SSL_GROUP_MLKEM1024 0x0202
 
 // SSL_CTX_set1_group_ids sets the preferred groups for `ctx` to `group_ids`.
@@ -2632,7 +2680,7 @@ OPENSSL_EXPORT int SSL_CTX_set1_group_ids_with_flags(SSL_CTX *ctx,
 
 // SSL_set1_group_ids_with_flags sets the preferred groups for `ssl` to
 // `group_ids`, using the corresponding `flags` for each element, which is a set
-// of SSL_GROUP_FLAG_* values ORed toegether. Each element of `group_ids` should
+// of SSL_GROUP_FLAG_* values ORed together. Each element of `group_ids` should
 // be a unique one of the `SSL_GROUP_*` constants. If `group_ids` is empty, a
 // default list of groups and flags defaulting to zero will be set instead.
 // `group_ids` and `flags` should both have `num_group_ids` elements.  It
@@ -3219,18 +3267,28 @@ OPENSSL_EXPORT int SSL_add_bio_cert_subjects_to_stack(STACK_OF(X509_NAME) *out,
 // SSL_CREDENTIAL_set1_trust_anchor_id sets `cred`'s trust anchor ID to `id`, or
 // clears it if `id_len` is zero. It returns one on success and zero on
 // error. If not clearing, `id` must be in binary format (Section 3 of
-// draft-ietf-tls-trust-anchor-ids-00) of length `id_len`, and describe the
+// draft-ietf-tls-trust-anchor-ids-04) of length `id_len`, and describe the
 // issuer of the final certificate in `cred`'s certificate chain.
 //
 // Additionally, `cred` must enable issuer matching (see
 // `SSL_CREDENTIAL_set_must_match_issuer`) for this value to take effect.
 //
-// For better extensibility, callers are recommended to configure this
-// information with a CertificatePropertyList instead. See
-// `SSL_CREDENTIAL_set1_certificate_properties`.
+// For extensibility, callers are recommended to configure this information with
+// a CertificatePropertyList. See `SSL_CREDENTIAL_set1_certificate_properties`.
 OPENSSL_EXPORT int SSL_CREDENTIAL_set1_trust_anchor_id(SSL_CREDENTIAL *cred,
                                                        const uint8_t *id,
                                                        size_t id_len);
+
+// SSL_CREDENTIAL_add1_trust_anchor_group_inclusion specifies that `cred`
+// matches all trust anchor IDs equal to `base` followed some component between
+// `min` and `max`, inclusive. It returns one on success and zero on error. This
+// function may be called multiple times to register multiple group inclusions.
+//
+// For extensibility, callers are recommended to configure this information with
+// a CertificatePropertyList. See `SSL_CREDENTIAL_set1_certificate_properties`.
+OPENSSL_EXPORT int SSL_CREDENTIAL_add1_trust_anchor_group_inclusion(
+    SSL_CREDENTIAL *cred, const uint8_t *base, size_t base_len, uint64_t min,
+    uint64_t max);
 
 // SSL_CTX_set1_requested_trust_anchors configures `ctx` to request a
 // certificate issued by one of the trust anchors in `ids`. It returns one on
@@ -3239,10 +3297,10 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_trust_anchor_id(SSL_CREDENTIAL *cred,
 //
 // The list may describe application's full list of supported trust anchors, or
 // a, possibly empty, subset. Applications can select this subset using
-// out-of-band information, such as the DNS hint in Section 5 of
-// draft-ietf-tls-trust-anchor-ids-00. Client applications sending a subset
+// out-of-band information, such as the DNS hint in Section 6 of
+// draft-ietf-tls-trust-anchor-ids-04. Client applications sending a subset
 // should use `SSL_get0_peer_available_trust_anchors` to implement the retry
-// flow from Section 4.3 of draft-ietf-tls-trust-anchor-ids-00.
+// flow from Section 4.3 of draft-ietf-tls-trust-anchor-ids-04.
 //
 // If empty (`ids_len` is zero), the trust_anchors extension will still be sent
 // in ClientHello. This may be used by a client application to signal support
@@ -3281,7 +3339,7 @@ OPENSSL_EXPORT int SSL_peer_matched_trust_anchor(const SSL *ssl);
 // This value is only available during the handshake and is expected to be
 // called in the event of certificate verification failure. Client applications
 // can use it to retry the connection, requesting different trust anchors. See
-// Section 4.3 of draft-ietf-tls-trust-anchor-ids-00 for details.
+// Section 4.3 of draft-ietf-tls-trust-anchor-ids-04 for details.
 // `CBS_get_u8_length_prefixed` may be used to iterate over the format.
 //
 // If needed in other contexts, callers may save the value during certificate
@@ -3387,7 +3445,13 @@ OPENSSL_EXPORT SSL_CTX *SSL_set_SSL_CTX(SSL *ssl, SSL_CTX *ctx);
 // `protos`. `protos` must be in wire-format (i.e. a series of non-empty, 8-bit
 // length-prefixed strings), or the empty string to disable ALPN. It returns
 // zero on success and one on failure. Configuring a non-empty string enables
-// ALPN on a client.
+// ALPN on a client. On a client, it will advertise these protocols. On a
+// server, it will use them to automatically select a protocol if the client
+// supports ALPN and no select callback is set.
+//
+// Those configuring HTTP/2 must also configure the cipher suite set on the
+// SSL_CTX so that the selected cipher is compliant with RFC 7540 Section 9.2.
+// Servers should install their own ALPN callback to comply with the RFC.
 //
 // WARNING: this function is dangerous because it breaks the usual return value
 // convention.
@@ -3398,7 +3462,13 @@ OPENSSL_EXPORT int SSL_CTX_set_alpn_protos(SSL_CTX *ctx, const uint8_t *protos,
 // `protos` must be in wire-format (i.e. a series of non-empty, 8-bit
 // length-prefixed strings), or the empty string to disable ALPN. It returns
 // zero on success and one on failure. Configuring a non-empty string enables
-// ALPN on a client.
+// ALPN on a client. On a client, it will advertise these protocols. On a
+// server, it will use them to automatically select a protocol if the client
+// supports ALPN and no select callback is set.
+//
+// Those configuring HTTP/2 must also configure the cipher suite set on the
+// SSL_CTX so that the selected cipher is compliant with RFC 7540 Section 9.2.
+// Servers should install their own ALPN callback to comply with the RFC.
 //
 // WARNING: this function is dangerous because it breaks the usual return value
 // convention.
@@ -3808,6 +3878,12 @@ OPENSSL_EXPORT const SRTP_PROTECTION_PROFILE *SSL_get_selected_srtp_profile(
 OPENSSL_EXPORT SSL_CREDENTIAL *SSL_CREDENTIAL_new_pre_shared_key(
     const uint8_t *key, size_t key_len, const uint8_t *id, size_t id_len,
     const EVP_MD *md, const uint8_t *context, size_t context_len);
+
+// SSL_CREDENTIAL_get0_pre_shared_key_id returns the external identity of this
+// pre-shared key credential, or NULL if `cred` is not a pre-shared key
+// credential or `id_len` is NULL.
+OPENSSL_EXPORT const uint8_t *SSL_CREDENTIAL_get0_pre_shared_key_id(
+    const SSL_CREDENTIAL *cred, size_t *id_len);
 
 
 // TLS 1.2 pre-shared keys.
@@ -4290,7 +4366,7 @@ struct ssl_quic_method_st {
   int (*send_alert)(SSL *ssl, enum ssl_encryption_level_t level, uint8_t alert);
 };
 
-// SSL_quic_max_handshake_flight_len returns returns the maximum number of bytes
+// SSL_quic_max_handshake_flight_len returns the maximum number of bytes
 // that may be received at the given encryption level. This function should be
 // used to limit buffering in the QUIC implementation.
 //
@@ -4548,6 +4624,11 @@ OPENSSL_EXPORT const char *SSL_early_data_reason_string(
 // ECH extension when no supported ECHConfig is available.
 OPENSSL_EXPORT void SSL_set_enable_ech_grease(SSL *ssl, int enable);
 
+// SSL_set_reject_unusable_ech_config configures whether the client will fail
+// the handshake if a valid, supported ECHConfig cannot be selected to offer
+// ECH.
+OPENSSL_EXPORT void SSL_set_reject_unusable_ech_config(SSL *ssl, int enable);
+
 // SSL_set1_ech_config_list configures `ssl` to, as a client, offer ECH with the
 // specified configuration. `ech_config_list` should contain a serialized
 // ECHConfigList structure. It returns one on success and zero on error.
@@ -4680,9 +4761,9 @@ OPENSSL_EXPORT int SSL_ECH_KEYS_marshal_retry_configs(const SSL_ECH_KEYS *keys,
 // rotate keys in a long-lived server process.
 //
 // The configured ECHConfig values should also be advertised out-of-band via DNS
-// (see draft-ietf-dnsop-svcb-https). Before advertising an ECHConfig in DNS,
-// deployments should ensure all instances of the service are configured with
-// the ECHConfig and corresponding private key.
+// (see RFC 9848). Before advertising an ECHConfig in DNS, deployments should
+// ensure all instances of the service are configured with the ECHConfig and
+// corresponding private key.
 //
 // Only the most recent fully-deployed ECHConfigs should be advertised in DNS.
 // `keys` may contain a newer set if those ECHConfigs are mid-deployment. It
@@ -4885,7 +4966,7 @@ OPENSSL_EXPORT int SSL_CTX_set_record_protocol_version(SSL_CTX *ctx,
 // retains its final flight for retransmission in case of loss. There is no
 // explicit protocol signal for when this completes, though after receiving
 // application data and/or a timeout it is likely that this is no longer needed.
-// BoringSSL does not currently evaluate either condition and leaves it it to
+// BoringSSL does not currently evaluate either condition and leaves it to
 // the caller to determine whether this is now unnecessary. This applies when
 // `ssl` is a server for full handshakes and when `ssl` is a client for full
 // handshakes.
@@ -5097,8 +5178,7 @@ OPENSSL_EXPORT void SSL_set_msg_callback_arg(SSL *ssl, void *arg);
 // should log `line` followed by a newline, synchronizing with any concurrent
 // access to the log.
 //
-// The format is described in
-// https://www.ietf.org/archive/id/draft-ietf-tls-keylogfile-01.html
+// The format is described in RFC 9850.
 //
 // WARNING: The data in `line` allows an attacker to break security properties
 // of the TLS protocol, including confidentiality, integrity, and forward
@@ -5344,24 +5424,6 @@ OPENSSL_EXPORT void SSL_CTX_set_dos_protection_cb(
 // respected on clients.
 OPENSSL_EXPORT void SSL_CTX_set_reverify_on_resume(SSL_CTX *ctx, int enabled);
 
-// SSL_set_enforce_rsa_key_usage configures whether, when `ssl` is a client
-// negotiating TLS 1.2 or below, the keyUsage extension of RSA leaf server
-// certificates will be checked for consistency with the TLS usage. In all other
-// cases, this check is always enabled.
-//
-// This parameter may be set late; it will not be read until after the
-// certificate verification callback.
-OPENSSL_EXPORT void SSL_set_enforce_rsa_key_usage(SSL *ssl, int enabled);
-
-// SSL_was_key_usage_invalid returns one if `ssl`'s handshake succeeded despite
-// using TLS parameters which were incompatible with the leaf certificate's
-// keyUsage extension. Otherwise, it returns zero.
-//
-// If `SSL_set_enforce_rsa_key_usage` is enabled or not applicable, this
-// function will always return zero because key usages will be consistently
-// checked.
-OPENSSL_EXPORT int SSL_was_key_usage_invalid(const SSL *ssl);
-
 // SSL_ST_* are possible values for `SSL_state`, the bitmasks that make them up,
 // and some historical values for compatibility. Only `SSL_ST_INIT` and
 // `SSL_ST_OK` are ever returned.
@@ -5509,6 +5571,16 @@ OPENSSL_EXPORT void SSL_CTX_set_retain_only_sha256_of_client_certs(SSL_CTX *ctx,
 // SSL_CTX_set_grease_enabled configures whether sockets on `ctx` should enable
 // GREASE. See RFC 8701.
 OPENSSL_EXPORT void SSL_CTX_set_grease_enabled(SSL_CTX *ctx, int enabled);
+
+// SSL_CTX_set_grease_sigalgs_enabled configures whether sockets on `ctx` should
+// send a GREASE value in signature_algorithms extensions in ClientHello
+// messages. See RFC 8701.
+// TODO(crbug.com/526597789): Fold this functionality into
+// `SSL_CTX_set_grease_enabled` once deployed safely.
+// TODO(crbug.com/529360100): signature_algorithms extensions in
+// CertificateRequest messages should also be GREASE'd.
+OPENSSL_EXPORT void SSL_CTX_set_grease_sigalgs_enabled(SSL_CTX *ctx,
+                                                       int enabled);
 
 // SSL_CTX_set_permute_extensions configures whether sockets on `ctx` should
 // permute extensions. For now, this is only implemented for the ClientHello.
@@ -5734,7 +5806,7 @@ OPENSSL_EXPORT int SSL_get_shared_sigalgs(SSL *ssl, int idx, int *psign,
 // i2d_SSL_SESSION serializes `in`, as described in `i2d_SAMPLE`.
 //
 // Use `SSL_SESSION_to_bytes` instead.
-OPENSSL_EXPORT int i2d_SSL_SESSION(SSL_SESSION *in, uint8_t **pp);
+OPENSSL_EXPORT int i2d_SSL_SESSION(const SSL_SESSION *in, uint8_t **pp);
 
 // d2i_SSL_SESSION parses a serialized session from the `len` bytes pointed to
 // by `*inp`, as described in `d2i_SAMPLE`.
@@ -5781,6 +5853,9 @@ OPENSSL_EXPORT const COMP_METHOD *SSL_get_current_expansion(SSL *ssl);
 
 // SSL_get_server_tmp_key returns zero.
 OPENSSL_EXPORT int SSL_get_server_tmp_key(SSL *ssl, EVP_PKEY **out_key);
+
+// SSL_get_peer_tmp_key returns zero.
+OPENSSL_EXPORT int SSL_get_peer_tmp_key(SSL *ssl, EVP_PKEY **out_key);
 
 // SSL_CTX_set_tmp_dh returns 1.
 OPENSSL_EXPORT int SSL_CTX_set_tmp_dh(SSL_CTX *ctx, const DH *dh);
@@ -5884,7 +5959,6 @@ DEFINE_STACK_OF(SSL_COMP)
 #define SSL_MODE_RELEASE_BUFFERS 0
 #define SSL_MODE_SEND_CLIENTHELLO_TIME 0
 #define SSL_MODE_SEND_SERVERHELLO_TIME 0
-#define SSL_OP_ALL 0
 #define SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION 0
 #define SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS 0
 #define SSL_OP_EPHEMERAL_RSA 0
@@ -6221,7 +6295,6 @@ OPENSSL_EXPORT int SSL_CTX_set_tlsext_status_arg(SSL_CTX *ctx, void *arg);
 #define SSL_CURVE_SECP384R1 SSL_GROUP_SECP384R1
 #define SSL_CURVE_SECP521R1 SSL_GROUP_SECP521R1
 #define SSL_CURVE_X25519 SSL_GROUP_X25519
-#define SSL_CURVE_X25519_KYBER768_DRAFT00 SSL_GROUP_X25519_KYBER768_DRAFT00
 
 // SSL_get_curve_id calls `SSL_get_group_id`.
 OPENSSL_EXPORT uint16_t SSL_get_curve_id(const SSL *ssl);
@@ -6805,19 +6878,6 @@ OPENSSL_EXPORT bool SSL_get_traffic_secrets(
     const SSL *ssl, Span<const uint8_t> *out_read_traffic_secret,
     Span<const uint8_t> *out_write_traffic_secret);
 
-// SSL_CTX_set_aes_hw_override_for_testing sets `override_value` to
-// override checking for aes hardware support for testing. If `override_value`
-// is set to true, the library will behave as if aes hardware support is
-// present. If it is set to false, the library will behave as if aes hardware
-// support is not present.
-OPENSSL_EXPORT void SSL_CTX_set_aes_hw_override_for_testing(
-    SSL_CTX *ctx, bool override_value);
-
-// SSL_set_aes_hw_override_for_testing acts the same as
-// `SSL_CTX_set_aes_override_for_testing` but only configures a single `SSL*`.
-OPENSSL_EXPORT void SSL_set_aes_hw_override_for_testing(SSL *ssl,
-                                                        bool override_value);
-
 BSSL_NAMESPACE_END
 
 }  // extern C++
@@ -7060,6 +7120,7 @@ BSSL_NAMESPACE_END
 #define SSL_R_UNSUPPORTED_CERTIFICATE 334
 #define SSL_R_MISSING_KEY 335
 #define SSL_R_INVALID_RAW_PUBLIC_KEY 336
+#define SSL_R_UNUSABLE_ECH_CONFIG_LIST 337
 #define SSL_R_SSLV3_ALERT_CLOSE_NOTIFY 1000
 #define SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE 1010
 #define SSL_R_SSLV3_ALERT_BAD_RECORD_MAC 1020

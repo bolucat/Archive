@@ -13,6 +13,7 @@
 #include "net/base/completion_once_callback.h"
 #include "net/base/network_anonymization_key.h"
 #include "net/base/network_handle.h"
+#include "net/http/http_request_headers.h"
 #include "net/log/net_log_with_source.h"
 #include "net/quic/web_transport_error.h"
 #include "net/third_party/quiche/src/quiche/quic/core/crypto/web_transport_fingerprint_proof_verifier.h"
@@ -91,6 +92,8 @@ class NET_EXPORT WebTransportClientVisitor {
       scoped_refptr<HttpResponseHeaders> response_headers) = 0;
   // CONNECTING -> FAILED
   virtual void OnConnectionFailed(const WebTransportError& error) = 0;
+  // CONNECTING or CONNECTED -> draining notification
+  virtual void OnDraining() = 0;
   // CONNECTED -> CLOSED
   virtual void OnClosed(
       const std::optional<WebTransportCloseInfo>& close_info) = 0;
@@ -139,6 +142,17 @@ struct NET_EXPORT WebTransportParameters {
   // Defaults to kDefault (no algorithm change).
   CongestionControlHint congestion_control_hint =
       CongestionControlHint::kDefault;
+
+  // Hints for how many incoming streams the application anticipates the server
+  // creating. When set, the QUIC client advertises these as
+  // initial_max_streams_uni / initial_max_streams_bidi transport parameters.
+  // https://w3c.github.io/webtransport/#dom-webtransportoptions-anticipatedconcurrentincomingunidirectionalstreams
+  std::optional<uint16_t>
+      anticipated_concurrent_incoming_unidirectional_streams;
+  std::optional<uint16_t> anticipated_concurrent_incoming_bidirectional_streams;
+  // Additional HTTP headers to include in the CONNECT request.
+  // https://w3c.github.io/webtransport/#dom-webtransportoptions-headers
+  std::vector<HttpRequestHeaders::HeaderKeyValuePair> additional_headers;
 };
 
 // An abstract base for a WebTransport client.  Most of the useful operations

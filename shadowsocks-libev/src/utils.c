@@ -317,167 +317,411 @@ ss_is_ipv6addr(const char *addr)
     return strcmp(addr, ":") > 0;
 }
 
-void
-usage()
+/* [cli_short_s]
+\par `-s <server_host>`
+Set the server's hostname or IP.
+[cli_short_s] */
+
+/* [cli_short_p]
+\par `-p <server_port>`
+Set the server's port number.
+[cli_short_p] */
+
+/* [cli_short_l]
+\par `-l <local_port>`
+Set the local port number.
+[cli_short_l] */
+
+/* [cli_short_k]
+\par `-k <password>`
+Set the password. The server and the client should use the same password.
+[cli_short_k] */
+
+/* [cli_long_password]
+\par `--password <password>`
+Set the password. The server and the client should use the same password.
+[cli_long_password] */
+
+/* [cli_long_key]
+\par `--key <key_in_base64>`
+Set the key directly. The key should be encoded with URL-safe Base64.
+[cli_long_key] */
+
+/* [cli_long_server_url]
+\par `--server-url <ss_url>`
+Take the server address, port, cipher, password and any SIP003 plugin
+from a single `ss://` URL, as produced by most clients and by
+*shadowsocks-rust*'s `ssurl`. Both the SIP002 form
+(`ss://base64(method:password)@host:port/?plugin=...#tag`) and the older
+`ss://base64(method:password@host:port)` form are accepted. Options given
+later on the command line override the values taken from the URL.
+[cli_long_server_url] */
+
+/* [cli_short_m]
+\par `-m <encrypt_method>`
+Set the cipher. The default is `chacha20-ietf-poly1305`.
+
+AEAD cipher names from the source (availability depends on the build):
+\snippet aead.c cli-aead-ciphers
+
+Legacy stream cipher names recognized by the source (disabled in minimal builds;
+some require backend support):
+\snippet stream.c cli-stream-ciphers
+
+The `2022-blake3-*` ciphers implement Shadowsocks 2022 (SIP022). They require
+a base64-encoded pre-shared key supplied with `--key` or `--password` (*-k*): 16 bytes for
+2022-blake3-aes-128-gcm and 32 bytes for the other 2022 ciphers.
+Generate a 32-byte key with `openssl rand -base64 32`.
+Passwords are not stretched into keys for these ciphers.
+[cli_short_m] */
+
+/* [cli_short_a]
+\par `-a <user_name>`
+Run as a specific user.
+[cli_short_a] */
+
+/* [cli_short_f]
+\par `-f <pid_file>`
+Start shadowsocks as a daemon with specific pid file.
+[cli_short_f] */
+
+/* [cli_short_t]
+\par `-t <timeout>`
+Set the socket timeout in seconds. The default value is 60.
+[cli_short_t] */
+
+/* [cli_short_c]
+\par `-c <config_file>`
+Use a configuration file.
+
+Refer to `shadowsocks-c`(8) `CONFIG FILE` section for more details.
+[cli_short_c] */
+
+/* [cli_short_n]
+\par `-n <number>`
+Specify the maximum number of open files. Requires a platform with setrlimit support.
+[cli_short_n] */
+
+/* [cli_short_i]
+\par `-i <interface>`
+Send outbound traffic through the specified network interface where supported by the platform.
+[cli_short_i] */
+
+/* [cli_short_b]
+\par `-b <local_address>`
+Set the local address to bind for the client listener.
+[cli_short_b] */
+
+/* [cli_short_u]
+\par `-u`
+Enable UDP relay.
+[cli_short_u] */
+
+/* [cli_short_U]
+\par `-U`
+Enable UDP relay and disable TCP relay.
+[cli_short_U] */
+
+/* [cli_short_6]
+\par `-6`
+Resolve hostname to IPv6 address first.
+[cli_short_6] */
+
+/* [cli_long_fast_open]
+\par `--fast-open`
+Enable TCP Fast Open where supported by the operating system.
+[cli_long_fast_open] */
+
+/* [cli_long_reuse_port]
+\par `--reuse-port`
+Enable port reuse where supported by the operating system.
+[cli_long_reuse_port] */
+
+/* [cli_long_acl]
+\par `--acl <acl_config>`
+Enable ACL (Access Control List) and specify config file.
+[cli_long_acl] */
+
+/* [cli_long_mtu]
+\par `--mtu <MTU>`
+Specify the MTU of your network interface.
+[cli_long_mtu] */
+
+/* [cli_long_mptcp]
+\par `--mptcp`
+Enable Multipath TCP.
+
+Only available with MPTCP enabled Linux kernel.
+[cli_long_mptcp] */
+
+/* [cli_long_no_delay]
+\par `--no-delay`
+Enable TCP_NODELAY.
+[cli_long_no_delay] */
+
+/* [cli_long_tcp_incoming_sndbuf]
+\par `--tcp-incoming-sndbuf <size>`
+Set TCP send buffer size for incoming connections.
+[cli_long_tcp_incoming_sndbuf] */
+
+/* [cli_long_tcp_incoming_rcvbuf]
+\par `--tcp-incoming-rcvbuf <size>`
+Set TCP receive buffer size for incoming connections.
+[cli_long_tcp_incoming_rcvbuf] */
+
+/* [cli_long_tcp_outgoing_sndbuf]
+\par `--tcp-outgoing-sndbuf <size>`
+Set TCP send buffer size for outgoing connections.
+[cli_long_tcp_outgoing_sndbuf] */
+
+/* [cli_long_tcp_outgoing_rcvbuf]
+\par `--tcp-outgoing-rcvbuf <size>`
+Set TCP receive buffer size for outgoing connections.
+[cli_long_tcp_outgoing_rcvbuf] */
+
+/* [cli_long_plugin]
+\par `--plugin <plugin_name>`
+Enable SIP003 plugin. (Experimental)
+[cli_long_plugin] */
+
+/* [cli_long_plugin_opts]
+\par `--plugin-opts <plugin_options>`
+Set SIP003 plugin options. (Experimental)
+[cli_long_plugin_opts] */
+
+/* [cli_short_v]
+\par `-v`
+Enable verbose mode.
+[cli_short_v] */
+
+/* [cli_short_h]
+\par `-h`
+Print help message.
+[cli_short_h] */
+
+/* [cli_long_help]
+\par `--help`
+Print help message.
+[cli_long_help] */
+
+/* [cli_short_A]
+\par `-A`
+Deprecated one-time authentication option. Exits with an error; use AEAD ciphers instead.
+[cli_short_A] */
+
+/* [cli_short_S]
+\par `-S <path>`
+Android only: UNIX socket path for traffic statistics.
+[cli_short_S] */
+
+/* [cli_short_V]
+\par `-V`
+Android only: enable VPN socket protection.
+[cli_short_V] */
+
+/* [cli_short_L]
+\par `-L <addr:port>`
+Destination server address and port for local port forwarding.
+[cli_short_L] */
+
+/* [cli_short_T]
+\par `-T`
+Use TPROXY instead of REDIRECT for TCP traffic. Requires Linux TPROXY support.
+[cli_short_T] */
+
+/* [cli_short_d]
+\par `-d <addr>`
+Configure name servers for the internal c-ares DNS resolver. By default it uses the system resolver configuration.
+[cli_short_d] */
+
+/* [cli_short_D]
+\par `-D <path>`
+Set the working directory of ss-manager.
+[cli_short_D] */
+
+/* [cli_long_workdir]
+\par `--workdir <path>`
+Set the working directory of ss-manager (alias for *-D*).
+[cli_long_workdir] */
+
+/* [cli_long_manager_address]
+\par `--manager-address <address>`
+Set the manager control address: a UNIX domain socket path or an IP address and port.
+[cli_long_manager_address] */
+
+/* [cli_long_executable]
+\par `--executable <path>`
+Set the executable path of ss-server used by ss-manager.
+[cli_long_executable] */
+
+/* [cli_long_nftables_sets]
+\par `--nftables-sets <sets>`
+Linux builds with USE_NFTABLES only: add malicious IP addresses to nftables sets. Format: `[<table1>:]<set1>[,[<table2>:]<set2>...]`.
+[cli_long_nftables_sets] */
+
+/* [cli_long_version]
+\par `--version`
+Print the program name and version to standard output and exit successfully.
+[cli_long_version] */
+
+/* [cli_long_tcp_only]
+\par `--tcp-only`
+Enable TCP relay only, overriding the configuration file's mode.
+The last of `--tcp-only`, `--udp`, and `--udp-only` wins.
+[cli_long_tcp_only] */
+
+/* [cli_long_ipv4_first]
+\par `--ipv4-first`
+Prefer IPv4 DNS results, overriding `ipv6_first` in the configuration file.
+This is an address preference, not a restriction to IPv4. The last of
+`--ipv4-first` and `--ipv6-first` wins.
+[cli_long_ipv4_first] */
+
+static const char *
+cli_program(void)
 {
-    printf("\n");
-    printf("shadowsocks-c %s\n\n", VERSION);
-    printf(
-        "  maintained by Max Lv <max.c.lv@gmail.com> and Linus Yang <laokongzi@gmail.com>\n\n");
-    printf("  usage:\n\n");
 #ifdef MODULE_LOCAL
-    printf("    ss-local\n");
-#elif MODULE_REMOTE
-    printf("    ss-server\n");
-#elif MODULE_TUNNEL
-    printf("    ss-tunnel\n");
-#elif MODULE_REDIR
-    printf("    ss-redir\n");
-#elif MODULE_MANAGER
-    printf("    ss-manager\n");
+    return "ss-local";
+#elif defined(MODULE_REMOTE)
+    return "ss-server";
+#elif defined(MODULE_TUNNEL)
+    return "ss-tunnel";
+#elif defined(MODULE_REDIR)
+    return "ss-redir";
+#elif defined(MODULE_MANAGER)
+    return "ss-manager";
+#else
+    return "shadowsocks-c";
 #endif
-    printf("\n");
-    printf(
-        "       -s <server_host>           Host name or IP address of your remote server.\n");
-    printf(
-        "       -p <server_port>           Port number of your remote server.\n");
-    printf(
-        "       -l <local_port>            Port number of your local server.\n");
-    printf(
-        "       -k <password>              Password of your remote server.\n");
-    printf(
-        "       -m <encrypt_method>        Encrypt method: rc4-md5, \n");
-    printf(
-        "                                  aes-128-gcm, aes-192-gcm, aes-256-gcm,\n");
-    printf(
-        "                                  aes-128-cfb, aes-192-cfb, aes-256-cfb,\n");
-    printf(
-        "                                  aes-128-ctr, aes-192-ctr, aes-256-ctr,\n");
-    printf(
-        "                                  camellia-128-cfb, camellia-192-cfb,\n");
-    printf(
-        "                                  camellia-256-cfb, bf-cfb,\n");
-    printf(
-        "                                  chacha20-ietf-poly1305,\n");
-#ifdef FS_HAVE_XCHACHA20IETF
-    printf(
-        "                                  xchacha20-ietf-poly1305,\n");
-#endif
-    printf(
-        "                                  salsa20, chacha20 and chacha20-ietf.\n");
-    printf(
-        "                                  The default cipher is chacha20-ietf-poly1305.\n");
-    printf("\n");
-    printf(
-        "       [-a <user>]                Run as another user.\n");
-    printf(
-        "       [-f <pid_file>]            The file path to store pid.\n");
-    printf(
-        "       [-t <timeout>]             Socket timeout in seconds.\n");
-    printf(
-        "       [-c <config_file>]         The path to config file.\n");
-#ifdef HAVE_SETRLIMIT
-    printf(
-        "       [-n <number>]              Max number of open files.\n");
-#endif
-#ifndef MODULE_REDIR
-    printf(
-        "       [-i <interface>]           Network interface to bind.\n");
-#endif
-    printf(
-        "       [-b <local_address>]       Local address to bind.\n");
-    printf("\n");
-    printf(
-        "       [-u]                       Enable UDP relay.\n");
-#ifdef MODULE_REDIR
-    printf(
-        "                                  TPROXY is required in redir mode.\n");
-#endif
-    printf(
-        "       [-U]                       Enable UDP relay and disable TCP relay.\n");
-#ifdef MODULE_REDIR
-    printf(
-        "       [-T]                       Use tproxy instead of redirect (for tcp).\n");
-#endif
+}
+
+void
+cli_version(void)
+{
+    printf("%s (shadowsocks-c) %s\n", cli_program(), VERSION);
+}
+
+void
+cli_error(const char *message, int option, const char *token)
+{
+    fprintf(stderr, "%s: %s", cli_program(), message);
+    /* Report option names, never attached passwords or positional values. */
+    if (token != NULL && token[0] == '-' && token[1] == '-') {
+        size_t length = 2;
+        while (isalnum((unsigned char)token[length]) || token[length] == '-')
+            length++;
+        if (length > 2 && length < 80)
+            fprintf(stderr, " '%.*s'", (int)length, token);
+    } else if (option > 0 && option < 128 && isalnum((unsigned char)option)) {
+        fprintf(stderr, " '-%c'", option);
+    }
+    fprintf(stderr, ". Try '%s --help'.\n", cli_program());
+    exit(2);
+}
+
+static void
+cli_help_option(const char *flags, const char *description)
+{
+    printf("  %-36s %s\n", flags, description);
+}
+
+void
+usage(void)
+{
+    cli_version();
+    printf("Usage: %s [options]\n\n", cli_program());
+    puts("Connection:");
+#if defined(MODULE_REMOTE) || defined(MODULE_MANAGER)
+    cli_help_option("-s, --listen-address HOST", "Server listening address; may be repeated.");
 #ifdef MODULE_REMOTE
-    printf(
-        "       [-6]                       Resovle hostname to IPv6 address first.\n");
+    cli_help_option("-p, --listen-port PORT", "Server listening port.");
+    cli_help_option("-b, --outbound-address ADDRESS", "Source address for outbound connections.");
 #endif
-    printf("\n");
+#else
+    cli_help_option("-s, --server HOST", "Remote server hostname or IP; may be repeated.");
+    cli_help_option("-p, --server-port PORT", "Remote server port.");
+    cli_help_option("-b, --listen-address ADDRESS", "Local address to bind.");
+    cli_help_option("-l, --listen-port PORT", "Local listening port.");
+#endif
+#ifdef MODULE_LOCAL
+    cli_help_option("--server-url URL", "Import an ss:// URL; later options override it.");
+#endif
 #ifdef MODULE_TUNNEL
-    printf(
-        "       [-L <addr>:<port>]         Destination server address and port\n");
-    printf(
-        "                                  for local port forwarding.\n");
+    cli_help_option("-L, --destination HOST:PORT", "Destination for local port forwarding.");
 #endif
-#ifdef MODULE_REMOTE
-    printf(
-        "       [-d <addr>]                Name servers for internal DNS resolver.\n");
+    puts("\nConfiguration and credentials:");
+    cli_help_option("-c, --config FILE", "Read JSON configuration.");
+    cli_help_option("-m, --cipher NAME", "Cipher (default: chacha20-ietf-poly1305).");
+    cli_help_option("-k, --password SECRET", "Password, or a base64 pre-shared key for AEAD-2022.");
+#ifndef MODULE_MANAGER
+    cli_help_option("--key BASE64", "Use an explicit base64 key instead of a password.");
 #endif
-    printf(
-        "       [--reuse-port]             Enable port reuse.\n");
-#if defined(MODULE_REMOTE) || defined(MODULE_LOCAL) || defined(MODULE_REDIR)
-    printf(
-        "       [--fast-open]              Enable TCP fast open.\n");
-    printf(
-        "                                  with Linux kernel > 3.7.0.\n");
-#endif
-    printf(
-        "       [--tcp-incoming-sndbuf]    Size of the incoming connection TCP send buffer.\n");
-    printf(
-        "       [--tcp-incoming-rcvbuf]    Size of the incoming connection TCP receive buffer.\n");
-    printf(
-        "       [--tcp-outgoing-sndbuf]    Size of the outgoing connection TCP send buffer.\n");
-    printf(
-        "       [--tcp-outgoing-rcvbuf]    Size of the outgoing connection TCP receive buffer.\n");
-#if defined(MODULE_REMOTE) || defined(MODULE_LOCAL)
-    printf(
-        "       [--acl <acl_file>]         Path to ACL (Access Control List).\n");
+    puts("  AEAD-2022: 2022-blake3-aes-128-gcm, 2022-blake3-aes-256-gcm,");
+    puts("             2022-blake3-chacha20-poly1305.");
+    puts("\nTransport and networking:");
+    cli_help_option("--tcp-only", "TCP only (default); overrides the configured mode.");
+    cli_help_option("-u, --udp", "Enable both TCP and UDP relay.");
+    cli_help_option("-U, --udp-only", "Enable UDP relay only.");
+    cli_help_option("--ipv4-first", "Prefer IPv4 DNS results; overrides configuration.");
+    cli_help_option("-6, --ipv6-first", "Prefer IPv6 DNS results.");
+    cli_help_option("-t, --timeout SECONDS", "Socket timeout (default: 60).");
+#ifndef MODULE_REDIR
+    cli_help_option("-i, --interface NAME", "Outbound network interface, where supported.");
 #endif
 #if defined(MODULE_REMOTE) || defined(MODULE_MANAGER)
-    printf(
-        "       [--manager-address <addr>] UNIX domain socket address.\n");
+    cli_help_option("-d, --nameserver ADDRESS", "Name servers for the internal DNS resolver.");
 #endif
-#ifdef MODULE_MANAGER
-    printf(
-        "       [--executable <path>]      Path to the executable of ss-server.\n");
-    printf(
-        "       [-D <path>]                Path to the working directory of ss-manager.\n");
+#ifdef MODULE_REDIR
+    cli_help_option("-T, --tproxy", "Use TPROXY for TCP; UDP always requires TPROXY.");
 #endif
-    printf(
-        "       [--mtu <MTU>]              MTU of your network interface.\n");
-#ifdef __linux__
-    printf(
-        "       [--mptcp]                  Enable Multipath TCP on MPTCP Kernel.\n");
-#ifdef USE_NFTABLES
-    printf(
-        "       [--nftables-sets <sets>]   Add malicious IP into nftables sets.\n");
-    printf(
-        "                                  sets spec: [<table1>:]<set1>[,[<table2>:]<set2>...]\n");
-#endif
+    cli_help_option("--mtu BYTES", "Network MTU (0 selects the default).");
+    cli_help_option("--fast-open", "Enable TCP Fast Open where supported.");
+    cli_help_option("--reuse-port", "Enable port reuse where supported.");
+    cli_help_option("--no-delay", "Enable TCP_NODELAY.");
+#if !defined(MODULE_MANAGER) && (!defined(MODULE_REMOTE) || defined(__linux__))
+    cli_help_option("--mptcp", "Enable Multipath TCP where supported.");
 #endif
 #ifndef MODULE_MANAGER
-    printf(
-        "       [--no-delay]               Enable TCP_NODELAY.\n");
-    printf(
-        "       [--key <key_in_base64>]    Key of your remote server.\n");
+    cli_help_option("--tcp-incoming-sndbuf BYTES", "Incoming TCP send buffer (0: system default).");
+    cli_help_option("--tcp-incoming-rcvbuf BYTES", "Incoming TCP receive buffer (0: system default).");
+    cli_help_option("--tcp-outgoing-sndbuf BYTES", "Outgoing TCP send buffer (0: system default).");
+    cli_help_option("--tcp-outgoing-rcvbuf BYTES", "Outgoing TCP receive buffer (0: system default).");
 #endif
+    puts("\nAccess control and plugins:");
+#if defined(MODULE_LOCAL) || defined(MODULE_REMOTE) || defined(MODULE_MANAGER)
+    cli_help_option("--acl FILE", "Access control list.");
+#endif
+#if defined(MODULE_REMOTE) && defined(__linux__) && defined(USE_NFTABLES)
+    cli_help_option("--nftables-sets SETS", "Record malicious IPs in [table:]set[,set...] entries.");
+#endif
+    cli_help_option("--plugin NAME", "SIP003 plugin (requires plugin support in this build).");
+    cli_help_option("--plugin-opts OPTIONS", "Options passed to the SIP003 plugin.");
+    puts("\nProcess and diagnostics:");
+    cli_help_option("-a, --user USER", "Run as the specified user.");
+    cli_help_option("-f, --pid-file FILE", "Daemonize and write the process ID to FILE.");
+#ifdef HAVE_SETRLIMIT
+    cli_help_option("-n, --nofile COUNT", "Maximum number of open files.");
+#endif
+#if defined(MODULE_REMOTE) || defined(MODULE_MANAGER)
+    cli_help_option("--manager-address ADDRESS", "Manager UNIX socket path or IP address and port.");
+#endif
+#ifdef MODULE_MANAGER
+    cli_help_option("--executable PATH", "ss-server executable used for managed servers.");
+    cli_help_option("-D, --workdir DIRECTORY", "Working directory for managed servers.");
+#endif
+#if defined(__ANDROID__) && (defined(MODULE_LOCAL) || defined(MODULE_TUNNEL))
+    cli_help_option("-V, --vpn", "Enable Android VPN socket protection.");
 #ifdef MODULE_LOCAL
-    printf(
-        "       [--server-url <ss_url>]    Server as an ss:// URL, carrying the\n");
-    printf(
-        "                                  address, cipher, password and plugin.\n");
+    cli_help_option("-S, --stat-path PATH", "Android traffic-statistics socket.");
 #endif
-    printf(
-        "       [--plugin <name>]          Enable SIP003 plugin. (Experimental)\n");
-    printf(
-        "       [--plugin-opts <options>]  Set SIP003 plugin options. (Experimental)\n");
-    printf("\n");
-    printf(
-        "       [-v]                       Verbose mode.\n");
-    printf(
-        "       [-h, --help]               Print this message.\n");
-    printf("\n");
+#endif
+    cli_help_option("-v, --verbose", "Enable verbose logging.");
+    cli_help_option("-h, --help", "Show this help and exit.");
+    cli_help_option("--version", "Show the version and exit.");
+    puts("\nOptions apply in command-line order; later mode and address-family flags win.");
+    puts("No positional arguments are accepted. Use --option=value for values starting with '-'.");
+    puts("The obsolete -A option is rejected; use an AEAD cipher instead.");
+    puts("Manual: https://shadowsocks.github.io/shadowsocks-c/");
 }
 
 void

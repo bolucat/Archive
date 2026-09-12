@@ -5,14 +5,17 @@
 #include "base/debug/stack_trace.h"
 
 #include <android/log.h>
+#include <dlfcn.h>
 #include <stddef.h>
 #include <unwind.h>
 
 #include <algorithm>
 #include <ostream>
+#include <string_view>
 
 #include "base/compiler_specific.h"
 #include "base/debug/debugging_buildflags.h"
+#include "base/debug/elf_reader.h"
 #include "base/debug/proc_maps_linux.h"
 #include "base/memory/raw_ptr.h"
 #include "base/strings/strcat.h"
@@ -65,11 +68,6 @@ _Unwind_Reason_Code TraceStackFrame(_Unwind_Context* context, void* arg) {
   return _URC_NO_REASON;
 }
 #endif  // !UNWIND_WITH_FRAME_POINTERS
-
-bool EndsWith(const std::string& s, const std::string& suffix) {
-  return s.size() >= suffix.size() &&
-         s.substr(s.size() - suffix.size(), suffix.size()) == suffix;
-}
 
 }  // namespace
 
@@ -153,6 +151,11 @@ void StackTrace::OutputToStreamWithPrefixImpl(
 
     *os << prefix_string;
 
+    Dl_info dl_info;
+    const bool dl_info_found =
+        dladdr(reinterpret_cast<const void*>(address), &dl_info) &&
+        dl_info.dli_fbase;
+
     // Adjust absolute address to be an offset within the mapped region, to
     // match the format dumped by Android's crash output.
     if (iter != regions.end()) {
@@ -165,11 +168,20 @@ void StackTrace::OutputToStreamWithPrefixImpl(
 
     if (iter != regions.end()) {
       *os << base::StringPrintf("%s", iter->path.c_str());
-      if (EndsWith(iter->path, ".apk")) {
+      if (iter->path.ends_with(".apk")) {
         *os << base::StringPrintf(" (offset 0x%llx)", iter->offset);
       }
     } else {
       *os << "<unknown>";
+    }
+
+    if (dl_info_found) {
+      ElfBuildIdBuffer build_id;
+      size_t build_id_len =
+          ReadElfBuildId(dl_info.dli_fbase, /*uppercase=*/false, build_id);
+      if (build_id_len > 0) {
+        *os << " (BuildId: " << std::string_view(build_id, build_id_len) << ")";
+      }
     }
 
     *os << "\n";

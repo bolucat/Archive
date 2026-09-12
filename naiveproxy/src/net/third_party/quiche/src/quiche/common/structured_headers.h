@@ -15,6 +15,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/platform/api/quiche_logging.h"
@@ -78,10 +79,15 @@ class QUICHE_EXPORT Item {
   Item(const char* value, Item::ItemType type = kStringType);
   Item(std::string value, Item::ItemType type = kStringType);
 
-  QUICHE_EXPORT friend bool operator==(const Item& lhs, const Item& rhs);
-  inline friend bool operator!=(const Item& lhs, const Item& rhs) {
-    return !(lhs == rhs);
-  }
+  Item(const Item&);
+  Item& operator=(const Item&);
+
+  Item(Item&&);
+  Item& operator=(Item&&);
+
+  ~Item();
+
+  QUICHE_EXPORT friend bool operator==(const Item&, const Item&);
 
   bool is_null() const { return Type() == kNullType; }
   bool is_integer() const { return Type() == kIntegerType; }
@@ -92,53 +98,80 @@ class QUICHE_EXPORT Item {
   bool is_boolean() const { return Type() == kBooleanType; }
 
   int64_t GetInteger() const {
-    const auto* value = std::get_if<int64_t>(&value_);
+    const auto* value = GetIfInteger();
     QUICHE_CHECK(value);
     return *value;
   }
   double GetDecimal() const {
-    const auto* value = std::get_if<double>(&value_);
+    const auto* value = GetIfDecimal();
     QUICHE_CHECK(value);
     return *value;
   }
   bool GetBoolean() const {
-    const auto* value = std::get_if<bool>(&value_);
+    const auto* value = GetIfBoolean();
     QUICHE_CHECK(value);
     return *value;
   }
-  // TODO(iclelland): Split up accessors for String, Token and Byte Sequence.
-  const std::string& GetString() const {
-    struct Visitor {
-      const std::string* operator()(const std::monostate&) { return nullptr; }
-      const std::string* operator()(const int64_t&) { return nullptr; }
-      const std::string* operator()(const double&) { return nullptr; }
-      const std::string* operator()(const std::string& value) { return &value; }
-      const std::string* operator()(const bool&) { return nullptr; }
-    };
-    const std::string* value = std::visit(Visitor(), value_);
+  // TODO(apaseltiner): Remove this once all callers have been migrated to
+  // `GetString()`.
+  // Deprecated: Use `GetString()` instead.
+  const std::string& GetStringStrict() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return GetString();
+  }
+  const std::string& GetString() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    const auto* value = GetIfString();
+    QUICHE_CHECK(value);
+    return *value;
+  }
+  const std::string& GetToken() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    const auto* value = GetIfToken();
+    QUICHE_CHECK(value);
+    return *value;
+  }
+  const std::string& GetByteSequence() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    const auto* value = GetIfByteSequence();
     QUICHE_CHECK(value);
     return *value;
   }
 
-  // Transfers ownership of the underlying String, Token, or Byte Sequence.
-  std::string TakeString() && {
-    struct Visitor {
-      std::string* operator()(std::monostate&) { return nullptr; }
-      std::string* operator()(int64_t&) { return nullptr; }
-      std::string* operator()(double&) { return nullptr; }
-      std::string* operator()(std::string& value) { return &value; }
-      std::string* operator()(bool&) { return nullptr; }
-    };
-    std::string* value = std::visit(Visitor(), value_);
-    QUICHE_CHECK(value);
-    return std::move(*value);
-  }
+  const int64_t* GetIfInteger() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  int64_t* GetIfInteger() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  const double* GetIfDecimal() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  double* GetIfDecimal() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  const std::string* GetIfToken() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  std::string* GetIfToken() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  const std::string* GetIfString() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  std::string* GetIfString() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  const std::string* GetIfByteSequence() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  std::string* GetIfByteSequence() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  const bool* GetIfBoolean() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+  bool* GetIfBoolean() ABSL_ATTRIBUTE_LIFETIME_BOUND;
 
   ItemType Type() const { return static_cast<ItemType>(value_.index()); }
 
  private:
-  std::variant<std::monostate, int64_t, double, std::string, std::string,
-               std::string, bool>
+  friend class StructuredHeaderSerializer;
+
+  // Wrapper types to permit simplified use of `std::visit`.
+  struct Token {
+    std::string value;
+
+    friend bool operator==(const Token&, const Token&) = default;
+  };
+
+  struct ByteSequence {
+    std::string value;
+
+    friend bool operator==(const ByteSequence&, const ByteSequence&) = default;
+  };
+
+  std::variant<std::monostate, int64_t, double, std::string, Token,
+               ByteSequence, bool>
       value_;
 };
 
@@ -152,7 +185,7 @@ QUICHE_EXPORT bool IsValidToken(absl::string_view str);
 // Token, and there may be any number of parameters. Parameter ordering is not
 // significant.
 struct QUICHE_EXPORT ParameterisedIdentifier {
-  using Parameters = std::map<std::string, Item>;
+  using Parameters = std::map<std::string, Item, std::less<>>;
 
   Item identifier;
   Parameters params;
@@ -160,15 +193,14 @@ struct QUICHE_EXPORT ParameterisedIdentifier {
   ParameterisedIdentifier();
   ParameterisedIdentifier(const ParameterisedIdentifier&);
   ParameterisedIdentifier& operator=(const ParameterisedIdentifier&);
+  ParameterisedIdentifier(ParameterisedIdentifier&&);
+  ParameterisedIdentifier& operator=(ParameterisedIdentifier&&);
   ParameterisedIdentifier(Item, Parameters);
   ~ParameterisedIdentifier();
-};
 
-inline bool operator==(const ParameterisedIdentifier& lhs,
-                       const ParameterisedIdentifier& rhs) {
-  return std::tie(lhs.identifier, lhs.params) ==
-         std::tie(rhs.identifier, rhs.params);
-}
+  friend bool operator==(const ParameterisedIdentifier&,
+                         const ParameterisedIdentifier&) = default;
+};
 
 using Parameters = std::vector<std::pair<std::string, Item>>;
 
@@ -179,47 +211,86 @@ struct QUICHE_EXPORT ParameterizedItem {
   ParameterizedItem();
   ParameterizedItem(const ParameterizedItem&);
   ParameterizedItem& operator=(const ParameterizedItem&);
+  ParameterizedItem(ParameterizedItem&&);
+  ParameterizedItem& operator=(ParameterizedItem&&);
   ParameterizedItem(Item, Parameters);
   ~ParameterizedItem();
+
+  friend bool operator==(const ParameterizedItem&,
+                         const ParameterizedItem&) = default;
 };
 
-inline bool operator==(const ParameterizedItem& lhs,
-                       const ParameterizedItem& rhs) {
-  return std::tie(lhs.item, lhs.params) == std::tie(rhs.item, rhs.params);
-}
-
-inline bool operator!=(const ParameterizedItem& lhs,
-                       const ParameterizedItem& rhs) {
-  return !(lhs == rhs);
-}
-
-// Holds a ParameterizedMember, which may be either an single Item, or an Inner
+// Holds a ParameterizedMember, which may be either a single Item, or an Inner
 // List of ParameterizedItems, along with any number of parameters. Parameter
 // ordering is significant.
+//
+// TODO(b/517204961): Replace the `member`, `member_is_inner_list`, and `params`
+// fields with `std::variant<ParameterizedItem, InnerList>`.
 struct QUICHE_EXPORT ParameterizedMember {
-  std::vector<ParameterizedItem> member;
-  // If false, then |member| should only hold one Item.
-  bool member_is_inner_list = false;
+  // Constructor for a member that is an inner list.
+  ParameterizedMember(std::vector<ParameterizedItem>, Parameters);
 
-  Parameters params;
+  // Constructor for a member that is a single Item.
+  ParameterizedMember(Item, Parameters);
 
-  ParameterizedMember();
   ParameterizedMember(const ParameterizedMember&);
   ParameterizedMember& operator=(const ParameterizedMember&);
+
+  ParameterizedMember(ParameterizedMember&&);
+  ParameterizedMember& operator=(ParameterizedMember&&);
+
+  ~ParameterizedMember();
+
+  // Returns the item and its parameters if the member is an item,
+  // `std::nullopt` otherwise.
+  std::optional<std::pair<const Item&, const Parameters&>> GetWithParamsIfItem()
+      const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  // Returns the item and its parameters if the member is an item,
+  // `std::nullopt` otherwise.
+  std::optional<std::pair<Item&, Parameters&>> GetWithParamsIfItem()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  // Returns the inner list's items and its parameters if the member is an
+  // inner list, `std::nullopt` otherwise.
+  std::optional<
+      std::pair<const std::vector<ParameterizedItem>&, const Parameters&>>
+  GetWithParamsIfInnerList() const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  // Returns the inner list's items and its parameters if the member is an
+  // inner list, `std::nullopt` otherwise.
+  std::optional<std::pair<std::vector<ParameterizedItem>&, Parameters&>>
+  GetWithParamsIfInnerList() ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  friend bool operator==(const ParameterizedMember&,
+                         const ParameterizedMember&) = default;
+
+  // Deprecated: Explicitly initialize the value to either an inner list or
+  // an item using one of the above constructors, or wrap the value in
+  // `std::optional`. This constructor shouldn't really exist, as it's not clear
+  // what the default should actually be, but it is convenient for code that
+  // defers assignment. As is, it produces an invalid value with
+  // `member.empty() && !member_is_inner_list`.
+  ParameterizedMember();
+
+  // Deprecated: Use either of the two-argument constructors depending on
+  // whether the value is an inner list or an item.
   ParameterizedMember(std::vector<ParameterizedItem>, bool member_is_inner_list,
                       Parameters);
-  // Shorthand constructor for a member which is an inner list.
-  ParameterizedMember(std::vector<ParameterizedItem>, Parameters);
-  // Shorthand constructor for a member which is a single Item.
-  ParameterizedMember(Item, Parameters);
-  ~ParameterizedMember();
-};
 
-inline bool operator==(const ParameterizedMember& lhs,
-                       const ParameterizedMember& rhs) {
-  return std::tie(lhs.member, lhs.member_is_inner_list, lhs.params) ==
-         std::tie(rhs.member, rhs.member_is_inner_list, rhs.params);
-}
+  // Deprecated: Use `GetWithParamsIfItem()` / `GetWithParamsIfInnerList()`
+  // instead.
+  std::vector<ParameterizedItem> member;
+
+  // If false, then |member| should only hold one Item.
+  // Deprecated: Use `GetWithParamsIfItem()` / `GetWithParamsIfInnerList()`
+  // instead.
+  bool member_is_inner_list = false;
+
+  // Deprecated: Use `GetWithParamsIfItem()` / `GetWithParamsIfInnerList()`
+  // instead.
+  Parameters params;
+};
 
 using DictionaryMember = std::pair<std::string, ParameterizedMember>;
 
@@ -228,14 +299,18 @@ class QUICHE_EXPORT Dictionary {
  public:
   using iterator = std::vector<DictionaryMember>::iterator;
   using const_iterator = std::vector<DictionaryMember>::const_iterator;
+  using key_type = std::string;
+  using mapped_type = ParameterizedMember;
+  using value_type = std::pair<const std::string, ParameterizedMember>;
 
   Dictionary();
   Dictionary(const Dictionary&);
   Dictionary(Dictionary&&);
   explicit Dictionary(std::vector<DictionaryMember> members);
   ~Dictionary();
-  Dictionary& operator=(const Dictionary&) = default;
-  Dictionary& operator=(Dictionary&&) = default;
+  Dictionary& operator=(const Dictionary&);
+  Dictionary& operator=(Dictionary&&);
+
   iterator begin();
   const_iterator begin() const;
   iterator end();
@@ -263,22 +338,14 @@ class QUICHE_EXPORT Dictionary {
   bool empty() const;
   std::size_t size() const;
   bool contains(absl::string_view key) const;
-  friend bool operator==(const Dictionary& lhs, const Dictionary& rhs);
-  friend bool operator!=(const Dictionary& lhs, const Dictionary& rhs);
+
+  friend bool operator==(const Dictionary&, const Dictionary&) = default;
 
  private:
   // Uses a vector to hold pairs of key and dictionary member. This makes
   // look up by index and serialization much easier.
   std::vector<DictionaryMember> members_;
 };
-
-inline bool operator==(const Dictionary& lhs, const Dictionary& rhs) {
-  return lhs.members_ == rhs.members_;
-}
-
-inline bool operator!=(const Dictionary& lhs, const Dictionary& rhs) {
-  return !(lhs == rhs);
-}
 
 // Structured Headers Draft 09 Parameterised List.
 using ParameterisedList = std::vector<ParameterisedIdentifier>;
@@ -288,14 +355,22 @@ using ListOfLists = std::vector<std::vector<Item>>;
 using List = std::vector<ParameterizedMember>;
 
 // Returns the result of parsing the header value as an Item, if it can be
-// parsed as one, or nullopt if it cannot. Note that this uses the Draft 15
+// parsed as one, or nullopt if it cannot. Note that this uses the RFC 8941
 // parsing rules, and so applies tighter range limits to integers.
-QUICHE_EXPORT std::optional<ParameterizedItem> ParseItem(absl::string_view str);
+//
+// When `strict` is true, trailing decimal points are prohibited and byte
+// sequences must strictly conform to the specification.
+QUICHE_EXPORT std::optional<ParameterizedItem> ParseItem(absl::string_view str,
+                                                         bool strict = false);
 
 // Returns the result of parsing the header value as an Item with no parameters,
-// or nullopt if it cannot. Note that this uses the Draft 15 parsing rules, and
+// or nullopt if it cannot. Note that this uses the RFC 8941 parsing rules, and
 // so applies tighter range limits to integers.
-QUICHE_EXPORT std::optional<Item> ParseBareItem(absl::string_view str);
+//
+// When `strict` is true, trailing decimal points are prohibited and byte
+// sequences must strictly conform to the specification.
+QUICHE_EXPORT std::optional<Item> ParseBareItem(absl::string_view str,
+                                                bool strict = false);
 
 // Returns the result of parsing the header value as a Parameterised List, if it
 // can be parsed as one, or nullopt if it cannot. Note that parameter keys will
@@ -315,16 +390,22 @@ QUICHE_EXPORT std::optional<ListOfLists> ParseListOfLists(
     absl::string_view str);
 
 // Returns the result of parsing the header value as a general List, if it can
-// be parsed as one, or nullopt if it cannot.
-// Structured-Headers Draft 15 only.
-QUICHE_EXPORT std::optional<List> ParseList(absl::string_view str);
+// be parsed as one, or nullopt if it cannot. RFC 8941 only.
+//
+// When `strict` is true, trailing decimal points are prohibited and byte
+// sequences must strictly conform to the specification.
+QUICHE_EXPORT std::optional<List> ParseList(absl::string_view str,
+                                            bool strict = false);
 
 // Returns the result of parsing the header value as a general Dictionary, if it
-// can be parsed as one, or nullopt if it cannot. Structured-Headers Draft 15
-// only.
-QUICHE_EXPORT std::optional<Dictionary> ParseDictionary(absl::string_view str);
+// can be parsed as one, or nullopt if it cannot. RFC 8941 only.
+//
+// When `strict` is true, trailing decimal points are prohibited and byte
+// sequences must strictly conform to the specification.
+QUICHE_EXPORT std::optional<Dictionary> ParseDictionary(absl::string_view str,
+                                                        bool strict = false);
 
-// Serialization is implemented for Structured-Headers Draft 15 only.
+// Serialization is implemented for RFC 8941 only.
 QUICHE_EXPORT std::optional<std::string> SerializeItem(const Item& value);
 QUICHE_EXPORT std::optional<std::string> SerializeItem(
     const ParameterizedItem& value);

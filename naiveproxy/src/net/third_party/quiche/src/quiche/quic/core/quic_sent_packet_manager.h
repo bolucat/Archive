@@ -119,6 +119,9 @@ class QUICHE_EXPORT QuicSentPacketManager {
     // Called when an ACK frame with ECN counts has invalid values, or an ACK
     // acknowledges packets with ECN marks and there are no ECN counts.
     virtual void OnInvalidEcnFeedback() = 0;
+
+    // Called when a new RTT sample is available.
+    virtual void OnRttSampleAvailable(const QuicRttSample& rtt_sample) = 0;
   };
 
   // The retransmission timer is a single timer which switches modes depending
@@ -769,9 +772,6 @@ class QUICHE_EXPORT QuicSentPacketManager {
   // used to prevent the execution of ECN-specific code unless flag-protected
   // code has explicitly enabled it.
   bool ecn_queried_ = false;
-
-  const bool neuter_packets_on_migration_ =
-      GetQuicReloadableFlag(quic_neuter_packets_on_migration);
 };
 
 }  // namespace quic

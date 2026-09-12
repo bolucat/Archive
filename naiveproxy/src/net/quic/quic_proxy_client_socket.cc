@@ -46,8 +46,6 @@ QuicProxyClientSocket::QuicProxyClientSocket(
       proxy_chain_index_(proxy_chain_index),
       proxy_delegate_(proxy_delegate),
       user_agent_(user_agent),
-      use_fastopen_(false),
-      read_headers_pending_(false),
       net_log_(net_log) {
   DCHECK(stream_->IsOpen());
 
@@ -281,6 +279,13 @@ void QuicProxyClientSocket::OnIOComplete(int result) {
   DCHECK_NE(STATE_DISCONNECTED, next_state_);
   int rv = DoLoop(result);
   if (rv != ERR_IO_PENDING) {
+    if (use_fastopen_ && read_headers_pending_ == false) {
+      if (rv != OK)
+        next_state_ = STATE_DISCONNECTED;
+      if (read_callback_ && rv != OK)
+        std::move(read_callback_).Run(rv);
+      return;
+    }
     // Connect() finished (successfully or unsuccessfully).
     DCHECK(!connect_callback_.is_null());
     std::move(connect_callback_).Run(rv);
@@ -337,16 +342,6 @@ int QuicProxyClientSocket::DoLoop(int last_io_result) {
       case STATE_PROCESS_RESPONSE_CODE:
         DCHECK_EQ(OK, rv);
         rv = DoProcessResponseCode();
-        if (use_fastopen_ && read_headers_pending_) {
-          read_headers_pending_ = false;
-          if (rv < 0) {
-            // read_callback_ will be called with this error and be reset.
-            // Further data after that will be ignored.
-            next_state_ = STATE_DISCONNECTED;
-          }
-          // Prevents calling connect_callback_.
-          rv = ERR_IO_PENDING;
-        }
         break;
       default:
         NOTREACHED() << "bad state";
@@ -580,6 +575,7 @@ int QuicProxyClientSocket::DoProcessResponseCode() {
 void QuicProxyClientSocket::OnReadResponseHeadersComplete(int result) {
   // Convert the now-populated quiche::HttpHeaderBlock to HttpResponseInfo
   if (use_fastopen_ && read_headers_pending_) {
+    read_headers_pending_ = false;
     if (next_state_ == STATE_DISCONNECTED)
       return;
     if (next_state_ == STATE_CONNECT_COMPLETE)

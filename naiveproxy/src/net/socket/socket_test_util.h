@@ -269,25 +269,15 @@ struct MockReadWrite {
   };
 
   // Default
-  MockReadWrite()
-      : mode(SYNCHRONOUS),
-        result(0),
-        sequence_number(0),
-        tos(0) {}
+  MockReadWrite() : mode(SYNCHRONOUS), result(0), sequence_number(0), tos(0) {}
 
   // Read/write failure (no data).
   MockReadWrite(IoMode io_mode, int result)
-      : mode(io_mode),
-        result(result),
-        sequence_number(0),
-        tos(0) {}
+      : mode(io_mode), result(result), sequence_number(0), tos(0) {}
 
   // Read/write failure (no data), with sequence information.
   MockReadWrite(IoMode io_mode, int result, int seq)
-      : mode(io_mode),
-        result(result),
-        sequence_number(seq),
-        tos(0) {}
+      : mode(io_mode), result(result), sequence_number(seq), tos(0) {}
 
   // Asynchronous read/write success.
   explicit MockReadWrite(ToStringView data)
@@ -368,6 +358,8 @@ class SocketDataProvider {
   virtual MockWriteResult OnWrite(const std::string& data) = 0;
   virtual bool AllReadDataConsumed() const = 0;
   virtual bool AllWriteDataConsumed() const = 0;
+  virtual bool IsNextReadAsyncOrPause() const;
+  virtual bool IsReadReady() const;
   virtual void CancelPendingRead() {}
 
   // Returns the last set receive buffer size, or -1 if never set.
@@ -457,6 +449,17 @@ class SocketDataProvider {
   void set_silently_closed() { silently_closed_ = true; }
   bool silently_closed() const { return silently_closed_; }
 
+  // Makes GetPeerAddress() fail with ERR_SOCKET_NOT_CONNECTED for any socket
+  // using `this`. Useful for simulating "zombie" sockets that are technically
+  // still pooled/connected but fail when queried for their address (e.g.
+  // simulating a socket that is in a semi-broken state).
+  void set_force_get_peer_address_failure(bool force) {
+    force_get_peer_address_failure_ = force;
+  }
+  bool force_get_peer_address_failure() const {
+    return force_get_peer_address_failure_;
+  }
+
  private:
   // Called to inform subclasses of initialization.
   virtual void Reset() = 0;
@@ -470,6 +473,8 @@ class SocketDataProvider {
   bool no_delay_ = true;
 
   bool silently_closed_ = false;
+
+  bool force_get_peer_address_failure_ = false;
 
   KeepAliveState keep_alive_state_ = KeepAliveState::kDefault;
   int keep_alive_delay_ = 0;
@@ -540,6 +545,7 @@ class StaticSocketDataHelper {
 
   bool AllReadDataConsumed() const { return read_index() >= read_count(); }
   bool AllWriteDataConsumed() const { return write_index() >= write_count(); }
+  bool IsNextReadAsyncOrPause() const;
 
   void ExpectAllReadDataConsumed(SocketDataPrinter* printer) const;
   void ExpectAllWriteDataConsumed(SocketDataPrinter* printer) const;
@@ -581,6 +587,8 @@ class StaticSocketDataProvider : public SocketDataProvider {
   MockWriteResult OnWrite(const std::string& data) override;
   bool AllReadDataConsumed() const override;
   bool AllWriteDataConsumed() const override;
+  bool IsNextReadAsyncOrPause() const override;
+  bool IsReadReady() const override;
 
   size_t read_index() const { return helper_.read_index(); }
   size_t write_index() const { return helper_.write_index(); }
@@ -658,9 +666,11 @@ struct SSLSocketDataProvider {
   std::optional<bool> expected_ignore_certificate_errors;
   std::optional<NetworkAnonymizationKey> expected_network_anonymization_key;
   std::optional<std::vector<uint8_t>> expected_ech_config_list;
-  // If not nullopt, expects a (possibly empty) trust anchors extension with the
-  // specified value.
-  std::optional<std::vector<uint8_t>> expected_trust_anchor_ids;
+  // If not nullopt, expects a (possibly empty) trust anchors extension with
+  // the specified value. Ordering of the TAIs is not checked since this is
+  // used to check TAIs sent from client to server, where ordering doesn't
+  // matter.
+  std::optional<std::vector<std::vector<uint8_t>>> expected_trust_anchor_ids;
   // Expects no trust anchors extension. This is a separate field to avoid a
   // confusing double-optional.
   bool expect_no_trust_anchor_ids = false;
@@ -699,6 +709,8 @@ class SequencedSocketData : public SocketDataProvider {
   MockWriteResult OnWrite(const std::string& data) override;
   bool AllReadDataConsumed() const override;
   bool AllWriteDataConsumed() const override;
+  bool IsNextReadAsyncOrPause() const override;
+  bool IsReadReady() const override;
   bool IsIdle() const override;
   void CancelPendingRead() override;
 
@@ -809,7 +821,7 @@ class SocketDataProviderArray {
   size_t next_index_ = 0;
 
   // SocketDataProviders to be returned.
-  std::vector<T*> data_providers_;
+  std::vector<raw_ptr<T, DanglingUntriaged>> data_providers_;
 };
 
 class MockUDPClientSocket;
@@ -860,10 +872,12 @@ class MockClientSocketFactory : public ClientSocketFactory {
   // ClientSocketFactory
   std::unique_ptr<DatagramClientSocket> CreateDatagramClientSocket(
       DatagramSocket::BindType bind_type,
+      handles::NetworkHandle target_network,
       NetLog* net_log,
       const NetLogSource& source) override;
   std::unique_ptr<TransportClientSocket> CreateTransportClientSocket(
       const AddressList& addresses,
+      handles::NetworkHandle target_network,
       std::unique_ptr<SocketPerformanceWatcher> socket_performance_watcher,
       NetworkQualityEstimator* network_quality_estimator,
       NetLog* net_log,
@@ -1133,6 +1147,12 @@ class MockUDPClientSocket : public DatagramClientSocket, public AsyncSocket {
   int Read(IOBuffer* buf,
            int buf_len,
            CompletionOnceCallback callback) override;
+  base::expected<DatagramsMetadata, Error> ReadMultiple(
+      IOBuffer* buf,
+      size_t buf_len,
+      size_t maximum_packet_size,
+      base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+          callback) override;
   int Write(IOBuffer* buf,
             int buf_len,
             CompletionOnceCallback callback,
@@ -1193,9 +1213,18 @@ class MockUDPClientSocket : public DatagramClientSocket, public AsyncSocket {
 
  private:
   int CompleteRead();
+  void ClearPendingReadState();
 
   void RunCallbackAsync(CompletionOnceCallback callback, int result);
   void RunCallback(CompletionOnceCallback callback, int result);
+  void RunDatagramsCallback(
+      base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+          callback,
+      base::expected<DatagramsMetadata, Error> result);
+  void RunDatagramsCallbackAsync(
+      base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+          callback,
+      base::expected<DatagramsMetadata, Error> result);
 
   bool connected_ = false;
   raw_ptr<SocketDataProvider> data_;
@@ -1215,7 +1244,11 @@ class MockUDPClientSocket : public DatagramClientSocket, public AsyncSocket {
   scoped_refptr<IOBuffer> pending_read_buf_ = nullptr;
   int pending_read_buf_len_ = 0;
   CompletionOnceCallback pending_read_callback_;
+  base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+      pending_read_datagrams_callback_;
+  size_t pending_max_packet_size_ = 0;
   CompletionOnceCallback pending_write_callback_;
+  CompletionOnceCallback pending_connect_callback_;
 
   NetLogWithSource net_log_;
 
@@ -1290,8 +1323,9 @@ class ClientSocketPoolTest {
         group_id, socket_params, std::nullopt /* proxy_annotation_tag */,
         priority, SocketTag(), respect_limits, request->callback(),
         ClientSocketPool::ProxyAuthCallback(), socket_pool, NetLogWithSource());
-    if (rv != ERR_IO_PENDING)
+    if (rv != ERR_IO_PENDING) {
       request_order_.push_back(request);
+    }
     return rv;
   }
 
@@ -1508,10 +1542,12 @@ class MockTaggingClientSocketFactory : public MockClientSocketFactory {
   // ClientSocketFactory implementation.
   std::unique_ptr<DatagramClientSocket> CreateDatagramClientSocket(
       DatagramSocket::BindType bind_type,
+      handles::NetworkHandle target_network,
       NetLog* net_log,
       const NetLogSource& source) override;
   std::unique_ptr<TransportClientSocket> CreateTransportClientSocket(
       const AddressList& addresses,
+      handles::NetworkHandle target_network,
       std::unique_ptr<SocketPerformanceWatcher> socket_performance_watcher,
       NetworkQualityEstimator* network_quality_estimator,
       NetLog* net_log,
@@ -1577,9 +1613,9 @@ uint64_t GetTaggedBytes(int32_t expected_tag);
 // and using that data to validate expected behavior. We take this walk
 // about 100 times as there is randomization in the transition points.
 void ValidateAdditionalCapacityForSocketPool(
-    base::RepeatingCallback<SocketPoolState()> request_socket,
+    base::RepeatingCallback<SocketPoolExpandability()> request_socket,
     base::RepeatingCallback<void()> wait_for_socket_initialization,
-    base::RepeatingCallback<SocketPoolState()> release_socket,
+    base::RepeatingCallback<SocketPoolExpandability()> release_socket,
     base::RepeatingCallback<size_t()> sockets_in_use);
 
 }  // namespace net

@@ -244,15 +244,16 @@ template("rust_target") {
           testonly = invoker.testonly
         }
 
-        # `rust_bindgen_generator` promises that the first output file is always .rs.
+        # `rust_bindgen_generator` promises that the first output file is always
+        # .rs.
         sources = [ _bindgen_output_files[0] ]
         outputs = [ "$_env_out_dir/{{source_name_part}}.rs" ]
         deps = [ bindgen_dep ]
       }
 
-      # The bindgen-generated rs files are inputs to this library for the library
-      # to `include!` them.
-      # The output of the copy action is always a single file so just copy everything.
+      # The bindgen-generated rs files are inputs to this library for the
+      # library to `include!` them. The output of the copy action is always a
+      # single file so just copy everything.
       _bindgen_inputs += get_target_outputs(":$_copy_target_name")
 
       # Depend on the bindgen generation to make the above `_bindgen_inputs`.
@@ -288,6 +289,11 @@ template("rust_target") {
     _cxx_bindings = invoker.cxx_bindings
   }
   _rustenv = [ "OUT_DIR=" + rebase_path(_env_out_dir, root_build_dir) ]
+  if (rust_clippy_conf_file != "") {
+    _clippy_conf_dir = get_path_info(rust_clippy_conf_file, "dir")
+    _rustenv +=
+        [ "CLIPPY_CONF_DIR=" + rebase_path(_clippy_conf_dir, root_build_dir) ]
+  }
   if (defined(invoker.rustenv)) {
     _rustenv += invoker.rustenv
   }
@@ -386,10 +392,10 @@ template("rust_target") {
       # why targets in `//build/rust/std/rules/BUILD.gn` set `output_dir =
       # "$root_out_dir/local_rustc_sysroot/...".
       #
-      # OTOH, executables linked against these `.dll`s / `.so`s need to find them
-      # at runtime (i.e. the runtime linker needs to find them).  The `copy` target
-      # here helps with this part by copying them to the root of the build directory
-      # (same directory where executables go by default).
+      # OTOH, executables linked against these `.dll`s / `.so`s need to find
+      # them at runtime (i.e. the runtime linker needs to find them). The `copy`
+      # target here helps with this part by copying them to the root of the
+      # build directory (same directory where executables go by default).
       copy(_copy_so_or_dll_dylib_target_name) {
         # TODO(https://crbug.com/gn/490160737): If `get_target_outputs` can
         # support binary targets (unclear) then it should be used here, instead
@@ -484,6 +490,12 @@ template("rust_target") {
       _rust_deps += [ "//build/rust/allocator" ]
     }
 
+    _rust_sources = invoker.sources
+    if (_generate_crate_root) {
+      _rust_deps += [ ":${_target_name}_crate_root" ]
+      _rust_sources += [ _crate_root ]
+    }
+
     if (_build_unit_tests) {
       _unit_test_target = "${_target_name}_unittests"
       if (defined(invoker.unit_test_target)) {
@@ -494,7 +506,7 @@ template("rust_target") {
         testonly = true
         crate_name = _unit_test_target
         crate_root = _crate_root
-        sources = invoker.sources + [ crate_root ]
+        sources = _rust_sources
         rustflags = _rustflags
         env_out_dir = _env_out_dir
         if (defined(invoker.unit_test_output_dir)) {
@@ -539,12 +551,6 @@ template("rust_target") {
 
     if (_enable_clippy_for_this_target) {
       _clippy_target_name = "${_target_name}_clippy"
-    }
-
-    _rust_sources = invoker.sources
-    if (_generate_crate_root) {
-      _rust_deps += [ ":${_target_name}_crate_root" ]
-      _rust_sources += [ _crate_root ]
     }
 
     _rust_inputs = []
@@ -723,6 +729,9 @@ template("rust_target") {
           } else {
             inputs += [ "//third_party/rust-toolchain/bin/clippy-driver" ]
           }
+          if (rust_clippy_conf_file != "") {
+            inputs += [ rust_clippy_conf_file ]
+          }
 
           args = [
             "--clippy-driver",
@@ -745,6 +754,19 @@ template("rust_target") {
           rustc_env_and_flags = _rustc_env_and_flags
           original_attributes = _cpp_api_from_rust_attributes
           crate_name = _crate_name
+
+          if (defined(_cpp_api_from_rust_attributes.h_out)) {
+            h_out = _cpp_api_from_rust_attributes.h_out
+          } else if (defined(invoker.crate_name)) {
+            # For targets with an explicit `crate_name` (such as
+            # `third_party/rust/...`) use the crate name as the basename of the
+            # generated header file.  This ensures that Chromium uses the same
+            # `#include` paths to these libraries as other major Crubit clients
+            # (e.g. google3).
+            h_out = "${target_gen_dir}/${_crate_name}.h"
+          } else {
+            h_out = "${target_gen_dir}/${_main_target_name}.h"
+          }
         }
       }
     }

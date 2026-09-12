@@ -4,7 +4,6 @@
 
 #include "net/http/http_cache_transaction.h"
 
-#include "base/byte_count.h"
 #include "build/build_config.h"  // For IS_POSIX
 
 #if BUILDFLAG(IS_POSIX)
@@ -14,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -401,7 +401,8 @@ int HttpCache::Transaction::TransitionToReadingState() {
   // offset is behind the current offset else from the network.
   int disk_entry_size = entry_->GetEntry()->GetDataSize(kResponseContentIndex);
   if (read_offset_ == disk_entry_size ||
-      entry_->writers()->network_read_only()) {
+      entry_->writers()->network_read_only() ||
+      entry_->writers()->compressing_for_cache()) {
     next_state_ = STATE_NETWORK_READ_CACHE_WRITE;
   } else {
     DCHECK_LT(read_offset_, disk_entry_size);
@@ -564,14 +565,8 @@ void HttpCache::Transaction::SetPriority(RequestPriority priority) {
 
 void HttpCache::Transaction::SetWebSocketHandshakeStreamCreateHelper(
     WebSocketHandshakeStreamBase::CreateHelper* create_helper) {
+  CHECK(!network_transaction());
   websocket_handshake_stream_base_create_helper_ = create_helper;
-
-  // TODO(shivanisha). Since this function must be invoked before Start() as
-  // per the API header, a network transaction should not exist at that point.
-  HttpTransaction* transaction = network_transaction();
-  if (transaction) {
-    transaction->SetWebSocketHandshakeStreamCreateHelper(create_helper);
-  }
 }
 
 void HttpCache::Transaction::SetConnectedCallback(
@@ -1640,18 +1635,18 @@ int HttpCache::Transaction::DoCacheReadResponse() {
   TransitionToState(STATE_CACHE_READ_RESPONSE_COMPLETE);
 
   io_buf_len_ = entry_->GetEntry()->GetDataSize(kResponseInfoIndex);
-  read_buf_ = base::MakeRefCounted<IOBufferWithSize>(io_buf_len_);
+  cache_buf_ = base::MakeRefCounted<IOBufferWithSize>(io_buf_len_);
 
   net_log_.BeginEvent(NetLogEventType::HTTP_CACHE_READ_INFO);
   BeginDiskCacheAccessTimeCount();
-  return entry_->GetEntry()->ReadData(kResponseInfoIndex, 0, read_buf_.get(),
+  return entry_->GetEntry()->ReadData(kResponseInfoIndex, 0, cache_buf_.get(),
                                       io_buf_len_, io_callback_);
 }
 
 int HttpCache::Transaction::DoCacheReadResponseComplete(int result) {
   TRACE_EVENT_INSTANT(TRACE_DISABLED_BY_DEFAULT("net"),
                       "DoCacheReadResponseComplete", track_for_state_change_,
-                      "result", result, "io_buf_len", read_buf_->size());
+                      "result", result, "io_buf_len", cache_buf_->size());
   net_log_.EndEventWithNetErrorCode(NetLogEventType::HTTP_CACHE_READ_INFO,
                                     result);
   EndDiskCacheAccessTimeCount(DiskCacheAccessType::kRead);
@@ -1659,8 +1654,8 @@ int HttpCache::Transaction::DoCacheReadResponseComplete(int result) {
   // Record the time immediately before the cached response is parsed.
   read_headers_since_ = TimeTicks::Now();
 
-  if (result != read_buf_->size() ||
-      !HttpCache::ParseResponseInfo(read_buf_->span(), &response_,
+  if (result != cache_buf_->size() ||
+      !HttpCache::ParseResponseInfo(cache_buf_->span(), &response_,
                                     &truncated_)) {
     return OnCacheReadError(result, true);
   }
@@ -1714,7 +1709,6 @@ int HttpCache::Transaction::DoCacheReadResponseComplete(int result) {
     CHECK_EQ(compressed_disk_offset_, 0u);
     decompressor_ = std::make_unique<CacheBodyDecompressor>();
     if (!decompressor_->Init()) {
-      DVLOG(1) << "Failed to init zstd decompression for cached entry";
       decompressor_.reset();
       net_log_.AddEvent(NetLogEventType::HTTP_CACHE_DECOMPRESS, [&] {
         base::DictValue params;
@@ -1762,14 +1756,15 @@ int HttpCache::Transaction::DoCacheReadResponseComplete(int result) {
   // mentioned in the associated bug.
   if (!entry_->IsWritingInProgress()) {
     int current_size = entry_->GetEntry()->GetDataSize(kResponseContentIndex);
-    std::optional<base::ByteCount> content_length =
+    std::optional<base::ByteSize> content_length =
         response_.headers->GetContentLength();
 
     // Some resources may have slipped in as truncated when they're not.
     // When body is zstd-compressed, disk size != content_length, so skip
     // this check — the entry was marked complete at finalization time.
     if (!response_.zstd_uncompressed_body_size.has_value() && content_length &&
-        content_length->InBytes() == current_size) {
+        current_size >= 0 &&
+        content_length->InBytes() == base::as_unsigned(current_size)) {
       truncated_ = false;
     }
 
@@ -2060,6 +2055,11 @@ int HttpCache::Transaction::DoSendRequestComplete(int result) {
     response_.cert_request_info = response->cert_request_info;
   } else if (result == ERR_INCONSISTENT_IP_ADDRESS_SPACE) {
     DoomInconsistentEntry();
+  } else if (entry_ && partial_ && truncated_) {
+    // Doom explicitly: `DoneWithEntry(false)` does not doom a partial
+    // transaction past the headers phase (see `DoomInconsistentEntry`).
+    cache_->DoomActiveEntry(cache_key_);
+    DoneWithEntry(/*entry_is_complete=*/false);
   } else if (response_.was_cached) {
     DoneWithEntry(/*entry_is_complete=*/true);
   }
@@ -2810,6 +2810,7 @@ void HttpCache::Transaction::SetRequest(const NetLogWithSource& net_log) {
   external_validation_.reset();
   range_requested_ = false;
   partial_.reset();
+  done_headers_create_new_entry_ = false;
   // SetRequest() runs on transaction restarts via DoHeadersPhaseCannotProceed.
   // That state is reachable from DoCacheDispatchValidation (line 1850) when
   // the entry vanishes mid-flow — and crucially, that's *after* decompressor_
@@ -3825,6 +3826,7 @@ int HttpCache::Transaction::OnCacheReadError(int result, bool restart) {
   if (restart) {
     DCHECK(!reading_);
     DCHECK(!network_trans_.get());
+    done_headers_create_new_entry_ = false;
 
     // Since we are going to add this to a new entry, not recording histograms
     // or setting mode to NONE at this point by invoking the wrapper
@@ -4009,7 +4011,7 @@ bool HttpCache::Transaction::CanResume(bool has_data) {
 
   // Note that if this is a 206, content-length was already fixed after calling
   // PartialData::ResponseHeadersOK().
-  std::optional<base::ByteCount> content_length =
+  std::optional<base::ByteSize> content_length =
       response_.headers->GetContentLength();
   if (!content_length.has_value() || content_length->is_zero() ||
       response_.headers->HasHeaderValue("Accept-Ranges", "none") ||
@@ -4127,10 +4129,10 @@ void HttpCache::Transaction::RecordHistograms() {
       }
       CACHE_STATUS_HISTOGRAMS(".CSS");
     } else if (mime_type.starts_with("image/")) {
-      std::optional<base::ByteCount> content_length =
+      std::optional<base::ByteSize> content_length =
           response_headers->GetContentLength();
       if (content_length) {
-        if (content_length->InBytes() >= 0 && content_length->InBytes() < 100) {
+        if (content_length->InBytes() < 100) {
           CACHE_STATUS_HISTOGRAMS(".TinyImage");
         } else if (content_length->InBytes() >= 100) {
           CACHE_STATUS_HISTOGRAMS(".NonTinyImage");
@@ -4214,7 +4216,6 @@ void HttpCache::Transaction::RecordHistograms() {
        (cache_entry_status_ == CacheEntryStatus::ENTRY_USED ||
         cache_entry_status_ == CacheEntryStatus::ENTRY_CANT_CONDITIONALIZE)));
 
-
   if (!did_send_request) {
     if (cache_entry_status_ == CacheEntryStatus::ENTRY_USED) {
       UMA_HISTOGRAM_CUSTOM_TIMES("HttpCache.AccessToDone2.Used", total_time,
@@ -4263,21 +4264,10 @@ void HttpCache::Transaction::RecordHistograms() {
   if (total_disk_cache_read_time_.has_value()) {
     base::UmaHistogramTimes("HttpCache.TotalDiskCacheTimePerTransaction.Read2",
                             *total_disk_cache_read_time_);
-    if (!total_disk_cache_read_time_->is_zero()) {
-      // TODO(crbug.com/511894605): Remove this after M151 branch cut.
-      base::UmaHistogramTimes("HttpCache.TotalDiskCacheTimePerTransaction.Read",
-                              *total_disk_cache_read_time_);
-    }
   }
   if (total_disk_cache_write_time_.has_value()) {
     base::UmaHistogramTimes("HttpCache.TotalDiskCacheTimePerTransaction.Write2",
                             *total_disk_cache_write_time_);
-    if (!total_disk_cache_write_time_->is_zero()) {
-      // TODO(crbug.com/511894605): Remove this after M151 branch cut.
-      base::UmaHistogramTimes(
-          "HttpCache.TotalDiskCacheTimePerTransaction.Write",
-          *total_disk_cache_write_time_);
-    }
   }
 }
 

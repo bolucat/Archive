@@ -16,6 +16,7 @@
 #include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/rand_util.h"
+#include "crypto/keypair.h"
 #include "net/base/hash_value.h"
 #include "net/base/ip_address.h"
 #include "net/cert/qwac.h"
@@ -133,12 +134,12 @@ class CertBuilder {
   // signature onto |out_signature| and returns true if successful.
   static bool SignData(bssl::SignatureAlgorithm signature_algorithm,
                        std::string_view tbs_data,
-                       EVP_PKEY* key,
+                       const EVP_PKEY* key,
                        CBB* out_signature);
 
   static bool SignDataWithDigest(const EVP_MD* digest,
                                  std::string_view tbs_data,
-                                 EVP_PKEY* key,
+                                 const EVP_PKEY* key,
                                  CBB* out_signature);
 
   // Returns a DER encoded AlgorithmIdentifier TLV for |signature_algorithm|
@@ -489,19 +490,40 @@ class CertBuilder {
   raw_ptr<CertBuilder, DanglingUntriaged> issuer_ = nullptr;
 };
 
+// Creates MTC logs and certificates.
+// TODO(crbug.com/469624806): for plants-05, an MTC CA can have multiple logs,
+// but this class only represents a single log. That's fine for most testing,
+// but it might be useful to have a higher level test class for representing a
+// CA with multiple logs? (The only place it really matters currently are the
+// FillMtcMetadataAnchorProto and GetPerLogLandmarkSubtreeHashes methods,
+// otherwise you could just create multiple MtcLogBuilder objects to represent
+// each log for a single CA.)
 class MtcLogBuilder {
  public:
   // Type aliases to make interfaces more obvious what the integer types mean.
+  using LogNumber = uint16_t;
   using LandmarkNumber = uint64_t;
   using LogIndex = uint64_t;
 
-  // Create a log builder with the specified log id and base id.
-  // If `base_id` is empty, `log_id` will also be used as the `base_id`.
-  explicit MtcLogBuilder(base::span<const uint8_t> log_id,
-                         base::span<const uint8_t> base_id = {});
+  struct Cosigner {
+    std::vector<uint8_t> id;
+    crypto::keypair::PrivateKey key;
+    bssl::SignatureAlgorithm signature_algorithm;
+  };
+
+  // Create a log builder for draft-plants-05 with the specified `ca_id` and
+  // `log_number`.
+  // The spec requires `log_number` to be non-zero to generate valid a log, but
+  // this class allows it to be 0 so that tests can generate intentionally
+  // invalid test data.
+  explicit MtcLogBuilder(base::span<const uint8_t> ca_id, LogNumber log_number);
+
   ~MtcLogBuilder();
 
   base::span<const uint8_t> log_id() const { return log_id_; }
+  base::span<const uint8_t> ca_id() const {
+    return ca_id_;
+  }
 
   // Creates the next landmark. Returns false on failure (eg if there were
   // no new entries added since the last landmark).
@@ -523,6 +545,10 @@ class MtcLogBuilder {
     return {0, landmarks_.size() - 1};
   }
 
+  // Returns the trust anchor group identifier that represents the CA and the
+  // current active landmark range.
+  std::vector<uint8_t> GetLandmarkTrustAnchorGroup() const;
+
   // Returns the currently active landmark subtrees.
   //
   // https://davidben.github.io/merkle-tree-certs/draft-davidben-tls-merkle-tree-certs.html#section-6.3.1-7
@@ -534,6 +560,13 @@ class MtcLogBuilder {
   //
   // https://davidben.github.io/merkle-tree-certs/draft-davidben-tls-merkle-tree-certs.html#trusted-subtrees
   std::vector<bssl::TrustedSubtree> GetLandmarkSubtreeHashes() const;
+
+  // Like `GetLandmarkSubtreeHashes`, but returns the result in a vector of
+  // LogTrustedSubtrees. Since MtcLogBuilder is a per-log object, the result
+  // will only have one entry in the vector. This is a convenience helper
+  // that returns the data format the boringssl MTCAnchor constructor wants for
+  // a plants-05 MTC CA.
+  std::vector<bssl::LogTrustedSubtrees> GetPerLogLandmarkSubtreeHashes() const;
 
   // Add entry to the log and return the index of the entry.
   // Once the index is included in a landmark subtree, the index can be used
@@ -551,6 +584,8 @@ class MtcLogBuilder {
   // logs with the same shape trees with different merkle tree hashes.
   void AddUnusedEntries(size_t n, base::span<const uint8_t> extra_data = {});
 
+  // TODO(crbug.com/469624806): rename "Signatureless" to "LandmarkRelative".
+
   // Returns the DER-encoded certificate for entry `index`, which must be
   // included in the active landmark subtrees. Returns nullopt otherwise.
   //
@@ -563,6 +598,16 @@ class MtcLogBuilder {
   bssl::UniquePtr<CRYPTO_BUFFER> CreateSignaturelessCertificateBuffer(
       LogIndex index);
 
+  // Creates a standalone MTC. In order for this to create a valid MTC,
+  // `cosigners` should include the CA cosigner, and optionally additional
+  // cosigners. The order of `cosigners` does not matter.
+  std::optional<std::vector<uint8_t>> CreateStandaloneCertificate(
+      LogIndex index,
+      std::vector<Cosigner*> cosigners);
+  bssl::UniquePtr<CRYPTO_BUFFER> CreateStandaloneCertificateBuffer(
+      LogIndex index,
+      std::vector<Cosigner*> cosigners);
+
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
   // Helper to fill a MtcAnchorData protobuf object with the information from
   // this log.
@@ -570,14 +615,28 @@ class MtcLogBuilder {
       chrome_root_store::MtcAnchorData* mtc_anchor_data) const;
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 
+  static std::vector<bssl::Subtree> SubtreesForLandmarkRangeForTesting(
+      LogIndex start,
+      LogIndex end);
+
  private:
   class Data;
 
   std::vector<uint8_t> GetEncodedLogName();
   std::vector<uint8_t> CreateSignaturelessMtcProof(LogIndex index);
+  std::vector<uint8_t> CreateMtcProof(LogIndex index,
+                                      bssl::Subtree subtree,
+                                      std::vector<Cosigner*> cosigners);
+  std::vector<uint8_t> CreateCosignedMessage(bssl::Subtree subtree,
+                                             const Cosigner* cosigner);
+  std::vector<uint8_t> CreateMtcSignature(bssl::Subtree subtree,
+                                          const Cosigner* cosigner);
   std::vector<SHA256HashValue> CalculateSubtreeInclusionProof(
       bssl::Subtree subtree,
       bssl::Subtree tree);
+  std::optional<std::vector<uint8_t>> CreateCertificate(
+      LogIndex index,
+      base::span<const uint8_t> signature_value);
 
   // TBSCertificateLogEntry  ::=  SEQUENCE  {
   // version             [0]  EXPLICIT Version DEFAULT v1,
@@ -596,12 +655,10 @@ class MtcLogBuilder {
     MtcLogEntry(MtcLogEntry&&);
     MtcLogEntry& operator=(MtcLogEntry&& other);
 
-    static MtcLogEntry NullEntry();
-
     std::vector<uint8_t> BuildMerkleTreeCertEntryTbsCertEntry(
         std::vector<uint8_t> issuer_tlv);
     std::vector<uint8_t> BuildTBSCertificate(std::vector<uint8_t> issuer_tlv,
-                                             uint64_t index);
+                                             uint64_t serial);
 
     // Fields corresponding to TBSCertificateLogEntry:
     // TODO(crbug.com/469624806): Version is always v3. Support
@@ -610,8 +667,9 @@ class MtcLogBuilder {
     // `log_id_`.
     std::vector<uint8_t> validity;
     std::vector<uint8_t> subject;
-    // subjectPublicKeyInfoHash isn't saved in the struct, it is calculated
-    // from the `subject_public_key_info` when needed.
+    // subjectPublicKeyAlgorithm and subjectPublicKeyInfoHash aren't saved in
+    // the struct, they are calculated from the `subject_public_key_info` when
+    // needed.
     // issuerUniqueID and subjectUniqueID are not supported.
     std::vector<uint8_t> extensions;
 
@@ -624,7 +682,8 @@ class MtcLogBuilder {
   std::vector<LogIndex> landmarks_;
 
   std::vector<uint8_t> log_id_;
-  std::vector<uint8_t> base_id_;
+  std::vector<uint8_t> ca_id_;
+  LogNumber log_number_;
 
   std::unique_ptr<Data> data_;
 };

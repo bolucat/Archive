@@ -43,13 +43,15 @@ struct MockSessionCallbacks {
   testing::MockFunction<void(absl::string_view)> session_terminated_callback;
   testing::MockFunction<void()> session_deleted_callback;
   testing::MockFunction<void(const TrackNamespace&,
-                             const std::optional<MessageParameters>&,
+                             const MessageParameters* absl_nullable,
                              MoqtResponseCallback)>
       incoming_publish_namespace_callback;
   testing::MockFunction<std::unique_ptr<MoqtNamespaceTask>(
-      const TrackNamespace&, SubscribeNamespaceOption, const MessageParameters&,
-      MoqtResponseCallback)>
+      const TrackNamespace&, const MessageParameters&, MoqtResponseCallback)>
       incoming_subscribe_namespace_callback;
+  testing::MockFunction<bool(const TrackNamespace&, const MessageParameters&,
+                             MoqtResponseCallback)>
+      incoming_subscribe_tracks_callback;
 
   MockSessionCallbacks() {
     ON_CALL(incoming_publish_namespace_callback, Call)
@@ -155,6 +157,7 @@ class TestTrackPublisher : public MoqtTrackPublisher {
     metadata.extensions = "";
     metadata.status = MoqtObjectStatus::kNormal;
     metadata.publisher_priority = 128;
+    metadata.first_object_in_subgroup = location.object == 0;
     metadata.payload_length = payload.length();
     metadata.arrival_time = arrival_time;
     auto it = objects_.find(location);
@@ -186,7 +189,7 @@ class TestTrackPublisher : public MoqtTrackPublisher {
 };
 
 // TODO(martinduke): Rename to MockSubscribeVisitor.
-class MockSubscribeRemoteTrackVisitor : public SubscribeVisitor {
+class MockLiveSubscriberVisitor : public SubscribeVisitor {
  public:
   MOCK_METHOD(void, OnReply,
               (const FullTrackName& full_track_name,

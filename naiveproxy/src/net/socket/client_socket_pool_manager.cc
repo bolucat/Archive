@@ -60,25 +60,11 @@ std::array<size_t, kSocketPoolTypesSize> g_max_sockets_per_group =
 
 // Returns the limit for active connections through a specific proxy chain for
 // this network process. `set_max_sockets_per_proxy_chain` can modify this.
-std::array<size_t, kSocketPoolTypesSize>& GlobalMaxSocketPerProxyChain() {
-  static std::array<size_t, kSocketPoolTypesSize>
-      g_max_sockets_per_proxy_chain = []() {
-        if (base::FeatureList::IsEnabled(features::kTcpSocketPoolProxyLimit)) {
-          return std::to_array<size_t>({
-              base::saturated_cast<size_t>(
-                  features::kTcpSocketPoolProxyLimitNormal.Get()),  // kNormal
-              base::saturated_cast<size_t>(
-                  features::kTcpSocketPoolProxyLimitWebSocket
-                      .Get())  // kWebSocket
-          });
-        }
-        return std::to_array<size_t>({
-            32,  // kNormal
-            32   // kWebSocket
-        });
-      }();
-  return g_max_sockets_per_proxy_chain;
-}
+std::array<size_t, kSocketPoolTypesSize> g_max_sockets_per_proxy_chain =
+    std::to_array<size_t>({
+        128,  // kNormal
+        128   // kWebSocket
+    });
 
 bool g_allow_size_randomization_for_proxy = true;
 
@@ -183,14 +169,14 @@ void ClientSocketPoolManager::set_max_sockets_per_group_for_test(
 
   DCHECK_GE(g_socket_soft_cap_per_pool[std::to_underlying(pool_type)],
             g_max_sockets_per_group[std::to_underlying(pool_type)]);
-  DCHECK_GE(GlobalMaxSocketPerProxyChain()[std::to_underlying(pool_type)],
+  DCHECK_GE(g_max_sockets_per_proxy_chain[std::to_underlying(pool_type)],
             g_max_sockets_per_group[std::to_underlying(pool_type)]);
 }
 
 // static
 size_t ClientSocketPoolManager::max_sockets_per_proxy_chain(
     HttpNetworkSession::SocketPoolType pool_type) {
-  return GlobalMaxSocketPerProxyChain()[std::to_underlying(pool_type)];
+  return g_max_sockets_per_proxy_chain[std::to_underlying(pool_type)];
 }
 
 // static
@@ -207,7 +193,7 @@ void ClientSocketPoolManager::set_max_sockets_per_proxy_chain(
   // enterprise policy MaxConnectionsPerProxy.
   CHECK_GE(socket_count, 6u);
   // LINT.ThenChange(/net/socket/client_socket_pool_manager.cc:SetMaxConnectionsPerProxyChain)
-  GlobalMaxSocketPerProxyChain()[std::to_underlying(pool_type)] = socket_count;
+  g_max_sockets_per_proxy_chain[std::to_underlying(pool_type)] = socket_count;
 }
 
 // static

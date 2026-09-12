@@ -27,6 +27,10 @@ bool IsCleartextPermitted(std::string_view host) {
   return true;
 }
 
+EchMode GetEchMode(std::string_view host) {
+  return EchMode::kOpportunistic;
+}
+
 bool HaveOnlyLoopbackAddresses() {
   return false;
 }

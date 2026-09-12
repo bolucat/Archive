@@ -9,12 +9,15 @@
 #include <optional>
 
 #include "base/values.h"
+#include "net/base/ech_mode.h"
+#include "net/base/features.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_export.h"
 #include "net/base/rand_callback.h"
 #include "net/dns/dns_config.h"
 #include "net/dns/dns_hosts.h"
 #include "net/dns/public/dns_config_overrides.h"
+#include "net/dns/public/insecure_dns_mode.h"
 
 namespace url {
 
@@ -63,6 +66,13 @@ class NET_EXPORT DnsClient {
  public:
   static const int kMaxInsecureFallbackFailures = 16;
 
+  // Whether TaskType::DNS_PLATFORM should be used instead of whichever TaskType
+  // would normally be selected.
+  static bool UseDnsPlatformDueToEchMode(std::optional<EchMode> ech_mode) {
+    return ech_mode.has_value() && *ech_mode == EchMode::kStrict &&
+           features::IsDnsPlatformSupported();
+  }
+
   virtual ~DnsClient() = default;
 
   // Returns true if the DnsClient is able and allowed to make secure DNS
@@ -71,12 +81,20 @@ class NET_EXPORT DnsClient {
   virtual bool CanUseSecureDnsTransactions() const = 0;
 
   // Returns true if the DnsClient is able and allowed to make insecure DNS
-  // transactions. If false, insecure transactions should not be created. Will
-  // always be false unless SetInsecureEnabled(true) has been called.
-  virtual bool CanUseInsecureDnsTransactions() const = 0;
-  virtual bool CanQueryAdditionalTypesViaInsecureDns() const = 0;
-  virtual void SetInsecureEnabled(bool enabled,
+  // transactions. If false, insecure transactions should not be created.
+  // TODO(crbug.com/448975408): Remove `ech_mode` (here and in other places)
+  // once the performance regression introduced by `TaskType::DNS_PLATFORM` has
+  // been addressed. For the time being, it is necessary to enable support
+  // `EchMode::kStrict` without causing a performance regression for non-kStrict
+  // requests.
+  virtual bool CanUseInsecureDnsTransactions(
+      std::optional<EchMode> ech_mode) const = 0;
+  virtual bool CanQueryAdditionalTypesViaInsecureDns(
+      std::optional<EchMode> ech_mode) const = 0;
+  virtual void SetInsecureEnabled(InsecureDnsMode mode,
                                   bool additional_types_enabled) = 0;
+  virtual InsecureDnsMode GetInsecureDnsMode(
+      std::optional<EchMode> ech_mode) const = 0;
 
   // When true, DoH should not be used in AUTOMATIC mode since no DoH servers
   // have a successful probe state.
@@ -85,7 +103,8 @@ class NET_EXPORT DnsClient {
 
   // When true, insecure DNS transactions should not be used when reasonable
   // fallback alternatives, e.g. system resolution can be used instead.
-  virtual bool FallbackFromInsecureTransactionPreferred() const = 0;
+  virtual bool FallbackFromInsecureTransactionPreferred(
+      std::optional<EchMode> ech_mode) const = 0;
 
   // Updates DNS config.  If effective config has changed, destroys the current
   // DnsTransactionFactory and creates a new one according to the effective
@@ -108,9 +127,8 @@ class NET_EXPORT DnsClient {
   virtual DnsSession* GetCurrentSession() = 0;
 
   // Retrieve the current DNS configuration that would be used if transactions
-  // were otherwise currently allowed. Returns null if configuration is
-  // invalid or a configuration has not yet been read from the system.
-  virtual const DnsConfig* GetEffectiveConfig() const = 0;
+  // were otherwise currently allowed.
+  virtual const DnsConfig& GetEffectiveConfig() const = 0;
   virtual const DnsHosts* GetHosts() const = 0;
 
   // Returns all preset addresses for the specified endpoint, if any are

@@ -22,16 +22,16 @@ void MemoryConsumerRegistry::NotifyReleaseMemory(MemoryConsumer* consumer) {
 }
 
 void MemoryConsumerRegistry::NotifyUpdateMemoryLimit(MemoryConsumer* consumer,
-                                                     int percentage) {
+                                                     MemoryLimit memory_limit) {
   CHECK(consumer);
-  consumer->UpdateMemoryLimit(percentage);
+  consumer->UpdateMemoryLimit(memory_limit);
 }
 
 void MemoryConsumerRegistry::NotifyUpdateMemoryLimitNoNotification(
     MemoryConsumer* consumer,
-    int percentage) {
+    MemoryLimit memory_limit) {
   CHECK(consumer);
-  consumer->UpdateMemoryLimitNoNotification(percentage);
+  consumer->UpdateMemoryLimitNoNotification(memory_limit);
 }
 
 // static
@@ -68,11 +68,18 @@ MemoryConsumerRegistry::~MemoryConsumerRegistry() {
   CHECK(destruction_observers_.empty());
 }
 
-void MemoryConsumerRegistry::AddMemoryConsumer(
-    std::string_view consumer_name,
-    std::optional<MemoryConsumerTraits> traits,
-    MemoryConsumer* consumer) {
+void MemoryConsumerRegistry::AddMemoryConsumer(std::string_view consumer_name,
+                                               MemoryConsumerTraits traits,
+                                               MemoryConsumer* consumer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (traits.consumer_type == MemoryConsumerTraits::ConsumerType::kPassive) {
+    CHECK(consumer->IsPassive())
+        << "Active MemoryConsumer registered with Passive traits: "
+        << consumer_name;
+  }
+  // TODO(crbug.com/489671163): Re-enable the check that passive consumers
+  // don't register with active traits once all clients have been migrated.
 
   uint32_t consumer_id = PersistentHash(consumer_name);
   OnMemoryConsumerAdded(consumer_id, consumer_name, traits, consumer);

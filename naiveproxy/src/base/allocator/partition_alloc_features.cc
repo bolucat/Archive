@@ -132,6 +132,7 @@ constinit const FeatureParam<std::string>
     kPartitionAllocSchedulerLoopQuarantineConfig{
         &kPartitionAllocSchedulerLoopQuarantine,
         "PartitionAllocSchedulerLoopQuarantineConfig",
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
         R"({
           "browser":{
             "main":{
@@ -139,17 +140,30 @@ constinit const FeatureParam<std::string>
               "enable-quarantine":true,
               "enable-zapping":true,
               "leak-on-destruction":false
-            },
+            }
+          },
+          "*":{
             "amsc":{
               "branch-capacity-in-bytes":524288,
               "enable-quarantine":true,
               "enable-zapping":true,
-              "leak-on-destruction":false,
-              "max-quarantine-size":null
+              "leak-on-destruction":false
             }
           }
-        })"};
-
+        })"
+#else
+        R"({
+          "*":{
+            "amsc":{
+              "branch-capacity-in-bytes":524288,
+              "enable-quarantine":true,
+              "enable-zapping":true,
+              "leak-on-destruction":false
+            }
+          }
+        })"
+#endif
+};
 
 BASE_FEATURE(kPartitionAllocEventuallyZeroFreedMemory,
              FEATURE_DISABLED_BY_DEFAULT);
@@ -233,15 +247,6 @@ constinit const FeatureParam<MemtagMode> kMemtagModeParam{
 #endif
     &kMemtagModeOptions};
 
-constexpr FeatureParam<RetagMode>::Option kRetagModeOptions[] = {
-    {RetagMode::kIncrement, "increment"},
-    {RetagMode::kRandom, "random"},
-};
-
-// Note: Do not use the prepared macro as of no need for a local cache.
-constinit const FeatureParam<RetagMode> kRetagModeParam{
-    &kPartitionAllocMemoryTagging, "retag-mode", RetagMode::kIncrement,
-    &kRetagModeOptions};
 
 constexpr FeatureParam<MemoryTaggingEnabledProcesses>::Option
     kMemoryTaggingEnabledProcessesOptions[] = {
@@ -312,6 +317,38 @@ BASE_FEATURE_PARAM(TimeDelta,
                    TimeDelta()  // Defaults to zero.
 );
 
+// Whether the periodic memory reclaim interval adapts to how much memory is
+// actually reclaimable, instead of running at a fixed cadence: back off while
+// there is little to decommit, so that idle processes wake up less often, and
+// ramp back up once there is a lot. Only consulted when
+// `kPartitionAllocMemoryReclaimerInterval` does not pin the interval.
+BASE_FEATURE(kPartitionAllocAdaptiveMemoryReclaimInterval,
+             FEATURE_DISABLED_BY_DEFAULT);
+// Bounds of the back-off. The interval starts at `default_interval` and stays
+// within [`min_interval`, `max_interval`]. Defaults match
+// partition_alloc::MemoryReclaimer::AdaptiveIntervalConfig.
+BASE_FEATURE_PARAM(TimeDelta,
+                   kPartitionAllocAdaptiveMemoryReclaimMinInterval,
+                   &kPartitionAllocAdaptiveMemoryReclaimInterval,
+                   Seconds(4));
+BASE_FEATURE_PARAM(TimeDelta,
+                   kPartitionAllocAdaptiveMemoryReclaimMaxInterval,
+                   &kPartitionAllocAdaptiveMemoryReclaimInterval,
+                   Minutes(1));
+BASE_FEATURE_PARAM(TimeDelta,
+                   kPartitionAllocAdaptiveMemoryReclaimDefaultInterval,
+                   &kPartitionAllocAdaptiveMemoryReclaimInterval,
+                   Seconds(8));
+// Low watermark of decommittable bytes, at or below which the interval grows.
+// The default of 100 KiB was picked from live browser measurements as the
+// least aggressive back-off that still reduces reclaim wake-ups meaningfully
+// while keeping the per-reclaim decommit batch, and therefore the
+// committed-memory headroom, close to the non-adaptive baseline.
+BASE_FEATURE_PARAM(int,
+                   kPartitionAllocAdaptiveMemoryReclaimMinDecommittableBytes,
+                   &kPartitionAllocAdaptiveMemoryReclaimInterval,
+                   100 * 1024);
+
 // Configures whether we set a lower limit for renderers that do not have a main
 // frame, similar to the limit that is already done for backgrounded renderers.
 BASE_FEATURE(kLowerPAMemoryLimitForNonMainRenderers,
@@ -346,11 +383,6 @@ BASE_FEATURE(kPartitionAllocSortSmallerSlotSpanFreeLists,
 
 // Whether to sort the active slot spans in PurgeMemory().
 BASE_FEATURE(kPartitionAllocSortActiveSlotSpans, FEATURE_DISABLED_BY_DEFAULT);
-
-#if BUILDFLAG(IS_WIN)
-// Whether to retry allocations when commit fails.
-BASE_FEATURE(kPageAllocatorRetryOnCommitFailure, FEATURE_ENABLED_BY_DEFAULT);
-#endif
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
 // A parameter to exclude or not exclude PartitionAllocSupport from
@@ -400,13 +432,7 @@ BASE_FEATURE(kPartitionAllocUsePriorityInheritanceLocks,
              FEATURE_DISABLED_BY_DEFAULT);
 #endif  // PA_BUILDFLAG(ENABLE_PARTITION_LOCK_PRIORITY_INHERITANCE)
 
-// Note: There are two ChromeOS platforms (OVIS & REX) that are disabled for
-// this feature because of https://crbug.com/495493036.
-BASE_FEATURE(kPartitionAllocFreeWithSize, FEATURE_ENABLED_BY_DEFAULT);
-BASE_FEATURE_PARAM(bool,
-                   kPartitionAllocStrictFreeSizeCheck,
-                   &kPartitionAllocFreeWithSize,
-                   "strict-free-size-check",
-                   true);
+BASE_FEATURE(kPartitionAllocTighterAlignedAllocBound,
+             FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace base::features

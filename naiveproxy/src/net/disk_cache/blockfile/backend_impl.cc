@@ -27,6 +27,7 @@
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -730,6 +731,14 @@ bool BackendImpl::SetMaxSize(int64_t max_bytes) {
   user_flags_ |= kMaxSize;
   max_size_ = max_bytes;
   return true;
+}
+
+void BackendImpl::SetMaxBytes(base::ByteSize max_bytes) {
+  // Not implemented for the blockfile backend. Safe to ignore.
+}
+
+base::ByteSize BackendImpl::GetMaxBytesForTesting() const {
+  return base::ByteSize(base::checked_cast<uint64_t>(max_size_));
 }
 
 base::FilePath BackendImpl::GetFileName(Addr address) const {
@@ -1469,26 +1478,31 @@ bool BackendImpl::InitBackingStore(bool* file_created) {
 // The maximum cache size will be either set explicitly by the caller, or
 // calculated by this code.
 void BackendImpl::AdjustMaxCacheSize(int table_len) {
-  if (max_size_)
+  if (max_size_) {
     return;
+  }
 
   // If table_len is provided, the index file exists.
   DCHECK(!table_len || data_->header.magic);
 
   // The user is not setting the size, let's figure it out.
-  int64_t available = base::SysInfo::AmountOfFreeDiskSpace(path_).value_or(-1);
-  if (available < 0) {
-    max_size_ = kDefaultCacheSize;
+  std::optional<base::SysInfo::DiskSpaceInfo> disk_space =
+      base::SysInfo::AmountOfDiskSpace(path_);
+  if (!disk_space) {
+    max_size_ = kDefaultCacheSize.InBytes();
     return;
   }
 
-  if (table_len)
-    available += data_->header.num_bytes;
+  base::ByteSize available = disk_space->available;
+  if (table_len) {
+    available += base::ByteSizeDelta(data_->header.num_bytes);
+  }
 
-  max_size_ = PreferredCacheSize(available, GetCacheType());
+  max_size_ = PreferredCacheSize(available, GetCacheType()).InBytes();
 
-  if (!table_len)
+  if (!table_len) {
     return;
+  }
 
   // If we already have a table, adjust the size to it.
   max_size_ = std::min(max_size_, MaxStorageSizeForTable(table_len));
@@ -2010,8 +2024,10 @@ BackendImpl::CheckIndexResult BackendImpl::CheckIndex() {
 
 #if !defined(NET_BUILD_STRESS_CACHE)
   if (data_->header.num_bytes < 0 ||
-      (max_size_ < std::numeric_limits<int32_t>::max() - kDefaultCacheSize &&
-       data_->header.num_bytes > max_size_ + kDefaultCacheSize)) {
+      (max_size_ < std::numeric_limits<int32_t>::max() -
+                       kDefaultCacheSize.AsByteSizeDelta().InBytes() &&
+       data_->header.num_bytes >
+           max_size_ + kDefaultCacheSize.AsByteSizeDelta().InBytes())) {
     LOG(ERROR) << "Invalid cache (current) size";
     return BackendImpl::CheckIndexResult::kInvalidCacheSize;
   }

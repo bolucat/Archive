@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -15,7 +16,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "openssl/chacha.h"
 #include "openssl/sha.h"
@@ -205,7 +205,7 @@ std::string Sha1Hash(absl::string_view data) {
   char buffer[SHA_DIGEST_LENGTH];
   SHA1(reinterpret_cast<const uint8_t*>(data.data()), data.size(),
        reinterpret_cast<uint8_t*>(buffer));
-  return std::string(buffer, ABSL_ARRAYSIZE(buffer));
+  return std::string(buffer, std::size(buffer));
 }
 
 bool ClearControlFrame(const QuicFrame& frame) {
@@ -1217,7 +1217,8 @@ void CreateServerSessionForTest(
     QuicCryptoServerConfig* server_crypto_config,
     QuicCompressedCertsCache* compressed_certs_cache,
     PacketSavingConnection** server_connection,
-    TestQuicSpdyServerSession** server_session) {
+    TestQuicSpdyServerSession** server_session,
+    std::optional<bool> server_padding_enabled) {
   QUICHE_CHECK(server_crypto_config);
   QUICHE_CHECK(server_connection);
   QUICHE_CHECK(server_session);
@@ -1231,6 +1232,7 @@ void CreateServerSessionForTest(
   *server_session = new TestQuicSpdyServerSession(
       *server_connection, DefaultQuicConfig(), supported_versions,
       server_crypto_config, compressed_certs_cache);
+  (*server_session)->set_server_padding_enabled(server_padding_enabled);
   (*server_session)->Initialize();
 
   // We advance the clock initially because the default time is zero and the

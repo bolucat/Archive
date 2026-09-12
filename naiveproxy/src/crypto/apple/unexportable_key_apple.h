@@ -7,6 +7,8 @@
 
 #include <memory>
 
+#include "base/compiler_specific.h"
+
 #if defined(__OBJC__)
 #import <LocalAuthentication/LocalAuthentication.h>
 #endif  // defined(__OBJC__)
@@ -15,8 +17,8 @@
 
 namespace crypto::apple {
 
-// UserVerifyingKeyProviderApple is an implementation of the
-// UserVerifyingKeyProvider interface on top of Apple's Secure Enclave. Callers
+// UnexportableKeyProviderApple is an implementation of the
+// UnexportableKeyProvider interface on top of Apple's Secure Enclave. Callers
 // must provide a keychain access group when instantiating this class. This
 // means that the build must be codesigned for any of this to work.
 // https://developer.apple.com/documentation/bundleresources/entitlements/keychain-access-groups?language=objc
@@ -45,6 +47,21 @@ class UnexportableKeyProviderApple : public StatefulUnexportableKeyProvider {
       base::span<const SignatureVerifier::SignatureAlgorithm>
           acceptable_algorithms,
       LAContext* lacontext);
+
+  // Like UnexportableKeyProvider::FromWrappedAttestationKeySlowly, but lets you
+  // pass an authenticated LAContext to avoid having macOS prompt the user for
+  // user verification.
+  std::unique_ptr<UnexportableAttestationKey> FromWrappedAttestationKeySlowly(
+      base::span<const uint8_t> wrapped_key,
+      LAContext* lacontext);
+
+  // Like UnexportableKeyProvider::GenerateAttestationKeySlowly, but lets you
+  // pass an authenticated LAContext to avoid having macOS prompt the user for
+  // user verification.
+  std::unique_ptr<UnexportableAttestationKey> GenerateAttestationKeySlowly(
+      base::span<const SignatureVerifier::SignatureAlgorithm>
+          acceptable_algorithms,
+      LAContext* lacontext);
 #endif  // defined(__OBJC__)
 
   // UnexportableKeyProvider:
@@ -56,7 +73,13 @@ class UnexportableKeyProviderApple : public StatefulUnexportableKeyProvider {
           acceptable_algorithms) override;
   std::unique_ptr<UnexportableSigningKey> FromWrappedSigningKeySlowly(
       base::span<const uint8_t> wrapped_key) override;
-  StatefulUnexportableKeyProvider* AsStatefulUnexportableKeyProvider() override;
+  std::unique_ptr<UnexportableAttestationKey> GenerateAttestationKeySlowly(
+      base::span<const SignatureVerifier::SignatureAlgorithm>
+          acceptable_algorithms) override;
+  std::unique_ptr<UnexportableAttestationKey> FromWrappedAttestationKeySlowly(
+      base::span<const uint8_t> wrapped_key) override;
+  StatefulUnexportableKeyProvider* AsStatefulUnexportableKeyProvider()
+      LIFETIME_BOUND override;
 
   // StatefulUnexportableKeyProvider:
   std::optional<std::vector<std::unique_ptr<UnexportableSigningKey>>>
@@ -64,7 +87,7 @@ class UnexportableKeyProviderApple : public StatefulUnexportableKeyProvider {
   std::optional<size_t> DeleteWrappedKeysSlowly(
       base::span<const base::span<const uint8_t>> wrapped_keys) override;
   std::optional<size_t> DeleteKeysSlowly(
-      base::span<const UnexportableKey* const> keys) override;
+      base::span<const UnexportableSigningKey* const> keys) override;
   std::optional<size_t> DeleteAllKeysSlowly() override;
 
  private:

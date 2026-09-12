@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/crypto/quic_decrypter.h"
@@ -322,23 +323,25 @@ class QUICHE_EXPORT QuicFramer {
 
   QuicErrorCode error() const { return error_; }
 
-  // Allows enabling or disabling of timestamp processing and serialization.
-  // TODO(ianswett): Remove the const once timestamps are negotiated via
-  // transport params.
-  void set_process_timestamps(bool process_timestamps) const {
-    process_timestamps_ = process_timestamps;
-  }
+  // TODO(b/132632465): Remove the const in timestamp-related setters once
+  // timestamps are negotiated via transport params.
 
+  // Sets the max number of receive timestamps to parse per ACK frame.
+  void set_local_max_receive_timestamps_per_ack(uint32_t max_timestamps) const {
+    local_max_receive_timestamps_per_ack_ = max_timestamps;
+  }
   // Sets the max number of receive timestamps to send per ACK frame.
-  // TODO(wub): Remove the const once timestamps are negotiated via
-  // transport params.
-  void set_max_receive_timestamps_per_ack(uint32_t max_timestamps) const {
-    max_receive_timestamps_per_ack_ = max_timestamps;
+  void set_peer_max_receive_timestamps_per_ack(uint32_t max_timestamps) const {
+    peer_max_receive_timestamps_per_ack_ = max_timestamps;
   }
 
-  // Sets the exponent to use when writing/reading ACK receive timestamps.
-  void set_receive_timestamps_exponent(uint32_t exponent) const {
-    receive_timestamps_exponent_ = exponent;
+  // Sets the exponent to use when reading ACK receive timestamps.
+  void set_local_receive_timestamps_exponent(uint32_t exponent) const {
+    local_receive_timestamps_exponent_ = exponent;
+  }
+  // Sets the exponent to use when writing ACK receive timestamps.
+  void set_peer_receive_timestamps_exponent(uint32_t exponent) const {
+    peer_receive_timestamps_exponent_ = exponent;
   }
 
   bool process_reset_stream_at() const { return process_reset_stream_at_; }
@@ -787,23 +790,6 @@ class QUICHE_EXPORT QuicFramer {
   using NackRangeMap = std::map<QuicPacketNumber, uint8_t>;
   using AssociatedDataStorage = absl::InlinedVector<char, 20>;
 
-  // AckTimestampRange is a data structure derived from a QuicAckFrame. It is
-  // used to serialize timestamps in a IETF_ACK_RECEIVE_TIMESTAMPS frame.
-  struct QUICHE_EXPORT AckTimestampRange {
-    QuicPacketCount delta_from_largest_acked;
-    // |range_begin| and |range_end| are index(es) in
-    // QuicAckFrame.received_packet_times, representing a continuous range of
-    // packet numbers in descending order. |range_begin| >= |range_end|.
-    int64_t range_begin;  // Inclusive
-    int64_t range_end;    // Inclusive
-  };
-  absl::InlinedVector<AckTimestampRange, 2> GetAckTimestampRanges(
-      const QuicAckFrame& frame, std::string& detailed_error) const;
-  int64_t FrameAckTimestampRanges(
-      const QuicAckFrame& frame,
-      const absl::InlinedVector<AckTimestampRange, 2>& timestamp_ranges,
-      QuicDataWriter* writer) const;
-
   struct QUICHE_EXPORT AckFrameInfo {
     AckFrameInfo();
     AckFrameInfo(const AckFrameInfo& other);
@@ -938,12 +924,7 @@ class QUICHE_EXPORT QuicFramer {
       QuicPacketNumberLength packet_number_length,
       QuicPacketNumber base_packet_number, uint64_t packet_number);
 
-  // Returns the QuicTime::Delta corresponding to the time from when the framer
-  // was created.
-  const QuicTime::Delta CalculateTimestampFromWire(uint32_t time_delta_us);
-
   // Computes the wire size in bytes of time stamps in |ack|.
-  size_t GetAckFrameTimeStampSize(const QuicAckFrame& ack);
   size_t GetIetfAckFrameTimestampSize(const QuicAckFrame& ack);
 
   // Computes the wire size in bytes of the |ack| frame.
@@ -992,8 +973,6 @@ class QUICHE_EXPORT QuicFramer {
 
   bool AppendAckFrameAndTypeByte(const QuicAckFrame& frame,
                                  QuicDataWriter* writer);
-  bool AppendTimestampsToAckFrame(const QuicAckFrame& frame,
-                                  QuicDataWriter* writer);
 
   // Append IETF format ACK frame.
   //
@@ -1126,8 +1105,7 @@ class QUICHE_EXPORT QuicFramer {
   // IETF_ACK_RECEIVE_TIMESTAMPS frame type.
   bool UseIetfAckWithReceiveTimestamp(const QuicAckFrame& frame) const {
     return VersionIsIetfQuic(version_.transport_version) &&
-           process_timestamps_ &&
-           std::min<uint64_t>(max_receive_timestamps_per_ack_,
+           std::min<uint64_t>(peer_max_receive_timestamps_per_ack_,
                               frame.received_packet_times.size()) > 0;
   }
 
@@ -1167,19 +1145,19 @@ class QUICHE_EXPORT QuicFramer {
   bool validate_flags_;
   // The diversification nonce from the last received packet.
   DiversificationNonce last_nonce_;
-  // If true, send and process timestamps in the ACK frame.
-  // TODO(ianswett): Remove the mutables once set_process_timestamps and
-  // set_receive_timestamp_exponent_ aren't const.
-  mutable bool process_timestamps_;
   // The max number of receive timestamps to send per ACK frame.
-  mutable uint32_t max_receive_timestamps_per_ack_;
-  // The exponent to use when writing/reading ACK receive timestamps.
-  mutable uint32_t receive_timestamps_exponent_;
+  mutable uint32_t peer_max_receive_timestamps_per_ack_;
+  // The max number of receive timestamps to allow in an incoming ACK frame.
+  mutable uint32_t local_max_receive_timestamps_per_ack_;
+  // The exponent to use when writing ACK receive timestamps.
+  mutable uint32_t peer_receive_timestamps_exponent_;
+  // The exponent to use when reading ACK receive timestamps.
+  mutable uint32_t local_receive_timestamps_exponent_;
   // If true, process RESET_STREAM_AT frames.
   bool process_reset_stream_at_;
   // The creation time of the connection, used to calculate timestamps.
   QuicTime creation_time_;
-  // The last timestamp received if process_timestamps_ is true.
+  // The last timestamp received if local_max_receive_timestamps_per_ack_ > 0.
   QuicTime::Delta last_timestamp_;
 
   // Whether IETF QUIC Key Update is supported on this connection.

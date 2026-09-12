@@ -19,6 +19,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
+#include "net/base/ech_mode.h"
 #include "net/base/features.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/ip_endpoint.h"
@@ -26,10 +27,13 @@
 #include "net/base/trace_constants.h"
 #include "net/dns/public/host_resolver_results.h"
 #include "net/dns/public/secure_dns_policy.h"
+#include "net/http/http_server_properties.h"
 #include "net/log/net_log_event_type.h"
+#include "net/nqe/network_quality_estimator.h"
 #include "net/socket/socket_tag.h"
 #include "net/socket/tcp_connect_job.h"
 #include "net/socket/transport_connect_sub_job.h"
+#include "net/ssl/ssl_config_service.h"
 #include "url/scheme_host_port.h"
 #include "url/url_constants.h"
 
@@ -112,9 +116,10 @@ std::unique_ptr<ConnectJob> TransportConnectJob::Factory::CreateJob(
     Delegate* delegate,
     const NetLogWithSource* net_log) {
   if (base::FeatureList::IsEnabled(features::kHappyEyeballsV2)) {
-    return std::make_unique<TcpConnectJob>(priority, socket_tag,
-                                           common_connect_job_params, params,
-                                           delegate, net_log);
+    return std::make_unique<TcpConnectJob>(
+        priority, socket_tag, common_connect_job_params, params, delegate,
+        net_log, /*endpoint_result_override=*/std::nullopt,
+        /*disable_stale_dns=*/true);
   }
   return std::make_unique<TransportConnectJob>(priority, socket_tag,
                                                common_connect_job_params,
@@ -283,11 +288,13 @@ int TransportConnectJob::DoResolveHost() {
   if (std::holds_alternative<url::SchemeHostPort>(params_->destination())) {
     request_ = host_resolver()->CreateRequest(
         std::get<url::SchemeHostPort>(params_->destination()),
-        params_->network_anonymization_key(), net_log(), parameters);
+        params_->network_anonymization_key(), params_->target_network(),
+        net_log(), parameters);
   } else {
     request_ = host_resolver()->CreateRequest(
         std::get<HostPortPair>(params_->destination()),
-        params_->network_anonymization_key(), net_log(), parameters);
+        params_->network_anonymization_key(), params_->target_network(),
+        net_log(), parameters);
   }
 
   return request_->Start(base::BindOnce(&TransportConnectJob::OnIOComplete,
@@ -406,10 +413,12 @@ int TransportConnectJob::DoTransportConnect() {
     if (result != ERR_IO_PENDING)
       return HandleSubJobComplete(result, ipv6_job_.get());
     if (ipv4_job_) {
+      base::TimeDelta fallback_time = TcpConnectJob::GetIPv6FallbackTime(
+          common_connect_job_params(), params_.get());
       // This use of base::Unretained is safe because |fallback_timer_| is
       // owned by this object.
       fallback_timer_.Start(
-          FROM_HERE, kIPv6FallbackTime,
+          FROM_HERE, fallback_time,
           base::BindOnce(&TransportConnectJob::StartIPv4JobAsync,
                          base::Unretained(this)));
     }
@@ -539,8 +548,10 @@ bool TransportConnectJob::IsSvcbOptional(
     return true;  // This is not a SVCB-capable request at all.
   }
 
-  if (!common_connect_job_params()->ssl_client_context ||
-      !common_connect_job_params()->ssl_client_context->config().ech_enabled) {
+  SSLClientContext* ssl_client_context =
+      common_connect_job_params()->ssl_client_context;
+  if (!ssl_client_context ||
+      !ssl_client_context->IsEchEnabled(scheme_host_port->host())) {
     return true;  // ECH is not supported for this request.
   }
 

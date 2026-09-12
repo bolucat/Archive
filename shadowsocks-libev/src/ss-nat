@@ -168,6 +168,100 @@ EOF
 	return $?
 }
 
+: <<'DOXYGEN_CLI_DOCS'
+// [cli_short_s]
+\par `-s <server_ip>`
+IP address of shadowsocks remote server
+[cli_short_s]
+
+// [cli_short_l]
+\par `-l <local_port>`
+Port number of shadowsocks local server
+[cli_short_l]
+
+// [cli_short_S]
+\par `-S <server_ip>`
+IP address of shadowsocks remote UDP server
+[cli_short_S]
+
+// [cli_short_L]
+\par `-L <local_port>`
+Port number of shadowsocks local UDP server
+[cli_short_L]
+
+// [cli_short_i]
+\par `-i <ip_list_file>`
+a file whose content is bypassed ip list
+[cli_short_i]
+
+// [cli_short_I]
+\par `-I <interface>`
+Set the LAN interface for NAT rules. The default is eth0.
+[cli_short_I]
+
+// [cli_short_e]
+\par `-e <extra_options>`
+Extra options for iptables
+[cli_short_e]
+
+// [cli_short_a]
+\par `-a <lan_ips>`
+LAN IP of access control, need a prefix to define access control mode
+[cli_short_a]
+
+// [cli_short_b]
+\par `-b <wan_ips>`
+WAN IP of will be bypassed
+[cli_short_b]
+
+// [cli_short_w]
+\par `-w <wan_ips>`
+WAN IP of will be forwarded
+[cli_short_w]
+
+// [cli_short_o]
+\par `-o`
+Apply the rules to the OUTPUT chain
+[cli_short_o]
+
+// [cli_short_u]
+\par `-u`
+Enable udprelay mode, TPROXY is required
+[cli_short_u]
+
+// [cli_short_U]
+\par `-U`
+Enable udprelay mode, using different IP and ports for TCP and UDP
+[cli_short_U]
+
+// [cli_short_f]
+\par `-f`
+Flush the rules
+[cli_short_f]
+
+// [cli_short_h]
+\par `-h`
+Show this help message and exit
+[cli_short_h]
+
+// [cli-options]
+\snippet{doc} ss-nat cli_short_s
+\snippet{doc} ss-nat cli_short_l
+\snippet{doc} ss-nat cli_short_S
+\snippet{doc} ss-nat cli_short_L
+\snippet{doc} ss-nat cli_short_i
+\snippet{doc} ss-nat cli_short_I
+\snippet{doc} ss-nat cli_short_e
+\snippet{doc} ss-nat cli_short_a
+\snippet{doc} ss-nat cli_short_b
+\snippet{doc} ss-nat cli_short_w
+\snippet{doc} ss-nat cli_short_o
+\snippet{doc} ss-nat cli_short_u
+\snippet{doc} ss-nat cli_short_U
+\snippet{doc} ss-nat cli_short_f
+\snippet{doc} ss-nat cli_short_h
+[cli-options]
+DOXYGEN_CLI_DOCS
 while getopts ":s:l:S:L:i:I:e:a:b:w:ouUfh" arg; do
 	case "$arg" in
 		s)

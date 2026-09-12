@@ -487,7 +487,7 @@ jobs:
         shell: msys2 {0}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-    - uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # tag=v2.31.1
+    - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # tag=v2.32.0
       with:
         msystem: ${{ matrix.msystem }}
         install: make diffutils
@@ -544,7 +544,7 @@ jobs:
     steps:
     - run: git config --global core.autocrlf input
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-    - uses: cygwin/cygwin-install-action@711d29f3da23c9f4a1798e369a6f01198c13b11a # tag=v6
+    - uses: cygwin/cygwin-install-action@3f0a3f9f988f7e96b8c18098ae05eaec175f5b52 # tag=v6
       with:
         platform: x86_64
         packages: >-
@@ -640,6 +640,16 @@ jobs:
 
   intel-cet-compatibility:
     runs-on: ubuntu-latest
+    env:
+      # Intel retires the per-release id in the downloadmirror path whenever a new
+      # SDE ships, and the old URL then starts answering 403. That has broken this
+      # job twice (#3884 -> #3893, and again for 9.33.0). When it happens again,
+      # get the current link from Intel's *stable* product page and update these
+      # three values together:
+      # https://www.intel.com/content/www/us/en/download/684897/intel-software-development-emulator.html
+      SDE_URL: https://downloadmirror.intel.com/924984/sde-external-10.13.1-2026-07-28-lin.tar.xz
+      SDE_SHA256: 94e97d623fec54385686e1e7ba65ebc9941748c05ee451423948334892bf2b50
+      SDE_DIR: sde-external-10.13.1-2026-07-28-lin
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
     - name: Build Zstd
@@ -648,14 +658,19 @@ jobs:
         readelf -n zstd
     - name: Get Intel SDE
       run: |
-        curl -LO https://downloadmirror.intel.com/813591/sde-external-9.33.0-2024-01-07-lin.tar.xz
-        tar xJvf sde-external-9.33.0-2024-01-07-lin.tar.xz
+        # -f so that a retired URL fails here, with the http status, instead of
+        # saving the error page and failing later as "tar: unrecognized format".
+        curl -fsSL -o sde.tar.xz "$SDE_URL"
+        echo "$SDE_SHA256  sde.tar.xz" | sha256sum -c -
+        tar xJf sde.tar.xz
     - name: Configure Permissions
       run: |
         echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
     - name: Run Under SDE
       run: |
-        sde-external-9.33.0-2024-01-07-lin/sde -cet -cet-raise 0 -cet-endbr-exe -cet-stderr -cet-abort -- ./zstd -b3
+        # sde64, not sde: the latter is a 32-bit i386 launcher, and needs i386
+        # runtime libs that a 64-bit runner has no reason to carry.
+        "$SDE_DIR/sde64" -cet -cet-raise 0 -cet-endbr-exe -cet-stderr -cet-abort -- ./zstd -b3
 
   icx:
     # install instructions: https://www.intel.com/content/www/us/en/docs/oneapi/installation-guide-linux/2025-0/apt-005.html

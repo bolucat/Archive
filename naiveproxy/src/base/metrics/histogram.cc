@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/debug/alias.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
@@ -281,10 +282,12 @@ HistogramBase* Histogram::Factory::Build() {
         "DevTools.DeveloperResourceLoaded",
         "DevTools.DeveloperResourceScheme",
         "DevTools.ExperimentEnabledAtLaunch",
+        "DevTools.ExperimentDisabledAtLaunch",
         "DevTools.PanelShown",
     };
-    if (std::ranges::contains(kKnownBadHistogramsHashes, name_)) {
-      DEBUG_ALIAS_FOR_CSTR(hist_name, std::string(name_).c_str(), 32);
+    if (!std::ranges::contains(kKnownBadHistogramsHashes, name_)) {
+      SCOPED_CRASH_KEY_STRING256("MismatchedHistogramArgs", "name",
+                                 std::string(name_));
       debug::DumpWithoutCrashing();
     }
 

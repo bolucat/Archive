@@ -4,6 +4,7 @@
 
 #include "partition_alloc/gwp_asan_support.h"
 
+#include "partition_alloc/buildflags.h"
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
 
 #if PA_BUILDFLAG(ENABLE_GWP_ASAN_SUPPORT)
@@ -65,7 +66,7 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
 
   size_t super_page_count = 1 + ((slot_count - 1) / kSlotsPerSuperPage);
   PA_CHECK(super_page_count <=
-           std::numeric_limits<size_t>::max() / kSuperPageSize);
+           std::numeric_limits<size_t>::max() / internal::kSuperPageSize);
   uintptr_t super_page_span_start;
   {
     internal::ScopedGuard locker{internal::PartitionRootLock(root)};
@@ -86,11 +87,12 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
 #endif  // PA_BUILDFLAG(PA_ARCH_CPU_64_BITS)
 
     uintptr_t super_page_span_end =
-        super_page_span_start + super_page_count * kSuperPageSize;
+        super_page_span_start + super_page_count * internal::kSuperPageSize;
     PA_CHECK(super_page_span_start < super_page_span_end);
 
     for (uintptr_t super_page = super_page_span_start;
-         super_page < super_page_span_end; super_page += kSuperPageSize) {
+         super_page < super_page_span_end;
+         super_page += internal::kSuperPageSize) {
       auto* page_metadata =
           internal::PartitionSuperPageToMetadataArea(super_page, root);
 
@@ -109,8 +111,7 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
         for (uintptr_t slot_idx = 0; slot_idx < kSlotsPerSlotSpan; ++slot_idx) {
           auto slot_start =
               slot_span_start.GetNthSlotStart(slot_idx, kSlotSize);
-          PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(slot_start,
-                                                                   kSlotSize)
+          internal::InSlotMetadata::From({slot_start, kSlotSize})
               ->InitializeForGwpAsan();
           size_t global_slot_idx = (slot_start.value() - super_page_span_start -
                                     kSuperPageGwpAsanSlotAreaBeginOffset) /
@@ -135,8 +136,8 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
 // static
 bool GwpAsanSupport::CanReuse(uintptr_t slot_start) {
   const size_t kSlotSize = 2 * internal::SystemPageSize();
-  return PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(
-             internal::UntaggedSlotStart::Unchecked(slot_start), kSlotSize)
+  return internal::InSlotMetadata::From(
+             {UntaggedSlotStart::Unchecked(slot_start), kSlotSize})
       ->CanBeReusedByGwpAsan();
 }
 

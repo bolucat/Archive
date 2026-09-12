@@ -10,22 +10,22 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
-#include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/moqt/moqt_error.h"
 #include "quiche/quic/moqt/moqt_fetch_task.h"
 #include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_names.h"
-#include "quiche/quic/moqt/moqt_object.h"
+#include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/quic/moqt/moqt_session_callbacks.h"
 #include "quiche/quic/moqt/moqt_types.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/quiche_weak_ptr.h"
+#include "quiche/web_transport/web_transport.h"
 
 namespace moqt {
 
@@ -78,44 +78,6 @@ struct QUICHE_EXPORT MoqtSessionParameters {
   void ToSetupParameters(SetupParameters& out) const;
 };
 
-using MoqtObjectAckFunction =
-    quiche::MultiUseCallback<void(uint64_t group_id, uint64_t object_id,
-                                  quic::QuicTimeDelta delta_from_deadline)>;
-
-struct SubscribeOkData {
-  MessageParameters parameters;
-  TrackExtensions extensions;
-};
-
-class SubscribeVisitor {
- public:
-  virtual ~SubscribeVisitor() = default;
-  // Called when the session receives a response to the SUBSCRIBE.
-  virtual void OnReply(
-      const FullTrackName& full_track_name,
-      std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) = 0;
-  // Called when the subscription process is far enough that it is possible to
-  // send OBJECT_ACK messages; provides a callback to do so. The callback is
-  // valid for as long as the session is valid.
-  virtual void OnCanAckObjects(MoqtObjectAckFunction ack_function) = 0;
-  // Called when an object fragment (or an entire object) is received.
-  virtual void OnObjectFragment(const FullTrackName& full_track_name,
-                                const PublishedObjectMetadata& metadata,
-                                absl::string_view object, uint64_t offset) = 0;
-  // Called when the subscription state goes away, regardless of whether or not
-  // there was a PUBLISH_DONE message.
-  virtual void OnPublishDone(FullTrackName full_track_name) = 0;
-  // Called when the track is malformed per Section 2.5 of
-  // draft-ietf-moqt-moq-transport-12. If the application is a relay, it MUST
-  // terminate downstream delivery of the track.
-  virtual void OnMalformedTrack(const FullTrackName& full_track_name) = 0;
-
-  // End user applications might not care about stream state, but relays will.
-  virtual void OnStreamFin(const FullTrackName& full_track_name,
-                           DataStreamIndex stream) = 0;
-  virtual void OnStreamReset(const FullTrackName& full_track_name,
-                             DataStreamIndex stream) = 0;
-};
 
 // MoqtSession calls this when a FETCH_OK or REQUEST_ERROR is received. The
 // destination of the callback owns |fetch_task| and MoqtSession will react
@@ -135,18 +97,38 @@ class MoqtSessionInterface {
   // Close the session with a fatal error.
   virtual void Error(MoqtError code, absl::string_view error) = 0;
 
+  // Many of these functions initiate a request and take MoqtResponseCallback to
+  // report the peer's response. These functions return false if there is an
+  // immediate problem that prevents sending the request, in which case the
+  // callback will not be invoked. For example, there might not be stream credit
+  // to open a request stream, or the request is a duplicate, or the session
+  // is in a GOAWAY state.
   // Return true if SUBSCRIBE was actually sent.
-  virtual bool Subscribe(const FullTrackName& name, SubscribeVisitor* visitor,
+  virtual bool Subscribe(const FullTrackName& name,
+                         SubscribeVisitor* absl_nonnull visitor,
                          const MessageParameters& parameters) = 0;
   // If a parameter is nullopt, there is no change to the current value.
-  // Returns false if the subscription is not found.
+  // Returns false if the subscription is not found. Used by the subscriber for
+  // a SUBSCRIBE or PUBLISH.
   virtual bool SubscribeUpdate(const FullTrackName& name,
                                const MessageParameters& parameters,
                                MoqtResponseCallback response_callback) = 0;
+  // Used by the publisher of a PUBLISH message.
+  virtual bool PublishUpdate(const FullTrackName& name,
+                             const MessageParameters& parameters,
+                             MoqtResponseCallback response_callback) = 0;
 
   // Sends an UNSUBSCRIBE message and removes all of the state related to the
   // subscription.  Returns false if the subscription is not found.
   virtual void Unsubscribe(const FullTrackName& name) = 0;
+
+  // Returns false if the PUBLISH cannot be sent due stream flow control
+  // limitations (which spawns PUBLISH_BLOCKED in namespace streams). Any other
+  // failure will be covered by |response_callback|.
+  virtual bool Publish(
+      std::shared_ptr<MoqtTrackPublisher> absl_nonnull publisher,
+      const MessageParameters& parameters, const TrackExtensions& extensions,
+      MoqtResponseCallback response_callback) = 0;
 
   // Sends a FETCH for a pre-specified object range.  Once a FETCH_OK or a
   // FETCH_ERROR is received, `callback` is called with a MoqtFetchTask that can
@@ -179,38 +161,43 @@ class MoqtSessionInterface {
   // Send a PUBLISH_NAMESPACE message for |track_namespace|, and call
   // |response_callback| when the response arrives. Will fail
   // immediately if there is already an unresolved PUBLISH_NAMESPACE for that
-  // namespace. Calls |cancel_callback| if the peer sends a
-  // PUBLISH_NAMESPACE_CANCEL. Returns true if the message was sent.
+  // namespace. Calls |cancel_callback| if the peer closes the stream. Returns
+  // true if the message was sent.
   virtual bool PublishNamespace(
       const TrackNamespace& track_namespace,
       const MessageParameters& parameters,
       MoqtResponseCallback response_callback,
-      quiche::SingleUseCallback<void(MoqtRequestErrorInfo)>
-          cancel_callback) = 0;
+      quiche::SingleUseCallback<void()> cancel_callback) = 0;
   virtual bool PublishNamespaceUpdate(
       const TrackNamespace& track_namespace, MessageParameters& parameters,
       MoqtResponseCallback response_callback) = 0;
   // Returns true if message was sent, false if there is no PUBLISH_NAMESPACE
   // that relates.
   virtual bool PublishNamespaceDone(const TrackNamespace& track_namespace) = 0;
-  virtual bool PublishNamespaceCancel(const TrackNamespace& track_namespace,
-                                      RequestErrorCode error_code,
-                                      absl::string_view error_reason) = 0;
+  virtual bool PublishNamespaceCancel(
+      const TrackNamespace& track_namespace,
+      webtransport::StreamErrorCode error_code) = 0;
 
   // Sends a SUBSCRIBE_NAMESPACE message for |prefix| and returns a
   // MoqtNamespaceTask that can be used to process the response.
   // Returns nullptr if the message cannot be sent.
   // To unsubscribe, simply destroy the returned MoqtNamespaceTask.
   virtual std::unique_ptr<MoqtNamespaceTask> SubscribeNamespace(
-      TrackNamespace& prefix, SubscribeNamespaceOption option,
-      const MessageParameters& parameters,
+      TrackNamespace& prefix, const MessageParameters& parameters,
       MoqtResponseCallback response_callback) = 0;
+  virtual bool SubscribeTracks(TrackNamespace& prefix,
+                               const MessageParameters& parameters,
+                               MoqtResponseCallback response_callback) = 0;
+  virtual void UnsubscribeTracks(TrackNamespace& prefix) = 0;
 
   // TODO(martinduke): Add an API for absolute joining fetch.
 
-  // TODO: Add SubscribeNamespace, UnsubscribeNamespace method.
-  // TODO: Add PublishNamespaceCancel method.
-  // TODO: Add TrackStatusRequest method.
+  // Sends TRACK_STATUS request to the peer. Returns `false` if the request
+  // immediately fails (usually due to flow control), and `true` otherwise;
+  // `response_callback` will be eventually invoked if true.
+  virtual bool TrackStatus(const FullTrackName& name,
+                           const MessageParameters& parameters,
+                           MoqtResponseCallback response_callback) = 0;
   // TODO: Add RequestUpdate, PublishDone method.
   virtual quiche::QuicheWeakPtr<MoqtSessionInterface> GetWeakPtr() = 0;
 };

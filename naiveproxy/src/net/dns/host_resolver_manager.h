@@ -39,6 +39,7 @@
 #include "net/dns/httpssvc_metrics.h"
 #include "net/dns/public/dns_config_overrides.h"
 #include "net/dns/public/dns_query_type.h"
+#include "net/dns/public/insecure_dns_mode.h"
 #include "net/dns/public/secure_dns_mode.h"
 #include "net/dns/public/secure_dns_policy.h"
 #include "net/dns/resolve_context.h"
@@ -154,12 +155,14 @@ class NET_EXPORT HostResolverManager
   std::unique_ptr<HostResolver::ResolveHostRequest> CreateRequest(
       std::variant<url::SchemeHostPort, HostPortPair> host,
       NetworkAnonymizationKey network_anonymization_key,
+      handles::NetworkHandle target_network,
       NetLogWithSource net_log,
       std::optional<ResolveHostParameters> optional_parameters,
       ResolveContext* resolve_context);
   std::unique_ptr<HostResolver::ResolveHostRequest> CreateRequest(
       HostResolver::Host host,
       NetworkAnonymizationKey network_anonymization_key,
+      handles::NetworkHandle target_network,
       NetLogWithSource net_log,
       std::optional<ResolveHostParameters> optional_parameters,
       ResolveContext* resolve_context);
@@ -175,20 +178,10 @@ class NET_EXPORT HostResolverManager
   CreateServiceEndpointRequest(
       HostResolver::Host host,
       NetworkAnonymizationKey network_anonymization_key,
+      handles::NetworkHandle target_network,
       NetLogWithSource net_log,
       ResolveHostParameters parameters,
       ResolveContext* resolve_context);
-
-  // Defines the mode of operation of the insecure portion of the built-in
-  // DNS resolver.
-  enum class InsecureDnsMode {
-    // Insecure DNS is disabled.
-    kDisabled,
-    // Insecure DNS is enabled using the built-in DNS client.
-    kEnabledBuiltIn,
-    // Insecure DNS is enabled using the platform DNS APIs.
-    kEnabledPlatform,
-  };
 
   // Enables or disables the built-in asynchronous DnsClient. If enabled, by
   // default (when no |ResolveHostParameters::source| is specified), the
@@ -264,6 +257,17 @@ class NET_EXPORT HostResolverManager
 
   void ResetIPv6ProbeTimeForTesting() {
     last_ipv6_probe_time_ = base::TimeTicks();
+  }
+
+  // Removes this manager as an observer of the SystemDnsConfigChangeNotifier
+  // and clears the pointer. This is needed in tests where the
+  // SystemDnsConfigChangeNotifier (owned by MockNetworkChangeNotifier) is
+  // destroyed before the in-process NetworkService (which is leaked).
+  void ClearSystemDnsConfigNotifierForTesting() {
+    if (system_dns_config_notifier_) {
+      system_dns_config_notifier_->RemoveObserver(this);
+      system_dns_config_notifier_ = nullptr;
+    }
   }
 
   // Allows the tests to catch slots leaking out of the dispatcher.  One
@@ -370,7 +374,8 @@ class NET_EXPORT HostResolverManager
       const NetLogWithSource& source_net_log,
       HostCache* cache,
       std::deque<TaskType>* out_tasks,
-      std::optional<HostCache::EntryStaleness>* out_stale_info);
+      std::optional<HostCache::EntryStaleness>* out_stale_info,
+      bool record_metrics = true);
 
   // Creates and starts a Job to asynchronously attempt to resolve
   // |request|.
@@ -407,7 +412,8 @@ class NET_EXPORT HostResolverManager
       ResolveHostParameters::CacheUsage cache_usage,
       bool ignore_secure,
       const NetLogWithSource& source_net_log,
-      std::optional<HostCache::EntryStaleness>* out_stale_info);
+      std::optional<HostCache::EntryStaleness>* out_stale_info,
+      bool record_metrics = true);
 
   // Returns any preset resolution result from the active DoH configuration that
   // matches |key.host|.
@@ -447,13 +453,16 @@ class NET_EXPORT HostResolverManager
   // Helper method to add DnsTasks and related tasks based on the SecureDnsMode
   // and fallback parameters. If |prioritize_local_lookups| is true, then we
   // may push an insecure cache lookup ahead of a secure DnsTask.
-  void PushDnsTasks(bool system_task_allowed,
-                    SecureDnsMode secure_dns_mode,
-                    bool insecure_tasks_allowed,
-                    bool allow_cache,
-                    bool prioritize_local_lookups,
-                    ResolveContext* resolve_context,
-                    std::deque<TaskType>* out_tasks);
+  static void PushDnsTasks(const DnsClient& dns_client,
+                           bool dns_tasks_allowed,
+                           bool allow_fallback_to_systemtask,
+                           bool system_task_allowed,
+                           SecureDnsMode secure_dns_mode,
+                           InsecureDnsMode insecure_dns_mode,
+                           bool allow_cache,
+                           bool prioritize_local_lookups,
+                           ResolveContext* resolve_context,
+                           std::deque<TaskType>* out_tasks);
 
   // Initialized the sequence of tasks to run to resolve a request. The sequence
   // may be adjusted later and not all tasks need to be run.
@@ -470,7 +479,8 @@ class NET_EXPORT HostResolverManager
   // already cached, and ERR_IO_PENDING when a probe is scheduled to be
   // completed asynchronously. When called repeatedly this method returns OK to
   // confirm that results have been cached.
-  int StartIPv6ReachabilityCheck(const NetLogWithSource& net_log,
+  int StartIPv6ReachabilityCheck(handles::NetworkHandle target_network,
+                                 const NetLogWithSource& net_log,
                                  ClientSocketFactory* client_socket_factory,
                                  CompletionOnceCallback callback);
 
@@ -488,6 +498,7 @@ class NET_EXPORT HostResolverManager
   // ERR_IO_PENDING if it will be asynchronous.
   virtual int StartGloballyReachableCheck(
       const IPAddress& dest,
+      handles::NetworkHandle target_network,
       const NetLogWithSource& net_log,
       ClientSocketFactory* client_socket_factory,
       CompletionOnceCallback callback);
@@ -542,7 +553,7 @@ class NET_EXPORT HostResolverManager
       NetworkChangeNotifier::ConnectionType type) override;
 
   // SystemDnsConfigChangeNotifier::Observer:
-  void OnSystemDnsConfigChanged(std::optional<DnsConfig> config) override;
+  void OnSystemDnsConfigChanged(const DnsConfig& config) override;
 
   void UpdateJobsForChangedConfig();
 
@@ -631,8 +642,6 @@ class NET_EXPORT HostResolverManager
   // An experimental flag for features::kUseDnsHttpsSvcb.
   HostResolver::HttpsSvcbOptions https_svcb_options_;
 
-  // If true, task type DNS_PLATFORM will be used instead of DNS.
-  bool platform_apis_enabled_;
 
   std::vector<CompletionOnceCallback> ipv6_request_callbacks_;
 

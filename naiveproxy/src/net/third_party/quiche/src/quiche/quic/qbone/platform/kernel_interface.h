@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #include <cstddef>
@@ -30,6 +31,7 @@ class KernelInterface {
   virtual int ioctl(int fd, int request, void* argp) = 0;
   virtual int open(const char* pathname, int flags) = 0;
   virtual ssize_t read(int fd, void* buf, size_t count) = 0;
+  virtual ssize_t readv(int fd, const struct iovec* iov, int iovcnt) = 0;
   virtual ssize_t recvfrom(int sockfd, void* buf, size_t len, int flags,
                            struct sockaddr* src_addr, socklen_t* addrlen) = 0;
   virtual int recvmmsg(int sockfd, struct mmsghdr* msgvec, unsigned int vlen,
@@ -42,6 +44,7 @@ class KernelInterface {
   virtual int setsockopt(int fd, int level, int optname, const void* optval,
                          socklen_t optlen) = 0;
   virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
+  virtual ssize_t writev(int fd, const struct iovec* iov, int iovcnt) = 0;
   virtual int getsockname(int sockfd, struct sockaddr* addr,
                           socklen_t* addrlen) = 0;
   virtual unsigned int if_nametoindex(const char* ifname) = 0;
@@ -95,6 +98,10 @@ class ParametrizedKernel final : public KernelInterface {
     static Runner syscall("read");
     return syscall.Run(&::read, fd, buf, count);
   }
+  ssize_t readv(int fd, const struct iovec* iov, int iovcnt) override {
+    static Runner syscall("readv");
+    return syscall.Run(&::readv, fd, iov, iovcnt);
+  }
   ssize_t recvfrom(int sockfd, void* buf, size_t len, int flags,
                    struct sockaddr* src_addr, socklen_t* addrlen) override {
     static Runner syscall("recvfrom");
@@ -129,6 +136,10 @@ class ParametrizedKernel final : public KernelInterface {
   ssize_t write(int fd, const void* buf, size_t count) override {
     static Runner syscall("write");
     return syscall.Run(&::write, fd, buf, count);
+  }
+  ssize_t writev(int fd, const struct iovec* iov, int iovcnt) override {
+    static Runner syscall("writev");
+    return syscall.Run(&::writev, fd, iov, iovcnt);
   }
   int getsockname(int sockfd, struct sockaddr* addr,
                   socklen_t* addrlen) override {

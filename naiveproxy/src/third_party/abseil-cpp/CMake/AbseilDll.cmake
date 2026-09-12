@@ -13,6 +13,8 @@ set(ABSL_INTERNAL_DLL_FILES
   "base/dynamic_annotations.h"
   "base/fast_type_id.h"
   "base/internal/atomic_hook.h"
+  "base/internal/cpu_detect.cc"
+  "base/internal/cpu_detect.h"
   "base/internal/cycleclock.cc"
   "base/internal/cycleclock.h"
   "base/internal/cycleclock_config.h"
@@ -104,8 +106,6 @@ set(ABSL_INTERNAL_DLL_FILES
   "container/node_hash_set.h"
   "crc/crc32c.cc"
   "crc/crc32c.h"
-  "crc/internal/cpu_detect.cc"
-  "crc/internal/cpu_detect.h"
   "crc/internal/crc.cc"
   "crc/internal/crc.h"
   "crc/internal/crc32_x86_arm_combined_simd.h"
@@ -350,7 +350,6 @@ set(ABSL_INTERNAL_DLL_FILES
   "strings/internal/pow10_helper.cc"
   "strings/internal/pow10_helper.h"
   "strings/internal/resize_uninitialized.h"
-  "strings/internal/stl_type_traits.h"
   "strings/internal/str_format/arg.cc"
   "strings/internal/str_format/arg.h"
   "strings/internal/str_format/bind.cc"
@@ -469,12 +468,14 @@ set(ABSL_INTERNAL_DLL_FILES
   "strings/string_view.h"
 )
 
-if(MSVC)
+if(WIN32)
   list(APPEND ABSL_INTERNAL_DLL_FILES
     "time/internal/cctz/src/time_zone_name_win.cc"
     "time/internal/cctz/src/time_zone_name_win.h"
   )
-else()
+endif()
+
+if(NOT MSVC)
   list(APPEND ABSL_INTERNAL_DLL_FILES
     "flags/commandlineflag.cc"
     "flags/commandlineflag.h"
@@ -721,10 +722,18 @@ set(ABSL_INTERNAL_TEST_DLL_TARGETS
   "status_matchers"
 )
 
-include(CheckCXXSourceCompiles)
+if(DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD_REQUIRED)
+  if(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+    set(ABSL_INTERNAL_AT_LEAST_CXX20 ON)
+    set(ABSL_INTERNAL_AT_LEAST_CXX17 ON)
+  elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 17)
+    set(ABSL_INTERNAL_AT_LEAST_CXX17 ON)
+  endif()
+else()
+  include(CheckCXXSourceCompiles)
 
-check_cxx_source_compiles(
-  [==[
+  check_cxx_source_compiles(
+    [==[
 #ifdef _MSC_VER
 #  if _MSVC_LANG < 201703L
 #    error "The compiler defaults or is configured for C++ < 17"
@@ -734,10 +743,10 @@ check_cxx_source_compiles(
 #endif
 int main() { return 0; }
 ]==]
-  ABSL_INTERNAL_AT_LEAST_CXX17)
+    ABSL_INTERNAL_AT_LEAST_CXX17)
 
-check_cxx_source_compiles(
-  [==[
+  check_cxx_source_compiles(
+    [==[
 #ifdef _MSC_VER
 #  if _MSVC_LANG < 202002L
 #    error "The compiler defaults or is configured for C++ < 20"
@@ -747,7 +756,8 @@ check_cxx_source_compiles(
 #endif
 int main() { return 0; }
 ]==]
-  ABSL_INTERNAL_AT_LEAST_CXX20)
+    ABSL_INTERNAL_AT_LEAST_CXX20)
+endif()
 
 if(ABSL_INTERNAL_AT_LEAST_CXX20)
   set(ABSL_INTERNAL_CXX_STD_FEATURE cxx_std_20)

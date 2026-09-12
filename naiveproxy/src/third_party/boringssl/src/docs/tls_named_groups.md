@@ -1,6 +1,6 @@
 # Curves, groups, and KEMs, oh my!
 
-TLS calls [X25519MLKEM768](https://www.ietf.org/archive/id/draft-ietf-tls-ecdhe-mlkem-04.html) a “named group” or “group”. It was once called a “named curve” or just “curve”. Neither term fits. “Curve” and “group”, in the context of TLS, are now terms of art that mean “key agreement”, with no remaining connection to either their English or mathematical meaning.
+TLS calls [X25519MLKEM768](https://www.rfc-editor.org/info/rfc10024/) a “named group” or “group”. It was once called a “named curve” or just “curve”. Neither term fits. “Curve” and “group”, in the context of TLS, are now terms of art that mean “key agreement”, with no remaining connection to either their English or mathematical meaning.
 
 This situation can only be understood following the protocol's history:
 

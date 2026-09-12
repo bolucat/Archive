@@ -36,17 +36,6 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//net/cookies/cookie_util.h:ActivateStorageAccessLoadOutcome) -->
 
-<!-- LINT.IfChange(ActivateStorageAccessRetryOutcome) -->
-
-<enum name="ActivateStorageAccessRetryOutcome">
-  <int value="0" label="Failure: header disabled"/>
-  <int value="1"
-      label="Failure: ineffective retry, would not change cookie access"/>
-  <int value="2" label="Success"/>
-</enum>
-
-<!-- LINT.ThenChange(//net/cookies/cookie_util.h:ActivateStorageAccessRetryOutcome) -->
-
 <!-- LINT.IfChange(AdProtoDecompressionOutcome) -->
 
 <enum name="AdProtoDecompressionOutcome">
@@ -69,28 +58,6 @@ chromium-metrics-reviews@google.com.
       label="kTopLevelAndStorageAccess: The cookie was accessible via
              TopLevelStorageAccess and StorageAccess"/>
 </enum>
-
-<!-- LINT.IfChange(AsyncVirtualFileExtractionError) -->
-
-<enum name="AsyncVirtualFileExtractionError">
-  <int value="0" label="CoGetInterfaceAndReleaseStream failed"/>
-  <int value="1" label="CoMarshalInterThreadInterfaceInStream failed"/>
-  <int value="2" label="Source stream returned S_OK with zero bytes read"/>
-</enum>
-
-<!-- LINT.ThenChange(//ui/base/clipboard/clipboard_util_win.cc:AsyncVirtualFileExtractionError) -->
-
-<!-- LINT.IfChange(BlobBuildFromStreamResult) -->
-
-<enum name="BlobBuildFromStreamResult">
-  <int value="0" label="Success"/>
-  <int value="1" label="Aborted while building"/>
-  <int value="2" label="Failed to allocate memory for blob"/>
-  <int value="3" label="Failed to allocate file space for blob"/>
-  <int value="4" label="Failed writing to file"/>
-</enum>
-
-<!-- LINT.ThenChange(//storage/browser/blob/blob_builder_from_stream.h:BlobBuildFromStreamResult) -->
 
 <enum name="BooleanInherited">
   <int value="0" label="Not inherited"/>
@@ -307,13 +274,42 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//third_party/blink/public/mojom/indexeddb/indexeddb.mojom:IDBTransactionMode) -->
 
-<enum name="ImportantSitesReason">
-  <int value="0" label="Engagement"/>
-  <int value="1" label="Durable"/>
-  <int value="2" label="Bookmarks"/>
-  <int value="3" label="Home Screen"/>
-  <int value="4" label="Notifications"/>
+<!-- LINT.IfChange(IndexedDBBadMessageReason) -->
+
+<enum name="IndexedDBBadMessageReason">
+  <int value="0" label="kBucketContextOpenInvalidVersion"/>
+  <int value="1" label="kConnectionCreateTransactionInvalidMode"/>
+  <int value="2" label="kConnectionCreateTransactionAlreadyExists"/>
+  <int value="3" label="kConnectionGetAllInvalidMaxCount"/>
+  <int value="4" label="kConnectionOpenCursorInvalidTaskType"/>
+  <int value="5" label="kConnectionOpenCursorInvalidIteration"/>
+  <int value="6" label="kConnectionCreateIndexInvalidMetadata"/>
+  <int value="7" label="kConnectionWrongTransactionMode"/>
+  <int value="8" label="kCursorAdvanceInvalidCount"/>
+  <int value="9" label="kCursorContinueInvalidPrimaryKey"/>
+  <int value="10" label="kCursorPrefetchResetInvalidCount"/>
+  <int value="11" label="kCursorPrefetchResetFailedToReset"/>
+  <int value="12" label="kCursorPrefetchResetInvalidUsedPrefetches"/>
+  <int value="13" label="kTransactionCreateObjectStoreInvalidId"/>
+  <int value="14" label="kTransactionPutReadOnly"/>
+  <int value="15" label="kTransactionPutInvalidValue"/>
+  <int value="16" label="kTransactionPutInvalidExternalObjects"/>
+  <int value="17" label="kTransactionDoPutInvalidObjectStoreId"/>
+  <int value="18" label="kTransactionDoPutInvalidIndexId"/>
+  <int value="19" label="kTransactionDoPutInvalidKey"/>
+  <int value="20" label="kTransactionDoPutInvalidIndexKey"/>
+  <int value="21" label="kTransactionDoPutInvalidRecord"/>
+  <int value="22" label="kTransactionSetIndexKeysWrongMode"/>
+  <int value="23" label="kTransactionSetIndexKeysInvalidKey"/>
+  <int value="24" label="kTransactionSetIndexKeysDoneWrongMode"/>
+  <int value="25" label="kTransactionSetIndexKeysDoneWithoutIndexing"/>
+  <int value="26" label="kTransactionObjectStoreMustExistInvalidId"/>
+  <int value="27"
+      label="kTransactionObjectStoreAndIndexMustExistInvalidIndexId"/>
+  <int value="28" label="kTransactionObjectStoreAndIndexMustExistInvalidIds"/>
 </enum>
+
+<!-- LINT.ThenChange(//content/browser/indexed_db/indexed_db_reporting.h:BadMessageReason) -->
 
 <!-- LINT.IfChange(IndexedDbSqliteSpecificEvent) -->
 
@@ -344,6 +340,7 @@ chromium-metrics-reviews@google.com.
       label="Failed to decompress a value when reading from the DB"/>
   <int value="18" label="Failed to delete a legacy blob file"/>
   <int value="19" label="Meta table was missing in an existing DB"/>
+  <int value="20" label="IDB database version was invalid in an existing DB"/>
 </enum>
 
 <!-- LINT.ThenChange(//content/browser/indexed_db/instance/sqlite/database_connection.h:SpecificEvent) -->
@@ -461,228 +458,6 @@ chromium-metrics-reviews@google.com.
   <int value="12" label="Approved with a new or existing grant"/>
   <int value="13" label="Rejected due to fenced frame"/>
   <int value="14" label="Rejected due to invalid origin"/>
-</enum>
-
-<enum name="SharedStorageHeaderObserverPermissionsPolicyDoubleCheckStatus">
-  <int value="0" label="SubresourceSourceNoRFH">
-    The RenderFrameHost was null, so no double check was run. Any previous
-    permissions policy checks were only done in the renderer, so this double
-    check was required, and hence any operations were dropped.
-  </int>
-  <int value="1" label="SubresourceSourceDefer">
-    The RenderFrameHost has not yet committed. Defer the operations until a
-    corresponding commit notification is received. If none is received, they
-    will be dropped when the RenderFrameHost dies.
-  </int>
-  <int value="2" label="SubresourceSourceOtherLifecycleState">
-    The RenderFrameHost's LifecycleState is neither PendingCommit nor Active. We
-    do not handle these cases as the PermissionsPolicy that we have access to
-    may not be correct. Any operations are dropped.
-  </int>
-  <int value="3" label="SubresourceSourceNoPolicy">
-    The RenderFrameHost was non-null, but it had a null PermissionsPolicy, so no
-    double check was run. Any previous PermissionsPolicy checks were done in the
-    renderer, so this double check was required, and hence any operations were
-    dropped.
-  </int>
-  <int value="4" label="NavigationSourceNoPolicy">
-    The parent PermissionPolicy for the navigating RenderFrameHost was null, so
-    no double check was run. The request source was an iframe navigation, which
-    already has a PermissionsPolicy check in the browser process, however, so
-    the double check was not required, and any operations were allowed to
-    proceed, pending a user profile check.
-  </int>
-  <int value="5" label="DisallowedMainFrameNavigation">
-    The request source was a main frame navigation, which is not supported, so
-    any operations were dropped.
-  </int>
-  <int value="6" label="Disabled">
-    The double check was run, and Shared Storage was reported as disabled for
-    the request's origin. Any operations were dropped.
-  </int>
-  <int value="7" label="Enabled">
-    The double check was run, and Shared Storage was reported as enabled for the
-    request's origin. Any operations were allowed to proceed, pending a user
-    profile check.
-  </int>
-</enum>
-
-<enum name="SharedStorageInterestGroupsResultStatus">
-  <int value="0" label="FailureDuringAddModule"/>
-  <int value="1" label="FailurePermissionsPolicyDenied"/>
-  <int value="2" label="FailureBrowserDenied"/>
-  <int value="3" label="Success"/>
-</enum>
-
-<enum name="SharedStorageSelectUrlBudgetStatus">
-  <int value="0" label="SufficientBudget"/>
-  <int value="1" label="InsufficientSiteNavigationBudget"/>
-  <int value="2" label="InsufficientOverallPageloadBudget"/>
-  <int value="3" label="InsufficientSitePageloadBudget"/>
-  <int value="4" label="Other">
-    The budget was not checked or an error occurred.
-  </int>
-</enum>
-
-<enum name="SharedStorageWorkletDestroyedStatus">
-  <int value="0" label="DidNotEnterKeepAlive"/>
-  <int value="1" label="KeepAliveEndedDueToOperationsFinished"/>
-  <int value="2" label="KeepAliveEndedDueToTimeout"/>
-  <int value="3" label="Other">
-    Keep alive entered but reason for termination not given.
-  </int>
-</enum>
-
-<enum name="SharedStorageWorkletErrorType">
-  <int value="0" label="AddModuleWebVisible">
-    Errors in `addModule()` or `createWorklet()` visible to the document.
-  </int>
-  <int value="1" label="(Obsolete) AddModuleNonWebVisible">
-    Errors in `addModule()` not visible to the document.
-  </int>
-  <int value="2" label="RunWebVisible">
-    Errors in `run()` visible to the document.
-  </int>
-  <int value="3" label="(Obsolete) RunNonWebVisible">
-    Errors in `run()` not visible to the document.
-  </int>
-  <int value="4" label="SelectURLWebVisible">
-    Errors in `selectURL()` visible to the document.
-  </int>
-  <int value="5" label="(Obsolete) SelectURLNonWebVisible">
-    Errors in `selectURL()` not visible to the document.
-  </int>
-  <int value="6" label="Success"/>
-  <int value="7" label="AddModuleNonWebVisibleMulipleWorkletsDisabled">
-    Error in `addModule()` or `createWorklet()` not visible to the document:
-    browser received message from renderer trying to create multiple worklets
-    when &quot;SharedStorageAPI&quot; feature disabled.
-  </int>
-  <int value="8" label="AddModuleNonWebVisibleCrossOriginWorkletsDisabled">
-    Error in `addModule()` or `createWorklet()` not visible to the document:
-    browser received message from renderer trying to cross-origin worklet when
-    &quot;SharedStorageAPI&quot; feature disabled.
-  </int>
-  <int value="9" label="AddModuleNonWebVisibleCrossOriginSharedStorageDisabled">
-    Error in `addModule()` or `createWorklet()` not visible to the document:
-    cross-origin worklet cannot be created because shared storage is disabled
-    for the origin's site.
-  </int>
-  <int value="10" label="AddModuleNonWebVisibleOther">
-    Other errors in `addModule()` or `createWorklet()` not visible to the
-    document.
-  </int>
-  <int value="11" label="RunNonWebVisibleInvalidContextId">
-    Error in `run()` not visible to the document: browser received message from
-    renderer with invalid context ID.
-  </int>
-  <int value="12" label="RunNonWebVisibleKeepAliveFalse">
-    Error in `run()` not visible to the document: browser received message from
-    renderer with keepAlive set to false.
-  </int>
-  <int value="13" label="RunNonWebVisibleCrossOriginSharedStorageDisabled">
-    Error in `run()` not visible to the document: cross-origin worklet operation
-    cannot be completed because shared storage is disabled for the origin's
-    site.
-  </int>
-  <int value="14" label="RunNonWebVisibleModuleScriptNotLoaded">
-    Error in `run()` not visible to the document: the module script hasn't been
-    loaded.
-  </int>
-  <int value="15" label="RunNonWebVisibleOperationNotFound">
-    Error in `run()` not visible to the document: cannot find operation name.
-  </int>
-  <int value="16" label="RunNonWebVisibleEmptyOperationDefinitionInstance">
-    Error in `run()` not visible to the document: the operation definition
-    instance was empty.
-  </int>
-  <int value="17" label="RunNonWebVisibleCannotDeserializeData">
-    Error in `run()` not visible to the document: cannot deserialize data.
-  </int>
-  <int value="18" label="RunNonWebVisibleEmptyScriptResult">
-    Error in `run()` not visible to the document: result of invoking script was
-    empty.
-  </int>
-  <int value="19" label="RunNonWebVisibleOther">
-    Other errors in `run()` not visible to the document.
-  </int>
-  <int value="20" label="SelectURLNonWebVisibleInvalidURLArrayLength">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with an invalid URL array length.
-  </int>
-  <int value="21" label="SelectURLNonWebVisibleInvalidFencedFrameURL">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with an invalid fenced frame URL.
-  </int>
-  <int value="22" label="SelectURLNonWebVisibleInvalidReportingURL">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with an invalid reporting URL.
-  </int>
-  <int value="23" label="SelectURLNonWebVisibleInvalidContextId">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with invalid context ID.
-  </int>
-  <int value="24" label="SelectURLNonWebVisibleKeepAliveFalse">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with keepAlive set to false.
-  </int>
-  <int value="25"
-      label="SelectURLNonWebVisibleCrossOriginSharedStorageDisabled">
-    Error in `selectURL()` not visible to the document: cross-origin worklet
-    operation cannot be completed because shared storage is disabled for the
-    origin's site.
-  </int>
-  <int value="26" label="SelectURLNonWebVisibleModuleScriptNotLoaded">
-    Error in `selectURL()` not visible to the document: the module script hasn't
-    been loaded.
-  </int>
-  <int value="27" label="SelectURLNonWebVisibleOperationNotFound">
-    Error in `selectURL()` not visible to the document: cannot find operation
-    name.
-  </int>
-  <int value="28"
-      label="SelectURLNonWebVisibleEmptyOperationDefinitionInstance">
-    Error in `selectURL()` not visible to the document: the operation definition
-    instance was empty.
-  </int>
-  <int value="29" label="SelectURLNonWebVisibleCannotDeserializeData">
-    Error in `selectURL()` not visible to the document: cannot deserialize data.
-  </int>
-  <int value="30" label="SelectURLNonWebVisibleEmptyScriptResult">
-    Error in `selectURL()` not visible to the document: result of invoking
-    script was empty.
-  </int>
-  <int value="31" label="SelectURLNonWebVisibleReturnValueToInt">
-    Error in `selectURL()` not visible to the document: promise did not resolve
-    to an uint32 number.
-  </int>
-  <int value="32" label="SelectURLNonWebVisibleReturnValueOutOfRange">
-    Error in `selectURL()` not visible to the document: promise resolved to a
-    number outside the length of the input urls.
-  </int>
-  <int value="33" label="SelectURLNonWebVisibleUnexpectedIndexReturned">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with unexpected index number returned.
-  </int>
-  <int value="34" label="SelectURLNonWebVisibleInsufficientBudget">
-    Error in `selectURL()` not visible to the document: insufficient budget.
-  </int>
-  <int value="35" label="SelectURLNonWebVisibleOther">
-    Other errors in `selectURL()` not visible to the document.
-  </int>
-  <int value="36" label="RunNonWebVisibleInvalidFilteringIdMaxBytes">
-    Error in `run()` not visible to the document: browser received message from
-    renderer with invalid filtering ID byte size.
-  </int>
-  <int value="37" label="SelectURLNonWebVisibleInvalidFilteringIdMaxBytes">
-    Error in `selectURL()` not visible to the document: browser received message
-    from renderer with invalid filtering ID byte size.
-  </int>
-  <int value="38" label="AddModuleNonWebVisibleCustomDataOriginDisabled">
-    Error in `addModule()` or `createWorklet()` not visible to the document:
-    custom data origin worklet cannot be created because
-    SharedStorageCreateWorkletCustomDataOrigin is disabled.
-  </int>
 </enum>
 
 <enum name="SqliteResultCode">
@@ -887,12 +662,6 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Not provided"/>
   <int value="1" label="Not persisted"/>
   <int value="2" label="Persisted"/>
-</enum>
-
-<enum name="StoragePressureBubbleUserAction">
-  <int value="0" label="The bubble was shown."/>
-  <int value="1" label="The user ignored the bubble."/>
-  <int value="2" label="The user clicked on the positive button."/>
 </enum>
 
 <enum name="TopLevelStorageAccessRequestOutcome">

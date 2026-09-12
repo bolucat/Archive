@@ -93,6 +93,7 @@
  */
 
 const char *supported_aead_ciphers[AEAD_CIPHER_NUM] = {
+    // [cli-aead-ciphers]
     "aes-128-gcm",
     "aes-192-gcm",
     "aes-256-gcm",
@@ -103,6 +104,7 @@ const char *supported_aead_ciphers[AEAD_CIPHER_NUM] = {
 #ifdef FS_HAVE_XCHACHA20IETF
     "xchacha20-ietf-poly1305"
 #endif
+    // [cli-aead-ciphers]
 };
 
 /*

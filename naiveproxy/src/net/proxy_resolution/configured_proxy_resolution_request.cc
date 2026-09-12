@@ -102,7 +102,7 @@ int ConfiguredProxyResolutionRequest::Start() {
           // multiple calls for the same host.
           auto result = service_->RequestHostResolution(
               dns_condition, weak_factory_.GetWeakPtr(),
-              network_anonymization_key_, net_log_, priority_);
+              network_anonymization_key_, target_network_, net_log_, priority_);
           if (result) {
             net_log_.AddEvent(
                 NetLogEventType::PROXY_OVERRIDE_END_HOST_RESOLUTION, [&] {
@@ -216,12 +216,16 @@ LoadState ConfiguredProxyResolutionRequest::GetLoadState() const {
 
 // Callback for when the ProxyResolver request has completed.
 void ConfiguredProxyResolutionRequest::QueryComplete(int result_code) {
+  CHECK(!was_completed());
+
+  // Remove `this` from the service before notifying it of completion to
+  // prevent re-entrant dispatch if the service re-initializes synchronously.
+  service_->RemovePendingRequest(this);
+
   result_code = QueryDidComplete(result_code);
+  service_ = nullptr;
 
   CompletionOnceCallback callback = std::move(user_callback_);
-
-  service_->RemovePendingRequest(this);
-  service_ = nullptr;
   user_callback_.Reset();
   std::move(callback).Run(result_code);
 }

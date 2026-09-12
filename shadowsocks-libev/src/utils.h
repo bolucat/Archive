@@ -219,6 +219,8 @@ int ss_parse_uint16_port(const char *s, uint16_t *out);
 int run_as(const char *user);
 void FATAL(const char *msg) __attribute__((noreturn));
 void usage(void);
+void cli_version(void);
+void cli_error(const char *message, int option, const char *token) __attribute__((noreturn));
 void daemonize(const char *path);
 char *ss_strndup(const char *s, size_t n);
 #ifdef HAVE_SETRLIMIT

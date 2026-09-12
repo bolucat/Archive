@@ -16,6 +16,7 @@
 
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/critical_closure.h"
 #include "base/debug/alias.h"
 #include "base/files/file.h"
@@ -55,6 +56,7 @@ constexpr int kReplaceRetryFailure = 10;
 static_assert(kReplaceRetryFailure > kReplaceRetries, "No overlap allowed");
 
 constexpr auto kReplacePauseInterval = Milliseconds(100);
+#endif
 
 // Alternate representation of ReplaceFile results, recorded to
 // ImportantFile.FileReplaceResult.
@@ -70,17 +72,21 @@ enum class ReplaceResult {
   kMaxValue = kFailure
 };
 
-void UmaHistogramRetryCountWithSuffix(std::string_view histogram_suffix,
-                                      int retry_count,
-                                      bool success) {
-  constexpr char kCountHistogramName[] = "ImportantFile.FileReplaceRetryCount2";
-  constexpr char kResultHistogramName[] = "ImportantFile.FileReplaceResult";
-  CHECK_LE(retry_count, kReplaceRetries);
-  auto result = success
-                    ? (retry_count > 0 ? ReplaceResult::kSuccessWithRetry
-                                       : ReplaceResult::kSuccessWithoutRetry)
-                    : ReplaceResult::kFailure;
+// Result of an attempted restore in
+// ImportantFileWriter::RestoreMissingFileIfNeeded(), recorded to
+// ImportantFile.MissingFileRestoreResult.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class MissingFileRestoreResult {
+  kNoCandidate = 0,
+  kFailed = 1,
+  kRestored = 2,
+  kMaxValue = kRestored,
+};
 
+void UmaHistogramReplaceResultWithSuffix(std::string_view histogram_suffix,
+                                         ReplaceResult result) {
+  constexpr char kResultHistogramName[] = "ImportantFile.FileReplaceResult";
   // Log with the given suffix and the aggregated ".All" suffix.
   if (histogram_suffix.empty()) {
     UmaHistogramEnumeration(kResultHistogramName, result);
@@ -91,7 +97,23 @@ void UmaHistogramRetryCountWithSuffix(std::string_view histogram_suffix,
   }
   UmaHistogramEnumeration(base::JoinString({kResultHistogramName, "All"}, "."),
                           result);
+}
+
+#if BUILDFLAG(IS_WIN)
+void UmaHistogramRetryCountWithSuffix(std::string_view histogram_suffix,
+                                      int retry_count,
+                                      bool success) {
+  CHECK_LE(retry_count, kReplaceRetries);
+  auto result = success
+                    ? (retry_count > 0 ? ReplaceResult::kSuccessWithRetry
+                                       : ReplaceResult::kSuccessWithoutRetry)
+                    : ReplaceResult::kFailure;
+  UmaHistogramReplaceResultWithSuffix(histogram_suffix, result);
+
+  // We only retry on Windows
   if (retry_count > 0) {
+    constexpr char kCountHistogramName[] =
+        "ImportantFile.FileReplaceRetryCount2";
     if (histogram_suffix.empty()) {
       UmaHistogramExactLinear(kCountHistogramName, retry_count,
                               kReplaceRetries + 1);
@@ -186,6 +208,35 @@ bool ImportantFileWriter::WriteFileAtomically(
 }
 
 // static
+void ImportantFileWriter::RestoreMissingFileIfNeeded(
+    const FilePath& file_path,
+    std::string_view histogram_suffix) {
+  if (PathExists(file_path)) {
+    return;
+  }
+
+  MissingFileRestoreResult result = MissingFileRestoreResult::kNoCandidate;
+  std::optional<FilePath> latest_temp_file =
+      GetLatestTemporaryFileWithNamePrefix(file_path.DirName(),
+                                           file_path.BaseName().value());
+  if (latest_temp_file.has_value()) {
+    result = Move(*latest_temp_file, file_path)
+                 ? MissingFileRestoreResult::kRestored
+                 : MissingFileRestoreResult::kFailed;
+  }
+
+  constexpr char kHistogramName[] = "ImportantFile.MissingFileRestoreResult";
+  if (histogram_suffix.empty()) {
+    UmaHistogramEnumeration(kHistogramName, result);
+  } else {
+    UmaHistogramEnumeration(
+        base::JoinString({kHistogramName, histogram_suffix}, "."), result);
+  }
+  UmaHistogramEnumeration(base::JoinString({kHistogramName, "All"}, "."),
+                          result);
+}
+
+// static
 void ImportantFileWriter::ProduceAndWriteStringToFileAtomically(
     const FilePath& path,
     BackgroundDataProducerCallback data_producer_for_background_sequence,
@@ -257,8 +308,9 @@ bool ImportantFileWriter::WriteFileAtomicallyImpl(
   // as target file, so it can be moved in one step, and that the temp file
   // is securely created.
   FilePath tmp_file_path;
-  File tmp_file =
-      CreateAndOpenTemporaryFileInDir(path.DirName(), &tmp_file_path);
+  File tmp_file = CreateAndOpenTemporaryFileInDir(
+      path.DirName(), &tmp_file_path, /*additional_flags=*/0,
+      path.BaseName().value());
   if (!tmp_file.IsValid()) {
     DPLOG(WARNING) << "Failed to create temporary file to update " << path;
     return false;
@@ -333,6 +385,11 @@ bool ImportantFileWriter::WriteFileAtomicallyImpl(
 #else
   tmp_file.Close();
   result = replace_file_callback.Run(tmp_file_path, path, &replace_file_error);
+  // Log the result of the ReplaceFile operation. In contrast with Windows,
+  // we don't retry the operation, so we only record the result.
+  UmaHistogramReplaceResultWithSuffix(
+      histogram_suffix,
+      result ? ReplaceResult::kSuccessWithoutRetry : ReplaceResult::kFailure);
 #endif  // BUILDFLAG(IS_WIN)
 
   if (!result) {
@@ -427,7 +484,7 @@ void ImportantFileWriter::ScheduleWrite(DataSerializer* serializer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   DCHECK(serializer);
-  serializer_.emplace<DataSerializer*>(serializer);
+  serializer_.emplace<raw_ptr<DataSerializer>>(serializer);
 
   if (!timer().IsRunning()) {
     timer().Start(
@@ -441,7 +498,7 @@ void ImportantFileWriter::ScheduleWriteWithBackgroundDataSerializer(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   DCHECK(serializer);
-  serializer_.emplace<BackgroundDataSerializer*>(serializer);
+  serializer_.emplace<raw_ptr<BackgroundDataSerializer>>(serializer);
 
   if (!timer().IsRunning()) {
     timer().Start(
@@ -457,9 +514,9 @@ void ImportantFileWriter::DoScheduledWrite() {
   const TimeTicks serialization_start = TimeTicks::Now();
   BackgroundDataProducerCallback data_producer_for_background_sequence;
 
-  if (std::holds_alternative<DataSerializer*>(serializer_)) {
+  if (std::holds_alternative<raw_ptr<DataSerializer>>(serializer_)) {
     std::optional<std::string> data;
-    data = std::get<DataSerializer*>(serializer_)->SerializeData();
+    data = std::get<raw_ptr<DataSerializer>>(serializer_)->SerializeData();
     if (!data) {
       DLOG(WARNING) << "Failed to serialize data to be saved in "
                     << path_.value();
@@ -480,7 +537,7 @@ void ImportantFileWriter::DoScheduledWrite() {
         std::move(data).value());
   } else {
     data_producer_for_background_sequence =
-        std::get<BackgroundDataSerializer*>(serializer_)
+        std::get<raw_ptr<BackgroundDataSerializer>>(serializer_)
             ->GetSerializedDataProducerForBackgroundSequence();
 
     DCHECK(data_producer_for_background_sequence);

@@ -161,7 +161,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Android.WarningBypassDialog.Events"
-    enum="AndroidDownloadWarningBypassDialogEvent" expires_after="2026-11-30">
+    enum="AndroidDownloadWarningBypassDialogEvent" expires_after="2027-02-07">
   <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -172,13 +172,15 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.ApiFunctions" enum="DownloadFunctions"
-    expires_after="2026-07-05">
+    expires_after="2027-01-05">
   <owner>dtrainor@chromium.org</owner>
   <owner>xinghuilu@chromium.org</owner>
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     Downloads extension API function calls. Warning: this histogram was expired
-    from 2020-03-08 to 2022-08-02; data may be missing.
+    from 2020-03-08 to 2022-08-02 and 2026-07-05 to 2026-08-04; data may be
+    missing.
   </summary>
 </histogram>
 
@@ -196,7 +198,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.BandwidthOverallBytesPerSecond2" units="bytes/second"
-    expires_after="2026-11-22">
+    expires_after="2027-01-24">
   <owner>qinmin@chromium.org</owner>
   <summary>
     Overall bandwidth seen for a completed download. This includes all file
@@ -219,19 +221,9 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Download.Bubble.DownloadCompletionToPartialViewShownLatency"
-    units="ms" expires_after="2024-06-01">
-  <owner>kerenzhu@chromium.org</owner>
-  <summary>
-    Measures the time (in ms) from a successful download completion to when
-    Download Bubble partial view becomes visible. Recorded only for Desktop
-    platforms, where Download Bubble is enabled.
-  </summary>
-</histogram>
-
 <histogram name="Download.Bubble.ProcessedCommand2" enum="DownloadCommand"
-    expires_after="2026-08-01">
-  <owner>liu@chromium.org</owner>
+    expires_after="2027-02-01">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     Records each time a download command is executed on download bubble. It is
@@ -314,7 +306,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Counts.{ParallelizableDownload}"
-    enum="DownloadCountType" expires_after="2026-10-13">
+    enum="DownloadCountType" expires_after="2027-01-10">
   <owner>shaktisahu@chromium.org</owner>
   <owner>yawfrempong@google.com</owner>
   <owner>clank-downloads@google.com</owner>
@@ -334,7 +326,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.DangerousDialog.Events"
-    enum="DangerousDownloadDialogEvent" expires_after="2026-11-01">
+    enum="DangerousDownloadDialogEvent" expires_after="2027-01-03">
   <owner>qinmin@chromium.org</owner>
   <summary>
     Records user interactions with the dangerous download dialog on Android.
@@ -369,7 +361,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Download.DownloadDangerPrompt.{DownloadDangerTypeString}.{Action}"
-    enum="SBClientDownloadExtensions" expires_after="2026-10-26">
+    enum="SBClientDownloadExtensions" expires_after="2027-01-03">
   <owner>vakh@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -401,7 +393,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.DuplicatePdfDownloadTriggered"
-    enum="BooleanOpenInline" expires_after="2026-10-25">
+    enum="BooleanOpenInline" expires_after="2026-12-27">
   <owner>qinmin@chromium.org</owner>
   <owner>clank-downloads@google.com</owner>
   <summary>
@@ -489,7 +481,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadAppleWalletOrderFileUI"
-    enum="DownloadAppleWalletOrderFileUI" expires_after="2026-08-21">
+    enum="DownloadAppleWalletOrderFileUI" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -503,7 +495,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadARModelState.USDZ"
-    enum="DownloadARModelState" expires_after="2026-08-21">
+    enum="DownloadARModelState" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -513,7 +505,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadBundledPassKitResult"
-    enum="DownloadPassKitResult" expires_after="2026-08-21">
+    enum="DownloadPassKitResult" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -523,7 +515,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadCalendarFileUI"
-    enum="DownloadCalendarFileUI" expires_after="2026-08-21">
+    enum="DownloadCalendarFileUI" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -535,7 +527,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadedFileAction" enum="DownloadedFileAction"
-    expires_after="2026-10-25">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -546,7 +538,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadedFileNetError" enum="NetErrorCodes"
-    expires_after="2026-08-21">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -557,7 +549,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadFileInBackground"
-    enum="DownloadFileInBackground" expires_after="2026-10-25">
+    enum="DownloadFileInBackground" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -570,7 +562,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadFileResult" enum="DownloadFileResult"
-    expires_after="2026-10-25">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -578,7 +570,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadFileUI" enum="DownloadFileUI"
-    expires_after="2026-10-25">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -589,7 +581,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadFileUIGoogleDrive"
-    enum="DownloadFileUIGoogleDrive" expires_after="2026-10-25">
+    enum="DownloadFileUIGoogleDrive" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -601,7 +593,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadMimeType" enum="DownloadMimeTypeResult"
-    expires_after="2026-10-25">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -612,7 +604,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadMobileConfigFileUI"
-    enum="DownloadMobileConfigFileUI" expires_after="2026-08-21">
+    enum="DownloadMobileConfigFileUI" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -624,7 +616,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadOpenInHasFilePath" enum="Boolean"
-    expires_after="2026-08-21">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -635,7 +627,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadPassKitResult"
-    enum="DownloadPassKitResult" expires_after="2026-08-21">
+    enum="DownloadPassKitResult" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -645,7 +637,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSDownloadReplaced" enum="BooleanReplaced"
-    expires_after="2026-08-21">
+    expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -658,7 +650,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSPresentAddPassesDialogResult"
-    enum="PresentAddPassesDialogResult" expires_after="2026-08-21">
+    enum="PresentAddPassesDialogResult" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -666,7 +658,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.IOSPresentQLPreviewControllerResult"
-    enum="PresentQLPreviewController" expires_after="2026-08-21">
+    enum="PresentQLPreviewController" expires_after="2027-07-22">
   <owner>qpubert@google.com</owner>
   <owner>olivierrobin@chromium.org</owner>
   <owner>bling-squid-squad@google.com</owner>
@@ -731,7 +723,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Memory.UrlChainLength.{Location}" units="count"
-    expires_after="2026-10-04">
+    expires_after="2027-02-07">
   <owner>fdoray@chromium.org</owner>
   <owner>catan-team@chromium.org</owner>
   <summary>
@@ -742,7 +734,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Memory.UrlChainSizeKb.{Location}" units="KB"
-    expires_after="2026-10-04">
+    expires_after="2027-02-07">
   <owner>fdoray@chromium.org</owner>
   <owner>catan-team@chromium.org</owner>
   <summary>
@@ -761,7 +753,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.NonDangerousDialog.Events"
-    enum="DangerousDownloadDialogEvent" expires_after="2026-12-05">
+    enum="DangerousDownloadDialogEvent" expires_after="2027-02-07">
   <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -855,12 +847,15 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Progress.InfoBar.Shown"
-    enum="DownloadInfoBar.ShownState" expires_after="2023-06-25">
-  <owner>shaktisahu@chromium.org</owner>
+    enum="DownloadInfoBar.ShownState" expires_after="2027-02-07">
+  <owner>yawfrempong@google.com</owner>
   <owner>clank-downloads@google.com</owner>
   <summary>
     Records various types of messages representing the state of the downloads as
     they are shown on the download progress infobar on android.
+
+    Warning: this histogram was expired from 2023-06-25 to 2026-12-04; data may
+    be missing.
   </summary>
 </histogram>
 
@@ -1131,14 +1126,17 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.ShowedDownloadWarning.DownloadsPage"
-    enum="DownloadItem.DangerType" expires_after="2026-08-01">
-  <owner>liu@chromium.org</owner>
+    enum="DownloadItem.DangerType" expires_after="2027-02-01">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     A download warning was shown on the chrome://downloads page. This is logged
     once per dangerous or suspicious download, when it is shown for the first
     time on chrome://downloads, once per Chrome session (i.e. may be logged
     again after Chrome restarts). Value logs the type of danger.
+
+    Note: This histogram is recorded each time a warning is shown for a
+    download, even when attempting to download the same file.
 
     Warning: this histogram was expired from 2025-09-08 to 2026-01-27; data may
     be missing.
@@ -1158,7 +1156,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Start.ContentType" enum="DownloadContentType"
-    expires_after="M110">
+    expires_after="2026-12-27">
   <owner>shaktisahu@chromium.org</owner>
   <owner>drubery@chromium.org</owner>
   <summary>
@@ -1193,7 +1191,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.Start.ContentType.{TransientType}"
-    enum="DownloadContentType" expires_after="2026-10-25">
+    enum="DownloadContentType" expires_after="2027-01-03">
   <owner>qinmin@chromium.org</owner>
   <owner>clank-downloads@google.com</owner>
   <summary>
@@ -1229,8 +1227,8 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.UserValidatedDangerousDownload.DownloadsPage"
-    enum="DownloadItem.DangerType" expires_after="2026-08-30">
-  <owner>chlily@chromium.org</owner>
+    enum="DownloadItem.DangerType" expires_after="2027-03-02">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     User chose to save a download which was marked dangerous or suspicious from
@@ -1249,7 +1247,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Download.WarningData.ActionAdded" enum="DownloadWarningAction"
-    expires_after="2026-08-11">
+    expires_after="2026-11-11">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>

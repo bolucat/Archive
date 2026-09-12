@@ -9,9 +9,9 @@ sudo echo
 
 tempdir=$(mktemp -d)
 rm -f /tmp/keys
-sudo rm -f /tmp/direct.pcapng
+sudo rm -f /tmp/chrome.pcapng
 
-sudo tshark -Q -a duration:10 -w /tmp/direct.pcapng &
+sudo tshark -Q -a duration:10 -w /tmp/chrome.pcapng &
 tsharkpid=$!
 sleep 1
 
@@ -20,9 +20,9 @@ chromepid=$!
 
 sleep 10
 kill $chromepid
-rm -rf "$tempir"
+rm -rf "$tempdir"
 
 wait $tsharkpid
-sudo chmod +r /tmp/direct.pcapng
+sudo chmod +r /tmp/chrome.pcapng
 
-./parse-pcap-stream.py /tmp/direct.pcapng "$domain"
+./parse-pcap-stream.py /tmp/chrome.pcapng "$domain"

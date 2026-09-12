@@ -4,14 +4,13 @@
 """Entry point for "from-source" and "from-jar" commands."""
 
 import collections
-import os
 import logging
+import os
 import pathlib
 import pickle
 import shutil
 import subprocess
 import sys
-from typing import Optional
 import zipfile
 
 from codegen import called_by_native_header
@@ -34,14 +33,15 @@ class NativeMethod:
   def java_type(self):
     return self.java_class.as_type()
 
-  def __init__(self, parsed_method, *, java_class, is_proxy):
+  def __init__(self, parsed_method, *, java_class, is_proxy, from_javap=False):
     # The Java class the containing the natives. Never a nested class.
     self.java_class = java_class
     self.is_proxy = is_proxy
+    self.from_javap = from_javap
     # The method name. For non-proxy natives, this omits the "native" prefix.
     self.name = parsed_method.name
     self.capitalized_name = common.capitalize(self.name)
-    self.is_test_only = NameIsTestOnly(parsed_method.name)
+    self.is_test_only = _NameIsTestOnly(parsed_method.name)
     self.signature = parsed_method.signature
     self.static = self.is_proxy or parsed_method.static
     # Value of @NativeClassQualifiedName.
@@ -128,6 +128,8 @@ class NativeMethod:
   def boundary_name(self, jni_mode):
     """Java name of the JNI native method."""
     if not self.is_proxy:
+      if self.from_javap:
+        return self.name
       return f'native{self.name}'
     if jni_mode.is_per_file:
       return f'native{self.capitalized_name}'
@@ -157,7 +159,10 @@ class CalledByNative:
                class_type_resolver,
                parsed_called_by_native,
                *,
+               is_weak=False,
                unchecked=False):
+    self.java_class = class_type_resolver.java_class
+    self.is_weak = is_weak
     self.name = parsed_called_by_native.name
     self.signature = parsed_called_by_native.signature
     self.static = parsed_called_by_native.static
@@ -168,11 +173,14 @@ class CalledByNative:
 
     # Computed once we know if overloads exist.
     self.method_id_function_name = None
+    # Suffix for the kCbnIdx_ variable used in multiplexed builds.
+    self.muxed_name = None
+    self.is_test_only = _NameIsTestOnly(self.name)
 
     # Set the return type & static of constructors to for simpler codegen logic.
     if self.is_constructor:
       self.static = True
-      self.return_type = class_type_resolver.java_class.as_type()
+      self.return_type = self.java_class.as_type()
       # Constructors are non-static, so can use class generics, but we expose
       # them as static methods, so merge the method and class generics.
       all_params = class_type_resolver.type_params
@@ -211,7 +219,7 @@ class JniField:
 
 class JniClass:
 
-  def __init__(self, parsed_class, *, unchecked=False):
+  def __init__(self, parsed_class, *, is_weak=False, unchecked=False):
     self.type_resolver = parsed_class.type_resolver
     self.java_type = java_types.JavaType(java_class=self.java_class,
                                          generics=self.type_params.get_types())
@@ -222,6 +230,7 @@ class JniClass:
       called_by_natives.append(
           CalledByNative(self.type_resolver,
                          parsed_called_by_native,
+                         is_weak=is_weak,
                          unchecked=unchecked))
 
     _AssignMethodIdFunctionNames(self.type_resolver, called_by_natives)
@@ -240,7 +249,7 @@ class JniClass:
         cbn for cbn in self.called_by_natives if cbn.static == is_static)
 
 
-def NameIsTestOnly(name):
+def _NameIsTestOnly(name):
   return name.endswith(('ForTest', 'ForTests', 'ForTesting'))
 
 
@@ -260,7 +269,8 @@ def _MangleMethodName(type_resolver, name, param_types):
 
 
 def _AssignMethodIdFunctionNames(type_resolver, called_by_natives):
-  # Mangle names for overloads with different number of parameters.
+  # Mangle names for overloads with same number of parameters (for C++ function
+  # overloading).
   def key(called_by_native):
     return (called_by_native.name, len(called_by_native.params))
 
@@ -268,16 +278,20 @@ def _AssignMethodIdFunctionNames(type_resolver, called_by_natives):
 
   for called_by_native in called_by_natives:
     if called_by_native.is_constructor:
-      method_id_function_name = 'Constructor'
+      base_name = 'Constructor'
     else:
-      method_id_function_name = called_by_native.name
+      base_name = called_by_native.name
 
+    mangled_name = _MangleMethodName(type_resolver, base_name,
+                                     called_by_native.signature.param_types)
     if method_counts[key(called_by_native)] > 1:
-      method_id_function_name = _MangleMethodName(
-          type_resolver, method_id_function_name,
-          called_by_native.signature.param_types)
+      method_id_function_name = mangled_name
+    else:
+      method_id_function_name = base_name
 
     called_by_native.method_id_function_name = method_id_function_name
+    called_by_native.muxed_name = (
+        f'{type_resolver.java_class.to_cpp()}_{mangled_name}')
 
 
 class JniObject:
@@ -289,8 +303,10 @@ class JniObject:
                from_javap,
                default_namespace=None,
                javap_unchecked_exceptions=False,
-               module_name=None):
+               module_name=None,
+               use_weak_called_by_natives=False):
     self.from_javap = from_javap
+    self.use_weak_called_by_natives = use_weak_called_by_natives
     self.filename = parsed_file.filename
     self.type_resolver = parsed_file.outer_class.type_resolver
     self.module_name = module_name
@@ -299,14 +315,16 @@ class JniObject:
 
     # These are different only for legacy reasons.
     if from_javap:
-      self.jni_namespace = default_namespace or 'JNI_' + self.java_class.name.replace(
-          '$', '__')
+      replaced_name = self.java_class.name.replace('$', '__')
+      self.jni_namespace = default_namespace or f'JNI_{replaced_name}'
     else:
       self.jni_namespace = parsed_file.jni_namespace or default_namespace
 
     self.jni_classes = [
-        JniClass(c, unchecked=javap_unchecked_exceptions)
-        for c in parsed_file.classes_with_jni
+        JniClass(c,
+                 is_weak=use_weak_called_by_natives,
+                 unchecked=javap_unchecked_exceptions)
+        for c in parsed_file.classes_with_jni if c.called_by_natives or c.fields
     ]
 
     natives = [
@@ -318,8 +336,11 @@ class JniObject:
     natives.sort(key=lambda n: n.is_test_only)
 
     natives.extend(
-        NativeMethod(m, java_class=self.java_class, is_proxy=False)
-        for m in parsed_file.non_proxy_methods)
+        NativeMethod(m,
+                     java_class=self.java_class,
+                     is_proxy=False,
+                     from_javap=self.from_javap)
+        for m in parsed_file.outer_class.non_proxy_methods)
 
     self.natives = natives
 
@@ -334,6 +355,17 @@ class JniObject:
   @property
   def non_proxy_natives(self):
     return [n for n in self.natives if not n.is_proxy]
+
+  @property
+  def muxed_called_by_natives(self):
+    if self.from_javap:
+      return []
+    ret = []
+    # Omit ForTesting methods to ensure that -gc-sections will remove them in
+    # non-test binaries.
+    for jni_class in self.jni_classes:
+      ret.extend(c for c in jni_class.called_by_natives if not c.is_test_only)
+    return ret
 
   def IterFields(self):
     for c in self.jni_classes:
@@ -420,7 +452,10 @@ class JniObject:
       return_type = native.return_type
       if return_type.is_object_array() and return_type.converted_type:
         ret.add(return_type.java_class)
-    return sorted(ret)
+    # Filter out those ones that have a global variable for.
+    ret = [c for c in ret if c not in java_types.JCLASS_GLOBALS_CLASSES]
+    ret.sort()
+    return ret
 
 
 def _generate_headers(jni_mode,
@@ -429,7 +464,6 @@ def _generate_headers(jni_mode,
                       shared_header_file,
                       unshared_header_file,
                       *,
-                      enable_definition_macros,
                       include_path_prefix,
                       extra_includes=None,
                       add_natives_macro_definition=True):
@@ -448,7 +482,7 @@ def _generate_headers(jni_mode,
 
   preamble, epilogue = header_common.header_preamble(
       GetScriptName(),
-      jni_obj.java_class,
+      java_class=jni_obj.java_class,
       system_includes=system_includes,
       user_includes=user_includes,
       is_shared_header=True)
@@ -464,26 +498,25 @@ def _generate_headers(jni_mode,
   user_includes.append(os.path.basename(shared_header_file))
   preamble, epilogue = header_common.header_preamble(
       GetScriptName(),
-      jni_obj.java_class,
+      java_class=jni_obj.java_class,
       system_includes=system_includes,
-      user_includes=user_includes,
-      is_shared_header=False)
+      user_includes=user_includes)
+
   sb = common.StringBuilder()
   sb(preamble)
 
   if add_natives_macro_definition:
-    natives_header.natives_macro_definition(
-        sb,
-        jni_mode,
-        jni_obj,
-        gen_jni_class,
-        unshared_header_file,
-        enable_definition_macros=enable_definition_macros)
+    natives_header.natives_macro_definition(sb, jni_mode, jni_obj,
+                                            gen_jni_class, unshared_header_file)
 
   java_classes = jni_obj.CollectClassesThatRequireAccessors()
   if java_classes:
     with sb.section('Class Accessors'):
-      header_common.class_accessors(sb, java_classes)
+      header_common.class_accessors(
+          sb,
+          java_classes,
+          is_muxing=jni_mode.is_muxing,
+          use_weak_called_by_natives=jni_obj.use_weak_called_by_natives)
 
   has_field_getters = any(f.NeedsAccessor() for f in jni_obj.IterFields())
   if has_field_getters:
@@ -494,23 +527,25 @@ def _generate_headers(jni_mode,
             called_by_native_header.field_accessor(sb, jni_class, f)
 
   has_called_by_natives = any(c.called_by_natives for c in jni_obj.jni_classes)
+  if jni_mode.is_muxing and has_called_by_natives:
+    if jni_obj.use_weak_called_by_natives:
+      with sb.section('Weak Native to Java functions'):
+        called_by_native_header.weak_muxed_methods(sb, jni_obj.jni_classes)
+    else:
+      called_by_native_header.index_decls(sb, jni_obj.jni_classes)
+
   with sb.namespace(jni_obj.jni_namespace):
-    if jni_obj.natives and not enable_definition_macros:
-      with sb.section('Java to native functions'):
-        for native in jni_obj.natives:
-          natives_header.entry_point_method(sb,
-                                            jni_mode,
-                                            jni_obj,
-                                            native,
-                                            gen_jni_class,
-                                            unshared_header_file,
-                                            include_forward_declaration=True)
     if has_called_by_natives:
       with sb.section('Native to Java functions'):
         for jni_class in jni_obj.jni_classes:
           for cbn in jni_class.called_by_natives:
             called_by_native_header.method_definition(
-                sb, jni_class, cbn, allow_unused=jni_obj.from_javap)
+                sb,
+                jni_class,
+                cbn,
+                is_muxing=jni_mode.is_muxing and not cbn.is_test_only,
+                use_weak_called_by_natives=jni_obj.use_weak_called_by_natives,
+                allow_unused=jni_obj.from_javap)
 
   if jni_obj.jni_classes:
     with sb.section('jobject-subclass-aware definitions:'):
@@ -667,7 +702,6 @@ def _WriteHeaders(jni_mode,
                   *,
                   include_path_prefix,
                   gen_jni_class=None,
-                  enable_definition_macros=False,
                   extra_includes=None,
                   add_natives_macro_definition=True):
   for jni_obj, shared_header_name, unshared_header_name in zip(
@@ -681,7 +715,6 @@ def _WriteHeaders(jni_mode,
           gen_jni_class,
           shared_header_file,
           unshared_header_file,
-          enable_definition_macros=enable_definition_macros,
           include_path_prefix=include_path_prefix,
           extra_includes=extra_includes,
           add_natives_macro_definition=add_natives_macro_definition)
@@ -695,11 +728,18 @@ def _WriteHeaders(jni_mode,
       f.write(unshared_header_content)
 
 
-def GenerateFromSource(parser, args, jni_mode):
-  if not args.use_std_primitive_types:
-    java_types.CPP_UNDERLYING_TYPE_BY_JAVA_TYPE = \
-        java_types.CPP_TYPE_BY_JAVA_TYPE
+def _WriteResolvedTypes(resolved_types_path, jni_objs):
+  resolved_classes = set()
+  for obj in jni_objs:
+    resolved_classes.update(obj.type_resolver.get_resolved_classes())
+    for c in obj.jni_classes:
+      resolved_classes.update(c.type_resolver.get_resolved_classes())
 
+  with common.atomic_output(resolved_types_path, 'w') as f:
+    f.write('\n'.join(sorted(resolved_classes)) + '\n')
+
+
+def GenerateFromSource(parser, args, jni_mode):
   # Remove existing headers so that moving .java source files but not updating
   # the corresponding C++ include will be a compile failure (otherwise
   # incremental builds will usually not catch this).
@@ -707,22 +747,36 @@ def GenerateFromSource(parser, args, jni_mode):
                       args.unshared_header_names)
 
   try:
-    parsed_files = [
-        parse.parse_java_file(f,
-                              package_prefix=args.package_prefix,
-                              package_prefix_filter=args.package_prefix_filter,
-                              enable_legacy_natives=args.enable_legacy_natives,
-                              allow_private_called_by_natives=args.
-                              allow_private_called_by_natives)
-        for f in args.input_files
-    ]
+    errors = []
+    parsed_files = []
+    for f in args.input_files:
+      try:
+        parsed_files.append(
+            parse.parse_java_file(
+                f,
+                package_prefix=args.package_prefix,
+                package_prefix_filter=args.package_prefix_filter,
+                allow_private_called_by_natives=args.
+                allow_private_called_by_natives))
+      except parse.ParseError as e:
+        errors.append(e)
+
+    if errors:
+      for e in errors:
+        sys.stderr.write(f'\n--- JNI Parsing Error ---\n{e}\n')
+      sys.exit(1)
+
     jni_objs = [
         JniObject(x,
                   from_javap=False,
                   default_namespace=args.namespace,
-                  module_name=args.module_name) for x in parsed_files
+                  module_name=args.module_name,
+                  use_weak_called_by_natives=args.weak_called_by_natives)
+        for x in parsed_files
     ]
     _CheckNotEmpty(jni_objs)
+    if args.resolved_types_path:
+      _WriteResolvedTypes(args.resolved_types_path, jni_objs)
   except parse.ParseError as e:
     sys.stderr.write(f'{e}\n')
     sys.exit(1)
@@ -740,7 +794,6 @@ def GenerateFromSource(parser, args, jni_mode):
                 args.output_dir,
                 include_path_prefix=args.include_path_prefix,
                 gen_jni_class=gen_jni_class,
-                enable_definition_macros=args.enable_definition_macros,
                 extra_includes=args.extra_includes)
 
   jni_objs_with_proxy_natives = [x for x in jni_objs if x.proxy_natives]
@@ -762,7 +815,9 @@ def GenerateFromSource(parser, args, jni_mode):
       zipfile.ZipFile(args.srcjar_path, 'w').close()
   if args.jni_pickle:
     with common.atomic_output(args.jni_pickle, 'wb') as f:
-      pickle.dump((args.module_name, parsed_files), f)
+      pickle.dump(
+          (args.module_name, getattr(args, 'weak_called_by_natives',
+                                     False), parsed_files), f)
 
   if args.placeholder_srcjar_path:
     if jni_objs_with_proxy_natives:
@@ -779,10 +834,6 @@ def GenerateFromJar(parser, args, jni_mode):
     if not args.javap:
       parser.error('Could not find "javap" on your PATH. Use --javap to '
                    'specify its location.')
-
-  if not args.use_std_primitive_types:
-    java_types.CPP_UNDERLYING_TYPE_BY_JAVA_TYPE = \
-        java_types.CPP_TYPE_BY_JAVA_TYPE
 
   # Remove existing headers so that moving .java source files but not updating
   # the corresponding C++ include will be a compile failure (otherwise

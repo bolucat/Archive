@@ -43,6 +43,23 @@ class NET_EXPORT SessionStoreImpl : public SessionStore {
     kNotLoaded,
   };
 
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // LINT.IfChange(AttestationKeySaveOutcome)
+  enum class AttestationKeySaveOutcome {
+    kNoAttestationKey = 0,
+    kKeyNotReadyCopiedOldKey = 1,
+    kKeyNotReadyNoSiteInDb = 2,
+    kKeyNotReadyNoSessionInDb = 3,
+    kKeyNotReadyNoOldKeyToCopy = 4,
+    kSaveSessionKeySuccess = 5,
+    kGetWrappedKeyFailure = 6,
+    kUnexpectedError = 7,
+    kMaxValue = kUnexpectedError,
+  };
+  // LINT.ThenChange(/tools/metrics/histograms/metadata/net/enums.xml:DeviceBoundSessionAttestationKeySaveOutcome)
+
   // Instantiates a store object.
   // `db_storage_path` is the path to the underlying SQLite DB file.
   // `key_service` is used to convert a session binding key to/from
@@ -59,12 +76,17 @@ class NET_EXPORT SessionStoreImpl : public SessionStore {
 
   // SessionStore implementation:
   void LoadSessions(LoadSessionsCallback callback) override;
-  void SaveSession(const SchemefulSite& site, const Session& session) override;
+  void SaveSession(const SchemefulSite& site,
+                   const Session& session,
+                   SessionStore::SaveSessionMode mode) override;
   void DeleteSession(const SessionKey& key) override;
   SessionsMap GetAllSessions() const override;
   void RestoreSessionBindingKey(
       const SessionKey& session_key,
       RestoreSessionBindingKeyCallback callback) override;
+  void RestoreSessionAttestationKey(
+      const SessionKey& session_key,
+      RestoreSessionAttestationKeyCallback callback) override;
 
   DBStatus db_status() const { return db_status_; }
 
@@ -80,30 +102,72 @@ class NET_EXPORT SessionStoreImpl : public SessionStore {
                            PruneLoadedEntryWithSessionMissingWrappedKey);
   FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
                            PruneLoadedEntryWithInvalidRefreshInitiator);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           LoadedEntryWithSessionIdMismatch);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           PruneLoadedEntryWithExpiredSession);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           PruneLoadedEntryWithAllExpiredSessions);
+  FRIEND_TEST_ALL_PREFIXES(
+      SessionStoreImplTest,
+      CreateSessionsFromLoadedDataKeepExpiredWhenPruneDisabled);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveAndLoadSessionWithAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveSessionWithoutAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveSessionWithAttestationKeyWrappingFailure);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionPreservesAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionWithNewAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionClearsAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionSiteNotFound);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionSessionNotFound);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveRestoredSessionNoOldKeyToCopy);
+  FRIEND_TEST_ALL_PREFIXES(
+      SessionStoreImplTest,
+      SaveRestoredSessionWithoutRefreshFailsToPreserveAttestationKey);
+  FRIEND_TEST_ALL_PREFIXES(SessionStoreImplTest,
+                           SaveSessionWithUnexpectedAttestationKeyError);
 
   void OnDatabaseLoaded(LoadSessionsCallback callback,
                         base::ElapsedTimer timer,
                         DBStatus status);
 
   // Helper function called by `OnDatabaseLoaded` to prune out any invalid
-  // entries found in the data loaded from disk. Returns a map of valid
-  // session objects that is returned to the caller of `LoadSessions` via
-  // the provided callback. `keys_to_delete` represents the list of invalid
-  // keys that are deleted from the store.
+  // or expired entries found in the data loaded from disk. Returns a map of
+  // valid session objects that is returned to the caller of `LoadSessions` via
+  // the provided callback. `keys_to_delete` represents the list of site keys
+  // where no valid sessions remain, and `sites_to_update` contains updated site
+  // protos with invalid/expired sessions pruned. If `prune_expired_sessions` is
+  // false, expired sessions are not pruned.
   static SessionsMap CreateSessionsFromLoadedData(
       const std::map<std::string, proto::SiteSessions>& loaded_data,
-      std::vector<std::string>& keys_to_delete);
+      std::vector<std::string>& keys_to_delete,
+      std::map<std::string, proto::SiteSessions>& sites_to_update,
+      bool prune_expired_sessions);
 
-  // Helper function used to run every entry in `restore_callbacks_`
-  void OnSessionBindingKeyRestored(
-      const SessionKey& session_key,
-      unexportable_keys::ServiceErrorOr<
-          unexportable_keys::UnexportableSigningKeyId> key_or_error);
+  // Returns an instance of a `proto::Session` for `session_key` if found.
+  std::optional<proto::Session> GetSessionProto(
+      const SessionKey& session_key) const;
+
+  // Helper function to handle attestation key serialization. Returns the
+  // outcome.
+  AttestationKeySaveOutcome SetWrappedAttestationKey(
+      const SchemefulSite& site,
+      const Session& session,
+      proto::Session& session_proto,
+      SessionStore::SaveSessionMode mode);
 
   void StartGarbageCollection();
   void OnGetAllKeysForGarbageCollection(
       unexportable_keys::ServiceErrorOr<
-          std::vector<unexportable_keys::UnexportableKeyId>>
+          std::vector<unexportable_keys::UnexportableSigningKeyId>>
           all_key_ids_or_error);
 
   // Key service used to wrap/unwrap unexportable session keys.
@@ -135,11 +199,6 @@ class NET_EXPORT SessionStoreImpl : public SessionStore {
   // Used only for tests to notify that shutdown tasks are completed on
   // the DB sequence.
   base::OnceClosure shutdown_callback_;
-
-  // Holds pending key restore operations. This ensures that we don't
-  // try to restore the same key twice.
-  std::map<SessionKey, std::vector<RestoreSessionBindingKeyCallback>>
-      restore_callbacks_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 

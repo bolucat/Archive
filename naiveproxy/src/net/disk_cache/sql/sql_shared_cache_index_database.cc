@@ -58,7 +58,6 @@ SqlSharedCacheIndexDatabase::SqlSharedCacheIndexDatabase(
 #if BUILDFLAG(IS_WIN)
               .set_exclusive_database_file_lock(true)
 #endif  // IS_WIN
-              .set_preload(true)
               .set_wal_mode(true),
           sql::Database::Tag("SharedCacheIndex")) {
 }
@@ -68,14 +67,13 @@ SqlSharedCacheIndexDatabase::~SqlSharedCacheIndexDatabase() = default;
 base::expected<void, SqlSharedCacheIndexDatabase::Error>
 SqlSharedCacheIndexDatabase::Initialize() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT_BEGIN0("disk_cache", "SqlSharedCacheIndexDatabase::Initialize");
+  TRACE_EVENT_BEGIN("disk_cache", "SqlSharedCacheIndexDatabase::Initialize");
   base::ElapsedTimer timer;
   auto result = InitializeInternal();
   RecordTimeAndErrorResultHistogram("Initialize", timer.Elapsed(),
                                     result.error_or(kNoErrorForMetrics));
-  TRACE_EVENT_END1("disk_cache", "SqlSharedCacheIndexDatabase::Initialize",
-                   "result",
-                   static_cast<int>(result.error_or(kNoErrorForMetrics)));
+  TRACE_EVENT_END("disk_cache", "result",
+                  static_cast<int>(result.error_or(kNoErrorForMetrics)));
   return result;
 }
 
@@ -129,8 +127,9 @@ SqlSharedCacheIndexDatabase::InitializeInternal() {
   }
 
   // Initialize the meta table.
-  if (!meta_table_.Init(&db_, kSharedCacheIndexDatabaseCurrentVersion,
-                        kSharedCacheIndexDatabaseCompatibleVersion)) {
+  sql::MetaTable meta_table;
+  if (!meta_table.Init(&db_, kSharedCacheIndexDatabaseCurrentVersion,
+                       kSharedCacheIndexDatabaseCompatibleVersion)) {
     return base::unexpected(Error::kFailedToInitializeMetaTable);
   }
 
@@ -146,18 +145,17 @@ SqlSharedCacheIndexDatabase::GetDbIdByNetworkIsolationKey(
     const net::NetworkIsolationKey& network_isolation_key,
     bool create_if_not_exists) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT_BEGIN1(
-      "disk_cache", "SqlSharedCacheIndexDatabase::GetDbIdByNetworkIsolationKey",
-      "nik", network_isolation_key.ToDebugString());
+  TRACE_EVENT_BEGIN("disk_cache",
+                    "SqlSharedCacheIndexDatabase::GetDbIdByNetworkIsolationKey",
+                    "nik", network_isolation_key.ToDebugString());
   base::ElapsedTimer timer;
   auto result = GetDbIdByNetworkIsolationKeyInternal(network_isolation_key,
                                                      create_if_not_exists);
   RecordTimeAndErrorResultHistogram("GetDbIdByNetworkIsolationKey",
                                     timer.Elapsed(),
                                     result.error_or(kNoErrorForMetrics));
-  TRACE_EVENT_END1(
-      "disk_cache", "SqlSharedCacheIndexDatabase::GetDbIdByNetworkIsolationKey",
-      "result", [&](perfetto::TracedValue trace_context) {
+  TRACE_EVENT_END(
+      "disk_cache", "result", [&](perfetto::TracedValue trace_context) {
         auto dict = std::move(trace_context).WriteDictionary();
         dict.Add("error",
                  static_cast<int>(result.error_or(kNoErrorForMetrics)));
@@ -218,17 +216,16 @@ base::expected<std::string, SqlSharedCacheIndexDatabase::Error>
 SqlSharedCacheIndexDatabase::GetIsolationKeyStringByDbId(
     SqlSharedCacheDbId shared_cache_db_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT_BEGIN1("disk_cache",
-                     "SqlSharedCacheIndexDatabase::GetIsolationKeyStringByDbId",
-                     "db_id", shared_cache_db_id.value());
+  TRACE_EVENT_BEGIN("disk_cache",
+                    "SqlSharedCacheIndexDatabase::GetIsolationKeyStringByDbId",
+                    "db_id", shared_cache_db_id.value());
   base::ElapsedTimer timer;
   auto result = GetIsolationKeyStringByDbIdInternal(shared_cache_db_id);
   RecordTimeAndErrorResultHistogram("GetIsolationKeyStringByDbId",
                                     timer.Elapsed(),
                                     result.error_or(kNoErrorForMetrics));
-  TRACE_EVENT_END1(
-      "disk_cache", "SqlSharedCacheIndexDatabase::GetIsolationKeyStringByDbId",
-      "result", [&](perfetto::TracedValue trace_context) {
+  TRACE_EVENT_END(
+      "disk_cache", "result", [&](perfetto::TracedValue trace_context) {
         auto dict = std::move(trace_context).WriteDictionary();
         dict.Add("error",
                  static_cast<int>(result.error_or(kNoErrorForMetrics)));
@@ -266,15 +263,14 @@ base::expected<void, SqlSharedCacheIndexDatabase::Error>
 SqlSharedCacheIndexDatabase::DeleteByDbId(
     SqlSharedCacheDbId shared_cache_db_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT_BEGIN1("disk_cache", "SqlSharedCacheIndexDatabase::DeleteByDbId",
-                     "db_id", shared_cache_db_id.value());
+  TRACE_EVENT_BEGIN("disk_cache", "SqlSharedCacheIndexDatabase::DeleteByDbId",
+                    "db_id", shared_cache_db_id.value());
   base::ElapsedTimer timer;
   auto result = DeleteByDbIdInternal(shared_cache_db_id);
   RecordTimeAndErrorResultHistogram("DeleteByDbId", timer.Elapsed(),
                                     result.error_or(kNoErrorForMetrics));
-  TRACE_EVENT_END1("disk_cache", "SqlSharedCacheIndexDatabase::DeleteByDbId",
-                   "result",
-                   static_cast<int>(result.error_or(kNoErrorForMetrics)));
+  TRACE_EVENT_END("disk_cache", "result",
+                  static_cast<int>(result.error_or(kNoErrorForMetrics)));
   return result;
 }
 

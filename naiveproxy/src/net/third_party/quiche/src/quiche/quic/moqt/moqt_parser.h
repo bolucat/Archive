@@ -12,15 +12,16 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/base/nullability.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "quiche/quic/core/quic_data_reader.h"
+#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/moqt/moqt_error.h"
 #include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
@@ -62,12 +63,43 @@ class MoqtDataParserVisitor {
   virtual void OnParsingError(MoqtError code, absl::string_view reason) = 0;
 };
 
+// MoqtStreamTypeParser reads the initial varint from a WebTransport stream to
+// determine its type before constructing either a control or a data stream
+// parser. Note that both of those parsers can be safely constructed from the
+// stream type parser even if the parser has not read the type yet.
+class QUICHE_EXPORT MoqtStreamTypeParser {
+ public:
+  explicit MoqtStreamTypeParser(webtransport::Stream* absl_nonnull stream)
+      : stream_(stream) {}
+  ~MoqtStreamTypeParser() = default;
+
+  // Move-only semantics to avoid a stream being accessed by two different
+  // parsers at the same time.
+  MoqtStreamTypeParser(const MoqtStreamTypeParser&) = delete;
+  MoqtStreamTypeParser& operator=(const MoqtStreamTypeParser&) = delete;
+  MoqtStreamTypeParser(MoqtStreamTypeParser&& other) noexcept;
+  MoqtStreamTypeParser& operator=(MoqtStreamTypeParser&& other) noexcept;
+
+  // Reads the first varint from the stream. Returns kUnavailable if the type
+  // has not been received yet.
+  absl::StatusOr<uint64_t> ReadStreamType();
+
+  std::optional<uint64_t> stream_type() const { return type_; }
+  webtransport::Stream* absl_nonnull stream() const { return stream_; }
+
+ private:
+  webtransport::Stream* absl_nonnull stream_;
+  std::optional<uint64_t> type_;
+  absl::Status status_ = absl::OkStatus();
+};
+
 // MoqtControlStreamParser unframes MoQT control messages from the control
 // stream without parsing the payload.
 class QUICHE_EXPORT MoqtControlStreamParser {
  public:
   explicit MoqtControlStreamParser(webtransport::Stream* absl_nonnull stream)
       : stream_(*stream) {}
+  explicit MoqtControlStreamParser(MoqtStreamTypeParser type_parser);
 
   // MoqtControlStreamParser is not movable, since reading from the same stream
   // through two different parsers would corrupt the state.
@@ -80,8 +112,6 @@ class QUICHE_EXPORT MoqtControlStreamParser {
   // status if no complete message can be read; if FIN is read, `fin_read` will
   // be set to true.
   absl::StatusOr<MoqtRawControlMessage> ReadNextMessage();
-  // Reads the type of the first message on the stream.
-  absl::StatusOr<MoqtMessageType> ReadFirstMessageType();
 
   bool fin_read() const { return fin_read_; }
   webtransport::Stream* stream() const { return &stream_; }
@@ -98,7 +128,6 @@ class QUICHE_EXPORT MoqtControlStreamParser {
   absl::Status ReadMessageType();
 
   webtransport::Stream& stream_;
-  std::optional<uint64_t> first_message_type_;
   std::optional<uint64_t> current_message_type_;
   std::optional<absl::Span<char>> current_message_remaining_;
   std::string current_message_;
@@ -114,21 +143,17 @@ class MoqtControlMessageParser {
  public:
   // `moqt_version` is not currently used, as we only support one version.
   MoqtControlMessageParser(absl::string_view /*moqt_version*/,
-                           bool uses_web_transport)
-      : uses_web_transport_(uses_web_transport) {}
+                           bool uses_web_transport,
+                           quic::Perspective perspective)
+      : uses_web_transport_(uses_web_transport), perspective_(perspective) {}
 
   // Parsers for individual messages.
-  absl::StatusOr<MoqtClientSetup> ProcessClientSetup(
-      absl::string_view data) const;
-  absl::StatusOr<MoqtServerSetup> ProcessServerSetup(
-      absl::string_view data) const;
+  absl::StatusOr<MoqtSetup> ProcessSetup(absl::string_view data) const;
   absl::StatusOr<MoqtRequestOk> ProcessRequestOk(absl::string_view data) const;
   absl::StatusOr<MoqtRequestError> ProcessRequestError(
       absl::string_view data) const;
   absl::StatusOr<MoqtSubscribe> ProcessSubscribe(absl::string_view data) const;
   absl::StatusOr<MoqtSubscribeOk> ProcessSubscribeOk(
-      absl::string_view data) const;
-  absl::StatusOr<MoqtUnsubscribe> ProcessUnsubscribe(
       absl::string_view data) const;
   absl::StatusOr<MoqtPublishDone> ProcessPublishDone(
       absl::string_view data) const;
@@ -136,17 +161,15 @@ class MoqtControlMessageParser {
       absl::string_view data) const;
   absl::StatusOr<MoqtPublishNamespace> ProcessPublishNamespace(
       absl::string_view data) const;
-  absl::StatusOr<MoqtPublishNamespaceDone> ProcessPublishNamespaceDone(
-      absl::string_view data) const;
   absl::StatusOr<MoqtNamespace> ProcessNamespace(absl::string_view data) const;
   absl::StatusOr<MoqtNamespaceDone> ProcessNamespaceDone(
-      absl::string_view data) const;
-  absl::StatusOr<MoqtPublishNamespaceCancel> ProcessPublishNamespaceCancel(
       absl::string_view data) const;
   absl::StatusOr<MoqtTrackStatus> ProcessTrackStatus(
       absl::string_view data) const;
   absl::StatusOr<MoqtGoAway> ProcessGoAway(absl::string_view data) const;
   absl::StatusOr<MoqtSubscribeNamespace> ProcessSubscribeNamespace(
+      absl::string_view data) const;
+  absl::StatusOr<MoqtSubscribeTracks> ProcessSubscribeTracks(
       absl::string_view data) const;
   absl::StatusOr<MoqtMaxRequestId> ProcessMaxRequestId(
       absl::string_view data) const;
@@ -175,10 +198,8 @@ class MoqtControlMessageParser {
       return callback(*std::move(parsed_message));
     };
     switch (message.type) {
-      case MoqtMessageType::kClientSetup:
-        return parse(&MoqtControlMessageParser::ProcessClientSetup);
-      case MoqtMessageType::kServerSetup:
-        return parse(&MoqtControlMessageParser::ProcessServerSetup);
+      case MoqtMessageType::kSetup:
+        return parse(&MoqtControlMessageParser::ProcessSetup);
       case MoqtMessageType::kRequestOk:
         return parse(&MoqtControlMessageParser::ProcessRequestOk);
       case MoqtMessageType::kRequestError:
@@ -187,28 +208,24 @@ class MoqtControlMessageParser {
         return parse(&MoqtControlMessageParser::ProcessSubscribe);
       case MoqtMessageType::kSubscribeOk:
         return parse(&MoqtControlMessageParser::ProcessSubscribeOk);
-      case MoqtMessageType::kUnsubscribe:
-        return parse(&MoqtControlMessageParser::ProcessUnsubscribe);
       case MoqtMessageType::kPublishDone:
         return parse(&MoqtControlMessageParser::ProcessPublishDone);
       case MoqtMessageType::kRequestUpdate:
         return parse(&MoqtControlMessageParser::ProcessRequestUpdate);
       case MoqtMessageType::kPublishNamespace:
         return parse(&MoqtControlMessageParser::ProcessPublishNamespace);
-      case MoqtMessageType::kPublishNamespaceDone:
-        return parse(&MoqtControlMessageParser::ProcessPublishNamespaceDone);
       case MoqtMessageType::kNamespace:
         return parse(&MoqtControlMessageParser::ProcessNamespace);
       case MoqtMessageType::kNamespaceDone:
         return parse(&MoqtControlMessageParser::ProcessNamespaceDone);
-      case MoqtMessageType::kPublishNamespaceCancel:
-        return parse(&MoqtControlMessageParser::ProcessPublishNamespaceCancel);
       case MoqtMessageType::kTrackStatus:
         return parse(&MoqtControlMessageParser::ProcessTrackStatus);
       case MoqtMessageType::kGoAway:
         return parse(&MoqtControlMessageParser::ProcessGoAway);
       case MoqtMessageType::kSubscribeNamespace:
         return parse(&MoqtControlMessageParser::ProcessSubscribeNamespace);
+      case MoqtMessageType::kSubscribeTracks:
+        return parse(&MoqtControlMessageParser::ProcessSubscribeTracks);
       case MoqtMessageType::kMaxRequestId:
         return parse(&MoqtControlMessageParser::ProcessMaxRequestId);
       case MoqtMessageType::kFetch:
@@ -239,9 +256,8 @@ class MoqtControlMessageParser {
   // large. Sets a ParseError if the name is malformed.
   absl::Status ReadFullTrackName(quic::QuicDataReader& reader,
                                  FullTrackName& full_track_name) const;
-  absl::Status FillAndValidateSetupParameters(
-      const KeyValuePairList& in, SetupParameters& out,
-      MoqtMessageType message_type) const;
+  absl::Status FillAndValidateSetupParameters(const KeyValuePairList& in,
+                                              SetupParameters& out) const;
   // |reader| points to the beginning of a KeyValuePairList. Returns false if
   // there is any sort of error. (The function calls ParseError(), so the
   // caller has no need to do so.)
@@ -249,6 +265,7 @@ class MoqtControlMessageParser {
                                                 MessageParameters& out) const;
 
   bool uses_web_transport_;
+  const quic::Perspective perspective_;
 };
 
 // Parses an MoQT datagram. Returns the payload bytes, or std::nullopt on error.
@@ -269,6 +286,8 @@ class QUICHE_EXPORT MoqtDataParser {
   explicit MoqtDataParser(webtransport::Stream* stream,
                           MoqtDataParserVisitor* visitor)
       : stream_(*stream), visitor_(*visitor) {}
+  MoqtDataParser(MoqtStreamTypeParser type_parser,
+                 MoqtDataParserVisitor* visitor);
 
   // Reads all of the available objects on the stream.
   void ReadAllData();
@@ -335,7 +354,7 @@ class QUICHE_EXPORT MoqtDataParser {
 
   // Reads a single varint from the underlying stream. Triggers a parse error if
   // a FIN has been encountered.
-  std::optional<uint64_t> ReadVarInt62NoFin();
+  std::optional<uint64_t> ReadMoqVarIntNoFin();
   // Reads a single uint8 from the underlying stream. Triggers a parse error if
   // a FIN has been encountered.
   std::optional<uint8_t> ReadUint8NoFin();
@@ -347,6 +366,7 @@ class QUICHE_EXPORT MoqtDataParser {
   // Checks if we have encountered a FIN without data.  If so, processes it and
   // returns true.
   bool CheckForFinWithoutData();
+  void ProcessStreamType(uint64_t raw_type);
 
   void ParseError(absl::string_view reason);
 

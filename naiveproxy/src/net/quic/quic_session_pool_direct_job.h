@@ -42,6 +42,7 @@ class QuicSessionPool::DirectJob : public QuicSessionPool::Job {
       bool require_dns_https_alpn,
       int cert_verify_flags,
       MultiplexedSessionCreationInitiator session_creation_initiator,
+      QuicConnectionReuseDetails quic_connection_reuse_details,
       std::optional<ConnectionManagementConfig> connection_management_config,
       const NetLogWithSource& net_log);
 

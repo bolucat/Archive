@@ -14,6 +14,7 @@
 #include "base/at_exit.h"
 #include "base/check.h"
 #include "base/command_line.h"
+#include "base/containers/extend.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/json/json_file_value_serializer.h"
@@ -33,9 +34,11 @@
 #include "build/build_config.h"
 #include "components/version_info/version_info.h"
 #include "net/base/auth.h"
+#include "net/base/features.h"
 #include "net/base/network_isolation_key.h"
 #include "net/base/url_util.h"
 #include "net/cert/cert_verifier.h"
+#include "net/cert/x509_util.h"
 #include "net/cert_net/cert_net_fetcher_url_request.h"
 #include "net/dns/host_resolver.h"
 #include "net/dns/mapped_host_resolver.h"
@@ -250,25 +253,51 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
       config.extra_headers,
       std::vector<PaddingType>{PaddingType::kVariant1, PaddingType::kNone}));
 
-  if (config.no_post_quantum == true) {
-    struct NoPostQuantum : public SSLConfigService {
-      SSLContextConfig GetSSLContextConfig() override {
-        SSLContextConfig config;
-        std::erase_if(
-            config.supported_named_groups, [](const SSLNamedGroupInfo& g) {
-              return g.group_id == SSL_GROUP_X25519_MLKEM768 ||
-                     g.group_id == SSL_GROUP_X25519_KYBER768_DRAFT00 ||
-                     g.group_id == SSL_GROUP_MLKEM1024;
-            });
-        return config;
-      }
+  struct MySSLConfigService : public SSLConfigService {
+    SSLContextConfig config;
 
-      bool CanShareConnectionWithClientCerts(std::string_view) const override {
-        return false;
+    explicit MySSLConfigService(bool no_post_quantum) {
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+      // Copied from chrome/browser/ssl/ssl_config_service_manager.cc
+      if (base::FeatureList::IsEnabled(net::features::kTLSTrustAnchorIDs)) {
+        std::vector<std::vector<uint8_t>> trust_anchor_ids;
+        if (base::FeatureList::IsEnabled(
+                net::features::kNonMtcTrustAnchorIDs)) {
+          base::Extend(trust_anchor_ids,
+                       net::TrustStoreChrome::
+                           GetTrustAnchorIDsFromCompiledInRootStore());
+        }
+        if (base::FeatureList::IsEnabled(net::features::kVerifyMTCs)) {
+          base::Extend(trust_anchor_ids,
+                       net::TrustStoreChrome::
+                           GetTrustedMtcCaIDsFromCompiledInRootStore());
+        }
+        config.trust_anchor_ids =
+            net::x509_util::EncodeTlsRequestedTrustAnchorIDList(
+                std::move(trust_anchor_ids));
       }
-    };
-    builder.set_ssl_config_service(std::make_unique<NoPostQuantum>());
-  }
+#endif
+      if (no_post_quantum) {
+        std::erase_if(config.supported_named_groups,
+                      [](const SSLNamedGroupInfo& g) {
+                        return g.group_id == SSL_GROUP_X25519_MLKEM768 ||
+                               g.group_id == SSL_GROUP_MLKEM1024;
+                      });
+      }
+    }
+
+    SSLContextConfig GetSSLContextConfig() override { return config; }
+
+    EchMode GetEchMode(std::string_view) const override {
+      return EchMode::kOpportunistic;
+    }
+
+    bool CanShareConnectionWithClientCerts(std::string_view) const override {
+      return false;
+    }
+  };
+  builder.set_ssl_config_service(
+      std::make_unique<MySSLConfigService>(config.no_post_quantum == true));
 
   auto context = builder.Build();
 

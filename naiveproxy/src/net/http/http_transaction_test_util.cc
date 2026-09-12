@@ -7,9 +7,11 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
+#include "base/byte_size.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -523,11 +525,17 @@ int MockNetworkTransaction::StartInternal(HttpRequestInfo request,
   test_mode_ = t->test_mode;
 
   // Return immediately if we're returning an error.
-  if (OK != t->start_return_code) {
+  Error start_return_code = t->start_return_code;
+  if (t->start_handler) {
+    DCHECK_EQ(start_return_code, OK)
+        << "set either start_return_code or start_handler, not both";
+    start_return_code = t->start_handler.Run(&current_request_);
+  }
+  if (OK != start_return_code) {
     if (test_mode_ & TEST_MODE_SYNC_NET_START) {
-      return t->start_return_code;
+      return start_return_code;
     }
-    CallbackLater(std::move(callback), t->start_return_code);
+    CallbackLater(std::move(callback), start_return_code);
     return ERR_IO_PENDING;
   }
 
@@ -641,7 +649,7 @@ int MockNetworkTransaction::DoSendRequest() {
   response_.ssl_info.connection_status = t->ssl_connection_status;
   response_.dns_aliases = t->dns_aliases;
   data_ = std::vector<uint8_t>(resp_data.begin(), resp_data.end());
-  std::optional<base::ByteCount> content_length =
+  std::optional<base::ByteSize> content_length =
       response_.headers->GetContentLength();
   content_length_ = content_length ? content_length->InBytes() : -1;
 

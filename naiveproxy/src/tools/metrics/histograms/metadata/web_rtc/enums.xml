@@ -157,16 +157,6 @@ chromium-metrics-reviews@google.com.
   <int value="23" label="host(public)_host(named)"/>
 </enum>
 
-<enum name="IceConnectionStates">
-  <int value="0" label="IceConnectionNew"/>
-  <int value="1" label="IceConnectionChecking"/>
-  <int value="2" label="IceConnectionConnected"/>
-  <int value="3" label="IceconnectionCompleted"/>
-  <int value="4" label="IceconnectionFailed"/>
-  <int value="5" label="IceconnectionDisconnected"/>
-  <int value="6" label="IceconnectionClosed"/>
-</enum>
-
 <enum name="IpAddressType">
   <int value="0" label="Unknown"/>
   <int value="1" label="Any"/>
@@ -215,6 +205,13 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="PeerConnection enabled with Ipv6."/>
   <int value="2" label="IPv4 BestConnection."/>
   <int value="3" label="IPv6 BestConnection."/>
+</enum>
+
+<enum name="PeerConnectionCryptexUsage">
+  <int value="0" label="Cryptex was disabled"/>
+  <int value="1" label="Cryptex was offered but not negotiated"/>
+  <int value="2" label="Cryptex was offered and negotiated"/>
+  <int value="3" label="Cryptex was required to negotiate"/>
 </enum>
 
 <enum name="PeerConnectionProvisionalAnswer">
@@ -370,6 +367,7 @@ chromium-metrics-reviews@google.com.
   <int value="25" label="Error MKI present in packet is invalid"/>
   <int value="26" label="Packet index is too old to consider"/>
   <int value="27" label="Packet index advanced, reset needed"/>
+  <int value="28" label="Cryptex error"/>
 </enum>
 
 <enum name="ThermalState">

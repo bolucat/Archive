@@ -5,6 +5,8 @@
 #ifndef QUICHE_QUIC_QBONE_PLATFORM_MOCK_KERNEL_H_
 #define QUICHE_QUIC_QBONE_PLATFORM_MOCK_KERNEL_H_
 
+#include <sys/uio.h>
+
 #include <cstddef>
 #include <ctime>
 
@@ -23,6 +25,8 @@ class MockKernel : public KernelInterface {
   MOCK_METHOD(int, ioctl, (int fd, int request, void*), (override));
   MOCK_METHOD(int, open, (const char*, int flags), (override));
   MOCK_METHOD(ssize_t, read, (int fd, void*, size_t count), (override));
+  MOCK_METHOD(ssize_t, readv, (int fd, const struct iovec* iov, int iovcnt),
+              (override));
   MOCK_METHOD(ssize_t, recvfrom,
               (int sockfd, void*, size_t len, int flags, struct sockaddr*,
                socklen_t*),
@@ -41,6 +45,8 @@ class MockKernel : public KernelInterface {
   MOCK_METHOD(int, setsockopt, (int, int, int, const void*, socklen_t),
               (override));
   MOCK_METHOD(ssize_t, write, (int fd, const void*, size_t count), (override));
+  MOCK_METHOD(ssize_t, writev, (int fd, const struct iovec* iov, int iovcnt),
+              (override));
   MOCK_METHOD(int, getsockname,
               (int sockfd, struct sockaddr* addr, socklen_t* addrlen),
               (override));

@@ -26,6 +26,10 @@ jobs:
         run: actionlint -shellcheck= -pyflakes=
       - name: Lint Python scripts and tests
         run: ruff check --select E9,F63,F7,F82 tests scripts
+      - name: Check Doxygen CLI documentation
+        run: |
+          python3 scripts/check_cli_docs.py
+          python3 -m unittest discover -s tests -p test_cli_docs.py
 
   tests:
     strategy:

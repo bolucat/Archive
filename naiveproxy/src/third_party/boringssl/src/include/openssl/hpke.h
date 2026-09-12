@@ -407,12 +407,13 @@ extern "C++" {
 
 BSSL_NAMESPACE_BEGIN
 
-using ScopedEVP_HPKE_CTX =
-    internal::StackAllocated<EVP_HPKE_CTX, void, EVP_HPKE_CTX_zero,
-                             EVP_HPKE_CTX_cleanup>;
-using ScopedEVP_HPKE_KEY =
-    internal::StackAllocatedMovable<EVP_HPKE_KEY, void, EVP_HPKE_KEY_zero,
-                                    EVP_HPKE_KEY_cleanup, EVP_HPKE_KEY_move>;
+BORINGSSL_MAKE_STACK_TRAITS(EVP_HPKE_CTX, EVP_HPKE_CTX_zero,
+                            EVP_HPKE_CTX_cleanup)
+using ScopedEVP_HPKE_CTX = internal::StackAllocated<EVP_HPKE_CTX>;
+
+BORINGSSL_MAKE_STACK_TRAITS_MOVABLE(EVP_HPKE_KEY, EVP_HPKE_KEY_zero,
+                                    EVP_HPKE_KEY_cleanup, EVP_HPKE_KEY_move)
+using ScopedEVP_HPKE_KEY = internal::StackAllocatedMovable<EVP_HPKE_KEY>;
 
 BORINGSSL_MAKE_DELETER(EVP_HPKE_CTX, EVP_HPKE_CTX_free)
 BORINGSSL_MAKE_DELETER(EVP_HPKE_KEY, EVP_HPKE_KEY_free)

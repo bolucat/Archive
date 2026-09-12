@@ -19,7 +19,6 @@ use core::{
         c_long,
         c_void, //
     },
-    marker::PhantomData,
     ptr::{
         NonNull,
         null_mut, //
@@ -30,17 +29,34 @@ use core::{
 use once_cell::sync::Lazy;
 
 use crate::{
+    CertCallback,
+    HandshakeCompleteMethods,
     Methods,
+    MethodsRef,
+    PrivateKeyMethods,
     VerifyCertificateMethods,
     abort_on_panic,
     context::{
+        DtlsExternalVerifierMode,
         DtlsMode,
         QuicMode,
-        TlsMode, //
+        TlsExternalVerifierMode, //
+        TlsMode,
     },
     credentials::{
+        PrivateKeyDelegate,
+        PrivateKeyOperation,
         VerifyCertificate,
-        VerifyCertificateTask, //
+        VerifyCertificateTask,
+        methods::{
+            complete,
+            decrypt,
+            sign, //
+        },
+        select_cert::{
+            ClientCertificateSelector,
+            ServerCertificateSelector, //
+        }, //
     },
     errors::TlsRetryReason,
     io::RustBioHandle,
@@ -51,20 +67,28 @@ use crate::{
 pub(super) struct RustConnectionMethods<Mode> {
     /// A handle to a `BIO` managed by this crate.
     pub bio: Option<RustBioHandle>,
+    /// Private key delegate.
+    pub private_key_delegate: Option<Box<dyn PrivateKeyDelegate>>,
     /// Certificate verifier handle.
     pub verify_certificate_methods: Option<Box<dyn VerifyCertificate>>,
+    /// Handshake-complete callback.
+    pub handshake_complete: Option<Box<dyn super::lifecycle::HandshakeComplete>>,
+    pub server_cert_cb: Option<Box<dyn ServerCertificateSelector<Mode>>>,
+    pub client_cert_cb: Option<Box<dyn ClientCertificateSelector<Mode>>>,
     /// A mailbox to propagate IO retrying reasons.
     pub pending_reason: Option<TlsRetryReason>,
-    _p: PhantomData<fn() -> Mode>,
 }
 
 impl<M> RustConnectionMethods<M> {
     pub fn new() -> Self {
         Self {
             bio: None,
+            private_key_delegate: None,
             verify_certificate_methods: None,
+            handshake_complete: None,
+            server_cert_cb: None,
+            client_cert_cb: None,
             pending_reason: None,
-            _p: PhantomData,
         }
     }
 
@@ -84,7 +108,7 @@ impl<M> RustConnectionMethods<M> {
     }
 }
 
-impl<Mode: HasTlsConnectionMethod> Methods for RustConnectionMethods<Mode> {
+impl<Mode: HasTlsConnectionMethod> MethodsRef for RustConnectionMethods<Mode> {
     unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a Self> {
         unsafe {
             // Safety: `ssl` is originated from `TlsConnection::from_ssl`.
@@ -93,15 +117,55 @@ impl<Mode: HasTlsConnectionMethod> Methods for RustConnectionMethods<Mode> {
                 !methods.is_null(),
                 "connection method should have been attached at construction time"
             );
-            // Safety: `ctx` is originated from `Box::into_raw`
+            // Safety: `methods` is originated from `Box::into_raw`
+            Some(&*(methods as *const RustConnectionMethods<Mode>))
+        }
+    }
+}
+
+impl<Mode: HasTlsConnectionMethod> Methods for RustConnectionMethods<Mode> {
+    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a mut Self> {
+        unsafe {
+            // Safety: `ssl` is originated from `TlsConnection::from_ssl`.
+            let methods = bssl_sys::SSL_get_ex_data(ssl, Mode::registration());
+            debug_assert!(
+                !methods.is_null(),
+                "connection method should have been attached at construction time"
+            );
+            // Safety: `methods` is originated from `Box::into_raw`.
+            // The caller must ensure exclusive access to the connection.
             Some(&mut *(methods as *mut RustConnectionMethods<Mode>))
         }
+    }
+}
+
+impl<M: HasTlsConnectionMethod> PrivateKeyMethods for RustConnectionMethods<M> {
+    fn private_key_methods(&self) -> Option<&dyn PrivateKeyDelegate> {
+        self.private_key_delegate.as_deref()
     }
 }
 
 impl<Mode: HasTlsConnectionMethod> VerifyCertificateMethods for RustConnectionMethods<Mode> {
     fn verify_certificate_methods(&self) -> Option<&dyn VerifyCertificate> {
         self.verify_certificate_methods.as_deref()
+    }
+}
+
+impl<M: HasTlsConnectionMethod> HandshakeCompleteMethods for RustConnectionMethods<M> {
+    fn handshake_complete_methods(
+        &mut self,
+    ) -> Option<Box<dyn super::lifecycle::HandshakeComplete>> {
+        self.handshake_complete.take()
+    }
+}
+
+impl<M: HasTlsConnectionMethod> CertCallback<M> for RustConnectionMethods<M> {
+    fn server_cert_cb(&self) -> Option<&(dyn ServerCertificateSelector<M> + 'static)> {
+        self.server_cert_cb.as_deref()
+    }
+
+    fn client_cert_cb(&self) -> Option<&(dyn ClientCertificateSelector<M> + 'static)> {
+        self.client_cert_cb.as_deref()
     }
 }
 
@@ -145,6 +209,18 @@ pub(super) unsafe fn waker_data_ref_from_ssl<'a>(
     unsafe {
         // Safety: `ssl` outlives `'a` and is constructed by `TlsConnection`.
         <ExDataRegistration as ExData<Option<Waker>>>::get_mut(ssl)
+    }
+}
+
+/// Safety:
+/// - `ssl` must be constructed from `TlsConnection` and outlived by `'a`.
+/// - `ssl` must be exclusively owned.
+pub(crate) unsafe fn private_key_op_from_ssl<'a>(
+    ssl: NonNull<bssl_sys::SSL>,
+) -> &'a mut Option<Box<dyn PrivateKeyOperation>> {
+    unsafe {
+        // Safety: `ssl` outlives `'a` and is constructed by `TlsConnection`.
+        <ExDataRegistration as ExData<Option<Box<dyn PrivateKeyOperation>>>>::get_mut(ssl)
     }
 }
 
@@ -263,6 +339,7 @@ macro_rules! register_ex_data {
     };
 }
 
+register_ex_data!(Option<Box<dyn PrivateKeyOperation>>);
 register_ex_data!(Option<Waker>);
 register_ex_data!(Option<Box<dyn VerifyCertificateTask>>);
 
@@ -270,29 +347,54 @@ pub(crate) trait HasTlsConnectionMethod {
     fn registration() -> c_int;
 }
 
-impl HasTlsConnectionMethod for TlsMode {
-    #[inline(always)]
-    fn registration() -> c_int {
-        static TLS_CONTEXT_METHOD: Lazy<c_int> =
-            Lazy::new(register_tls_connection_vtable::<TlsMode>);
-        *TLS_CONTEXT_METHOD
-    }
+macro_rules! impl_has_tls_connection_method {
+    ($($mode:ty),+ $(,)?) => {
+        $(
+            impl HasTlsConnectionMethod for $mode {
+                #[inline(always)]
+                fn registration() -> c_int {
+                    static TLS_CONTEXT_METHOD: Lazy<c_int> =
+                        Lazy::new(register_tls_connection_vtable::<$mode>);
+                    *TLS_CONTEXT_METHOD
+                }
+            }
+        )+
+    };
 }
 
-impl HasTlsConnectionMethod for DtlsMode {
-    #[inline(always)]
-    fn registration() -> c_int {
-        static TLS_CONTEXT_METHOD: Lazy<c_int> =
-            Lazy::new(register_tls_connection_vtable::<DtlsMode>);
-        *TLS_CONTEXT_METHOD
-    }
+impl_has_tls_connection_method! {
+    TlsMode,
+    TlsExternalVerifierMode,
+    DtlsMode,
+    DtlsExternalVerifierMode,
+    QuicMode,
 }
 
-impl HasTlsConnectionMethod for QuicMode {
-    #[inline(always)]
-    fn registration() -> c_int {
-        static TLS_CONTEXT_METHOD: Lazy<c_int> =
-            Lazy::new(register_tls_connection_vtable::<QuicMode>);
-        *TLS_CONTEXT_METHOD
-    }
+pub(super) trait HasPrivateKeyMethods {
+    const METHODS: *const bssl_sys::SSL_PRIVATE_KEY_METHOD;
+}
+
+macro_rules! impl_private_key_methods {
+    ($wrapper:ident, $($mode:ty),+ $(,)?) => {
+        $(
+            impl HasPrivateKeyMethods for $mode {
+                const METHODS: *const bssl_sys::SSL_PRIVATE_KEY_METHOD = {
+                    &bssl_sys::SSL_PRIVATE_KEY_METHOD {
+                        sign: Some(sign::<$wrapper<$mode>>),
+                        decrypt: Some(decrypt::<$wrapper<$mode>>),
+                        complete: Some(complete::<$wrapper<$mode>>),
+                    } as _
+                };
+            }
+        )+
+    };
+}
+
+impl_private_key_methods! {
+    RustConnectionMethods,
+    TlsMode,
+    DtlsMode,
+    QuicMode,
+    TlsExternalVerifierMode,
+    DtlsExternalVerifierMode,
 }

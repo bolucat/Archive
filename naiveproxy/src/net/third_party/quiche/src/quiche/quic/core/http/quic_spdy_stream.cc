@@ -678,6 +678,7 @@ void QuicSpdyStream::OnInitialHeadersComplete(
 
   if (!header_too_large) {
     MaybeProcessReceivedWebTransportHeaders();
+    MaybeProcessPriorityHeader();
   }
 
   if (VersionIsIetfQuic(transport_version())) {
@@ -1027,8 +1028,7 @@ bool QuicSpdyStream::OnDataFrameStart(QuicByteCount header_length,
   }
 
   sequencer()->MarkConsumed(body_manager_.OnNonBody(header_length));
-
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnDataFramePayload(absl::string_view payload) {
@@ -1151,7 +1151,7 @@ bool QuicSpdyStream::OnHeadersFrameStart(QuicByteCount header_length,
           id(), spdy_session_->qpack_decoder(), this,
           spdy_session_->max_inbound_header_list_size());
 
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnHeadersFramePayload(absl::string_view payload) {
@@ -1172,7 +1172,7 @@ bool QuicSpdyStream::OnHeadersFramePayload(absl::string_view payload) {
   }
 
   sequencer()->MarkConsumed(body_manager_.OnNonBody(payload.size()));
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnHeadersFrameEnd() {
@@ -1274,7 +1274,7 @@ bool QuicSpdyStream::OnMetadataFrameStart(QuicByteCount header_length,
   QUIC_DVLOG(1) << ENDPOINT << "Consuming " << header_length
                 << " byte long frame header of METADATA.";
   sequencer()->MarkConsumed(body_manager_.OnNonBody(header_length));
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnMetadataFramePayload(absl::string_view payload) {
@@ -1296,7 +1296,7 @@ bool QuicSpdyStream::OnMetadataFramePayload(absl::string_view payload) {
   QUIC_DVLOG(1) << ENDPOINT << "Consuming " << payload.size()
                 << " bytes of payload of METADATA.";
   sequencer()->MarkConsumed(body_manager_.OnNonBody(payload.size()));
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnMetadataFrameEnd() {
@@ -1335,7 +1335,7 @@ bool QuicSpdyStream::OnUnknownFrameStart(uint64_t frame_type,
                 << " byte long frame header of frame of unknown type "
                 << frame_type << ".";
   sequencer()->MarkConsumed(body_manager_.OnNonBody(header_length));
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnUnknownFramePayload(absl::string_view payload) {
@@ -1345,7 +1345,7 @@ bool QuicSpdyStream::OnUnknownFramePayload(absl::string_view payload) {
   QUIC_DVLOG(1) << ENDPOINT << "Consuming " << payload.size()
                 << " bytes of payload of frame of unknown type.";
   sequencer()->MarkConsumed(body_manager_.OnNonBody(payload.size()));
-  return true;
+  return !reading_stopped();
 }
 
 bool QuicSpdyStream::OnUnknownFrameEnd() { return true; }
@@ -1444,6 +1444,40 @@ void QuicSpdyStream::MaybeProcessReceivedWebTransportHeaders() {
       std::make_unique<WebTransportHttp3>(spdy_session_, this, id());
 }
 
+void QuicSpdyStream::MaybeProcessPriorityHeader() {
+  if (!spdy_session_->process_priority_header()) {
+    return;
+  }
+  if (!VersionIsIetfQuic(transport_version())) {
+    return;
+  }
+  if (session()->perspective() != Perspective::IS_SERVER) {
+    return;
+  }
+  if (priority_source() == PrioritySource::SET_BY_PRIORITY_UPDATE) {
+    return;
+  }
+  std::string priority_value;
+  for (const auto& [header_name, header_value] : header_list_) {
+    if (quiche::QuicheTextUtils::ToLower(header_name) == kPriorityHeaderName) {
+      priority_value = header_value;
+      break;
+    }
+  }
+  if (priority_value.empty()) {
+    return;
+  }
+  std::optional<HttpStreamPriority> priority =
+      ParsePriorityFieldValue(priority_value);
+  if (priority.has_value()) {
+    SetPriority(QuicStreamPriority(*priority));
+    set_priority_source(PrioritySource::SET_BY_REQUEST_HEADER);
+  } else {
+    QUIC_DVLOG(1) << "Stream " << id()
+                  << " ignoring malformed Priority header: " << priority_value;
+  }
+}
+
 void QuicSpdyStream::MaybeProcessSentWebTransportHeaders(
     quiche::HttpHeaderBlock& headers) {
   if (!spdy_session_->SupportsWebTransport()) {
@@ -1462,7 +1496,7 @@ void QuicSpdyStream::MaybeProcessSentWebTransportHeaders(
   if (method_it == headers.end() || protocol_it == headers.end()) {
     return;
   }
-  if (method_it->second != "CONNECT" && protocol_it->second != "webtransport") {
+  if (method_it->second != "CONNECT" || protocol_it->second != "webtransport") {
     return;
   }
 
@@ -1840,10 +1874,6 @@ QuicByteCount QuicSpdyStream::GetMaxDatagramSize() const {
   QuicByteCount max_datagram_size =
       session()->GetGuaranteedLargestDatagramPayload();
   if (max_datagram_size < prefix_size) {
-    QUIC_BUG(max_datagram_size smaller than prefix_size)
-        << "GetGuaranteedLargestDatagramPayload() returned a datagram size "
-           "that "
-           "is not sufficient to fit stream ID into it.";
     return 0;
   }
   return max_datagram_size - prefix_size;
@@ -1961,10 +1991,7 @@ bool QuicSpdyStream::AreHeaderFieldValuesValid(
 
 void QuicSpdyStream::StopReading() {
   QuicStream::StopReading();
-  if (GetQuicReloadableFlag(quic_clear_body_manager_along_with_sequencer)) {
-    QUICHE_RELOADABLE_FLAG_COUNT(quic_clear_body_manager_along_with_sequencer);
-    body_manager_.Clear();
-  }
+  body_manager_.Clear();
   if (VersionIsIetfQuic(transport_version()) && !fin_received() &&
       spdy_session_->qpack_decoder()) {
     // Clean up Qpack decoding states.

@@ -143,6 +143,15 @@ typedef __uint128_t uint128_t;
 #define OPENSSL_ATTR_CONST
 #endif
 
+// OPENSSL_ATTR_ALWAYS_INLINE tells the compiler to always attempt inlining the
+// function. This has the beneficial side effects that it inherits attributes
+// for code generation (e.g. the target attribute) from its callee.
+#if defined(__GNUC__) || defined(__clang__)
+#define OPENSSL_ATTR_ALWAYS_INLINE __attribute__((always_inline))
+#else
+#define OPENSSL_ATTR_ALWAYS_INLINE
+#endif
+
 #if defined(BORINGSSL_MALLOC_FAILURE_TESTING)
 // OPENSSL_reset_malloc_counter_for_testing, when malloc testing is enabled,
 // resets the internal malloc counter, to simulate further malloc failures. This
@@ -448,8 +457,10 @@ inline void constant_time_conditional_memxor(void *dst, const void *src,
   assert(!buffers_alias(dst, n, src, n));
   uint8_t *out = (uint8_t *)dst;
   const uint8_t *in = (const uint8_t *)src;
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__GNUC__) || defined(__clang__)
   // gcc 13.2.0 doesn't automatically vectorize this loop regardless of barrier
+  // clang 16.0.6 vectorizes if alias analysis finds src and dst are disjoint,
+  // but does not conclude that from the !buffers_alias assert.
   typedef uint8_t v32u8 __attribute__((vector_size(32), aligned(1), may_alias));
   size_t n_vec = n & ~(size_t)31;
   v32u8 masks = ((uint8_t)mask - (v32u8){});  // broadcast
@@ -1011,6 +1022,60 @@ inline uint64_t CRYPTO_rotr_u64(uint64_t value, int shift) {
 #else
   return (value >> shift) | (value << ((-shift) & 63));
 #endif
+}
+
+
+// Bit math functions.
+//
+// Polyfills for C++20.
+
+// CRYPTO_bit_width returns the smallest number of bits needed to represent `n`.
+// It returns zero if `n` is zero.
+inline int CRYPTO_bit_width(uint64_t n) {
+#if OPENSSL_HAS_BUILTIN(__builtin_clzll)
+  static_assert(sizeof(unsigned long long) >= sizeof(uint64_t));
+  return n ? (sizeof(unsigned long long) * 8 - __builtin_clzll(n)) : 0;
+#else
+  int width = 0;
+  while (n > 0) {
+    ++width;
+    n >>= 1;
+  }
+  return width;
+#endif
+}
+
+// CRYPTO_popcount returns the number of set bits in `n`'s binary
+// representation.
+inline int CRYPTO_popcount(uint64_t n) {
+#if OPENSSL_HAS_BUILTIN(__builtin_popcountll)
+  static_assert(sizeof(unsigned long long) >= sizeof(uint64_t));
+  return __builtin_popcountll(n);
+#else
+  int count = 0;
+  while (n > 0) {
+    n &= (n - 1);  // Clears the least significant bit that is set.
+    ++count;
+  }
+  return count;
+#endif
+}
+
+// CRYPTO_bit_ceil returns the smallest power of 2 that is greater than or equal
+// to `n`.
+inline uint64_t CRYPTO_bit_ceil(uint64_t n) {
+  return n ? uint64_t{1} << CRYPTO_bit_width(n - 1) : uint64_t{1};
+}
+
+// CRYPTO_bit_floor returns the largest power of 2 that is less than or equal to
+// `n`. It returns zero if `n` is zero.
+inline uint64_t CRYPTO_bit_floor(uint64_t n) {
+  return n ? (uint64_t{1} << (CRYPTO_bit_width(n) - 1)) : uint64_t{0};
+}
+
+// CRYPTO_has_single_bit returns whether `n` is an integral power of 2.
+inline bool CRYPTO_has_single_bit(uint64_t n) {
+  return CRYPTO_popcount(n) == 1;
 }
 
 

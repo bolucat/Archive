@@ -4,29 +4,32 @@
 
 #include "partition_alloc/partition_alloc_base/rand_util.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "partition_alloc/build_config.h"
+#include "partition_alloc/buildflags.h"
+#include "partition_alloc/partition_alloc_base/check.h"
+#include "partition_alloc/partition_alloc_base/compiler_specific.h"
+
+#if PA_BUILDFLAG(IS_MAC)
+#include <sys/random.h>
+#elif PA_BUILDFLAG(IS_APPLE)
+#include <CommonCrypto/CommonRandom.h>
+#else
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-
 #include <cerrno>
-#include <cstddef>
-#include <cstdint>
-#include <sstream>
 
-#include "partition_alloc/build_config.h"
-#include "partition_alloc/partition_alloc_base/check.h"
-#include "partition_alloc/partition_alloc_base/compiler_specific.h"
 #include "partition_alloc/partition_alloc_base/files/file_util.h"
 #include "partition_alloc/partition_alloc_base/no_destructor.h"
 #include "partition_alloc/partition_alloc_base/posix/eintr_wrapper.h"
-
-#if PA_BUILDFLAG(IS_MAC)
-// TODO(crbug.com/40641285): Waiting for this header to appear in the iOS SDK.
-// (See below.)
-#include <sys/random.h>
-#endif
+#endif  // PA_BUILDFLAG(IS_MAC)
 
 namespace {
+
+#if !PA_BUILDFLAG(IS_APPLE)
 
 #if PA_BUILDFLAG(IS_AIX)
 // AIX has no 64-bit support for O_CLOEXEC.
@@ -69,6 +72,8 @@ int GetUrandomFD() {
   return urandom_fd->fd();
 }
 
+#endif  // !PA_BUILDFLAG(IS_APPLE)
+
 }  // namespace
 
 namespace partition_alloc::internal::base {
@@ -79,6 +84,11 @@ namespace partition_alloc::internal::base {
 // (https://chromium-review.googlesource.com/c/chromium/src/+/1545096) and land
 // it or some form of it.
 void RandBytes(void* output, size_t output_length) {
+#if PA_BUILDFLAG(IS_MAC)
+  PA_BASE_CHECK(getentropy(output, output_length) == 0);
+#elif PA_BUILDFLAG(IS_APPLE)
+  PA_BASE_CHECK(CCRandomGenerateBytes(output, output_length) == kCCSuccess);
+#else
 #if PA_BUILDFLAG(IS_LINUX) || PA_BUILDFLAG(IS_CHROMEOS)
   // Use `syscall(__NR_getrandom...` to avoid a dependency on
   // `third_party/linux_syscall_support.h`.
@@ -96,13 +106,7 @@ void RandBytes(void* output, size_t output_length) {
     PA_MSAN_UNPOISON(output, output_length);
     return;
   }
-#elif PA_BUILDFLAG(IS_MAC)
-  // TODO(crbug.com/40641285): Enable this on iOS too, when sys/random.h arrives
-  // in its SDK.
-  if (getentropy(output, output_length) == 0) {
-    return;
-  }
-#endif
+#endif  // PA_BUILDFLAG(IS_LINUX) || PA_BUILDFLAG(IS_CHROMEOS)
   // If getrandom(2) above returned with an error and the /dev/urandom fallback
   // took place on Linux/ChromeOS bots, they would fail with a CHECK in
   // nacl_helper. The latter assumes that the number of open file descriptors
@@ -127,6 +131,7 @@ void RandBytes(void* output, size_t output_length) {
   const bool success =
       ReadFromFD(urandom_fd, static_cast<char*>(output), output_length);
   PA_BASE_CHECK(success);
+#endif  // PA_BUILDFLAG(IS_MAC)
 }
 
 }  // namespace partition_alloc::internal::base

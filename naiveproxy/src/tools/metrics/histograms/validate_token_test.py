@@ -4,14 +4,15 @@
 # found in the LICENSE file.
 
 import logging
-import os
 import unittest
-from pathlib import Path
 
 import setup_modules  # pylint: disable=unused-import
 
-from chromium_src.tools.metrics.common.path_util import METRICS_TOOLS_PATH
+from chromium_src.tools.metrics.common import path_util
 import chromium_src.tools.metrics.histograms.validate_token as validate_token
+
+
+_BASE_PATH = path_util.METRICS_TOOLS_PATH / 'histograms' / 'test_data'
 
 
 class ValidateTokenTests(unittest.TestCase):
@@ -21,22 +22,23 @@ class ValidateTokenTests(unittest.TestCase):
     with self.assertLogs() as logs:
       logging.info('ensure non-empty log')
       has_token_error = validate_token.ValidateTokenInFile(
-          str(METRICS_TOOLS_PATH / 'histograms' / 'test_data' /
-              'histograms.xml'))
+        str(_BASE_PATH / 'histograms.xml')
+      )
       self.assertFalse(has_token_error)
     self.assertEqual(len(logs.output), 1)
 
   def test_invalid_tokens(self):
     with self.assertLogs() as logs:
       has_token_error = validate_token.ValidateTokenInFile(
-          str(METRICS_TOOLS_PATH / 'histograms' / 'test_data' / 'tokens' /
-              'token_errors_histograms.xml'))
+        str(_BASE_PATH / 'tokens' / 'token_errors_histograms.xml')
+      )
       self.assertTrue(has_token_error)
     self.assertEqual(len(logs.output), 1)
     output = logs.output[0]
     self.assertIn('Token(s) TestToken3 in', output)
-    self.assertIn('Test.{TestToken3}.Histogram.{TestToken}.{TestToken2}',
-                  output)
+    self.assertIn(
+      'Test.{TestToken3}.Histogram.{TestToken}.{TestToken2}', output
+    )
 
 
 if __name__ == '__main__':

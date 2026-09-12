@@ -154,5 +154,16 @@ bool QuicPacketCreatorPeer::WillAttachSconeIndicator(
   return creator.append_scone_indicator_;
 }
 
+// static
+bool QuicPacketCreatorPeer::RemoveSoftMaxPacketLength(
+    QuicPacketCreator* creator) {
+  return creator->RemoveSoftMaxPacketLength();
+}
+
+// static
+bool QuicPacketCreatorPeer::HasSconePacket(QuicPacketCreator* creator) {
+  return creator->packet_.has_scone_packet;
+}
+
 }  // namespace test
 }  // namespace quic

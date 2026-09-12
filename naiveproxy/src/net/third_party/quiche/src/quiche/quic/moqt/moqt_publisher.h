@@ -22,6 +22,8 @@
 
 namespace moqt {
 
+class MoqtPublishingMonitorInterface;
+
 // MoqtObjectListener is an interface for any entity that is listening for
 // incoming objects for a given track.
 class MoqtObjectListener {
@@ -83,7 +85,8 @@ class MoqtTrackPublisher {
   // whenever they are sent.  Once an object is not available via the cache, it
   // can no longer be sent; this ensures that objects are not buffered forever.
   //
-  // This method returns nullopt if the object is not currently available.
+  // This method returns nullopt if the object is not available, or a fragment
+  // at |offset| > 0 is not available.
   // If |subgroup| is nullopt, the object is a datagram.
   virtual std::optional<PublishedObject> GetCachedObject(
       uint64_t group, std::optional<uint64_t> subgroup, uint64_t min_object,
@@ -113,6 +116,14 @@ class MoqtTrackPublisher {
       uint64_t group_diff, MoqtDeliveryOrder order) = 0;
   virtual std::unique_ptr<MoqtFetchTask> AbsoluteFetch(
       uint64_t group, MoqtDeliveryOrder order) = 0;
+
+  // Returns an optional monitoring interface for tracking delivery and object
+  // ACKs for this track.  Note that this only works if there is one subscriber
+  // associated with the track publisher object.
+  virtual MoqtPublishingMonitorInterface* absl_nullable
+  GetMonitoringInterface() {
+    return nullptr;
+  }
 };
 
 // MoqtPublisher is an interface to a publisher that allows it to publish

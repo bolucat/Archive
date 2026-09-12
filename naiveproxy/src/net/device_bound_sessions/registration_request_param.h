@@ -10,7 +10,9 @@
 #include <utility>
 
 #include "net/base/net_export.h"
+#include "net/device_bound_sessions/session_params.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace net::device_bound_sessions {
 
@@ -32,12 +34,19 @@ class NET_EXPORT RegistrationRequestParam {
       RegistrationFetcherParam&& fetcher_param);
   static RegistrationRequestParam CreateForRefresh(const Session& session);
 
+  // The origin on whose behalf the registration or refresh request is being
+  // made: the origin whose response carried the registration header, or the
+  // origin scope of the session being refreshed.
+  const url::Origin& referring_origin() const { return referring_origin_; }
+
   const std::optional<std::string>& challenge() const { return challenge_; }
   const std::optional<std::string>& authorization() const {
     return authorization_;
   }
+  AttestationMode attestation_mode() const { return attestation_mode_; }
 
   GURL TakeRegistrationEndpoint() { return std::move(registration_endpoint_); }
+  url::Origin TakeReferringOrigin() { return std::move(referring_origin_); }
   std::optional<std::string> TakeSessionIdentifier() {
     return std::move(session_identifier_);
   }
@@ -50,18 +59,24 @@ class NET_EXPORT RegistrationRequestParam {
       const GURL& registration_endpoint,
       std::optional<std::string> session_identifier,
       std::optional<std::string> challenge,
-      std::optional<std::string> authorization);
+      std::optional<std::string> authorization,
+      AttestationMode attestation_mode = AttestationMode::kNone,
+      std::optional<url::Origin> maybe_referring_origin = std::nullopt);
 
  private:
   RegistrationRequestParam(const GURL& registration_endpoint,
+                           url::Origin referring_origin,
                            std::optional<std::string> session_identifier,
                            std::optional<std::string> challenge,
-                           std::optional<std::string> authorization);
+                           std::optional<std::string> authorization,
+                           AttestationMode attestation_mode);
 
   GURL registration_endpoint_;
+  url::Origin referring_origin_;
   std::optional<std::string> session_identifier_;
   std::optional<std::string> challenge_;
   std::optional<std::string> authorization_;
+  AttestationMode attestation_mode_ = AttestationMode::kNone;
 };
 
 }  // namespace net::device_bound_sessions

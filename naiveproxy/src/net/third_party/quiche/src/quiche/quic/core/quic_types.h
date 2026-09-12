@@ -50,7 +50,7 @@ using QuicStreamOffset = uint64_t;
 using DiversificationNonce = std::array<char, 32>;
 using PacketTimeVector = std::vector<std::pair<QuicPacketNumber, QuicTime>>;
 
-enum : size_t { kStatelessResetTokenLength = 16 };
+inline constexpr size_t kStatelessResetTokenLength = 16;
 using StatelessResetToken = std::array<char, kStatelessResetTokenLength>;
 
 // WebTransport session IDs are stream IDs.
@@ -60,7 +60,7 @@ using WebTransportStreamError = ::webtransport::StreamErrorCode;
 // WebTransport session error codes are 32-bit.
 using WebTransportSessionError = ::webtransport::SessionErrorCode;
 
-enum : size_t { kQuicPathFrameBufferSize = 8 };
+inline constexpr size_t kQuicPathFrameBufferSize = 8;
 using QuicPathFrameBuffer = std::array<uint8_t, kQuicPathFrameBufferSize>;
 
 // The connection id sequence number specifies the order that connection
@@ -217,6 +217,11 @@ enum IsHandshake : uint8_t { NOT_HANDSHAKE, IS_HANDSHAKE };
 
 enum class Perspective : uint8_t { IS_SERVER, IS_CLIENT };
 
+constexpr Perspective FlipPerspective(Perspective perspective) {
+  return perspective == Perspective::IS_CLIENT ? Perspective::IS_SERVER
+                                               : Perspective::IS_CLIENT;
+}
+
 QUICHE_EXPORT std::string PerspectiveToString(Perspective perspective);
 QUICHE_EXPORT std::ostream& operator<<(std::ostream& os,
                                        const Perspective& perspective);
@@ -350,9 +355,10 @@ enum QuicIetfFrameType : uint64_t {
   IETF_ACK_FREQUENCY = 0xaf,
 
   // A QUIC extension frame which augments the IETF_ACK frame definition with
-  // packet receive timestamps.
-  // TODO(ianswett): Determine a proper value to replace this temporary value.
-  IETF_ACK_RECEIVE_TIMESTAMPS = 0x22,
+  // packet receive timestamps.  The draft codepoints are from
+  // <https://github.com/quicwg/receive-ts/commit/108fc85425fd6a698fa6d5784566825cc8c47aa6>.
+  IETF_ACK_RECEIVE_TIMESTAMPS = 0x03178307,
+  IETF_ACK_RECEIVE_TIMESTAMPS_ECN = 0x03178308,
 
   // https://datatracker.ietf.org/doc/html/draft-ietf-quic-reliable-stream-reset
   IETF_RESET_STREAM_AT = 0x24,
@@ -360,6 +366,19 @@ enum QuicIetfFrameType : uint64_t {
 QUICHE_EXPORT std::ostream& operator<<(std::ostream& os,
                                        const QuicIetfFrameType& c);
 QUICHE_EXPORT std::string QuicIetfFrameTypeString(QuicIetfFrameType t);
+
+// Returns true if the specified IETF frame type is an ACK frame.
+QUICHE_EXPORT constexpr bool IsIetfAckFrame(uint64_t type) {
+  switch (type) {
+    case IETF_ACK:
+    case IETF_ACK_ECN:
+    case IETF_ACK_RECEIVE_TIMESTAMPS:
+    case IETF_ACK_RECEIVE_TIMESTAMPS_ECN:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // Masks for the bits that indicate the frame is a Stream frame vs the
 // bits used as flags.
@@ -870,9 +889,8 @@ using QuicSignatureAlgorithmVector = absl::InlinedVector<uint16_t, 8>;
 struct QUICHE_EXPORT QuicSSLConfig {
   // Whether TLS early data should be enabled. If not set, default to enabled.
   std::optional<bool> early_data_enabled;
-  // Whether TLS session tickets are supported. If not set, default to
-  // supported.
-  std::optional<bool> disable_ticket_support;
+  // Whether TLS session tickets are disabled. Defaults to false (supported).
+  bool disable_ticket_support = false;
   // If set, used to configure the SSL object with
   // SSL_set_signing_algorithm_prefs.
   std::optional<QuicSignatureAlgorithmVector> signing_algorithm_prefs;
@@ -884,6 +902,10 @@ struct QUICHE_EXPORT QuicSSLConfig {
   // As a client, whether ECH GREASE is enabled. If `ech_config_list` is
   // not empty, this value does nothing.
   bool ech_grease_enabled = false;
+  // As a client, whether set BoringSSL's reject_unusable_ech_config. See
+  // BoringSSL's documentation for SSL_set_reject_unusable_ech_config in
+  // https://boringssl.googlesource.com/boringssl/+/HEAD/include/openssl/ssl.h.
+  bool reject_unusable_ech_config = false;
   // If not nullopt, the TLS Trust Anchor IDs to send in the TLS handshake. (See
   // https://tlswg.org/tls-trust-anchor-ids/draft-ietf-tls-trust-anchor-ids.html.)
   // The value should be a series of Trust Anchor IDs in wire format (a series
@@ -896,6 +918,12 @@ struct QUICHE_EXPORT QuicSSLConfig {
   // Only used by the client.
   // This is experimental, and will be removed once the experiment is complete.
   std::optional<uint16_t> server_padding_to_request = std::nullopt;
+
+  // Only used by the server. If true, the server will add padding to the
+  // server's TLS handshake when the client requests it via
+  // server_padding_to_request.
+  // This is experimental, and will be removed once the experiment is complete.
+  bool server_padding_enabled = false;
 };
 
 QUICHE_EXPORT bool operator==(const QuicSSLConfig& lhs,
@@ -991,6 +1019,16 @@ enum class QuicPriorityType : uint8_t {
 
 QUICHE_EXPORT std::string QuicPriorityTypeToString(QuicPriorityType type);
 QUICHE_EXPORT std::ostream& operator<<(std::ostream& os, QuicPriorityType type);
+
+// Individual QUIC RTT sample as it is reported to by the application.
+struct QUICHE_EXPORT QuicRttSample {
+  // The time delta between the time that the packet was received, and the time
+  // that the packet was acknowledged, adjusted for the ACK delay (see RFC 9000,
+  // Section 13.2.5).
+  QuicTimeDelta latest_rtt;
+
+  bool operator==(const QuicRttSample& other) const = default;
+};
 
 }  // namespace quic
 

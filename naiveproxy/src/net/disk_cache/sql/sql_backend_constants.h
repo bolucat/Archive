@@ -34,6 +34,8 @@ inline constexpr std::string_view kSqlBackendMetaTableKeyEntryCount =
     "EntryCount";
 inline constexpr std::string_view kSqlBackendMetaTableKeyTotalSize =
     "TotalSize";
+inline constexpr std::string_view kSqlBackendMetaTableKeySharedCacheEnabled =
+    "SharedCacheEnabled";
 
 // The file name prefix of the SQL backend database shards.
 inline constexpr std::string_view kSqlBackendDatabaseFileNamePrefix = "sqldb";
@@ -130,6 +132,15 @@ inline constexpr std::string_view kSqlDiskCacheBackendHistogramPrefix =
 // The name of the shared cache index database file.
 inline constexpr base::FilePath::CharType
     kSqlBackendSharedCacheIndexFileName[] = FILE_PATH_LITERAL("shared_index");
+
+// The file name prefix of the shared cache isolated database.
+inline constexpr std::string_view kSqlBackendSharedCacheIsolatedFileNamePrefix =
+    "shared_";
+
+// The key used in the meta table of the shared cache isolated database to store
+// the Network Isolation Key (NIK) string.
+inline constexpr std::string_view
+    kSqlBackendSharedCacheIsolatedMetaTableKeyNik = "nik_string";
 
 }  // namespace disk_cache
 

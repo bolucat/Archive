@@ -18,6 +18,7 @@
 #include "components/unexportable_keys/background_long_task_scheduler.h"
 #include "components/unexportable_keys/background_task_origin.h"
 #include "components/unexportable_keys/background_task_priority.h"
+#include "components/unexportable_keys/background_task_type.h"
 #include "components/unexportable_keys/ref_counted_unexportable_key.h"
 #include "components/unexportable_keys/service_error.h"
 #include "components/unexportable_keys/unexportable_key_id.h"
@@ -65,8 +66,9 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyTaskManager {
       BackgroundTaskOrigin origin,
       crypto::UnexportableKeyProvider::Config config,
       BackgroundTaskPriority priority,
-      base::OnceCallback<void(ServiceErrorOr<std::vector<
-                                  scoped_refptr<RefCountedUnexportableKey>>>)>
+      base::OnceCallback<
+          void(ServiceErrorOr<
+               std::vector<scoped_refptr<RefCountedUnexportableSigningKey>>>)>
           callback);
 
   // Generates a new signing key asynchronously.
@@ -106,9 +108,13 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyTaskManager {
   // task with `signing_key` and `data` arguments. Might return a cached result
   // if a task with the same combination of `signing_key` and `data` has been
   // completed recently.
+  // `task_type` must be either `BackgroundTaskType::kSign` or
+  // `BackgroundTaskType::kSignWithAttestationKey` to distinguish regular
+  // signing from attestation key signing for metrics.
   // Invokes `callback` with a signature of `data`, or `ServiceError` if an
   // error occurs during signing.
   void SignSlowlyAsync(
+      BackgroundTaskType task_type,
       BackgroundTaskOrigin origin,
       scoped_refptr<RefCountedUnexportableSigningKey> signing_key,
       base::span<const uint8_t> data,
@@ -121,7 +127,7 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyTaskManager {
   void DeleteKeysSlowlyAsync(
       BackgroundTaskOrigin origin,
       crypto::UnexportableKeyProvider::Config config,
-      std::vector<scoped_refptr<RefCountedUnexportableKey>> keys,
+      std::vector<scoped_refptr<RefCountedUnexportableSigningKey>> keys,
       BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<size_t>)> callback);
 
@@ -133,6 +139,49 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyTaskManager {
       crypto::UnexportableKeyProvider::Config config,
       BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<size_t>)> callback);
+
+  // Generates a new attestation key asynchronously.
+  // Invokes `callback` with either:
+  // - non-null unexportable attestation key if generated successfully, or
+  // - `ServiceError` if no supported hardware exists, if no value in
+  //   `acceptable_algorithms` is supported, or if there was an error creating
+  //   the key.
+  void GenerateAttestationKeySlowlyAsync(
+      BackgroundTaskOrigin origin,
+      crypto::UnexportableKeyProvider::Config config,
+      base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
+          acceptable_algorithms,
+      BackgroundTaskPriority priority,
+      base::OnceCallback<void(
+          ServiceErrorOr<scoped_refptr<RefCountedUnexportableAttestationKey>>)>
+          callback);
+
+  // Creates a new attestation key from a `wrapped_key` asynchronously.
+  // `wrapped_key` must have resulted from calling `GetWrappedKey()` on a
+  // previous instance of `crypto::UnexportableAttestationKey`.
+  // Invokes `callback` with either:
+  // - non-null unexportable attestation key if it was imported successfully, or
+  // - `ServiceError` if `wrapped_key` import failed.
+  void FromWrappedAttestationKeySlowlyAsync(
+      BackgroundTaskOrigin origin,
+      crypto::UnexportableKeyProvider::Config config,
+      base::span<const uint8_t> wrapped_key,
+      BackgroundTaskPriority priority,
+      base::OnceCallback<void(
+          ServiceErrorOr<scoped_refptr<RefCountedUnexportableAttestationKey>>)>
+          callback);
+
+  // Certifies a signing key using an attestation key.
+  // Invokes `callback` with an attestation statement, or `ServiceError` if an
+  // error occurs during certification.
+  void CertifySlowlyAsync(
+      BackgroundTaskOrigin origin,
+      scoped_refptr<RefCountedUnexportableAttestationKey> attestation_key,
+      scoped_refptr<RefCountedUnexportableSigningKey> signing_key,
+      base::span<const uint8_t> challenge,
+      BackgroundTaskPriority priority,
+      base::OnceCallback<void(ServiceErrorOr<crypto::AttestationStatement>)>
+          callback);
 
  private:
   // Scheduler to run long tasks in background.

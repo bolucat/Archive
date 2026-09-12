@@ -97,10 +97,7 @@ TlsConnection::TlsConnection(SSL_CTX* ssl_ctx,
     : delegate_(delegate),
       ssl_(SSL_new(ssl_ctx)),
       ssl_config_(std::move(ssl_config)) {
-  if (GetQuicRestartFlag(quic_shed_tls_handshake_config)) {
-    QUIC_RESTART_FLAG_COUNT_N(quic_shed_tls_handshake_config, 2, 2);
-    SSL_set_shed_handshake_config(ssl(), /*enable=*/1);
-  }
+  SSL_set_shed_handshake_config(ssl(), /*enable=*/1);
   SSL_set_ex_data(
       ssl(), SslIndexSingleton::GetInstance()->ssl_ex_data_index_connection(),
       this);
@@ -113,10 +110,8 @@ TlsConnection::TlsConnection(SSL_CTX* ssl_ctx,
         ssl(), ssl_config_.signing_algorithm_prefs->data(),
         ssl_config_.signing_algorithm_prefs->size());
   }
-  if (ssl_config_.disable_ticket_support.has_value()) {
-    if (*ssl_config_.disable_ticket_support) {
-      SSL_set_options(ssl(), SSL_OP_NO_TICKET);
-    }
+  if (ssl_config_.disable_ticket_support) {
+    SSL_set_options(ssl(), SSL_OP_NO_TICKET);
   }
 }
 

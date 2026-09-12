@@ -20,6 +20,8 @@
 #include "partition_alloc/thread_isolation/alignment.h"
 
 namespace partition_alloc::internal {
+// Has to be declared outside the class to allow it to be forward declared.
+class ReservationOffsetTableAddressInfo;
 // The main purpose of the reservation offset table is to easily locate the
 // direct map reservation start address for any given address. There is one
 // entry in the table for each super page.
@@ -162,7 +164,8 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) ReservationOffsetTable {
 
   // If the given address doesn't point to direct-map allocated memory,
   // returns 0.
-  PA_ALWAYS_INLINE uintptr_t GetDirectMapReservationStart(uintptr_t address);
+  PA_ALWAYS_INLINE uintptr_t
+  GetDirectMapReservationStart(uintptr_t address) const;
 
   // Returns true if |address| is the beginning of the first super page of a
   // reservation, i.e. either a normal bucket super page, or the first super
@@ -173,6 +176,14 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) ReservationOffsetTable {
 
   // Returns true if |address| belongs to a direct map region.
   PA_ALWAYS_INLINE bool IsManagedByDirectMap(uintptr_t address) const;
+
+  // Precondition: Requires |address| be managed by partitionAlloc.
+  // Returns a wrapper around the type (access with GetType()) of the allocation
+  // that |address| belongs to. If and only if it is a direct-map allocation,
+  // the wrapper also stores the direct-map reservation start address as well
+  // (access with GetDirectMapReservationStart()).
+  PA_ALWAYS_INLINE ReservationOffsetTableAddressInfo
+  GetAddressInfo(uintptr_t address) const;
 
   // Returns true if |address| belongs to a normal bucket super page or a direct
   // map region, i.e. belongs to an allocated super page.
@@ -185,6 +196,9 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) ReservationOffsetTable {
  private:
   PA_ALWAYS_INLINE uint16_t* GetOffsetPointer(uintptr_t address) const;
 
+  PA_ALWAYS_INLINE uintptr_t
+  GetDirectMapReservationStart(uintptr_t address, uint16_t* offset_ptr) const;
+
   uint16_t* table_begin_ = nullptr;
 #if PA_BUILDFLAG(DCHECKS_ARE_ON)
   uint16_t* table_end_ = nullptr;
@@ -194,25 +208,25 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) ReservationOffsetTable {
 #endif  // PA_BUILDFLAG(HAS_64_BIT_POINTERS)
 
 #if PA_BUILDFLAG(HAS_64_BIT_POINTERS)
-  PA_CONSTINIT static _ReservationOffsetTable<kRegularOffsetTableLength>
+  constinit static _ReservationOffsetTable<kRegularOffsetTableLength>
       regular_pool_table_;
-  PA_CONSTINIT static _ReservationOffsetTable<kBRPOffsetTableLength>
+  constinit static _ReservationOffsetTable<kBRPOffsetTableLength>
       brp_pool_table_;
-  PA_CONSTINIT static _ReservationOffsetTable<kConfigurableOffsetTableLength>
+  constinit static _ReservationOffsetTable<kConfigurableOffsetTableLength>
       configurable_pool_table_;
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
   // If thread isolation support is enabled, we need to write-protect the tables
   // of the thread isolated pool. For this, the thread isolated ones start on a
   // page boundary.
   PA_THREAD_ISOLATED_ALIGN
-  PA_CONSTINIT static _ReservationOffsetTable<
+  constinit static _ReservationOffsetTable<
       kThreadIsolatedOffsetTableLength,
       kThreadIsolatedOffsetTablePaddingSize>
       thread_isolated_pool_table_;
 #endif
 #else
   // A single table for the entire 32-bit address space.
-  PA_CONSTINIT static _ReservationOffsetTable<kReservationOffsetTableLength>
+  constinit static _ReservationOffsetTable<kReservationOffsetTableLength>
       reservation_offset_table_;
 #endif  // PA_BUILDFLAG(HAS_64_BIT_POINTERS)
 };

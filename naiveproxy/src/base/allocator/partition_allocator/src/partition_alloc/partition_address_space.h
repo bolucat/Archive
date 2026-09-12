@@ -5,6 +5,7 @@
 #ifndef PARTITION_ALLOC_PARTITION_ADDRESS_SPACE_H_
 #define PARTITION_ALLOC_PARTITION_ADDRESS_SPACE_H_
 
+#include <bit>
 #include <cstddef>
 #include <utility>
 
@@ -12,7 +13,6 @@
 #include "partition_alloc/build_config.h"
 #include "partition_alloc/buildflags.h"
 #include "partition_alloc/page_allocator_constants.h"
-#include "partition_alloc/partition_alloc_base/bits.h"
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
 #include "partition_alloc/partition_alloc_base/component_export.h"
 #include "partition_alloc/partition_alloc_check.h"
@@ -319,16 +319,16 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) PartitionAddressSpace {
   // region. One use case for this Pool is V8 Sandbox, which requires that
   // ArrayBuffers be located inside of it.
   static constexpr size_t kCorePoolSize = kPoolMaxSize;
-  static_assert(base::bits::HasSingleBit(kCorePoolSize));
+  static_assert(std::has_single_bit(kCorePoolSize));
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
   static constexpr size_t kThreadIsolatedPoolSize = kGiB / 4;
-  static_assert(base::bits::HasSingleBit(kThreadIsolatedPoolSize));
+  static_assert(std::has_single_bit(kThreadIsolatedPoolSize));
 #endif
   static constexpr size_t kConfigurablePoolMaxSize = kPoolMaxSize;
   static constexpr size_t kConfigurablePoolMinSize = 1 * kGiB;
   static_assert(kConfigurablePoolMinSize <= kConfigurablePoolMaxSize);
-  static_assert(base::bits::HasSingleBit(kConfigurablePoolMaxSize));
-  static_assert(base::bits::HasSingleBit(kConfigurablePoolMinSize));
+  static_assert(std::has_single_bit(kConfigurablePoolMaxSize));
+  static_assert(std::has_single_bit(kConfigurablePoolMinSize));
 
 #if PA_BUILDFLAG(IS_IOS)
 
@@ -340,11 +340,11 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) PartitionAddressSpace {
   // crbug.com/1250788).
   static constexpr size_t kCorePoolSizeForIOSTestProcess = kGiB / 4;
   static_assert(kCorePoolSizeForIOSTestProcess < kCorePoolSize);
-  static_assert(base::bits::HasSingleBit(kCorePoolSizeForIOSTestProcess));
+  static_assert(std::has_single_bit(kCorePoolSizeForIOSTestProcess));
   static constexpr size_t kCorePoolSizeForIOSReducedPoolSize =
       kCorePoolSize / 2;
   static_assert(kCorePoolSizeForIOSReducedPoolSize < kCorePoolSize);
-  static_assert(base::bits::HasSingleBit(kCorePoolSizeForIOSReducedPoolSize));
+  static_assert(std::has_single_bit(kCorePoolSizeForIOSReducedPoolSize));
 #endif  // PA_BUILDFLAG(IS_IOS)
 
 #if !PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
@@ -388,6 +388,19 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) PartitionAddressSpace {
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
     ThreadIsolationOption thread_isolation_;
 #endif
+
+#if PA_CONFIG(MOVE_METADATA_OUT_OF_GIGACAGE)
+    std::array<std::ptrdiff_t, kMaxPoolHandle> offsets_to_metadata_ = {
+        0, 0, 0, 0,
+#if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
+        0,
+#endif  // PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
+    };
+    uintptr_t metadata_region_start_ = kUninitializedPoolBaseAddress;
+#if PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
+    size_t metadata_region_size_ = 0;
+#endif  // PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
+#endif  // PA_CONFIG(MOVE_METADATA_OUT_OF_GIGACAGE)
   };
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
   static_assert(sizeof(PoolSetup) % SystemPageSize() == 0,
@@ -400,21 +413,13 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) PartitionAddressSpace {
   // See the comment describing the address layout above.
   //
   // These are write-once fields, frequently accessed thereafter. Make sure they
-  // don't share a cacheline with other, potentially writeable data, through
+  // don't share a cacheline with other, potentially writable data, through
   // alignment and padding.
-  PA_CONSTINIT static PoolSetup setup_;
+  constinit static PoolSetup setup_;
 
 #if PA_CONFIG(ENABLE_USER_SPACE_ZERO_SEGMENT)
   static size_t zero_segment_size_;
 #endif
-
-#if PA_CONFIG(MOVE_METADATA_OUT_OF_GIGACAGE)
-  static std::array<std::ptrdiff_t, kMaxPoolHandle> offsets_to_metadata_;
-  static uintptr_t metadata_region_start_;
-#if PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
-  static size_t metadata_region_size_;
-#endif  // PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
-#endif  // PA_CONFIG(MOVE_METADATA_OUT_OF_GIGACAGE)
 
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
   // If we use thread isolation, we need to write-protect its metadata.

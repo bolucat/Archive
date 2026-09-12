@@ -88,7 +88,8 @@ is_clang_or_gcc = is_clang || !is_win
 # Whether 64-bit pointers are used.
 # A static_assert in partition_alloc_config.h verifies that.
 if (current_cpu == "x64" || current_cpu == "arm64" || current_cpu == "arm64e" ||
-    current_cpu == "loong64" || current_cpu == "riscv64" || current_cpu == "mips64el") {
+    current_cpu == "loong64" || current_cpu == "riscv64" ||
+    current_cpu == "ppc64" || current_cpu == "s390x" || current_cpu == "mips64el") {
   assert(current_cpu != "arm64e" || (is_ios && target_environment == "device"))
   has_64_bit_pointers = true
 } else if (current_cpu == "x86" || current_cpu == "arm" ||
@@ -345,9 +346,7 @@ declare_args() {
   #
   # TODO(328104161): Remove this flag.
   enable_backup_ref_ptr_feature_flag =
-      enable_backup_ref_ptr_support && use_raw_ptr_backup_ref_impl &&
-      # Platforms where BackupRefPtr hasn't shipped yet:
-      !is_castos
+      enable_backup_ref_ptr_support && use_raw_ptr_backup_ref_impl
 
   # While keeping BRP support, override a feature flag to make it disabled
   # state. This will overwrite `enable_backup_ref_ptr_feature_flag`.
@@ -604,11 +603,11 @@ declare_args() {
   # We can only enable this on 64-bit builds and when PA is used as malloc to
   # get hooks early enough to reserve the segment.
   #
-  # TODO(40925855): Enable this on all supported platforms. Android can only
-  # be enabled after switching to native zygote.
+  # TODO(40925855): Android can only be enabled after switching to native
+  # zygote.
   enable_user_space_zero_segment =
       has_64_bit_pointers && use_partition_alloc_as_malloc &&
-      (is_mac || (is_linux && !is_chromeos && !is_android))
+      (is_mac || is_win || is_chromeos || is_linux)
 
   # Size of the zero segment in MB. The total size will be at least this value.
   # This is 4GB + 1MB. The 1MB protects from using certain kinds of objects
@@ -628,4 +627,13 @@ declare_args() {
 # not a big deal, and is probably preferable to sticking
 # `base::unchecked` on all those spans (shutting them out entirely).
 use_checked_span = !(is_asan || is_ubsan || is_tsan) && use_partition_alloc &&
-                   has_64_bit_pointers && is_debug
+                   has_64_bit_pointers
+
+# Enables additional features, e.g. slack space zapping.
+#
+# These features depend on the presence of `InSlotMetadata` (which is
+# primarily gated on build support for BackupRefPtr). Therefore, this
+# build toggle is necessarily defined as a subset of BackupRefPtr build
+# support.
+checked_span_has_metadata_support =
+    use_checked_span && enable_backup_ref_ptr_support && false

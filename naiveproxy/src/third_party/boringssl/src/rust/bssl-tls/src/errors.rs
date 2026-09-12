@@ -43,7 +43,6 @@ use crate::config::ConfigurationError;
 #[derive(Debug)]
 pub enum Error {
     /// Error reported by the BoringSSL library
-    #[allow(private_interfaces)]
     Library(u32, Option<LibCode>, Option<i32>),
     /// Configuration errors
     Configuration(ConfigurationError),
@@ -189,6 +188,7 @@ impl Display for Error {
 bssl_enum! {
     /// SSL reason codes.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    #[non_exhaustive]
     pub enum TlsErrorReason: i32 {
         /// `SSL_R_APP_DATA_IN_HANDSHAKE`
         AppDataInHandshake = bssl_sys::SSL_R_APP_DATA_IN_HANDSHAKE as i32,
@@ -732,6 +732,10 @@ bssl_enum! {
         WantRead = bssl_sys::SSL_ERROR_WANT_READ as i32,
         /// TLS is blocked on write.
         WantWrite = bssl_sys::SSL_ERROR_WANT_WRITE as i32,
+        /// Pending certificate look-up.
+        PendingCertificateLookup = bssl_sys::SSL_ERROR_WANT_X509_LOOKUP as i32,
+        /// Syscall failed.
+        Syscall = bssl_sys::SSL_ERROR_SYSCALL as i32,
         /// Pending session.
         /// Caller may retry the last operation when the session lookup is ready.
         PendingSession = bssl_sys::SSL_ERROR_PENDING_SESSION as i32,
@@ -770,6 +774,8 @@ impl Display for TlsRetryReason {
         match self {
             TlsRetryReason::WantRead => f.write_str("want to read"),
             TlsRetryReason::WantWrite => f.write_str("want to write"),
+            TlsRetryReason::PendingCertificateLookup => f.write_str("pending certificate lookup"),
+            TlsRetryReason::Syscall => f.write_str("syscall error"),
             TlsRetryReason::PendingSession => f.write_str("pending session"),
             TlsRetryReason::PendingCertificate => f.write_str("pending certificate"),
             TlsRetryReason::PendingTicket => f.write_str("pending ticket"),

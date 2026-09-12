@@ -1,0 +1,63 @@
+name: documentation
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends doxygen
+      - name: Build and validate documentation
+        run: |
+          python3 scripts/check_cli_docs.py
+          python3 -m unittest discover -s tests -p test_cli_docs.py
+          cmake -S . -B build-docs -DWITH_DOC_MAN=ON -DWITH_DOC_HTML=ON
+          cmake --build build-docs --target doc-man doc-html --parallel 2
+          python3 scripts/check_cli_docs.py --rendered build-docs
+          test -s build-docs/html/index.html
+      - name: Package downloadable man pages
+        run: |
+          tar -czf build-docs/html/man-pages.tar.gz -C build-docs \
+            man/ss-local.1 man/ss-server.1 man/ss-tunnel.1 man/ss-redir.1 \
+            man/ss-manager.1 man/ss-nat.1 man/shadowsocks-c.8 man/shadowsocks-libev.8
+          tar -tzf build-docs/html/man-pages.tar.gz
+      - name: Upload GitHub Pages site
+        if: github.repository == 'shadowsocks/shadowsocks-c' && github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build-docs/html
+
+  deploy:
+    needs: docs
+    if: github.repository == 'shadowsocks/shadowsocks-c' && github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v5

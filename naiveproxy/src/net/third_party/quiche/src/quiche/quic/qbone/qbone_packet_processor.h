@@ -20,11 +20,10 @@
 
 namespace quic {
 
-enum : size_t {
-  kIPv6HeaderSize = 40,
-  kICMPv6HeaderSize = sizeof(icmp6_hdr),
-  kTotalICMPv6HeaderSize = kIPv6HeaderSize + kICMPv6HeaderSize,
-};
+inline constexpr size_t kIPv6HeaderSize = 40;
+inline constexpr size_t kICMPv6HeaderSize = sizeof(icmp6_hdr);
+inline constexpr size_t kTotalICMPv6HeaderSize =
+    kIPv6HeaderSize + kICMPv6HeaderSize;
 
 // QBONE packet processor accepts packets destined in either direction
 // (client-to-network or network-to-client).  It inspects them and makes
@@ -161,6 +160,7 @@ class QbonePacketProcessor {
   // packet may be decreased in the process.
   ProcessingResult ProcessIPv6HeaderAndFilter(std::string* packet,
                                               Direction direction,
+                                              in6_addr* src,
                                               uint8_t* transport_protocol,
                                               char** transport_data,
                                               icmp6_hdr* icmp_header);
@@ -188,7 +188,7 @@ class QbonePacketProcessor {
   // Performs basic sanity and permission checks on the packet, and decreases
   // the TTL.
   ProcessingResult ProcessIPv6Header(std::string* packet, Direction direction,
-                                     uint8_t* transport_protocol,
+                                     in6_addr* src, uint8_t* transport_protocol,
                                      char** transport_data,
                                      icmp6_hdr* icmp_header);
 

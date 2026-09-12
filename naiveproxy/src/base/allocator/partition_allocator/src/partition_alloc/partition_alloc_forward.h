@@ -5,12 +5,13 @@
 #ifndef PARTITION_ALLOC_PARTITION_ALLOC_FORWARD_H_
 #define PARTITION_ALLOC_PARTITION_ALLOC_FORWARD_H_
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include "partition_alloc/buildflags.h"
-#include "partition_alloc/partition_alloc_base/bits.h"
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
 #include "partition_alloc/partition_alloc_base/component_export.h"
 #include "partition_alloc/partition_alloc_base/cxx_wrapper/algorithm.h"
@@ -32,13 +33,13 @@ namespace internal {
 constexpr inline size_t kAlignment =
     std::max(alignof(max_align_t),
              static_cast<size_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__));
-static_assert(base::bits::HasSingleBit(kAlignment),
+static_assert(std::has_single_bit(kAlignment),
               "Alignment must be power of two.");
 static_assert(kAlignment <= 16,
               "PartitionAlloc doesn't support a fundamental alignment larger "
               "than 16 bytes.");
 
-constexpr inline size_t kAlignmentIndex = base::bits::CountrZero(kAlignment);
+constexpr inline size_t kAlignmentIndex = std::countr_zero(kAlignment);
 static_assert(kAlignment == (1 << kAlignmentIndex));
 
 static constexpr size_t kBitsPerSizeT = std::numeric_limits<size_t>::digits;
@@ -69,6 +70,16 @@ class PartitionRoot;
 struct PurgeState {
   uint16_t generation = 0;
   uint16_t next_bucket_index = 0;
+};
+
+// What a PartitionRoot::PurgeMemory() call managed to free, gathered while it
+// already holds the root lock so that callers interested in the outcome do not
+// have to take that lock again. Extend as more of the purge becomes worth
+// reporting.
+struct PurgeResult {
+  // Bytes that were held in empty slot spans and have been decommitted by
+  // PurgeFlags::kDecommitEmptySlotSpans. Zero without that flag.
+  size_t decommitted_empty_slot_spans_bytes = 0;
 };
 
 namespace internal {

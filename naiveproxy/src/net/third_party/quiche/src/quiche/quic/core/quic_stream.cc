@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -281,13 +282,13 @@ void PendingStream::OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame) {
             " greater than the FIN offset: ", sequencer()->close_offset()));
     return;
   }
-  if (buffered_reset_stream_at_.has_value() &&
+  if (buffered_reset_stream_at_ != nullptr &&
       (frame.reliable_offset > buffered_reset_stream_at_->reliable_offset)) {
     // Ignore a reliable reset that raises the reliable size. It might have
     // arrived out of sequence.
     return;
   }
-  buffered_reset_stream_at_ = frame;
+  buffered_reset_stream_at_ = std::make_unique<QuicResetStreamAtFrame>(frame);
   sequencer_.OnReliableReset(frame.reliable_offset);
 }
 
@@ -341,7 +342,7 @@ QuicStream::QuicStream(PendingStream& pending, QuicSession* session,
           (session->GetClock()->ApproximateNow() - pending.creation_time())) {
   QUICHE_DCHECK(session->version().IsIetfQuic());
   sequencer_.set_stream(this);
-  buffered_reset_stream_at_ = pending.buffered_reset_stream_at();
+  buffered_reset_stream_at_ = std::move(pending.buffered_reset_stream_at_);
 }
 
 namespace {
@@ -390,7 +391,9 @@ QuicStream::QuicStream(QuicStreamId id, QuicSession* session,
       connection_error_(QUIC_NO_ERROR),
       flow_controller_(std::move(flow_controller)),
       connection_flow_controller_(connection_flow_controller),
+#ifndef NDEBUG
       busy_counter_(0),
+#endif
       send_buffer_(
           session->connection()->helper()->GetStreamSendBufferAllocator()),
       buffered_data_threshold_(GetQuicFlag(quic_buffered_data_threshold)),
@@ -634,13 +637,13 @@ void QuicStream::OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame) {
             " greater than the FIN offset: ", sequencer()->close_offset()));
     return;
   }
-  if (buffered_reset_stream_at_.has_value() &&
+  if (buffered_reset_stream_at_ != nullptr &&
       (frame.reliable_offset > buffered_reset_stream_at_->reliable_offset)) {
     // Ignore a reliable reset that raises the reliable size. It might have
     // arrived out of sequence.
     return;
   }
-  buffered_reset_stream_at_ = frame;
+  buffered_reset_stream_at_ = std::make_unique<QuicResetStreamAtFrame>(frame);
   MaybeCloseStreamWithBufferedReset();
   if (!rst_received_) {
     sequencer_.OnReliableReset(frame.reliable_offset);
@@ -1485,9 +1488,11 @@ void QuicStream::WriteBufferedData(EncryptionLevel level) {
   } else {
     session_->MarkConnectionLevelWriteBlocked(id());
   }
+#ifndef NDEBUG
   if (consumed_data.bytes_consumed > 0 || consumed_data.fin_consumed) {
     busy_counter_ = 0;
   }
+#endif
   if (rst_stream_at_sent_ && stream_bytes_written() >= reliable_size_) {
     // If data up to reliable_size_ has been sent, the write side can finally
     // close.
@@ -1590,10 +1595,10 @@ bool QuicStream::HasDeadlinePassed() const {
 }
 
 void QuicStream::MaybeCloseStreamWithBufferedReset() {
-  if (buffered_reset_stream_at_.has_value() && !sequencer_.IsClosed() &&
+  if (buffered_reset_stream_at_ != nullptr && !sequencer_.IsClosed() &&
       NumBytesConsumed() >= buffered_reset_stream_at_->reliable_offset) {
     OnStreamReset(buffered_reset_stream_at_->ToRstStream());
-    buffered_reset_stream_at_ = std::nullopt;
+    buffered_reset_stream_at_.reset();
   }
 }
 

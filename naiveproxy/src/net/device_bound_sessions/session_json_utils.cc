@@ -117,7 +117,6 @@ ParseCredentials(const base::ListValue& credentials_list) {
 
 base::expected<SessionParams, SessionError> ParseSessionInstructionJson(
     GURL fetcher_url,
-    unexportable_keys::UnexportableSigningKeyId key_id,
     std::optional<std::string> expected_session_id,
     std::string_view response_json) {
   std::optional<base::DictValue> maybe_root = base::JSONReader::ReadDict(
@@ -174,10 +173,14 @@ base::expected<SessionParams, SessionError> ParseSessionInstructionJson(
     }
   }
 
-  return SessionParams(*session_id, fetcher_url,
-                       refresh_url ? *refresh_url : "", std::move(scope),
-                       std::move(credentials), key_id,
-                       std::move(allowed_refresh_initiators));
+  return SessionParams{
+      .session_id = *session_id,
+      .fetcher_url = fetcher_url,
+      .refresh_url = refresh_url ? *refresh_url : "",
+      .scope = std::move(scope),
+      .credentials = std::move(credentials),
+      .allowed_refresh_initiators = std::move(allowed_refresh_initiators),
+  };
 }
 
 std::optional<WellKnownParams> ParseWellKnownJson(

@@ -86,7 +86,7 @@ jobs:
             unzip ninja-win.zip -d ~/bin
           fi
   cache-toolchains-mac-x64:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -98,7 +98,7 @@ jobs:
           key: toolchains-pgo-mac-x64-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - run: EXTRA_FLAGS='target_cpu="x64"' ./get-clang.sh
   cache-toolchains-mac-arm64:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -352,7 +352,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   mac-x64:
     needs: cache-toolchains-mac-x64
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     strategy:
       fail-fast: false
       matrix:
@@ -403,7 +403,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   mac-arm64:
     needs: cache-toolchains-mac-arm64
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:

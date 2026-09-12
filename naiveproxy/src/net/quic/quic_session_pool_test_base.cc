@@ -6,6 +6,7 @@
 
 #include <sys/types.h>
 
+#include <algorithm>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -142,16 +143,51 @@ int QuicSessionPoolTestBase::RequestBuilder::CallRequest() {
       std::move(proxy_annotation_tag), http_user_agent_settings, session_usage,
       privacy_mode, priority, socket_tag, network_anonymization_key,
       secure_dns_policy, require_dns_https_alpn, cert_verify_flags, url,
-      handles::kInvalidNetworkHandle, net_log, &net_error_details,
-      MultiplexedSessionCreationInitiator::kUnknown,
+      target_network, net_log, &net_error_details, session_creation_initiator,
       connection_management_config,
       std::move(failed_on_default_network_callback), std::move(callback));
 }
+
+QuicSessionPoolFeatureInitializer::QuicSessionPoolFeatureInitializer(
+    std::vector<base::test::FeatureRef> enabled_features,
+    const std::vector<base::test::FeatureRef>& disabled_features,
+    std::vector<base::test::FeatureRefAndParams> enabled_features_with_params) {
+  // A caller that lists kAsyncQuicSession itself decides its state.
+  const auto is_async_quic_session = [](const base::test::FeatureRef& ref) {
+    return &*ref == &features::kAsyncQuicSession;
+  };
+  if (!std::ranges::any_of(enabled_features, is_async_quic_session) &&
+      !std::ranges::any_of(disabled_features, is_async_quic_session) &&
+      !std::ranges::any_of(enabled_features_with_params,
+                           [](const base::test::FeatureRefAndParams& entry) {
+                             return &*entry.feature ==
+                                    &features::kAsyncQuicSession;
+                           })) {
+    enabled_features.push_back(features::kAsyncQuicSession);
+  }
+  for (const base::test::FeatureRef& feature : enabled_features) {
+    enabled_features_with_params.emplace_back(*feature,
+                                              base::FieldTrialParams());
+  }
+  scoped_feature_list_.InitWithFeaturesAndParameters(
+      enabled_features_with_params, disabled_features);
+}
+
+QuicSessionPoolFeatureInitializer::~QuicSessionPoolFeatureInitializer() =
+    default;
+
 QuicSessionPoolTestBase::QuicSessionPoolTestBase(
     quic::ParsedQuicVersion version,
     std::vector<base::test::FeatureRef> enabled_features,
-    std::vector<base::test::FeatureRef> disabled_features)
-    : host_resolver_(std::make_unique<MockHostResolver>(
+    std::vector<base::test::FeatureRef> disabled_features,
+    base::test::TaskEnvironment::TimeSource time_source,
+    std::vector<base::test::FeatureRefAndParams> enabled_features_with_params)
+    : QuicSessionPoolFeatureInitializer(
+          std::move(enabled_features),
+          disabled_features,
+          std::move(enabled_features_with_params)),
+      WithTaskEnvironment(time_source),
+      host_resolver_(std::make_unique<MockHostResolver>(
           /*default_result=*/MockHostResolverBase::RuleResolver::
               GetLocalhostResult())),
       socket_factory_(std::make_unique<MockClientSocketFactory>()),
@@ -180,8 +216,6 @@ QuicSessionPoolTestBase::QuicSessionPoolTestBase(
           &QuicSessionPoolTestBase::OnFailedOnDefaultNetwork,
           base::Unretained(this))),
       quic_params_(context_.params()) {
-  enabled_features.push_back(features::kAsyncQuicSession);
-  scoped_feature_list_.InitWithFeatures(enabled_features, disabled_features);
   FLAGS_quic_enable_http3_grease_randomness = false;
   context_.AdvanceTime(quic::QuicTime::Delta::FromSeconds(1));
 
@@ -205,7 +239,8 @@ void QuicSessionPoolTestBase::Initialize() {
       cert_verifier_.get(), &transport_security_state_, proxy_delegate_.get(),
       /*sct_auditing_delegate=*/nullptr,
       /*SocketPerformanceWatcherFactory*/ nullptr,
-      &crypto_client_stream_factory_, &context_);
+      &crypto_client_stream_factory_, test_network_quality_estimator_.get(),
+      &context_);
 }
 
 void QuicSessionPoolTestBase::MaybeMakeNewConnectionIdAvailableToSession(
@@ -242,13 +277,14 @@ bool QuicSessionPoolTestBase::HasActiveSession(
     const ProxyChain& proxy_chain,
     SessionUsage session_usage,
     bool require_dns_https_alpn,
-    bool disable_cert_verification_network_fetches) {
+    bool disable_cert_verification_network_fetches,
+    handles::NetworkHandle target_network) {
   quic::QuicServerId server_id(scheme_host_port.host(),
                                scheme_host_port.port());
   return QuicSessionPoolPeer::HasActiveSession(
       pool_.get(), server_id, privacy_mode, network_anonymization_key,
       proxy_chain, session_usage, require_dns_https_alpn,
-      disable_cert_verification_network_fetches);
+      disable_cert_verification_network_fetches, target_network);
 }
 
 bool QuicSessionPoolTestBase::HasActiveJob(
@@ -277,13 +313,14 @@ QuicChromiumClientSession* QuicSessionPoolTestBase::GetActiveSession(
     const ProxyChain& proxy_chain,
     SessionUsage session_usage,
     bool require_dns_https_alpn,
-    bool disable_cert_verification_network_fetches) {
+    bool disable_cert_verification_network_fetches,
+    handles::NetworkHandle target_network) {
   quic::QuicServerId server_id(scheme_host_port.host(),
                                scheme_host_port.port());
   return QuicSessionPoolPeer::GetActiveSession(
       pool_.get(), server_id, privacy_mode, network_anonymization_key,
       proxy_chain, session_usage, require_dns_https_alpn,
-      disable_cert_verification_network_fetches);
+      disable_cert_verification_network_fetches, target_network);
 }
 
 int QuicSessionPoolTestBase::GetSourcePortForNewSessionAndGoAway(

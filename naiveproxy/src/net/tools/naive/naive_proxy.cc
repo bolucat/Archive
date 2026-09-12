@@ -145,14 +145,7 @@ int NaiveProxy::DoAcceptComplete(int result) {
   if (result != OK) {
     next_state_ = State::kAccept;
     LOG(ERROR) << "Accept error: " << ErrorToShortString(result);
-    if (result == ERR_INSUFFICIENT_RESOURCES) {
-      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-          FROM_HERE,
-          base::BindOnce(&NaiveProxy::OnIOComplete,
-                         weak_ptr_factory_.GetWeakPtr(), OK),
-          base::Seconds(1));
-      return ERR_IO_PENDING;
-    }
+    // This accept error is ignored to start the next accept.
     return OK;
   }
 

@@ -13,7 +13,12 @@ build_gn_logs += [ "" ]
 build_gn_logs += [ "### rbe.gni ###" ] + rbe_logs
 build_gn_logs += [ "" ]
 
-# Log lines for gn_logs.txt that originate from within //build.
+build_gn_logs += [
+  "### BUILDCONFIG.gn ###",
+  "is_component_build=$is_component_build",
+  "",
+]
+
 build_gn_logs += [ "### compiler.gni ###" ] + compiler_logs
 build_gn_logs += [ "" ]
 
@@ -52,3 +57,12 @@ if (target_os == "fuchsia") {
 }
 
 build_gn_logs += [ "#### get_concurrent_links.py ####" ] + concurrent_links_logs
+
+if (defined(build_with_chromium) && build_with_chromium) {
+  import("//third_party/blink/renderer/config.gni")
+  build_gn_logs += [
+    "### blink ###",
+    "blink_enable_generated_code_formatting=$blink_enable_generated_code_formatting",
+    "",
+  ]
+}

@@ -31,6 +31,7 @@ class IOBuffer;
 namespace disk_cache {
 
 class EvictionCandidateAggregator;
+class BackendCleanupTracker;
 class SqlAsyncTaskManager;
 
 // SqlPersistentStoreBackendShard` manages a single shard of the cache,
@@ -42,17 +43,18 @@ class SqlPersistentStore::BackendShard {
       ShardId shard_id,
       const base::FilePath& path,
       net::CacheType type,
+      bool shared_cache_enabled,
       scoped_refptr<SqlReadCacheMemoryMonitor> read_cache_memory_monitor,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner,
-      SqlAsyncTaskManager& async_task_manager);
+      SqlAsyncTaskManager& async_task_manager,
+      scoped_refptr<BackendCleanupTracker> cleanup_tracker);
   ~BackendShard();
 
   // Kicks off the asynchronous initialization of the backend.
   void Initialize(int64_t user_max_bytes, InitResultOrErrorCallback callback);
   void OpenOrCreateEntry(const CacheEntryKey& key,
                          EntryInfoOrErrorCallback callback);
-  void OpenEntry(const CacheEntryKey& key,
-                 OptionalEntryInfoOrErrorCallback callback);
+  void OpenEntry(const CacheEntryKey& key, EntryInfoOrErrorCallback callback);
   void CreateEntry(const CacheEntryKey& key,
                    base::Time creation_time,
                    EntryInfoOrErrorCallback callback);
@@ -62,13 +64,15 @@ class SqlPersistentStore::BackendShard {
                  ErrorCallback callback);
   void DeleteDoomedEntry(const CacheEntryKey& key,
                          ResId res_id,
-                         ErrorCallback callback);
-  void DeleteLiveEntry(const CacheEntryKey& key, ErrorCallback callback);
+                         DeletedSharedCacheResourceOrErrorCallback callback);
+  void DeleteLiveEntry(const CacheEntryKey& key,
+                       DeletedSharedCacheResourcesOrErrorCallback callback);
   void DeleteAllEntries(ErrorCallback callback);
-  void DeleteLiveEntriesBetween(base::Time initial_time,
-                                base::Time end_time,
-                                base::flat_set<ResId> excluded_res_ids,
-                                ErrorCallback callback);
+  void DeleteLiveEntriesBetween(
+      base::Time initial_time,
+      base::Time end_time,
+      base::flat_set<ResId> excluded_res_ids,
+      DeletedSharedCacheResourcesOrErrorCallback callback);
   void UpdateEntryLastUsedByKey(const CacheEntryKey& key,
                                 base::Time last_used,
                                 ErrorCallback callback);
@@ -101,6 +105,10 @@ class SqlPersistentStore::BackendShard {
                      int64_t body_end,
                      bool sparse_reading,
                      SqlPersistentStore::ReadResultOrErrorCallback callback);
+  void MoveBlobsToSharedCache(const CacheEntryKey& key,
+                              ResId res_id,
+                              SqlSharedCacheResourceId shared_cache_resource_id,
+                              ErrorCallback callback);
 
   void GetEntryAvailableRange(const CacheEntryKey& key,
                               ResId res_id,
@@ -146,19 +154,14 @@ class SqlPersistentStore::BackendShard {
   std::optional<MemoryEntryDataHints> GetInMemoryEntryDataHints(
       CacheEntryKey::Hash key_hash) const;
 
-  // Tries to find a single resource ID for the given key hash in the in-memory
-  // index of this shard. Returns the resource ID if the index is available and
-  // contains a unique entry for the hash.
-  std::optional<ResId> TryGetSingleResIdFromInMemoryIndex(
-      CacheEntryKey::Hash key_hash) const;
-
   void LoadInMemoryIndex(ErrorCallback callback);
 
   // If there are entries that were doomed in a previous session, this method
   // triggers a task to delete them from the database. The cleanup is performed
   // in the background. Returns true if a cleanup task was scheduled, and false
   // otherwise. `callback` is invoked upon completion of the cleanup task.
-  bool MaybeRunCleanupDoomedEntries(ErrorCallback callback);
+  bool MaybeRunCleanupDoomedEntries(
+      DeletedSharedCacheResourcesOrErrorCallback callback);
 
   void MaybeRunCheckpoint(base::OnceCallback<void(bool)> callback);
   void MaybeRunIncrementalVacuum(
@@ -229,15 +232,17 @@ class SqlPersistentStore::BackendShard {
                                const CacheEntryKey& key,
                                IndexMismatchLocation location);
 
-  base::OnceCallback<void(HashAndResIdListOrErrorAndStoreStatus)>
-  WrapErrorCallbackToRemoveFromIndex(ErrorCallback callback,
-                                     IndexMismatchLocation location);
+  base::OnceCallback<void(DeleteLiveEntryResultOrErrorAndStoreStatus)>
+  WrapErrorCallbackToRemoveFromIndex(
+      DeletedSharedCacheResourcesOrErrorCallback callback,
+      IndexMismatchLocation location);
   void OnEvictionFinished(EvictionResultCallback callback,
                           EvictionResultWithMetadata result);
   void RecordIndexMismatch(IndexMismatchLocation location);
 
   const raw_ref<SqlAsyncTaskManager> async_task_manager_;
   SqlTrackedSequenceBound<Backend> backend_;
+  scoped_refptr<BackendCleanupTracker> cleanup_tracker_;
 
   // The in-memory summary of the store's status.
   StoreStatus store_status_;

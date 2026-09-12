@@ -8,6 +8,7 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
@@ -80,7 +81,6 @@ int QuicProxyDatagramClientSocket::ConnectViaStream(
 
   // Register stream to receive HTTP/3 datagrams.
   stream_handle_->RegisterHttp3DatagramVisitor(this);
-  datagram_visitor_registered_ = true;
 
   DCHECK_EQ(STATE_DISCONNECTED, next_state_);
   next_state_ = STATE_CALCULATE_HEADERS;
@@ -133,11 +133,6 @@ void QuicProxyDatagramClientSocket::Close() {
   read_buf_ = nullptr;
 
   next_state_ = STATE_DISCONNECTED;
-
-  if (datagram_visitor_registered_) {
-    stream_handle_->UnregisterHttp3DatagramVisitor();
-    datagram_visitor_registered_ = false;
-  }
 
   connect_request_sent_ = false;
   awaiting_connect_response_ = false;
@@ -303,6 +298,20 @@ int QuicProxyDatagramClientSocket::Read(IOBuffer* buf,
   read_buf_ = buf;
   read_buf_len_ = buf_len;
   return ERR_IO_PENDING;
+}
+
+base::expected<DatagramsMetadata, Error>
+QuicProxyDatagramClientSocket::ReadMultiple(
+    IOBuffer* buf,
+    size_t buf_len,
+    size_t maximum_packet_size,
+    base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+        callback) {
+  // TODO(crbug.com/515333601): This is a temporary delegation to Read() to
+  // avoid crashes when QuicUseReadMultiple is enabled. Implement a proper
+  // ReadMultiple() in a follow-up CL.
+  return read_multiple_emulator_.ReadMultiple(buf, buf_len, maximum_packet_size,
+                                              std::move(callback));
 }
 
 int QuicProxyDatagramClientSocket::Write(

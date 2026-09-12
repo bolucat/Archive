@@ -82,10 +82,9 @@ def __input_deps(ctx):
     libcxx_inputs = [
         "buildtools/third_party/libc++/__assertion_handler",
         "buildtools/third_party/libc++/__config_site",
-        "third_party/libc++/src/include:headers",
     ]
 
-    return {
+    inputs = {
         "third_party/llvm-build/Release+Asserts/bin/clang++": libcxx_inputs,
         "third_party/llvm-build/Release+Asserts/bin/clang++.exe": libcxx_inputs,
         "third_party/llvm-build/Release+Asserts/bin/clang-cl": libcxx_inputs,
@@ -101,6 +100,9 @@ def __input_deps(ctx):
             "third_party/llvm-build/Release+Asserts/bin/lld",
             "tools/win/DebugVisualizers/absl.natvis",
             "tools/win/DebugVisualizers/blink.natvis",
+            "tools/win/DebugVisualizers/cc-component-build.natvis",
+            "tools/win/DebugVisualizers/cc-non-component-build.natvis",
+            "tools/win/DebugVisualizers/cc.natvis",
             "tools/win/DebugVisualizers/chrome.natvis",
         ],
         "third_party/llvm-build/Release+Asserts/bin/lld-link.exe": [
@@ -114,6 +116,9 @@ def __input_deps(ctx):
             "third_party/llvm-build/Release+Asserts/bin/lld.exe",
             "tools/win/DebugVisualizers/absl.natvis",
             "tools/win/DebugVisualizers/blink.natvis",
+            "tools/win/DebugVisualizers/cc-component-build.natvis",
+            "tools/win/DebugVisualizers/cc-non-component-build.natvis",
+            "tools/win/DebugVisualizers/cc.natvis",
             "tools/win/DebugVisualizers/chrome.natvis",
         ],
         "build/toolchain/gcc_solink_wrapper.py": [
@@ -144,8 +149,14 @@ def __input_deps(ctx):
             "build/toolchain/whole_archive.py",
         ],
     }
+    if win_sdk.enabled(ctx):
+        inputs.update(win_sdk.input_deps(ctx))
+    return inputs
 
 def __lld_link(ctx, cmd):
+    if not (config.get(ctx, "remote-link") or config.get(ctx, "default-remote")):
+        return
+
     # Replace thin archives with /start-lib ... /end-lib in rsp file.
     new_lines = []
     for line in str(cmd.rspfile_content).split("\n"):
@@ -183,7 +194,7 @@ def __lld_link(ctx, cmd):
 
 def __thin_archive(ctx, cmd):
     # TODO: This handler can be used despite remote linking?
-    if not config.get(ctx, "remote-link"):
+    if not (config.get(ctx, "remote-link") or config.get(ctx, "default-remote")):
         return
     if "lld-link" in cmd.args[0]:
         if not "/llvmlibthin" in cmd.args:

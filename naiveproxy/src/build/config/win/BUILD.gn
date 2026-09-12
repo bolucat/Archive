@@ -102,13 +102,13 @@ config("compiler") {
       if (host_cpu == "x86" || host_cpu == "x64") {
         cflags += [ "-m32" ]
       } else {
-        cflags += [ "--target=i386-windows" ]
+        cflags += [ "--target=i386-pc-windows" ]
       }
     } else if (current_cpu == "x64") {
       if (host_cpu == "x86" || host_cpu == "x64") {
         cflags += [ "-m64" ]
       } else {
-        cflags += [ "--target=x86_64-windows" ]
+        cflags += [ "--target=x86_64-pc-windows" ]
       }
     } else if (current_cpu == "arm64") {
       cflags += [ "--target=aarch64-pc-windows" ]
@@ -148,6 +148,20 @@ config("compiler") {
   }
 
   ldflags = []
+
+  if (use_clang_modules) {
+    # Work around LLVM builtin math lowerings under Clang modules emitting
+    # calls to `hypotf` on Windows, whereas UCRT only provides `_hypotf`.
+    # See http://b/525295309 and https://github.com/llvm/llvm-project/issues/209989.
+    if (current_cpu == "x86") {
+      # On x86 (32-bit cdecl), C symbols have a leading underscore:
+      # `hypotf` becomes `_hypotf`, and `_hypotf` becomes `__hypotf`.
+      ldflags += [ "/alternatename:_hypotf=__hypotf" ]
+    } else {
+      # On x64 and arm64, symbols are undecorated.
+      ldflags += [ "/alternatename:hypotf=_hypotf" ]
+    }
+  }
 
   if (use_lld) {
     # lld defaults to writing the current time in the pe/coff header.
@@ -408,6 +422,7 @@ config("delayloads_except_dbghelp") {
     "/DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll",
     "/DELAYLOAD:api-ms-win-core-winrt-string-l1-1-0.dll",
     "/DELAYLOAD:advapi32.dll",
+    "/DELAYLOAD:bcrypt.dll",
     "/DELAYLOAD:bcryptprimitives.dll",
     "/DELAYLOAD:comctl32.dll",
     "/DELAYLOAD:comdlg32.dll",

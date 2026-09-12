@@ -104,7 +104,6 @@ std::unique_ptr<QuicWriteBlockedListInterface> CreateWriteBlockedList(
 
 void QuicSession::SavedConfig::DeleteConfig(ParsedQuicVersion version) {
   if (!delete_config_) {
-    config_deleted_ = true;
     return;
   }
 
@@ -151,7 +150,6 @@ void QuicSession::SavedConfig::DeleteConfig(ParsedQuicVersion version) {
   received_max_bidirectional_streams_ =
       config_->ReceivedMaxBidirectionalStreams();
   idle_network_timeout_ = config_->IdleNetworkTimeout();
-  QUICHE_RELOADABLE_FLAG_COUNT(quic_delete_config);
   config_.reset();
 }
 
@@ -761,6 +759,7 @@ void QuicSession::OnBlockedFrame(const QuicBlockedFrame& frame) {
                   << frame.stream_id << ", offset: " << frame.offset;
 }
 
+#ifndef NDEBUG
 bool QuicSession::CheckStreamNotBusyLooping(QuicStream* stream,
                                             uint64_t previous_bytes_written,
                                             bool previous_fin_sent) {
@@ -791,6 +790,7 @@ bool QuicSession::CheckStreamNotBusyLooping(QuicStream* stream,
   }
   return true;
 }
+#endif
 
 bool QuicSession::CheckStreamWriteBlocked(QuicStream* stream) const {
   if (!stream->write_side_closed() && stream->HasBufferedData() &&
@@ -906,15 +906,19 @@ void QuicSession::OnCanWrite() {
     if (stream != nullptr && !stream->IsFlowControlBlocked()) {
       // If the stream can't write all bytes it'll re-add itself to the blocked
       // list.
+#ifndef NDEBUG
       uint64_t previous_bytes_written = stream->stream_bytes_written();
       bool previous_fin_sent = stream->fin_sent();
       QUIC_DVLOG(1) << ENDPOINT << "stream " << stream->id()
                     << " bytes_written " << previous_bytes_written << " fin "
                     << previous_fin_sent;
+#endif
       stream->OnCanWrite();
       QUICHE_DCHECK(CheckStreamWriteBlocked(stream));
+#ifndef NDEBUG
       QUICHE_DCHECK(CheckStreamNotBusyLooping(stream, previous_bytes_written,
                                               previous_fin_sent));
+#endif
     }
     currently_writing_stream_id_ = 0;
   }
@@ -1348,8 +1352,8 @@ void QuicSession::OnFinalByteOffsetReceived(
     }
   }
 
-  flow_controller_.AddBytesConsumed(offset_diff);
   locally_closed_streams_highest_offset_.erase(it);
+  flow_controller_.AddBytesConsumed(offset_diff);
   if (!VersionIsIetfQuic(transport_version())) {
     stream_id_manager_.OnStreamClosed(
         /*is_incoming=*/IsIncomingStream(stream_id));
@@ -1963,9 +1967,7 @@ void QuicSession::OnTlsHandshakeComplete() {
     // Server sends HANDSHAKE_DONE to signal confirmation of the handshake
     // to the client.
     control_frame_manager_.WriteOrBufferHandshakeDone();
-    if (connection()->version().IsIetfQuic()) {
-      MaybeSendAddressToken();
-    }
+    MaybeSendAddressToken();
   }
 }
 
@@ -2367,6 +2369,8 @@ bool QuicSession::MaybeSetStreamPriority(QuicStreamId stream_id,
   auto active_stream = stream_map_.find(stream_id);
   if (active_stream != stream_map_.end()) {
     active_stream->second->SetPriority(priority);
+    active_stream->second->set_priority_source(
+        quic::PrioritySource::SET_BY_PRIORITY_UPDATE);
     return true;
   }
 

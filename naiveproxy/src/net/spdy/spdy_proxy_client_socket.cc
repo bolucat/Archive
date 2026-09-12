@@ -321,6 +321,13 @@ void SpdyProxyClientSocket::OnIOComplete(int result) {
   DCHECK_NE(STATE_DISCONNECTED, next_state_);
   int rv = DoLoop(result);
   if (rv != ERR_IO_PENDING) {
+    if (use_fastopen_ && read_headers_pending_ == false) {
+      if (rv != OK)
+        next_state_ = STATE_DISCONNECTED;
+      if (read_callback_ && rv != OK)
+        std::move(read_callback_).Run(rv);
+      return;
+    }
     std::move(read_callback_).Run(rv);
   }
 }
@@ -394,20 +401,6 @@ int SpdyProxyClientSocket::DoLoop(int last_io_result) {
       case STATE_PROCESS_RESPONSE_CODE:
         DCHECK_EQ(OK, rv);
         rv = DoProcessResponseCode();
-        if (use_fastopen_ && read_headers_pending_) {
-          read_headers_pending_ = false;
-          if (rv < 0) {
-            // read_callback_ cannot be called.
-            if (!read_callback_)
-              rv = ERR_IO_PENDING;
-            // read_callback_ will be called with this error and be reset.
-            // Further data after that will be ignored.
-            next_state_ = STATE_DISCONNECTED;
-          } else {
-            // Does not call read_callback_ from here if headers are OK.
-            rv = ERR_IO_PENDING;
-          }
-        }
         break;
       default:
         NOTREACHED() << "bad state";
@@ -633,6 +626,7 @@ void SpdyProxyClientSocket::OnEarlyHintsReceived(
 void SpdyProxyClientSocket::OnHeadersReceived(
     const quiche::HttpHeaderBlock& response_headers) {
   if (use_fastopen_ && read_headers_pending_ && next_state_ == STATE_OPEN) {
+    read_headers_pending_ = false;
     next_state_ = STATE_READ_REPLY_COMPLETE;
   }
 
@@ -646,7 +640,7 @@ void SpdyProxyClientSocket::OnHeadersReceived(
   const int rv = SpdyHeadersToHttpResponse(response_headers, &response_);
   DCHECK_NE(rv, ERR_INCOMPLETE_HTTP2_HEADERS);
 
-  OnIOComplete(OK);
+  OnIOComplete(rv);
 }
 
 // Called when data is received or on EOF (if `buffer is nullptr).

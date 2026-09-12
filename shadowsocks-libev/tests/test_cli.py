@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Exercise CLI parsing, diagnostics, and configuration overrides on real binaries."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import tempfile
+import time
+import unittest
+
+BIN_DIR = Path(os.environ.get('SS_BIN_DIR', 'build/bin')).resolve()
+
+
+class CliTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        suffix = '.exe' if os.name == 'nt' else ''
+        cls.binaries = {name: BIN_DIR / ('ss-' + name + suffix)
+                        for name in ('local', 'server', 'tunnel', 'redir', 'manager')
+                        if (BIN_DIR / ('ss-' + name + suffix)).is_file()}
+        for name in ('local', 'server', 'tunnel'):
+            if name not in cls.binaries:
+                raise RuntimeError(f'Missing required CLI binary: ss-{name}')
+
+    def run_cli(self, name, *arguments):
+        return subprocess.run([str(self.binaries[name]), *arguments],
+                              capture_output=True, text=True, timeout=10)
+
+    def test_help_and_version(self):
+        for name in self.binaries:
+            with self.subTest(name=name):
+                help_result = self.run_cli(name, '--help')
+                self.assertEqual(help_result.returncode, 0)
+                self.assertEqual(help_result.stderr, '')
+                for flag in ('--config', '--cipher', '--tcp-only', '--udp-only',
+                             '--ipv4-first', '--ipv6-first', '--version'):
+                    self.assertIn(flag, help_result.stdout)
+                version = self.run_cli(name, '--version')
+                self.assertEqual(version.returncode, 0)
+                self.assertRegex(version.stdout, rf'^ss-{name} \(shadowsocks-c\) \d+\.\d+')
+                self.assertEqual(len(version.stdout.splitlines()), 1)
+                self.assertEqual(version.stderr, '')
+                if name == 'manager':
+                    self.assertNotIn('--server-port', help_result.stdout)
+                    self.assertNotIn('--listen-port', help_result.stdout)
+                    self.assertNotIn('--tcp-incoming-sndbuf', help_result.stdout)
+                    self.assertNotIn('--mptcp', help_result.stdout)
+                elif name == 'server':
+                    self.assertIn('--outbound-address', help_result.stdout)
+                    self.assertNotIn('--server-port', help_result.stdout)
+
+    def test_long_aliases_accept_their_arguments(self):
+        for name in self.binaries:
+            args = ['--config', 'not-loaded-before-help.json', '--cipher', 'aes-128-gcm',
+                    '--password', 'test-password', '--timeout', '60', '--user', 'nobody',
+                    '--pid-file', 'not-created.pid', '--verbose', '--udp', '--udp-only',
+                    '--tcp-only', '--ipv6-first', '--ipv4-first', '--listen-address', '127.0.0.1']
+            if name not in ('server', 'manager'):
+                args += ['--server', '127.0.0.1', '--server-port', '8388']
+            if name != 'manager':
+                args += ['--listen-port', '1080']
+            if name == 'server':
+                args += ['--outbound-address', '127.0.0.1']
+            if name != 'redir':
+                args += ['--interface', 'lo']
+            if name in ('server', 'manager'):
+                args += ['--nameserver', '127.0.0.1']
+            if name == 'tunnel':
+                args += ['--destination', '127.0.0.1:80']
+            if name == 'redir':
+                args += ['--tproxy']
+            result = self.run_cli(name, *args, '--help')
+            self.assertEqual(result.returncode, 0, (name, result.stderr))
+            self.assertIn('Usage:', result.stdout)
+
+    def test_usage_errors_are_stderr_exit_two_without_secrets(self):
+        secret = 'private-argument-value'
+        for name in self.binaries:
+            for args in (['--unknown=' + secret], ['-Z' + secret], [secret],
+                         ['--', secret], ['--password'], ['-k'], ['-A']):
+                with self.subTest(name=name, arguments=args[:1]):
+                    result = self.run_cli(name, *args)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(result.stdout, '')
+                    self.assertIn('--help', result.stderr)
+                    self.assertNotIn(secret, result.stderr)
+            result = self.run_cli(name, '--password')
+            self.assertIn('missing required argument', result.stderr)
+            self.assertIn('--password', result.stderr)
+        for name in ('server', 'manager'):
+            if name in self.binaries:
+                self.assertEqual(self.run_cli(name, '-l', '1080').returncode, 2)
+
+    def test_transport_and_address_family_override_configuration(self):
+        cases = [(['--tcp-only', '--ipv4-first'], False, False),
+                 (['--udp-only', '--tcp-only', '--ipv6-first', '--ipv4-first'], False, False),
+                 (['--tcp-only', '--udp', '--ipv4-first', '--ipv6-first'], True, True)]
+        for args, udp, ipv6 in cases:
+            with self.subTest(args=args), tempfile.TemporaryDirectory() as directory:
+                with socket.socket() as reservation:
+                    reservation.bind(('127.0.0.1', 0))
+                    port = reservation.getsockname()[1]
+                config = Path(directory) / 'config.json'
+                config.write_text(json.dumps({'server': '127.0.0.1', 'server_port': 9,
+                    'local_address': '127.0.0.1', 'local_port': port, 'password': 'test-password',
+                    'method': 'aes-128-gcm', 'mode': 'udp_only', 'ipv6_first': True}))
+                with tempfile.TemporaryFile(mode='w+') as log:
+                    proc = subprocess.Popen([str(self.binaries['local']), '--config', str(config),
+                        '--listen-port', str(port), '--verbose', *args], stdout=log, stderr=log)
+                    try:
+                        deadline = time.monotonic() + 5
+                        connected = False
+                        while time.monotonic() < deadline and proc.poll() is None:
+                            try:
+                                with socket.create_connection(('127.0.0.1', port), timeout=0.1):
+                                    connected = True
+                                break
+                            except OSError:
+                                time.sleep(0.02)
+                        self.assertTrue(connected, 'CLI TCP mode did not override UDP-only config')
+                    finally:
+                        if proc.poll() is None:
+                            proc.terminate()
+                        proc.wait(timeout=5)
+                    log.seek(0)
+                    output = log.read()
+                    self.assertEqual('udprelay enabled' in output, udp, output)
+                    self.assertEqual('resolving hostname to IPv6 address first' in output, ipv6, output)
+
+    def test_numeric_option_validation(self):
+        for name in self.binaries:
+            for value in ('0', '-1', 'abc', '2147483648'):
+                result = self.run_cli(name, '--timeout', value)
+                self.assertEqual(result.returncode, 2, (name, value))
+                self.assertEqual(result.stdout, '')
+                self.assertIn('positive integer', result.stderr)
+            if name != 'manager':
+                for value in ('0', '65536', '-1', 'abc'):
+                    result = self.run_cli(name, '--listen-port', value)
+                    self.assertEqual(result.returncode, 2, (name, value))
+                    self.assertIn('1 to 65535', result.stderr)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--bin-dir', type=Path, default=BIN_DIR)
+    args = parser.parse_args()
+    BIN_DIR = args.bin_dir.resolve()
+    unittest.main(argv=[__file__])

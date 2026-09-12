@@ -449,7 +449,7 @@ bool ParseProcMeminfo(std::string_view meminfo_data,
       uint64_t value;
       if (StringToUint64(tokens[1], &value) &&
           value <= ByteSize::Max().InKiB()) {
-        *target = KiBU(value);
+        *target = KiB(value);
       }
     }
   }
@@ -911,7 +911,11 @@ void GetFdInfoFromPid(pid_t pid,
       std::string_view value = line_view.substr(pos + 1);
 
       /* trim leading space from the value: */
-      value = value.substr(value.find_first_not_of(" \t"));
+      size_t trim_pos = value.find_first_not_of(" \t");
+      if (trim_pos == std::string_view::npos) {
+        continue;
+      }
+      value = value.substr(trim_pos);
 
       if (key == "drm-client-id") {
         base::StringToUint(value, &client_id);

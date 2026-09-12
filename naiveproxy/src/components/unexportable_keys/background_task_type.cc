@@ -25,6 +25,14 @@ std::string_view GetBackgroundTaskTypeSuffixForHistograms(
       return ".DeleteKeys";
     case BackgroundTaskType::kDeleteAllKeys:
       return ".DeleteAllKeys";
+    case BackgroundTaskType::kGenerateAttestationKey:
+      return ".GenerateAttestationKey";
+    case BackgroundTaskType::kFromWrappedAttestationKey:
+      return ".FromWrappedAttestationKey";
+    case BackgroundTaskType::kCertify:
+      return ".Certify";
+    case BackgroundTaskType::kSignWithAttestationKey:
+      return ".SignWithAttestationKey";
   }
   NOTREACHED();
 }

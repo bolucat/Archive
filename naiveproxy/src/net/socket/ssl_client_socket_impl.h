@@ -176,6 +176,11 @@ class NET_EXPORT_PRIVATE SSLClientSocketImpl
   // Returns true when we should be using the ssl_client_session_cache_
   bool IsCachingEnabled() const;
 
+  // Clears the early data flag from the session cache if `err` indicates early
+  // data rejection. This must be called immediately when the error is detected
+  // in I/O paths to ensure the cache is cleared.
+  void MaybeClearEarlyDataCache(int err);
+
   // Callbacks for operations with the private key.
   ssl_private_key_result_t PrivateKeySignCallback(
       uint16_t algorithm,
@@ -188,8 +193,7 @@ class NET_EXPORT_PRIVATE SSLClientSocketImpl
   // Called whenever BoringSSL processes a protocol message.
   void MessageCallback(int is_write,
                        int content_type,
-                       const void* buf,
-                       size_t len);
+                       base::span<const uint8_t> bytes);
 
   void LogConnectEndEvent(int rv);
 
@@ -202,6 +206,10 @@ class NET_EXPORT_PRIVATE SSLClientSocketImpl
   int MapLastOpenSSLError(int ssl_error,
                           const crypto::OpenSSLErrStackTracer& tracer,
                           OpenSSLErrorInfo* info);
+
+  // Configures BoringSSL's ECH options based on the EchMode for the current
+  // host. Returns OK on success and a net error code on failure.
+  int ConfigureEch();
 
   // Wraps SSL_get0_ech_name_override. See documentation for that function.
   std::string_view GetECHNameOverride() const;

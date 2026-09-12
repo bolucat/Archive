@@ -4,13 +4,20 @@
 
 #include "quiche/quic/qbone/qbone_client_session.h"
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/qbone/bonnet/qbone_client_packet_exchanger.h"
 #include "quiche/quic/qbone/qbone_constants.h"
-#include "quiche/common/platform/api/quiche_command_line_flags.h"
+#include "quiche/quic/qbone/qbone_session_base.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 
 namespace quic {
 
@@ -19,9 +26,11 @@ QboneClientSession::QboneClientSession(
     QuicCryptoClientConfig* quic_crypto_client_config,
     QuicSession::Visitor* owner, const QuicConfig& config,
     const ParsedQuicVersionVector& supported_versions,
-    const QuicServerId& server_id, QbonePacketWriter* writer,
+    const QuicServerId& server_id,
+    QboneClientPacketExchanger* absl_nonnull local_network_packet_exchanger,
     QboneClientControlStream::Handler* handler)
-    : QboneSessionBase(connection, owner, config, supported_versions, writer),
+    : QboneSessionBase(connection, owner, config, supported_versions),
+      local_network_packet_exchanger_(*local_network_packet_exchanger),
       server_id_(server_id),
       quic_crypto_client_config_(quic_crypto_client_config),
       handler_(handler) {}
@@ -32,6 +41,11 @@ std::unique_ptr<QuicCryptoStream> QboneClientSession::CreateCryptoStream() {
   return std::make_unique<QuicCryptoClientStream>(
       server_id_, this, nullptr, quic_crypto_client_config_, this,
       /*has_application_state = */ true);
+}
+
+void QboneClientSession::SendErrorPacketToNetwork(absl::string_view packet) {
+  local_network_packet_exchanger_.WritePacketToNetwork(absl::MakeSpan(
+      reinterpret_cast<const std::byte*>(packet.data()), packet.size()));
 }
 
 void QboneClientSession::CreateControlStream() {
@@ -98,7 +112,8 @@ void QboneClientSession::ProcessPacketFromNetwork(absl::string_view packet) {
 }
 
 void QboneClientSession::ProcessPacketFromPeer(absl::string_view packet) {
-  writer_->WritePacketToNetwork(packet.data(), packet.size());
+  local_network_packet_exchanger_.WritePacketToNetwork(absl::MakeSpan(
+      reinterpret_cast<const std::byte*>(packet.data()), packet.size()));
 }
 
 void QboneClientSession::OnProofValid(

@@ -60,6 +60,18 @@ void GetOsVersionStringAndNumbers(std::string* version_string,
                                          *minor_version, *bugfix_version);
 }
 
+// Reads an Android system property of arbitrary length.
+// This is preferred over `__system_property_get` because the legacy API is
+// limited to `PROP_VALUE_MAX` (92 bytes) and will fail to return the value
+// (returning a warning message instead) if the property is longer.
+std::string ReadArbitrarilyLongSystemProperty(const char* name) {
+  // Fallback for devices running pre-API 26 or targets compiled with a
+  // minimum deployment target lower than Android 26.
+  char value_str[PROP_VALUE_MAX] = "";
+  __system_property_get(name, value_str);
+  return std::string(value_str);
+}
+
 }  // anonymous namespace
 
 namespace base {
@@ -146,6 +158,10 @@ SysInfo::HardwareInfo SysInfo::GetHardwareInfoSync() {
   DCHECK(IsStringUTF8(info.manufacturer));
   DCHECK(IsStringUTF8(info.model));
   return info;
+}
+
+std::string SysInfo::GetAndroidBuildFingerprint() {
+  return ReadArbitrarilyLongSystemProperty("ro.build.fingerprint");
 }
 
 }  // namespace base

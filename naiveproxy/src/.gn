@@ -8,8 +8,7 @@ import("//third_party/angle/dotfile_settings.gni")
 # The location of the build configuration file.
 buildconfig = "//build/config/BUILDCONFIG.gn"
 
-# The python interpreter to use by default. On Windows, this will look
-# for python3.exe and python3.bat.
+# The hermetic Python interpreter to use by default.
 script_executable = "python3"
 
 # These arguments override the default values for items in a declare_args
@@ -75,6 +74,8 @@ default_args = {
 
   clang_unsafe_buffers_paths = "//build/config/unsafe_buffers_paths.txt"
   clang_warning_suppression_file = "//build/config/warning_suppression.txt"
+  clang_raw_ptr_plugin_config_file = "//build/config/raw_ptr_plugin_config.yaml"
+  rust_clippy_conf_file = "//build/config/clippy.toml"
 }
 
 # These are the targets to skip header checking by default. The files in targets
@@ -176,4 +177,8 @@ exec_script_allowlist =
       "//third_party/dawn/third_party/meson/meson_target.gni",
     ]
 
-expand_directory_allowlist = build_dotfile_settings.expand_directory_allowlist
+expand_directory_allowlist =
+    build_dotfile_settings.expand_directory_allowlist + [
+      # Requires to enumerate policy template yaml files.
+      "//components/policy/BUILD.gn",
+    ]

@@ -1,91 +1,85 @@
-find_program(XMLTO_EXECUTABLE NAMES xmlto)
-find_program(ASCIIDOC_EXECUTABLE NAMES asciidoc asciidoc.py)
+option(WITH_DOC_MAN "Build manpage documentation with Doxygen" OFF)
+option(WITH_DOC_HTML "Build HTML documentation with Doxygen" OFF)
 
-option(WITH_DOC_MAN "Build manpage documentation" OFF)
-option(WITH_DOC_HTML "Build HTML documentation" OFF)
-if((WITH_DOC_MAN OR WITH_DOC_HTML) AND NOT ASCIIDOC_EXECUTABLE)
-    message(FATAL_ERROR "Documentation generation requires asciidoc")
+find_package(Doxygen 1.9.4 QUIET)
+if(NOT DOXYGEN_FOUND)
+    if(WITH_DOC_MAN OR WITH_DOC_HTML)
+        message(FATAL_ERROR "Documentation generation requires Doxygen 1.9.4 or newer")
+    endif()
+    return()
 endif()
-if(WITH_DOC_MAN AND NOT XMLTO_EXECUTABLE)
-    message(FATAL_ERROR "Manpage generation requires xmlto")
-endif()
 
-# NOTE For brew user, we have to setup this env var. see `brew info asciidoc'
-set(XMLTO_ENV)
-set(XMLTO_CATALOG_DIR_MACOS /usr/local/etc/xml/catalog)
-if (EXISTS ${XMLTO_CATALOG_DIR_MACOS})
-    set(XMLTO_ENV XML_CATALOG_FILES=${XMLTO_CATALOG_DIR_MACOS})
-    message(STATUS "Detect xmlto catalog dir ${XMLTO_CATALOG_DIR_MACOS}")
-endif ()
+set(DOC_NAMES ss-local ss-server ss-tunnel ss-redir ss-manager ss-nat shadowsocks-c)
+set(DOC_INPUTS)
+foreach(name IN LISTS DOC_NAMES)
+    list(APPEND DOC_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/${name}.md")
+endforeach()
+set(DOC_SOURCES)
+foreach(name local server tunnel redir manager utils aead stream)
+    list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/${name}.c")
+endforeach()
+list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/ss-nat")
 
-set(CMAKE_MANPAGE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/man)
-set(CMAKE_HTML_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/html)
+# Doxygen reads native documentation snippets directly from source. No target
+# binary or Python/AsciiDoc conversion step is needed, including in cross builds.
+foreach(format html man1 man8)
+    set(DOXYGEN_HTML NO)
+    set(DOXYGEN_MAN NO)
+    set(DOXYGEN_MAN_EXTENSION .1)
+    set(format_inputs ${DOC_INPUTS})
+    set(outputs)
+    if(format STREQUAL "html")
+        set(DOXYGEN_HTML YES)
+        list(APPEND format_inputs "${CMAKE_CURRENT_SOURCE_DIR}/index.md")
+        list(APPEND outputs "${PROJECT_BINARY_DIR}/html/index.html")
+        foreach(name IN LISTS DOC_NAMES)
+            list(APPEND outputs "${PROJECT_BINARY_DIR}/html/${name}.html")
+        endforeach()
+    elseif(format STREQUAL "man1")
+        set(DOXYGEN_MAN YES)
+        list(REMOVE_ITEM format_inputs "${CMAKE_CURRENT_SOURCE_DIR}/shadowsocks-c.md")
+        foreach(name ss-local ss-server ss-tunnel ss-redir ss-manager ss-nat)
+            list(APPEND outputs "${PROJECT_BINARY_DIR}/man/${name}.1")
+        endforeach()
+    else()
+        set(DOXYGEN_MAN YES)
+        set(DOXYGEN_MAN_EXTENSION .8)
+        set(format_inputs "${CMAKE_CURRENT_SOURCE_DIR}/shadowsocks-c.md")
+        list(APPEND outputs "${PROJECT_BINARY_DIR}/man/shadowsocks-c.8")
+    endif()
+    set(DOXYGEN_INPUT)
+    foreach(path IN LISTS format_inputs)
+        string(APPEND DOXYGEN_INPUT " \"${path}\"")
+    endforeach()
+    set(config "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile-${format}")
+    configure_file(Doxyfile.in "${config}" @ONLY)
+    set(stamp "${CMAKE_CURRENT_BINARY_DIR}/${format}.stamp")
+    add_custom_command(OUTPUT "${stamp}" ${outputs}
+        COMMAND "${DOXYGEN_EXECUTABLE}" "${config}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${stamp}"
+        DEPENDS "${config}" ${format_inputs} ${DOC_SOURCES}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Generating ${format} documentation with Doxygen"
+        VERBATIM)
+    set(DOC_${format}_OUTPUTS "${stamp}" ${outputs})
+endforeach()
 
-set(DOC_DIR ${PROJECT_SOURCE_DIR}/doc)
-set(XMLTO_OPTS -m ${DOC_DIR}/manpage-normal.xsl -m ${DOC_DIR}/manpage-bold-literal.xsl man)
-set(ASCIIDOC_XML_OPTS -b docbook -d manpage -f ${DOC_DIR}/asciidoc.conf -aversion=${PROJECT_VERSION})
-set(ASCIIDOC_HTML_OPTS -b html4 -d article -f ${DOC_DIR}/asciidoc.conf -aversion=${PROJECT_VERSION})
-
-
-set(MAN_NAMES ss-local.1 ss-manager.1 ss-nat.1 ss-redir.1 ss-server.1 ss-tunnel.1 shadowsocks-c.8)
-set(MAN_FILES)
-set(HTML_FILES)
-
-foreach (manfile IN LISTS MAN_NAMES)
-    string(REGEX REPLACE \\.. .xml xmlfile ${manfile})
-    string(REGEX REPLACE \\.. .asciidoc docfile ${manfile})
-    string(REGEX REPLACE \\.. .html htmlfile ${manfile})
-
-    set(manfile ${CMAKE_MANPAGE_OUTPUT_DIRECTORY}/${manfile})
-    set(htmlfile ${CMAKE_HTML_OUTPUT_DIRECTORY}/${htmlfile})
-    set(docfile ${DOC_DIR}/${docfile})
-
-    add_custom_command(OUTPUT ${manfile}
-            COMMAND ${ASCIIDOC_EXECUTABLE} ${ASCIIDOC_XML_OPTS} -o ${xmlfile} ${docfile}
-            COMMAND ${CMAKE_COMMAND} -E env ${XMLTO_ENV} ${XMLTO_EXECUTABLE} ${XMLTO_OPTS} ${xmlfile}
-            # After we built the manpage, the xmlfile is nolongger needed
-            COMMAND ${CMAKE_COMMAND} -E remove ${xmlfile}
-            DEPENDS ${docfile}
-            WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/man
-            COMMENT "Building manpage ${manfile}"
-            VERBATIM)
-    list(APPEND MAN_FILES ${manfile})
-
-    add_custom_command(OUTPUT ${htmlfile}
-            COMMAND ${ASCIIDOC_EXECUTABLE} ${ASCIIDOC_HTML_OPTS} -o ${htmlfile} ${docfile}
-            DEPENDS ${docfile}
-            WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/html
-            COMMENT "Building htmlfile ${htmlfile}"
-            VERBATIM)
-    list(APPEND HTML_FILES ${htmlfile})
-endforeach ()
-
-add_custom_target(doc-man ALL DEPENDS ${MAN_FILES})
-add_custom_target(doc-html ALL DEPENDS ${HTML_FILES})
-
-
-if (NOT WITH_DOC_MAN)
+add_custom_target(doc-man ALL DEPENDS ${DOC_man1_OUTPUTS} ${DOC_man8_OUTPUTS})
+add_custom_target(doc-html ALL DEPENDS ${DOC_html_OUTPUTS})
+if(NOT WITH_DOC_MAN)
     set_target_properties(doc-man PROPERTIES EXCLUDE_FROM_ALL TRUE)
-else ()
-    install(DIRECTORY ${PROJECT_BINARY_DIR}/man/
-            DESTINATION share/man/man1
-            FILES_MATCHING PATTERN "*.1"
-            )
-    install(DIRECTORY ${PROJECT_BINARY_DIR}/man/
-            DESTINATION share/man/man8
-            FILES_MATCHING PATTERN "*.8"
-            )
-endif ()
-if (NOT WITH_DOC_HTML)
+else()
+    foreach(name ss-local ss-server ss-tunnel ss-redir ss-manager ss-nat)
+        install(FILES "${PROJECT_BINARY_DIR}/man/${name}.1" DESTINATION share/man/man1)
+    endforeach()
+    install(FILES "${PROJECT_BINARY_DIR}/man/shadowsocks-c.8"
+        "${PROJECT_BINARY_DIR}/man/shadowsocks-libev.8" DESTINATION share/man/man8)
+endif()
+if(NOT WITH_DOC_HTML)
     set_target_properties(doc-html PROPERTIES EXCLUDE_FROM_ALL TRUE)
-else ()
-    install(DIRECTORY ${PROJECT_BINARY_DIR}/html/
-            DESTINATION share/doc/${PROJECT_NAME})
-endif ()
+else()
+    install(DIRECTORY "${PROJECT_BINARY_DIR}/html/" DESTINATION share/doc/${PROJECT_NAME})
+endif()
 
-# This is required for custom command
-file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/man)
-file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/html)
-
-# Retain the former manual lookup name.
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/man")
 file(WRITE "${PROJECT_BINARY_DIR}/man/shadowsocks-libev.8" ".so man8/shadowsocks-c.8\n")

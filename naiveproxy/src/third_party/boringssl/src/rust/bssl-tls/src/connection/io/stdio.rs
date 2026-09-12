@@ -14,14 +14,14 @@
 
 use std::io;
 
-use super::{
-    Error,
-    TlsMode, //
-};
+use super::Error;
 use crate::{
     ReceiveBuffer,
     connection::TlsConnection,
-    context::DtlsMode,
+    context::{
+        DtlsMode, //
+        TlsMode,
+    },
     errors::{
         IoError,
         TlsRetryReason, //
@@ -76,7 +76,7 @@ impl<R> io::Write for TlsConnection<R, TlsMode> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        translate_res_for_stdio(self.flush()).map(|_| ())
     }
 }
 
@@ -97,11 +97,11 @@ fn translate_result_for_datagram(res: Result<IoStatus, Error>) -> AbstractSocket
 
 impl<R> DatagramSocket for TlsConnection<R, DtlsMode> {
     fn send(&mut self, datagram: &[u8]) -> AbstractSocketResult {
-        translate_result_for_datagram(self.sync_write(datagram))
+        translate_result_for_datagram(self.sync_send(datagram))
     }
 
     fn recv(&mut self, datagram: &mut [u8]) -> AbstractSocketResult {
         let mut datagram = ReceiveBuffer::new(datagram);
-        translate_result_for_datagram(self.sync_read(&mut datagram))
+        translate_result_for_datagram(self.sync_recv(&mut datagram))
     }
 }

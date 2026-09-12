@@ -12,11 +12,13 @@
 #include <utility>
 
 #include "base/check_op.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "net/base/features.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_errors.h"
 #include "net/base/upload_data_stream.h"
@@ -322,7 +324,8 @@ void SpdyHttpStream::OnHeadersReceived(
   const int rv = SpdyHeadersToHttpResponse(response_headers, response_info_);
   DCHECK_NE(rv, ERR_INCOMPLETE_HTTP2_HEADERS);
 
-  if (rv == ERR_RESPONSE_HEADERS_MULTIPLE_LOCATION) {
+  if (rv == ERR_RESPONSE_HEADERS_MULTIPLE_LOCATION ||
+      rv == ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION) {
     // Cancel will call OnClose, which might call callbacks and might destroy
     // `this`.
     stream_->Cancel(rv);
@@ -601,6 +604,22 @@ void SpdyHttpStream::DoResponseCallback(int rv) {
 }
 
 int SpdyHttpStream::GetRemoteEndpoint(IPEndPoint* endpoint) {
+  // When the flag is enabled, we correctly route to the parent class, which
+  // delegates to SpdySession::GetRemoteEndpoint. This triggers proactive
+  // draining of the session if the socket is disconnected.
+  // When disabled, we keep the legacy behavior of calling GetPeerAddress
+  // directly, which bypasses the draining logic.
+  //
+  // TODO(crbug.com/450428442): Once this feature flag is removed, this entire
+  // override of GetRemoteEndpoint in SpdyHttpStream can be deleted. We can
+  // then inherit MultiplexedHttpStream::GetRemoteEndpoint directly from the
+  // parent class, as its implementation behaves identically to the
+  // flag-enabled branch.
+  if (base::FeatureList::IsEnabled(
+          features::kDrainSpdySessionSynchronouslyOnRemoteEndpointDisconnect)) {
+    return MultiplexedHttpStream::GetRemoteEndpoint(endpoint);
+  }
+
   if (!spdy_session_)
     return ERR_SOCKET_NOT_CONNECTED;
 

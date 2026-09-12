@@ -8,6 +8,7 @@
 
 #include "base/debug/stack_trace.h"
 #include "base/files/file_path.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/task/sequence_manager/sequence_manager_impl.h"
 #include "base/task/thread_pool/job_task_source.h"
@@ -62,6 +63,9 @@ BASE_FEATURE(kFeatureParamWithCache, FEATURE_ENABLED_BY_DEFAULT);
 // issues are found with it.
 BASE_FEATURE(kFastFilePathIsParent, FEATURE_ENABLED_BY_DEFAULT);
 
+// Enables residency tagging in the heap profiler.
+BASE_FEATURE(kHeapProfilerIncludeResidency, FEATURE_DISABLED_BY_DEFAULT);
+
 // Use non default low memory device threshold.
 // Value should be given via |LowMemoryDeviceThresholdMB|.
 #if BUILDFLAG(IS_ANDROID)
@@ -80,6 +84,15 @@ BASE_FEATURE_PARAM(int,
                    kLowMemoryDeviceThresholdMB,
                    &kLowEndMemoryExperiment,
                    LOW_MEMORY_DEVICE_THRESHOLD_MB);
+
+// Controls whether lock acquisition times are recorded and reported by a
+// given thread.
+BASE_FEATURE(kRecordLockAcquisitionTime, FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(std::string,
+                   kRecordLockAcquisitionTimeAllowedThreads,
+                   &kRecordLockAcquisitionTime,
+                   "RecordLockAcquisitionTimeAllowedThreads",
+                   "CrBrowserMain,CrRendererMain");
 
 BASE_FEATURE(kReducePPMs, FEATURE_ENABLED_BY_DEFAULT);
 
@@ -143,8 +156,6 @@ BASE_FEATURE(kBackgroundNotPerceptibleBinding, FEATURE_ENABLED_BY_DEFAULT);
 // thread,
 BASE_FEATURE(kPostPowerMonitorBroadcastReceiverInitToBackground,
              FEATURE_ENABLED_BY_DEFAULT);
-// If enabled, getMyMemoryState IPC will be posted to background.
-BASE_FEATURE(kPostGetMyMemoryStateToBackground, FEATURE_ENABLED_BY_DEFAULT);
 
 // Use a single connection and rebindService() to manage the binding to a child
 // process service.
@@ -158,9 +169,15 @@ BASE_FEATURE(kRebindServiceBatchApi, FEATURE_DISABLED_BY_DEFAULT);
 // in the ProcessList of OomAdjuster.
 BASE_FEATURE(kUseSharedRebindServiceConnection, FEATURE_ENABLED_BY_DEFAULT);
 
+// Kill switch for Android VirtualKeyboard API geometry and inset fixes.
+BASE_FEATURE(kVirtualKeyboardGeometryAndInsetFixes, FEATURE_ENABLED_BY_DEFAULT);
+
 // Use madvise MADV_WILLNEED to prefetch the native library. This replaces the
 // default mechanism of pre-reading the memory from a forked process.
 BASE_FEATURE(kLibraryPrefetcherMadvise, FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, only the ordered text section will be prefetched.
+BASE_FEATURE(kLibraryPrefetcherOnlyOrderedText, FEATURE_DISABLED_BY_DEFAULT);
 
 // When enabled, after start up the thread pool in PostTask.java will be
 // shutdown after pre-native to stop consuming resources.
@@ -188,6 +205,10 @@ BASE_FEATURE_PARAM(bool,
 // TERMINATION_STATUS_EVICTED_FOR_MEMORY for processes terminated due to commit
 // failures. Otherwise, it returns TERMINATION_STATUS_OOM.
 BASE_FEATURE(kUseTerminationStatusMemoryExhaustion, FEATURE_ENABLED_BY_DEFAULT);
+
+// Optimize text decoding by using FindFirstNonASCII to find and copy ASCII
+// content.
+BASE_FEATURE(kUtfConversionAsciiFastPath, FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_WIN)
 // When enabled, use ABOVE_NORMAL_PRIORITY_CLASS for Priority::kUserBlocking on
@@ -226,6 +247,7 @@ bool IsReducePPMsEnabled() {
 void Init() {
   g_is_reduce_ppms_enabled.store(FeatureList::IsEnabled(kReducePPMs),
                                  std::memory_order_relaxed);
+  strings_internal::InitializeUtfStringConversionsFeatures();
 #if BUILDFLAG(IS_POSIX)
   base::Lock::InitializeFeatures();
 #endif  // BUILDFLAG(IS_POSIX)

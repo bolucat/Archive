@@ -8,6 +8,7 @@
 #include <ctime>
 
 #include "partition_alloc/build_config.h"
+#include "partition_alloc/buildflags.h"
 #include "partition_alloc/partition_alloc_base/time/time.h"
 #if PA_BUILDFLAG(IS_ANDROID) && !defined(__LP64__)
 #include <time64.h>
@@ -74,7 +75,7 @@ Time TimeNowIgnoringOverride() {
   // Unix (1970) to Windows (1601) epoch.
   return Time() +
          Microseconds((tv.tv_sec * Time::kMicrosecondsPerSecond + tv.tv_usec) +
-                      Time::kTimeTToMicrosecondsOffset);
+                      Time::kMicrosecondsFromWindowsToUnixEpoch);
 }
 
 Time TimeNowFromSystemTimeIgnoringOverride() {

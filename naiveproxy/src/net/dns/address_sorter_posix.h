@@ -6,6 +6,7 @@
 #define NET_DNS_ADDRESS_SORTER_POSIX_H_
 
 #include <map>
+#include <tuple>
 #include <vector>
 
 #include "base/containers/unique_ptr_adapters.h"
@@ -13,12 +14,15 @@
 #include "base/threading/thread_checker.h"
 #include "net/base/ip_address.h"
 #include "net/base/net_export.h"
+#include "net/base/network_anonymization_key.h"
 #include "net/base/network_change_notifier.h"
+#include "net/base/network_handle.h"
 #include "net/dns/address_sorter.h"
 #include "net/socket/datagram_client_socket.h"
 
 namespace net {
 
+class ConnectPredictor;
 class ClientSocketFactory;
 
 // This implementation uses explicit policy to perform the sorting. It is not
@@ -69,6 +73,8 @@ class NET_EXPORT_PRIVATE AddressSorterPosix
 
   // AddressSorter:
   void Sort(const std::vector<IPEndPoint>& endpoints,
+            const NetworkAnonymizationKey& anonymization_key,
+            handles::NetworkHandle target_network,
             CallbackType callback) const override;
 
  private:
@@ -78,6 +84,7 @@ class NET_EXPORT_PRIVATE AddressSorterPosix
   // NetworkChangeNotifier::IPAddressObserver:
   void OnIPAddressChanged(
       NetworkChangeNotifier::IPAddressChangeType change_type) override;
+
   // Fills |info| with values for |address| from policy tables.
   void FillPolicy(const IPAddress& address, SourceAddressInfo* info) const;
 
@@ -91,6 +98,12 @@ class NET_EXPORT_PRIVATE AddressSorterPosix
   PolicyTable precedence_table_;
   PolicyTable label_table_;
   PolicyTable ipv4_scope_table_;
+
+  // An instance of ConnectPredictor may make predictions about what a connect()
+  // call would return without having to call it. SortContext objects contain
+  // pointers to Partitions owned by the ConnectPredictor, and so
+  // ConnectPredictor must outlive the SortContext objects.
+  std::unique_ptr<ConnectPredictor> connect_predictor_;
 
   // SortContext stores data for an outstanding Sort() that is completing
   // asynchronously. Mutable to allow pushing a new SortContext when Sort is

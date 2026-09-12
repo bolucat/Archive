@@ -58,6 +58,7 @@
 #include "net/spdy/spdy_session.h"
 #include "net/spdy/spdy_session_pool.h"
 #include "net/ssl/ssl_cert_request_info.h"
+#include "net/ssl/ssl_config_service.h"
 #include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
 
 namespace net {
@@ -1131,8 +1132,8 @@ void HttpStreamPool::AttemptManager::ResolveServiceEndpoint(
   service_endpoint_request_ =
       http_network_session()->host_resolver()->CreateServiceEndpointRequest(
           stream_key().GetHostToResolve(),
-          stream_key().network_anonymization_key(), net_log(),
-          std::move(parameters));
+          stream_key().network_anonymization_key(),
+          stream_key().target_network(), net_log(), std::move(parameters));
 
   dns_resolution_start_time_ = base::TimeTicks::Now();
   int rv = service_endpoint_request_->Start(this);
@@ -1256,7 +1257,9 @@ QuicChromiumClientSession* HttpStreamPool::AttemptManager::
     QuicChromiumClientSession* quic_session =
         quic_session_pool()->HasMatchingIpSessionForServiceEndpoint(
             quic_session_alias_key(), endpoint,
-            service_endpoint_request_->GetDnsAliasResults(), true);
+            service_endpoint_request_->GetDnsAliasResults(),
+            /*use_dns_aliases=*/true,
+            /*log_negative_result=*/true);
     if (quic_session) {
       return quic_session;
     }
@@ -2179,10 +2182,10 @@ bool HttpStreamPool::AttemptManager::CanUseExistingQuicSession() const {
 }
 
 bool HttpStreamPool::AttemptManager::IsEchEnabled() const {
-  return pool()
-      ->stream_attempt_params()
-      ->ssl_client_context->config()
-      .ech_enabled;
+  SSLClientContext* ssl_client_context =
+      pool()->stream_attempt_params()->ssl_client_context;
+  return ssl_client_context &&
+         ssl_client_context->IsEchEnabled(stream_key().destination().host());
 }
 
 void HttpStreamPool::AttemptManager::MaybeMarkQuicBroken() {

@@ -28,6 +28,7 @@
 #include "quiche/quic/core/http/web_transport_http3.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_session.h"
+#include "quiche/quic/core/quic_stream_priority.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_versions.h"
@@ -222,7 +223,7 @@ class SizeLimitingHeaderList : public spdy::SpdyHeadersHandlerInterface {
                         size_t compressed_header_bytes) override {
     header_list_.OnHeaderBlockEnd(uncompressed_header_bytes,
                                   compressed_header_bytes);
-    if (current_header_list_size_ > max_header_list_size_) {
+    if (current_header_list_size_ >= max_header_list_size_) {
       Clear();
     }
   }
@@ -735,6 +736,9 @@ void QuicSpdySession::OnPriorityFrame(
 
 bool QuicSpdySession::OnPriorityUpdateForRequestStream(
     QuicStreamId stream_id, HttpStreamPriority priority) {
+  // TODO: Close the connection if the client receives a PRIORITY_UPDATE or
+  // the stream is not a request stream, per
+  // https://datatracker.ietf.org/doc/html/rfc9218#section-7.2
   if (perspective() == Perspective::IS_CLIENT ||
       !QuicUtils::IsBidirectionalStreamId(stream_id, version()) ||
       !QuicUtils::IsClientInitiatedStreamId(transport_version(), stream_id)) {
@@ -964,6 +968,7 @@ void QuicSpdySession::OnStreamCreated(QuicSpdyStream* stream) {
   }
 
   stream->SetPriority(QuicStreamPriority(it->second));
+  stream->set_priority_source(quic::PrioritySource::SET_BY_PRIORITY_UPDATE);
   buffered_stream_priorities_.erase(it);
 }
 
@@ -1637,9 +1642,7 @@ void QuicSpdySession::MaybeInitializeHttp3UnidirectionalStreams() {
   // capacity is always zero and encoder's dynamic table capacity is MIN(0,
   // SETTINGS_QPACK_MAX_TABLE_CAPACITY from peer) = 0. Hence, we don't need to
   // instantiate qpack send streams for both decoder and encoder.
-  if (GetQuicheReloadableFlag(quic_not_instantiate_unused_qpack_send_stream) &&
-      qpack_maximum_dynamic_table_capacity_ == 0) {
-    QUICHE_RELOADABLE_FLAG_COUNT(quic_not_instantiate_unused_qpack_send_stream);
+  if (qpack_maximum_dynamic_table_capacity_ == 0) {
     return;
   }
 
@@ -1764,11 +1767,15 @@ void QuicSpdySession::LogHeaderCompressionRatioHistogram(
   // be the same across calls for any given call site.
   if (using_qpack) {
     if (is_sent) {
+      QUIC_VLOG(1) << "QPACK headers sent compressed: " << compressed
+                   << " uncompressed:" << uncompressed;
       QUIC_HISTOGRAM_COUNTS("QuicSession.HeaderCompressionRatioQpackSent",
                             ratio, 1, 200, 200,
                             "Header compression ratio as percentage for sent "
                             "headers using QPACK.");
     } else {
+      QUIC_VLOG(1) << "QPACK headers received compressed: " << compressed
+                   << " uncompressed:" << uncompressed;
       QUIC_HISTOGRAM_COUNTS("QuicSession.HeaderCompressionRatioQpackReceived",
                             ratio, 1, 200, 200,
                             "Header compression ratio as percentage for "

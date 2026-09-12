@@ -157,8 +157,11 @@ void DiskCacheTestWithCache::LoadInMemoryIndex() {
 
 void DiskCacheTestWithCache::SetMaxSize(int64_t size) {
   size_ = size;
-  // Cache size should not generally be changed dynamically; it takes
-  // backend-specific knowledge to make it even semi-reasonable to do.
+  // Cache size should not generally be changed dynamically.
+  // This method only changes the initial size when creating a backend.
+  //
+  // To change the size after initialization, see the backend's SetMaxBytes
+  // method (which may not be supported by all backends).
   DCHECK(!cache_);
 }
 
@@ -482,8 +485,8 @@ void DiskCacheTestWithCache::CreateBackend(uint32_t flags) {
 #if BUILDFLAG(ENABLE_DISK_CACHE_SQL_BACKEND)
   if (backend_to_test_ == BackendToTest::kSql) {
     net::TestCompletionCallback cb;
-    auto sql_backend =
-        std::make_unique<disk_cache::SqlBackendImpl>(cache_path_, size_, type_);
+    auto sql_backend = std::make_unique<disk_cache::SqlBackendImpl>(
+        cache_path_, size_, type_, /*cleanup_tracker=*/nullptr);
     sql_backend->Init(cb.callback());
     ASSERT_THAT(cb.WaitForResult(), IsOk());
     sql_cache_impl_ = sql_backend.get();

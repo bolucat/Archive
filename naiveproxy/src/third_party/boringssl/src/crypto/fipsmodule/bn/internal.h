@@ -221,7 +221,6 @@ extern "C"
 // are `num` words long. It returns the carry bit, which is one if the operation
 // overflowed and zero otherwise. Any pair of `ap`, `bp`, and `rp` may be equal
 // to each other but otherwise may not alias.
-
 #if defined(BN_ADD_ASM)
 extern "C"
 #endif
@@ -262,6 +261,13 @@ extern "C"
 extern "C"
 #endif
     void bn_sqr_comba4(BN_ULONG r[8], const BN_ULONG a[4]);
+
+// bn_add_carry_words adds `carry` to `ap` and places the result in `rp`. `ap`
+// and `rp` are `num` words long and may alias. `carry` must be 0 or 1. It
+// returns the carry bit, which is one if the operation overflowed and zero
+// otherwise.
+BN_ULONG bn_add_carry_words(BN_ULONG *rp, const BN_ULONG *ap, BN_ULONG carry,
+                            size_t num);
 
 // bn_less_than_words returns one if `a` < `b` and zero otherwise, where `a`
 // and `b` both are `len` words long. It runs in constant time.

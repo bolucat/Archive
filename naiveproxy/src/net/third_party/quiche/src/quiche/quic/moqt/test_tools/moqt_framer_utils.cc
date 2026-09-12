@@ -4,23 +4,26 @@
 
 #include "quiche/quic/moqt/test_tools/moqt_framer_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <variant>
 
+#include "absl/strings/string_view.h"
+#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/moqt/moqt_framer.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_parser.h"
+#include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_buffer_allocator.h"
+#include "quiche/common/quiche_data_reader.h"
 
 namespace moqt::test {
 
 namespace {
 
 struct FramingVisitor {
-  quiche::QuicheBuffer operator()(const MoqtClientSetup& message) {
-    return framer.SerializeClientSetup(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtServerSetup& message) {
-    return framer.SerializeServerSetup(message);
+  quiche::QuicheBuffer operator()(const MoqtSetup& message) {
+    return framer.SerializeSetup(message);
   }
   quiche::QuicheBuffer operator()(const MoqtRequestOk& message) {
     return framer.SerializeRequestOk(message);
@@ -34,9 +37,6 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtSubscribeOk& message) {
     return framer.SerializeSubscribeOk(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtUnsubscribe& message) {
-    return framer.SerializeUnsubscribe(message);
-  }
   quiche::QuicheBuffer operator()(const MoqtPublishDone& message) {
     return framer.SerializePublishDone(message);
   }
@@ -46,17 +46,11 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtPublishNamespace& message) {
     return framer.SerializePublishNamespace(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtPublishNamespaceDone& message) {
-    return framer.SerializePublishNamespaceDone(message);
-  }
   quiche::QuicheBuffer operator()(const MoqtNamespace& message) {
     return framer.SerializeNamespace(message);
   }
   quiche::QuicheBuffer operator()(const MoqtNamespaceDone& message) {
     return framer.SerializeNamespaceDone(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtPublishNamespaceCancel& message) {
-    return framer.SerializePublishNamespaceCancel(message);
   }
   quiche::QuicheBuffer operator()(const MoqtTrackStatus& message) {
     return framer.SerializeTrackStatus(message);
@@ -66,6 +60,9 @@ struct FramingVisitor {
   }
   quiche::QuicheBuffer operator()(const MoqtSubscribeNamespace& message) {
     return framer.SerializeSubscribeNamespace(message);
+  }
+  quiche::QuicheBuffer operator()(const MoqtSubscribeTracks& message) {
+    return framer.SerializeSubscribeTracks(message);
   }
   quiche::QuicheBuffer operator()(const MoqtMaxRequestId& message) {
     return framer.SerializeMaxRequestId(message);
@@ -97,8 +94,31 @@ struct FramingVisitor {
 
 std::string SerializeGenericMessage(const AnyMoqtControlMessage& frame,
                                     bool use_webtrans) {
-  MoqtFramer framer(use_webtrans);
+  quic::Perspective perspective = quic::Perspective::IS_CLIENT;
+  if (std::holds_alternative<MoqtSetup>(frame)) {
+    const MoqtSetup& setup = std::get<MoqtSetup>(frame);
+    if (!use_webtrans && !setup.parameters.path.has_value()) {
+      perspective = quic::Perspective::IS_SERVER;
+    }
+  }
+  MoqtFramer framer(use_webtrans, perspective);
   return std::string(std::visit(FramingVisitor{framer}, frame).AsStringView());
+}
+
+MoqtRawControlMessage UnframeRawControlMessage(absl::string_view message) {
+  quiche::QuicheDataReader reader(message);
+  uint64_t raw_type;
+  uint16_t message_size;
+  bool parse_success = reader.ReadMoqVarInt(&raw_type) &&
+                       reader.ReadUInt16(&message_size) &&
+                       reader.BytesRemaining() == message_size;
+  if (!parse_success) {
+    ADD_FAILURE() << "Failed to unframe the control message";
+    return MoqtRawControlMessage();
+  }
+  return MoqtRawControlMessage{
+      .type = static_cast<MoqtMessageType>(raw_type),
+      .payload = std::string(reader.ReadRemainingPayload())};
 }
 
 }  // namespace moqt::test

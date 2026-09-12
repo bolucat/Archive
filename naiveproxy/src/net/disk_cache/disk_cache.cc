@@ -11,6 +11,7 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_functions.h"
@@ -22,6 +23,7 @@
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "net/base/cache_type.h"
+#include "net/base/features.h"
 #include "net/base/net_errors.h"
 #include "net/disk_cache/backend_cleanup_tracker.h"
 #include "net/disk_cache/basic_cache_file.h"
@@ -196,8 +198,8 @@ void CacheCreator::Run() {
 
 #if BUILDFLAG(ENABLE_DISK_CACHE_SQL_BACKEND)
   if (backend_type_ == net::CACHE_BACKEND_EXPERIMENTAL_SQL) {
-    auto sql_cache =
-        std::make_unique<disk_cache::SqlBackendImpl>(path_, max_bytes_, type_);
+    auto sql_cache = std::make_unique<disk_cache::SqlBackendImpl>(
+        path_, max_bytes_, type_, cleanup_tracker_);
     auto* sql_cache_ptr = sql_cache.get();
     created_cache_ = std::move(sql_cache);
     sql_cache_ptr->Init(
@@ -269,7 +271,11 @@ void CacheCreator::TryCreateCleanupTrackerAndRun() {
     cleanup_tracker_->AddPostCleanupCallback(std::move(post_cleanup_callback_));
   }
 
-  Run();
+  if (type_ == net::DISK_CACHE) {
+    InitEncryptionAndRun();
+  } else {
+    Run();
+  }
 }
 
 void CacheCreator::DoCallback(int net_error) {
@@ -437,6 +443,11 @@ BackendResult CreateCacheBackendImpl(
   }
 
   bool had_post_cleanup_callback = !post_cleanup_callback.is_null();
+  // As document in disk_cache.h, `had_post_cleanup_callback` is not supported
+  // for net::DISK_CACHE. Note: When kEnableBackendCleanupTrackerOnHttpCache is
+  // enabled, we can support it jutt by removing this CHECK().
+  CHECK(!((type == net::DISK_CACHE) && had_post_cleanup_callback));
+
   CacheCreator* creator =
       new CacheCreator(path, reset_handling, max_bytes, type, backend_type,
                        std::move(file_operations),
@@ -445,8 +456,9 @@ BackendResult CreateCacheBackendImpl(
 #endif
                        net_log, std::move(cache_encryption_delegate),
                        std::move(post_cleanup_callback), std::move(callback));
-  if (type == net::DISK_CACHE) {
-    DCHECK(!had_post_cleanup_callback);
+  if (type == net::DISK_CACHE &&
+      !base::FeatureList::IsEnabled(
+          net::features::kEnableBackendCleanupTrackerOnHttpCache)) {
     creator->InitEncryptionAndRun();
   } else {
     creator->TryCreateCleanupTrackerAndRun();
@@ -531,6 +543,20 @@ void FlushCacheThreadAsynchronouslyForTesting(base::OnceClosure callback) {
 
   // Block backend.
   BackendImpl::FlushAsynchronouslyForTesting(repeating_callback);
+}
+
+void WaitForBackendCleanupForTesting(const base::FilePath& path,  // IN-TEST
+                                     base::OnceClosure callback) {
+  auto [callback_1, callback_2] = base::SplitOnceCallback(std::move(callback));
+  // TryCreate will return an instance only if there is no active tracker. In
+  // this case, `callback_1` will not be run and no extra waiting is necessary,
+  // so post `callback_2` to the current sequence to run soon. Otherwise, if
+  // `TryCreate` returns null, `callback_1` has been added to its list of
+  // callbacks to run when cleanup completes.
+  if (BackendCleanupTracker::TryCreate(path, std::move(callback_1))) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(callback_2));
+  }
 }
 
 int64_t Backend::CalculateSizeOfEntriesBetween(

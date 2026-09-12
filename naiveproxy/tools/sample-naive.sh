@@ -10,7 +10,7 @@ sudo echo
 
 rm -f /tmp/keys
 
-sudo tshark -Q -a duration:10 -w /tmp/direct.pcapng &
+sudo tshark -Q -a duration:10 -w /tmp/naive.pcapng &
 tsharkpid=$!
 sleep 1
 
@@ -28,6 +28,6 @@ sleep 1
 kill -9 $naivepid
 
 wait $tsharkpid
-sudo chmod +r /tmp/direct.pcapng
+sudo chmod +r /tmp/naive.pcapng
 
-./parse-pcap-stream.py /tmp/direct.pcapng "$domain"
+./parse-pcap-stream.py /tmp/naive.pcapng "$domain"

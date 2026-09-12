@@ -34,6 +34,7 @@
 #include "net/base/address_family.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/network_anonymization_key.h"
+#include "net/base/network_handle.h"
 #include "net/base/trace_constants.h"
 #include "net/base/url_util.h"
 #include "net/dns/host_resolver.h"
@@ -65,6 +66,7 @@ const char kNetErrorKey[] = "net_error";
 const char kIpEndpointsKey[] = "ip_endpoints";
 const char kEndpointAddressKey[] = "endpoint_address";
 const char kEndpointPortKey[] = "endpoint_port";
+const char kInterfaceNameKey[] = "interface_name";
 const char kEndpointMetadatasKey[] = "endpoint_metadatas";
 const char kEndpointMetadataWeightKey[] = "endpoint_metadata_weight";
 const char kEndpointMetadataValueKey[] = "endpoint_metadata_value";
@@ -74,11 +76,19 @@ const char kTextRecordsKey[] = "text_records";
 const char kHostnameResultsKey[] = "hostname_results";
 const char kHostPortsKey[] = "host_ports";
 const char kCanonicalNamesKey[] = "canonical_names";
+const char kTargetNetworkKey[] = "target_network";
 
 base::Value IpEndpointToValue(const IPEndPoint& endpoint) {
   base::DictValue dictionary;
   dictionary.Set(kEndpointAddressKey, endpoint.ToStringWithoutPort());
   dictionary.Set(kEndpointPortKey, endpoint.port());
+  if (endpoint.scope_id().has_value()) {
+    base::Value interface_name =
+        IPEndPoint::ScopeIdToInterfaceNameValue(endpoint.scope_id());
+    if (!interface_name.is_none()) {
+      dictionary.Set(kInterfaceNameKey, std::move(interface_name));
+    }
+  }
   return base::Value(std::move(dictionary));
 }
 
@@ -99,7 +109,16 @@ std::optional<IPEndPoint> IpEndpointFromValue(const base::Value& value) {
   if (!ip.AssignFromIPLiteral(*ip_str))
     return std::nullopt;
 
-  return IPEndPoint(ip, base::checked_cast<uint16_t>(port.value()));
+  std::optional<uint32_t> scope_id =
+      IPEndPoint::ScopeIdFromInterfaceName(dict.Find(kInterfaceNameKey));
+  if (scope_id.has_value()) {
+    if (scope_id.value() == 0 || !(ip.IsIPv6() && ip.IsLinkLocal()) ||
+        !base::IsValueInRangeForNumericType<uint32_t>(scope_id.value())) {
+      return std::nullopt;
+    }
+  }
+
+  return IPEndPoint(ip, base::checked_cast<uint16_t>(port.value()), scope_id);
 }
 
 base::Value EndpointMetadataPairToValue(
@@ -220,12 +239,14 @@ HostCache::Key::Key(std::variant<url::SchemeHostPort, std::string> host,
                     DnsQueryType dns_query_type,
                     HostResolverFlags host_resolver_flags,
                     HostResolverSource host_resolver_source,
-                    const NetworkAnonymizationKey& network_anonymization_key)
+                    const NetworkAnonymizationKey& network_anonymization_key,
+                    handles::NetworkHandle target_network)
     : host(std::move(host)),
       dns_query_type(dns_query_type),
       host_resolver_flags(host_resolver_flags),
       host_resolver_source(host_resolver_source),
-      network_anonymization_key(network_anonymization_key) {
+      network_anonymization_key(network_anonymization_key),
+      target_network(target_network) {
   DCHECK(IsValidHostname(GetHostname(this->host)));
   if (std::holds_alternative<url::SchemeHostPort>(this->host)) {
     DCHECK(std::get<url::SchemeHostPort>(this->host).IsValid());
@@ -491,7 +512,7 @@ HostCache::Entry HostCache::Entry::CopyWithDefaultPort(uint16_t port) const {
 
   for (IPEndPoint& endpoint : copy.ip_endpoints_) {
     if (endpoint.port() == 0) {
-      endpoint = IPEndPoint(endpoint.address(), port);
+      endpoint = endpoint.CopyWithPort(port);
     }
   }
 
@@ -516,9 +537,9 @@ std::vector<ServiceEndpoint> HostCache::Entry::ConvertToServiceEndpoints(
     std::vector<IPEndPoint>& ip_endpoints =
         ip_endpoint.address().IsIPv6() ? ipv6_endpoints : ipv4_endpoints;
     if (ip_endpoint.port() == 0) {
-      ip_endpoints.emplace_back(ip_endpoint.address(), port);
+      ip_endpoints.push_back(ip_endpoint.CopyWithPort(port));
     } else {
-      ip_endpoints.emplace_back(ip_endpoint);
+      ip_endpoints.push_back(ip_endpoint);
     }
   }
 
@@ -736,26 +757,35 @@ HostCache::~HostCache() {
   RecordEraseAll(EraseReason::kEraseDestruct, tick_clock_->NowTicks());
 }
 
-const std::pair<const HostCache::Key, HostCache::Entry>*
-HostCache::Lookup(const Key& key, base::TimeTicks now, bool ignore_secure) {
+const std::pair<const HostCache::Key, HostCache::Entry>* HostCache::Lookup(
+    const Key& key,
+    base::TimeTicks now,
+    bool ignore_secure,
+    bool record_metrics) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (caching_is_disabled())
     return nullptr;
 
   auto* result = LookupInternalIgnoringFields(key, now, ignore_secure);
   if (!result) {
-    RecordLookup(LookupOutcome::kLookupMissAbsent, now, key, nullptr);
+    if (record_metrics) {
+      RecordLookup(LookupOutcome::kLookupMissAbsent, now, key, nullptr);
+    }
     return nullptr;
   }
 
   auto* entry = &result->second;
   if (entry->IsStale(now, network_changes_)) {
-    RecordLookup(LookupOutcome::kLookupMissStale, now, result->first, entry);
+    if (record_metrics) {
+      RecordLookup(LookupOutcome::kLookupMissStale, now, result->first, entry);
+    }
     return nullptr;
   }
 
   entry->CountHit(/* hit_is_stale= */ false);
-  RecordLookup(LookupOutcome::kLookupHitValid, now, result->first, entry);
+  if (record_metrics) {
+    RecordLookup(LookupOutcome::kLookupHitValid, now, result->first, entry);
+  }
   return result;
 }
 
@@ -763,23 +793,28 @@ const std::pair<const HostCache::Key, HostCache::Entry>* HostCache::LookupStale(
     const Key& key,
     base::TimeTicks now,
     HostCache::EntryStaleness* stale_out,
-    bool ignore_secure) {
+    bool ignore_secure,
+    bool record_metrics) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (caching_is_disabled())
     return nullptr;
 
   auto* result = LookupInternalIgnoringFields(key, now, ignore_secure);
   if (!result) {
-    RecordLookup(LookupOutcome::kLookupMissAbsent, now, key, nullptr);
+    if (record_metrics) {
+      RecordLookup(LookupOutcome::kLookupMissAbsent, now, key, nullptr);
+    }
     return nullptr;
   }
 
   auto* entry = &result->second;
   bool is_stale = entry->IsStale(now, network_changes_);
   entry->CountHit(/* hit_is_stale= */ is_stale);
-  RecordLookup(is_stale ? LookupOutcome::kLookupHitStale
-                        : LookupOutcome::kLookupHitValid,
-               now, result->first, entry);
+  if (record_metrics) {
+    RecordLookup(is_stale ? LookupOutcome::kLookupHitStale
+                          : LookupOutcome::kLookupHitValid,
+                 now, result->first, entry);
+  }
 
   if (stale_out)
     entry->GetStaleness(now, network_changes_, stale_out);
@@ -977,6 +1012,10 @@ void HostCache::GetList(base::ListValue& entry_list,
               &network_anonymization_key_value)) {
         continue;
       }
+      // Don't save entries associated with a specific network.
+      if (key.target_network != handles::kInvalidNetworkHandle) {
+        continue;
+      }
     } else {
       // ToValue() fails for transient NAKs, since they should never be
       // serialized to disk in a restorable format, so use ToDebugString() when
@@ -1004,6 +1043,11 @@ void HostCache::GetList(base::ListValue& entry_list,
     entry_dict.Set(kNetworkAnonymizationKey,
                    std::move(network_anonymization_key_value));
     entry_dict.Set(kSecureKey, key.secure);
+
+    if (serialization_type == SerializationType::kDebug) {
+      entry_dict.Set(kTargetNetworkKey,
+                     base::NumberToString(key.target_network));
+    }
 
     entry_list.Append(std::move(entry_dict));
   }
@@ -1116,12 +1160,22 @@ bool HostCache::RestoreFromListValue(const base::ListValue& old_cache) {
 
     std::vector<IPEndPoint> ip_endpoints;
     if (ip_endpoints_list) {
+      bool interface_unavailable = false;
       for (const base::Value& ip_endpoint_value : *ip_endpoints_list) {
         std::optional<IPEndPoint> ip_endpoint =
             IpEndpointFromValue(ip_endpoint_value);
-        if (!ip_endpoint)
+        if (!ip_endpoint) {
+          const base::DictValue* ep_dict = ip_endpoint_value.GetIfDict();
+          if (ep_dict && ep_dict->FindString(kInterfaceNameKey)) {
+            interface_unavailable = true;
+            break;
+          }
           return false;
+        }
         ip_endpoints.push_back(std::move(ip_endpoint).value());
+      }
+      if (interface_unavailable) {
+        continue;
       }
     }
 
@@ -1201,7 +1255,7 @@ bool HostCache::RestoreFromListValue(const base::ListValue& old_cache) {
 
     Key key(std::move(host), dns_query_type.value(), flags,
             static_cast<HostResolverSource>(host_resolver_source),
-            network_anonymization_key);
+            network_anonymization_key, handles::kInvalidNetworkHandle);
     key.secure = secure;
 
     // If the key is already in the cache, assume it's more recent and don't

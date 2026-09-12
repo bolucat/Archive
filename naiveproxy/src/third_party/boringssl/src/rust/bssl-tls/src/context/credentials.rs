@@ -25,15 +25,30 @@ use crate::{
     config::ConfigurationError,
     context::{
         CertificateCache,
-        SupportedMode, //
+        SupportedMode,
+        methods::{
+            HasPrivateKeyMethods,
+            RustContextMethods, //
+        }, //
     },
     credentials::{
         CertificateType,
         CertificateVerificationMode,
+        DistinguishedName,
+        PrivateKeyDelegate,
         SignatureAlgorithm,
         TlsCredential,
         VerifyCertificate,
-        cert_cb, //
+        cert_cb,
+        early_callback::{
+            EarlyCallback,
+            early_cb, //
+        }, //
+        select_cert::{
+            ClientCertificateSelector,
+            ServerCertificateSelector,
+            select_cert_cb, //
+        },
     },
     errors::Error,
     ffi::slice_into_ffi_raw_parts,
@@ -64,6 +79,30 @@ where
                 bssl_sys::SSL_CTX_set1_buffer_pool(ctx, null_mut());
             }
         }
+        self
+    }
+
+    /// Set the private key method.
+    ///
+    /// This private key method delegation may be replaced the next moment when
+    /// a new TLS private key is supplied.
+    pub fn with_private_key_delegate(
+        &mut self,
+        key_method: Option<Box<dyn PrivateKeyDelegate>>,
+    ) -> &mut Self {
+        let ctx = self.ptr();
+        if key_method.is_some() {
+            unsafe {
+                // Safety: we only install our own vtable.
+                bssl_sys::SSL_CTX_set_private_key_method(ctx, <M as HasPrivateKeyMethods>::METHODS);
+            }
+        } else {
+            unsafe {
+                // Safety: we only uninstall the vtable.
+                bssl_sys::SSL_CTX_set_private_key_method(ctx, core::ptr::null());
+            }
+        }
+        self.get_context_methods().private_key_methods = key_method;
         self
     }
 
@@ -133,6 +172,36 @@ where
         self
     }
 
+    /// Set custom certificate selection callback.
+    ///
+    /// See [`EarlyCallback`] for its semantics.
+    pub fn with_early_callback<S>(&mut self, handler: S) -> &mut Self
+    where
+        S: EarlyCallback<M> + 'static,
+    {
+        let ctx = self.ptr();
+        unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_CTX_set_select_certificate_cb(
+                ctx,
+                Some(early_cb::<M, super::methods::RustContextMethods<M>>),
+            );
+        }
+        self.get_context_methods().early_callback_handler = Some(Box::new(handler) as _);
+        self
+    }
+
+    /// Remove custom certificate selection callback.
+    pub fn without_early_callback(&mut self) -> &mut Self {
+        let ctx = self.ptr();
+        unsafe {
+            // Safety: we only uninstall the vtable.
+            bssl_sys::SSL_CTX_set_select_certificate_cb(ctx, None);
+        }
+        self.get_context_methods().early_callback_handler = None;
+        self
+    }
+
     /// Append `credential` to the list of credentials of this context.
     pub fn with_credential(&mut self, credential: TlsCredential) -> Result<&mut Self, Error> {
         check_lib_error!(unsafe {
@@ -179,8 +248,56 @@ where
     }
 }
 
-/// # Certificate verification
-impl<M> TlsContextBuilder<M> {
+/// # Certificate selection
+impl<M: SupportedMode> TlsContextBuilder<M> {
+    /// Set certificate selection callback on **client** side.
+    pub fn with_client_side_certificate_callback<T: 'static + ClientCertificateSelector<M>>(
+        &mut self,
+        cb: T,
+    ) -> &mut Self {
+        let ctx = self.ptr();
+        let methods = self.get_context_methods();
+        methods.client_cert_cb = Some(Box::new(cb) as _);
+        unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_CTX_set_cert_cb(
+                ctx,
+                Some(select_cert_cb::<RustContextMethods<M>, M>),
+                null_mut(),
+            );
+        }
+        self
+    }
+
+    /// Set certificate selection callback on **server** side.
+    pub fn with_server_side_certificate_callback<T: 'static + ServerCertificateSelector<M>>(
+        &mut self,
+        cb: T,
+    ) -> &mut Self {
+        let ctx = self.ptr();
+        let methods = self.get_context_methods();
+        methods.server_cert_cb = Some(Box::new(cb) as _);
+        unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_CTX_set_cert_cb(
+                ctx,
+                Some(select_cert_cb::<RustContextMethods<M>, M>),
+                null_mut(),
+            );
+        }
+        self
+    }
+}
+
+/// # Certificate verification, X.509
+///
+/// These methods require built-in X.509 support and are not available for
+/// [`TlsExternalVerifierMode`](super::TlsExternalVerifierMode) or
+/// [`DtlsExternalVerifierMode`](super::DtlsExternalVerifierMode).
+impl<M> TlsContextBuilder<M>
+where
+    M: super::UseBuiltinX509,
+{
     /// Set certificate verification parameters.
     pub fn with_certificate_verification_params(
         &mut self,
@@ -222,7 +339,10 @@ impl<M> TlsContextBuilder<M> {
         }
         self
     }
+}
 
+/// # Signature algorithm preferences
+impl<M> TlsContextBuilder<M> {
     /// Set a preference list of signature algorithms for verification.
     ///
     /// This method returns [`ConfigurationError::InvalidParameters`] if the list of algorithms
@@ -271,5 +391,27 @@ impl<M> TlsContextBuilder<M> {
             bssl_sys::SSL_CTX_set_signing_algorithm_prefs(self.ptr(), prefs, prefs_len)
         });
         Ok(self)
+    }
+}
+
+/// # Certificate authorities - Server
+///
+/// TLS can send a list of supported certificate authorities to guide the peer in certificate
+/// selection.
+impl<M> TlsContextBuilder<M> {
+    /// This setting advertises the list of certificate authorities names in the
+    /// `certificate_authorities` extension to send the client.
+    pub fn set_ca_names(
+        &mut self,
+        names: impl IntoIterator<Item = DistinguishedName>,
+    ) -> &mut Self {
+        unsafe {
+            // Safety: this call only transfers the ownership of the stack.
+            bssl_sys::SSL_CTX_set0_client_CAs(
+                self.ptr(),
+                DistinguishedName::into_crypto_buffer_stack(names),
+            )
+        }
+        self
     }
 }

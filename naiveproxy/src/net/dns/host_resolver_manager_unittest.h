@@ -63,9 +63,25 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
   void IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Test(bool is_async);
   void IPv4AddressLiteralInIPv6OnlyNetworkBadAddressTest(bool is_async);
 
- protected:
   using TaskType = HostResolverManager::TaskType;
 
+  static void PushDnsTasks(const DnsClient& dns_client,
+                           bool dns_tasks_allowed,
+                           bool allow_fallback_to_systemtask,
+                           bool system_task_allowed,
+                           SecureDnsMode secure_dns_mode,
+                           InsecureDnsMode insecure_dns_mode,
+                           bool allow_cache,
+                           bool prioritize_local_lookups,
+                           ResolveContext* resolve_context,
+                           std::deque<TaskType>* out_tasks) {
+    HostResolverManager::PushDnsTasks(
+        dns_client, dns_tasks_allowed, allow_fallback_to_systemtask,
+        system_task_allowed, secure_dns_mode, insecure_dns_mode, allow_cache,
+        prioritize_local_lookups, resolve_context, out_tasks);
+  }
+
+ protected:
   // testing::Test implementation:
   void SetUp() override;
   void TearDown() override;
@@ -96,11 +112,19 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
   }
 
   int StartIPv6ReachabilityCheck(
+      handles::NetworkHandle target_network,
       const NetLogWithSource& net_log,
       raw_ptr<ClientSocketFactory> client_socket_factory,
       CompletionOnceCallback callback);
 
   bool GetLastIpv6ProbeResult();
+  void SetLastIPv6ProbeResult(bool result);
+  void InitializeJobKeyAndIPAddress(
+      const NetworkAnonymizationKey& network_anonymization_key,
+      const HostResolver::ResolveHostParameters& parameters,
+      const NetLogWithSource& net_log,
+      HostResolverManager::JobKey& out_job_key,
+      IPAddress& out_ip_address);
 
   void PopulateCache(const HostCache::Key& key, IPEndPoint endpoint);
   void PopulateCache(const HostCache::Key& key,
@@ -127,6 +151,8 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
           base::test::TaskEnvironment::TimeSource::MOCK_TIME);
 
   ~HostResolverManagerDnsTest() override;
+
+  DnsClient* GetDnsClient() { return resolver_->dns_client_.get(); }
 
   void DestroyResolver() override;
 

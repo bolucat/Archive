@@ -106,26 +106,10 @@ template("single_apple_toolchain") {
     # passed to the build. They are ignored when this is the default toolchain.
     assert(defined(invoker.toolchain_args),
            "Toolchains must declare toolchain_args")
+
     toolchain_args = {
       # Populate toolchain args from the invoker.
       forward_variables_from(invoker.toolchain_args, "*")
-
-      # Re-evaluate use_apple_linker inside toolchain_args to resolve the GN
-      # parent-child context evaluation mismatch.
-      #
-      # Since GN arguments inside toolchain_args are static values and do not
-      # dynamically propagate their global dependency formulas inside the
-      # toolchain() definition block (which is processed in the default
-      # toolchain context), we must explicitly check both the global opt-in
-      # flag and the platform support conditions here.
-      # LINT.IfChange(use_apple_linker)
-      use_apple_linker =
-          use_apple_linker && host_os == "mac" && current_os == "mac" &&
-          !use_thin_lto && host_cpu == "arm64" && current_cpu == "arm64" &&
-          !(use_remoteexec && use_system_xcode)
-      use_lld = use_lld && !use_apple_linker
-
-      # LINT.ThenChange(//build/config/compiler/compiler.gni:use_apple_linker)
 
       # The host toolchain value computed by the default toolchain's setup
       # needs to be passed through unchanged to all secondary toolchains to
@@ -224,7 +208,7 @@ template("single_apple_toolchain") {
                       root_build_dir) + " --files-to-instrument=" +
           rebase_path(toolchain_coverage_instrumentation_input_file,
                       root_build_dir) + " --target-os=" + target_os
-      coverage_wrapper = "\"$python_path\" ${_coverage_wrapper} "
+      coverage_wrapper = "$python_path ${_coverage_wrapper} "
     }
 
     linker_driver_env = "TOOL_VERSION=${tool_versions.linker_driver}"
@@ -522,22 +506,29 @@ template("single_apple_toolchain") {
     }
 
     tool("cc") {
-      depfile = "{{output}}.d"
+      output = "$object_subdir/{{source_name_part}}.o"
+      depfile = "$output.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -fmodule-name=\"{{cc_module_name}}_Private\"  -c {{source}} -o {{output}}"
+
+      # {{output}} may contain additional outputs, so use $output instead of
+      # {{output}} in command.
+      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -fmodule-name=\"{{cc_module_name}}_Private\"  -c {{source}} -o $output"
       depsformat = "gcc"
       description = "CC {{output}}"
-      outputs = [ "$object_subdir/{{source_name_part}}.o" ]
+      outputs = [ output ]
     }
 
     tool("cxx") {
-      depfile = "{{output}}.d"
+      output = "$object_subdir/{{source_name_part}}.o"
+      depfile = "$output.d"
       precompiled_header_type = "gcc"
 
-      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps}} -fmodule-name=\"{{cc_module_name}}_Private\" -c {{source}} -o {{output}}"
+      # {{output}} may contain additional outputs, so use $output instead of
+      # {{output}} in command.
+      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps}} -fmodule-name=\"{{cc_module_name}}_Private\" -c {{source}} -o $output"
       depsformat = "gcc"
       description = "CXX {{output}}"
-      outputs = [ "$object_subdir/{{source_name_part}}.o" ]
+      outputs = [ output ]
     }
 
     tool("cxx_module") {
@@ -562,21 +553,29 @@ template("single_apple_toolchain") {
     }
 
     tool("objc") {
-      depfile = "{{output}}.d"
+      output = "$object_subdir/{{source_name_part}}.o"
+      depfile = "$output.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o {{output}}"
+
+      # {{output}} may contain additional outputs, so use $output instead of
+      # {{output}} in command.
+      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o $output"
       depsformat = "gcc"
       description = "OBJC {{output}}"
-      outputs = [ "$object_subdir/{{source_name_part}}.o" ]
+      outputs = [ output ]
     }
 
     tool("objcxx") {
-      depfile = "{{output}}.d"
+      output = "$object_subdir/{{source_name_part}}.o"
+      depfile = "$output.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o {{output}}"
+
+      # {{output}} may contain additional outputs, so use $output instead of
+      # {{output}} in command.
+      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o $output"
       depsformat = "gcc"
       description = "OBJCXX {{output}}"
-      outputs = [ "$object_subdir/{{source_name_part}}.o" ]
+      outputs = [ output ]
     }
 
     tool("alink") {

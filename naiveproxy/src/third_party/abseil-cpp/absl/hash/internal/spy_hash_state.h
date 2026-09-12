@@ -23,6 +23,7 @@
 #include <ostream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
@@ -48,7 +49,7 @@ template <typename T>
 class SpyHashStateImpl : public HashStateBase<SpyHashStateImpl<T>> {
  public:
   SpyHashStateImpl() : error_(std::make_shared<std::optional<std::string>>()) {
-    static_assert(std::is_void<T>::value, "");
+    static_assert(std::is_void_v<T>);
   }
 
   // Move-only
@@ -270,7 +271,7 @@ bool RunOnStartup<f>::run = (f(), true);
 template <
     typename T, typename U,
     // Only trigger for when (T != U),
-    typename = std::enable_if_t<!std::is_same<T, U>::value>,
+    typename = std::enable_if_t<!std::is_same_v<T, U>>,
     // This statement works in two ways:
     //  - First, it instantiates RunOnStartup and forces the initialization of
     //    `run`, which set the global variable.

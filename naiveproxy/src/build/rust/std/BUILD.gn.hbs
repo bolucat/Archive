@@ -42,6 +42,7 @@ cargo_crate("{{../name}}") {
     cpp_api_from_rust = {
       target_name = "{{../name}}_bindings"
       cpp_namespace = "rs::{{../name}}"
+      h_out = "$root_gen_dir/third_party/crubit/support/rs_std/rs_{{../name}}.h"
       deps = [
         {{#each extra_kv.cpp_api_from_rust.deps}}
         ":{{this}}_bindings",
@@ -145,13 +146,6 @@ cargo_crate("{{../name}}") {
           "{{this}}",
         {{/each}}
       ]
-      # TODO(crbug.com/507831026): Remove this and always use the new path next time we roll rust.
-      {{#if extra_kv.use_libm_configure}}
-        if (rust_force_head_revision) {
-          build_script_inputs -= [ "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/../configure.rs" ]
-          build_script_inputs += [ "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/../../libm/configure.rs" ]
-        }
-      {{/if}}
     {{/if}}
     {{#if build_script_outputs}}
       build_script_outputs = [

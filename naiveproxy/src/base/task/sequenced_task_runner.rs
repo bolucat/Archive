@@ -38,6 +38,8 @@ pub mod ffi {
 
         fn AddRef(runner: &SequencedTaskRunner);
 
+        fn RunsTasksInCurrentSequence(runner: &SequencedTaskRunner) -> bool;
+
         // TODO(crbug.com/472552387): Tweak `cxx` to make this `allow` obsolete.
         #[allow(clippy::missing_safety_doc)]
         /// # Safety
@@ -68,6 +70,7 @@ unsafe impl CxxRefCounted for ffi::SequencedTaskRunner {
 
     // SAFETY: The trait imposes the same requirements as `Release`.
     unsafe fn release(&self) {
+        // SAFETY: Same requirements as the function
         unsafe {
             ffi::Release(self);
         }
@@ -76,7 +79,9 @@ unsafe impl CxxRefCounted for ffi::SequencedTaskRunner {
 
 // SAFETY: The C++ implementation of this class is designed to be thread-safe.
 unsafe impl CxxRefCountedThreadSafe for ffi::SequencedTaskRunner {}
+// SAFETY: As above
 unsafe impl Send for ffi::SequencedTaskRunner {}
+// SAFETY: As above
 unsafe impl Sync for ffi::SequencedTaskRunner {}
 
 /// This type is the Rust representation of a C++
@@ -100,6 +105,12 @@ impl SequencedTaskRunnerHandle {
     /// argument (crbug.com/469133195).
     pub fn post_task<F: FnOnce() + Send + 'static>(&self, task: F) -> bool {
         ffi::PostTaskFromRust(self.0.as_pin(), Box::new(task.into()))
+    }
+
+    /// Returns `true` if tasks posted to this task runner will run in the
+    /// current sequence.
+    pub fn runs_tasks_in_current_sequence(&self) -> bool {
+        ffi::RunsTasksInCurrentSequence(&self.0)
     }
 
     /// Retrieve the contained ScopedRefPtr. This should generally only be used

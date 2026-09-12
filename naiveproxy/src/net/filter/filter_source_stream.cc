@@ -107,10 +107,7 @@ SourceStreamType FilterSourceStream::ParseEncodingType(
 }
 
 // static
-std::vector<SourceStreamType> FilterSourceStream::GetContentEncodingTypes(
-    const std::optional<base::flat_set<SourceStreamType>>&
-        accepted_stream_types,
-    const HttpResponseHeaders& headers) {
+std::vector<SourceStreamType> FilterSourceStream::GetContentEncodingTypes(const HttpResponseHeaders& headers) {
   std::vector<SourceStreamType> types;
   size_t iter = 0;
   while (std::optional<std::string_view> type =
@@ -121,12 +118,6 @@ std::vector<SourceStreamType> FilterSourceStream::GetContentEncodingTypes(
       case SourceStreamType::kDeflate:
       case SourceStreamType::kGzip:
       case SourceStreamType::kZstd:
-        if (accepted_stream_types &&
-            !accepted_stream_types->contains(source_type)) {
-          // If the source type is disabled, we treat it
-          // in the same way as SourceStreamType::kUnknown.
-          return std::vector<SourceStreamType>();
-        }
         types.push_back(source_type);
         break;
       case SourceStreamType::kNone:
@@ -235,17 +226,16 @@ int FilterSourceStream::DoFilterData() {
 
   size_t consumed_bytes = 0;
   const int bytes_remaining = drainable_input_buffer_->BytesRemaining();
-  TRACE_EVENT_BEGIN2(NetTracingCategory(), "FilterSourceStream::FilterData",
-                     "remaining", bytes_remaining, "upstream_end_reached",
-                     upstream_end_reached_);
+  TRACE_EVENT_BEGIN(NetTracingCategory(), "FilterSourceStream::FilterData",
+                    "remaining", bytes_remaining, "upstream_end_reached",
+                    upstream_end_reached_);
   base::expected<size_t, Error> bytes_output = FilterData(
       output_buffer_.get(), output_buffer_size_, drainable_input_buffer_.get(),
       bytes_remaining, &consumed_bytes, upstream_end_reached_);
-  TRACE_EVENT_END2(NetTracingCategory(), "FilterSourceStream::FilterData",
-                   "consumed_bytes", consumed_bytes, "output_or_error",
-                   bytes_output.has_value()
-                       ? base::checked_cast<int>(bytes_output.value())
-                       : bytes_output.error());
+  TRACE_EVENT_END(
+      NetTracingCategory(), "consumed_bytes", consumed_bytes, "output_or_error",
+      bytes_output.has_value() ? base::checked_cast<int>(bytes_output.value())
+                               : bytes_output.error());
 
   if (bytes_output.has_value() && bytes_output.value() == 0) {
     DCHECK_EQ(consumed_bytes, base::checked_cast<size_t>(bytes_remaining));

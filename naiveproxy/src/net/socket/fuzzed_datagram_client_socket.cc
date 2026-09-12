@@ -12,6 +12,8 @@
 #include "base/check_op.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/notimplemented.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "net/base/io_buffer.h"
 #include "net/base/ip_address.h"
@@ -126,6 +128,20 @@ int FuzzedDatagramClientSocket::SetMulticastInterface(
 
 const NetLogWithSource& FuzzedDatagramClientSocket::NetLog() const {
   return net_log_;
+}
+
+base::expected<DatagramsMetadata, Error>
+FuzzedDatagramClientSocket::ReadMultiple(
+    IOBuffer* buf,
+    size_t buf_len,
+    size_t maximum_packet_size,
+    base::OnceCallback<void(base::expected<DatagramsMetadata, Error>)>
+        callback) {
+  // TODO(crbug.com/515333601): This is a temporary delegation to Read() to
+  // avoid crashes when QuicUseReadMultiple is enabled. Implement a proper
+  // ReadMultiple() in a follow-up CL.
+  return read_multiple_emulator_.ReadMultiple(buf, buf_len, maximum_packet_size,
+                                              std::move(callback));
 }
 
 int FuzzedDatagramClientSocket::Read(IOBuffer* buf,

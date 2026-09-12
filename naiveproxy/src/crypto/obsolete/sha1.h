@@ -5,10 +5,14 @@
 #ifndef CRYPTO_OBSOLETE_SHA1_H_
 #define CRYPTO_OBSOLETE_SHA1_H_
 
+#include <stdint.h>
+
 #include <array>
+#include <string>
 #include <string_view>
 #include <vector>
 
+#include "base/component_export.h"
 #include "base/containers/span.h"
 #include "base/gtest_prod_util.h"
 #include "crypto/crypto_export.h"
@@ -36,6 +40,15 @@ std::string Sha1AsHexForRefreshToken(std::string_view data);
 namespace ash::quick_start {
 std::string GetHashedAuthToken(std::string_view authentication_token);
 }  // namespace ash::quick_start
+
+namespace component_updater {
+std::string HashUsername(std::string_view username);
+}
+
+namespace content {
+COMPONENT_EXPORT(CONTENT)
+std::string GetHashedUrlPath(std::string_view url_path_value);
+}  // namespace content
 
 namespace kcer::internal {
 std::vector<uint8_t> Sha1ForPkcs11Id(base::span<const uint8_t> data);
@@ -111,6 +124,7 @@ class CRYPTO_EXPORT Sha1 {
       std::string_view data);
   friend std::string ash::quick_start::GetHashedAuthToken(
       std::string_view authentication_token);
+  friend std::string component_updater::HashUsername(std::string_view username);
   friend std::string net::ComputeSecWebSocketAccept(std::string_view key);
   friend std::array<uint8_t, crypto::obsolete::kSha1Size> net::Sha1ForNSSTrust(
       base::span<const uint8_t> data);
@@ -131,6 +145,10 @@ class CRYPTO_EXPORT Sha1 {
   // here.
   friend std::string metrics::Sha1AsHexForSystemProfile(std::string_view data);
   friend std::string metrics::Sha1ForUnsentLogStore(std::string_view data);
+
+  // TODO(crbug.com/462463432): Remove once SHA-1 isn't used anymore for url
+  // hashing.
+  friend std::string content::GetHashedUrlPath(std::string_view url_path_value);
 
   // TODO(b/460489502): remove once SHA-1 is no longer used for hashing client
   // IDs.

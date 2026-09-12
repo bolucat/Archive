@@ -42,6 +42,8 @@ struct ScryptParams {
 
 // TODO(https://issues.chromium.org/issues/369653192): document constraints on
 // params.
+// Deprecated; do not add new uses of SHA-1 without talking to a member of
+// //CRYPTO_OWNERS.
 CRYPTO_EXPORT void Pbkdf2HmacSha1(const Pbkdf2HmacSha1Params& params,
                                   base::span<const uint8_t> password,
                                   base::span<const uint8_t> salt,
@@ -60,9 +62,9 @@ CRYPTO_EXPORT void Scrypt(const ScryptParams& params,
                           base::span<uint8_t> result,
                           crypto::SubtlePassKey);
 
-// Derive a key using HKDF with the specified hash kind, into the given out
-// buffer, which must be the right size for that hash kind. The secret, salt,
-// and info parameters have meanings as described in RFC 5869.
+// Derive a key using HKDF with the specified hash kind, into the given
+// out buffer. The secret, salt, and info parameters have meanings as described
+// in RFC 5869. The size of the out span determines the length of the output.
 //
 // Note that it's illegal to request more than 255 * the size of the output of
 // the specified hash function. If you need large amounts of data generated from

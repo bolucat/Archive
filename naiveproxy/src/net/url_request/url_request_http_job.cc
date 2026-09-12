@@ -124,6 +124,8 @@ namespace net {
 
 namespace {
 
+const size_t kMaxNestedSourceStreamDepth = 10;
+
 bool ShouldForceIgnoreSiteForCookies(const URLRequest& request) {
   NetworkDelegate* network_delegate = request.network_delegate();
   return network_delegate &&
@@ -355,6 +357,11 @@ const scoped_refptr<base::SingleThreadTaskRunner>& TaskRunner(
   return base::SingleThreadTaskRunner::GetCurrentDefault();
 }
 
+bool ShouldBlockAllCookies(PrivacyMode privacy_mode) {
+  return privacy_mode == PRIVACY_MODE_ENABLED ||
+         privacy_mode == PRIVACY_MODE_ENABLED_WITHOUT_CLIENT_CERTS;
+}
+
 }  // namespace
 
 std::unique_ptr<URLRequestJob> URLRequestHttpJob::Create(URLRequest* request) {
@@ -476,34 +483,10 @@ void URLRequestHttpJob::Start() {
 
   request_->net_log().BeginEvent(NetLogEventType::FIRST_PARTY_SETS_METADATA);
 
-  std::optional<
-      std::pair<FirstPartySetMetadata, FirstPartySetsCacheFilter::MatchInfo>>
-      maybe_metadata = cookie_util::ComputeFirstPartySetMetadataMaybeAsync(
-          SchemefulSite(request()->url()), request()->isolation_info(),
-          delegate,
-          base::BindOnce(&URLRequestHttpJob::OnGotFirstPartySetMetadata,
-                         weak_factory_.GetWeakPtr()));
-
-  if (maybe_metadata.has_value()) {
-    auto [metadata, match_info] = std::move(maybe_metadata).value();
-    OnGotFirstPartySetMetadata(std::move(metadata), std::move(match_info));
-  }
-}
-
-namespace {
-
-bool ShouldBlockAllCookies(PrivacyMode privacy_mode) {
-  return privacy_mode == PRIVACY_MODE_ENABLED ||
-         privacy_mode == PRIVACY_MODE_ENABLED_WITHOUT_CLIENT_CERTS;
-}
-
-}  // namespace
-
-void URLRequestHttpJob::OnGotFirstPartySetMetadata(
-    FirstPartySetMetadata first_party_set_metadata,
-    FirstPartySetsCacheFilter::MatchInfo match_info) {
-  TRACE_EVENT("net", "URLRequestHttpJob::OnGotFirstPartySetMetadata",
-              NetLogWithSourceToFlow(request_->net_log()));
+  auto [first_party_set_metadata, match_info] =
+      cookie_util::ComputeFirstPartySetMetadata(SchemefulSite(request()->url()),
+                                                request()->isolation_info(),
+                                                delegate);
 
   first_party_set_metadata_ = std::move(first_party_set_metadata);
   request_info_.fps_cache_filter = match_info.clear_at_run_id;
@@ -1179,6 +1162,13 @@ void URLRequestHttpJob::OnSetCookieResult(const CookieOptions& options,
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 void URLRequestHttpJob::ProcessDeviceBoundSessionsHeader() {
+  DCHECK(response_info_);
+  const SSLInfo& ssl_info = response_info_->ssl_info;
+  // Do not process DBSC headers on connections with certificate errors.
+  if (!ssl_info.is_valid() || IsCertStatusError(ssl_info.cert_status)) {
+    return;
+  }
+
   device_bound_sessions::SessionService* service =
       request_->context()->device_bound_session_service();
   if (!service) {
@@ -1548,8 +1538,11 @@ std::unique_ptr<SourceStream> URLRequestHttpJob::SetUpSourceStream() {
 
   HttpResponseHeaders* headers = GetResponseHeaders();
   std::vector<SourceStreamType> types =
-      FilterSourceStream::GetContentEncodingTypes(
-          request_->accepted_stream_types(), *headers);
+      FilterSourceStream::GetContentEncodingTypes(*headers);
+
+  if (types.size() > kMaxNestedSourceStreamDepth) {
+    return nullptr;
+  }
 
   if (request()->client_side_content_decoding_enabled() &&
       !headers->HasHeader("use-as-dictionary")) {
@@ -1634,38 +1627,24 @@ bool URLRequestHttpJob::NeedsAuth() {
 }
 
 bool URLRequestHttpJob::NeedsRetryWithStorageAccess() {
-  // We use the Origin header's value directly, rather than
+  // The request is retryable if the Origin header was provided and matches the
+  // `Activate-Storage-Access` response header, the request may include cookies,
+  // and the prior request had the appropriate status without any of the
+  // storage-access-related overrides.
+  //
+  // Note: we use the Origin header's value directly, rather than
   // `request_.initiator()`, because the header may be "null" in some cases.
-  if (!request_->response_headers() ||
-      !request_->response_headers()->HasStorageAccessRetryHeader(
-          base::OptionalToPtr(request_info_.extra_headers.GetHeader(
-              HttpRequestHeaders::kOrigin)))) {
-    return false;
-  }
-
-  auto determine_storage_access_retry_outcome =
-      [&]() -> cookie_util::ActivateStorageAccessRetryOutcome {
-    using enum cookie_util::ActivateStorageAccessRetryOutcome;
-    if (!ShouldAddCookieHeader() ||
-        request_->storage_access_status() !=
-            cookie_util::StorageAccessStatus::kInactive ||
-        request_->cookie_setting_overrides().Has(
-            CookieSettingOverride::kStorageAccessGrantEligible) ||
-        request_->cookie_setting_overrides().Has(
-            CookieSettingOverride::kStorageAccessGrantEligibleViaHeader)) {
-      // We're not allowed to read cookies for this request, or this request
-      // already had all the relevant settings overrides, so retrying it
-      // wouldn't change anything.
-      return kFailureIneffectiveRetry;
-    }
-    return kSuccess;
-  };
-
-  auto outcome = determine_storage_access_retry_outcome();
-
-  base::UmaHistogramEnumeration(
-      "API.StorageAccessHeader.ActivateStorageAccessRetryOutcome", outcome);
-  return outcome == cookie_util::ActivateStorageAccessRetryOutcome::kSuccess;
+  return request_->response_headers() &&
+         request_->response_headers()->HasStorageAccessRetryHeader(
+             base::OptionalToPtr(request_info_.extra_headers.GetHeader(
+                 HttpRequestHeaders::kOrigin))) &&
+         ShouldAddCookieHeader() &&
+         request_->storage_access_status() ==
+             cookie_util::StorageAccessStatus::kInactive &&
+         !request_->cookie_setting_overrides().Has(
+             CookieSettingOverride::kStorageAccessGrantEligible) &&
+         !request_->cookie_setting_overrides().Has(
+             CookieSettingOverride::kStorageAccessGrantEligibleViaHeader);
 }
 
 void URLRequestHttpJob::SetSharedDictionaryGetter(
@@ -1765,9 +1744,19 @@ void URLRequestHttpJob::SetPlatformLocalNetworkAccessGranted() {
 
   int rv = transaction_->RestartIgnoringLastError(base::BindOnce(
       &URLRequestHttpJob::OnStartCompleted, base::Unretained(this)));
-  // RestartIgnoringLastError() always returns ERR_IO_PENDING. See
-  // HttpNetworkTransaction.
-  CHECK_EQ(rv, ERR_IO_PENDING);
+
+  base::UmaHistogramSparse(
+      "Net.LocalNetworkAccess.RestartIgnoringLastErrorResult", -rv);
+
+  if (rv == ERR_IO_PENDING) {
+    return;
+  }
+
+  // The transaction started synchronously, but we need to notify the
+  // URLRequest delegate via the message loop.
+  TaskRunner(priority_)->PostTask(
+      FROM_HERE, base::BindOnce(&URLRequestHttpJob::OnStartCompleted,
+                                weak_factory_.GetWeakPtr(), rv));
 }
 
 void URLRequestHttpJob::CancelPlatformLocalNetworkAccessRequest() {
@@ -1813,15 +1802,16 @@ bool URLRequestHttpJob::ShouldFixMismatchedContentLength(int rv) const {
   if (rv == ERR_CONTENT_LENGTH_MISMATCH ||
       rv == ERR_INCOMPLETE_CHUNKED_ENCODING) {
     if (request_->response_headers()) {
-      std::optional<base::ByteCount> content_length =
+      std::optional<base::ByteSize> content_length =
           request_->response_headers()->GetContentLength();
-      base::ByteCount expected_length =
-          content_length.value_or(base::ByteCount(-1));
       VLOG(1) << __func__ << "() \"" << request_->url().spec() << "\""
-              << " content-length = " << expected_length
+              << " content-length = "
+              << content_length.transform(&base::ByteSizeDelta::FromByteSize)
+                     .value_or(base::ByteSizeDelta(-1))
               << " pre total = " << prefilter_bytes_read()
               << " post total = " << postfilter_bytes_read();
-      if (postfilter_bytes_read().AsDeprecatedByteCount() == expected_length) {
+      if (content_length.has_value() &&
+          postfilter_bytes_read() == content_length.value()) {
         // Clear the error.
         return true;
       }
@@ -1949,6 +1939,18 @@ void URLRequestHttpJob::RecordTimer() {
       transaction_->GetResponseInfo()->ssl_info.server_padding_received) {
     base::UmaHistogramMediumTimes("Net.HttpTimeToFirstByte.ServerPadding",
                                   to_start);
+
+    LoadTimingInfo load_timing_info;
+    if (transaction_->GetLoadTimingInfo(&load_timing_info)) {
+      // Only log this histogram if connection wasn't reused and request wasn't
+      // served from cache.
+      if (!load_timing_info.socket_reused &&
+          !transaction_->GetResponseInfo()->was_cached) {
+        base::UmaHistogramMediumTimes(
+            "Net.HttpTimeToFirstByte.ServerPaddingFirstConnectionOnly",
+            to_start);
+      }
+    }
   }
 }
 

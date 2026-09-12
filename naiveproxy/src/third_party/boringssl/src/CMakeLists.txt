@@ -23,12 +23,6 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/install CACHE PATH "" FORCE)
 endif()
 
-if(WIN32)
-  # On Windows, prefer cl over gcc if both are available. By default most of
-  # the CMake generators prefer gcc, even on Windows.
-  set(CMAKE_GENERATOR_CC cl)
-endif()
-
 include(cmake/go.cmake)
 include(gen/sources.cmake)
 
@@ -585,7 +579,7 @@ if(FIPS_DELOCATE)
             ${BCM_SOURCES_ASM_USED}
             ${CRYPTO_HEADERS}
     DEPENDS bcm_c_generated_asm
-            delocate
+            ${CMAKE_CURRENT_BINARY_DIR}/delocate
             ${BCM_SOURCES_ASM_USED}
             ${CRYPTO_HEADERS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -603,9 +597,9 @@ if(FIPS_DELOCATE)
                 boringssl.googlesource.com/boringssl.git/util/fipstools/inject_hash)
   add_custom_command(
     OUTPUT bcm.o
-    COMMAND ./inject_hash -o bcm.o -in-object $<TARGET_OBJECTS:bcm_hashunset>
-            -in-hash $<TARGET_FILE:bcm_relocated>
-    DEPENDS bcm_hashunset bcm_relocated inject_hash
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/inject_hash -o bcm.o -in-object
+            $<TARGET_OBJECTS:bcm_hashunset> -in-hash $<TARGET_FILE:bcm_relocated>
+    DEPENDS bcm_hashunset bcm_relocated ${CMAKE_CURRENT_BINARY_DIR}/inject_hash
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
   set(CRYPTO_FIPS_OBJECTS bcm.o)
@@ -827,42 +821,64 @@ if(BUILD_TESTING)
   if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_GENERATOR MATCHES "^Visual Studio ")
     if(GO_EXECUTABLE)
       add_custom_target(
-          run_tests
+          run_unit_tests
+          COMMAND ${CMAKE_COMMAND} -E echo
+          COMMAND ${CMAKE_COMMAND} -E echo "Checking pregenerated files"
+          COMMAND ${GO_EXECUTABLE} run ./util/pregenerate -check
+          COMMAND ${CMAKE_COMMAND} -E echo
           COMMAND ${CMAKE_COMMAND} -E echo "Running Go tests"
           COMMAND ${GO_EXECUTABLE} test ${GO_TESTS}
           COMMAND ${CMAKE_COMMAND} -E echo
           COMMAND ${CMAKE_COMMAND} -E echo "Running unit tests"
           COMMAND ${GO_EXECUTABLE} run util/all_tests.go -build-dir
                   ${CMAKE_CURRENT_BINARY_DIR}
+          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          DEPENDS boringssl_all_tests fips_specific_tests_if_any
+          USES_TERMINAL)
+      add_custom_target(
+          run_tests
           COMMAND ${CMAKE_COMMAND} -E echo
           COMMAND ${CMAKE_COMMAND} -E echo "Running SSL tests"
           COMMAND cd ssl/test/runner &&
                   ${GO_EXECUTABLE} test -shim-path $<TARGET_FILE:bssl_shim>
                     ${HANDSHAKER_ARGS} ${RUNNER_ARGS}
           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-          DEPENDS boringssl_all_tests bssl_shim handshaker fips_specific_tests_if_any
+          DEPENDS run_unit_tests bssl_shim handshaker
           USES_TERMINAL)
+      if(BORINGSSL_PREFIX)
+        add_custom_target(
+          check_prefixed_symbols
+          COMMENT "Checking symbol prefixing"
+          COMMAND ${GO_EXECUTABLE}
+                  run ${CMAKE_CURRENT_SOURCE_DIR}/util/audit_symbols.go
+                  -ignore-symbols-with ${BORINGSSL_PREFIX}
+                  $<TARGET_FILE:crypto>
+                  $<TARGET_FILE:decrepit>
+                  $<TARGET_FILE:pki>
+          USES_TERMINAL
+        )
+        add_dependencies(run_tests check_prefixed_symbols)
+      else()
+        add_custom_target(
+            check_prefixed_symbols
+            COMMAND ${CMAKE_COMMAND} -E echo "Symbol prefixing not enabled"
+            COMMAND ${CMAKE_COMMAND} -E false)
+      endif()
     else()
+      add_custom_target(
+          run_unit_tests
+          COMMAND ${CMAKE_COMMAND} -E echo "Running tests requires Go"
+          COMMAND ${CMAKE_COMMAND} -E false)
+      add_custom_target(
+          check_prefixed_symbols
+          COMMAND ${CMAKE_COMMAND} -E echo "Running tests requires Go"
+          COMMAND ${CMAKE_COMMAND} -E false)
       add_custom_target(
           run_tests
           COMMAND ${CMAKE_COMMAND} -E echo "Running tests requires Go"
           COMMAND ${CMAKE_COMMAND} -E false)
     endif()
   endif()
-endif()
-
-if(BORINGSSL_PREFIX)
-  require_go()
-  add_custom_target(
-    verify_boringssl_prefix ALL
-    COMMENT "Verifying symbol prefixing"
-    COMMAND ${GO_EXECUTABLE}
-            run ${CMAKE_CURRENT_SOURCE_DIR}/util/audit_symbols.go
-            -ignore-symbols-with ${BORINGSSL_PREFIX}
-            $<TARGET_FILE:crypto>
-    DEPENDS crypto
-    USES_TERMINAL
-  )
 endif()
 
 if(INSTALL_ENABLED)

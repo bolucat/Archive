@@ -59,10 +59,26 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Warned"/>
 </enum>
 
+<!-- LINT.IfChange(BrowserManagementStatus) -->
+
+<enum name="BrowserManagementStatus">
+  <int value="0" label="Unmanaged (None)"/>
+  <int value="1" label="Computer Local (&lt;= 3 policies)"/>
+  <int value="2" label="Computer Local (&gt; 3 policies)"/>
+  <int value="3" label="Domain Local"/>
+  <int value="4" label="Cloud"/>
+  <int value="5" label="Cloud Domain"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/policy/core/common/enterprise_management_status_util.h:BrowserManagementStatus) -->
+
 <enum name="CertificatePrivateKeySource">
   <int value="0" label="Unexportable"/>
   <int value="1" label="Software"/>
   <int value="2" label="OsSoftware"/>
+  <int value="3" label="Android"/>
+  <int value="4" label="ChromeOsHardware"/>
+  <int value="5" label="ChromeOsSoftware"/>
 </enum>
 
 <enum name="CertificateProvisioningError">
@@ -154,6 +170,13 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="all device identifiers are missing"/>
 </enum>
 
+<enum name="DeviceManagementAndCBCMState">
+  <int value="0" label="Neither Device Managed nor CBCM available"/>
+  <int value="1" label="Device Managed only (no CBCM)"/>
+  <int value="2" label="CBCM available only (not Device Managed)"/>
+  <int value="3" label="Both Device Managed and CBCM available"/>
+</enum>
+
 <enum name="DeviceSettingsStatus2">
   <int value="0" label="STORE_SUCCESS"/>
   <int value="1" label="STORE_KEY_UNAVAILABLE"/>
@@ -165,6 +188,17 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="STORE_KEY_UNAVAILABLE_NOT_LOCKED"/>
   <int value="8" label="STORE_KEY_UNAVAILABLE_MANAGED"/>
 </enum>
+
+<!-- LINT.IfChange(DeviceSignalsCertificateCollectionError) -->
+
+<enum name="DeviceSignalsCertificateCollectionError">
+  <int value="0" label="Private Key Acquisition Failed"/>
+  <int value="1" label="Serialization Failed"/>
+  <int value="2" label="Signing Failed"/>
+  <int value="3" label="No Supported Algorithm"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/device_signals/core/browser/metrics_utils.h:CertificateCollectionError) -->
 
 <enum name="DeviceSignalsHarmfulAppsStatus">
   <int value="0" label="Success"/>
@@ -502,6 +536,15 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Load token from file"/>
 </enum>
 
+<enum name="EnterpriseCloudPolicyLocalCacheWriteStatus">
+  <summary>
+    Result status of local policy persistence disk cache writes.
+  </summary>
+  <int value="0" label="Success"/>
+  <int value="1" label="Directory Creation Failed"/>
+  <int value="2" label="File Write Failed"/>
+</enum>
+
 <enum name="EnterpriseCloudReportingPolicyStatus">
   <int value="0" label="No policy set"/>
   <int value="1" label="User cloud policy set only"/>
@@ -568,7 +611,10 @@ chromium-metrics-reviews@google.com.
   <int value="35" label="FAILURE_INVALID_ARGUMENT"/>
   <int value="36" label="FAILURE_NETWORK_FAILURE"/>
   <int value="37" label="FAILURE_OPERATION_TIMEOUT"/>
+  <int value="38" label="FAILURE_SOFTWARE_UPGRADED"/>
 </enum>
+
+<!-- LINT.IfChange(EnterpriseDeviceManagementStatus) -->
 
 <enum name="EnterpriseDeviceManagementStatus">
   <summary>
@@ -603,7 +649,10 @@ chromium-metrics-reviews@google.com.
   <int value="907" label="SERVICE_ENTERPRISE_TOS_HAS_NOT_BEEN_ACCEPTED"/>
   <int value="908" label="SERVICE_ILLEGAL_ACCOUNT_FOR_PACKAGED_EDU_LICENSE"/>
   <int value="909" label="SERVICE_INVALID_PACKAGED_DEVICE_FOR_KIOSK"/>
+  <int value="910" label="SERVICE_ORG_UNIT_ENROLLMENT_LIMIT_EXCEEEDED"/>
 </enum>
+
+<!-- LINT.ThenChange(//components/policy/core/common/cloud/cloud_policy_constants.h:DeviceManagementStatus) -->
 
 <enum name="EnterpriseDiskCacheDecryptionFailureReason">
   <summary>Reasons why cache decryption failed.</summary>
@@ -2443,8 +2492,6 @@ chromium-metrics-reviews@google.com.
   <int value="1437" label="KrispNoiseCancellationEnabled"/>
   <int value="1438" label="AndroidEntraSsoEnabled"/>
   <int value="1439" label="FindsSettings"/>
-  <int value="1440" label="MetricsReportingLevel"/>
-  <int value="1441" label="DeviceMetricsReportingLevel"/>
   <int value="1442" label="CpuPerformanceTierOverride"/>
   <int value="1443" label="ForceForegroundPriorityForUrls"/>
   <int value="1444" label="DataUrlInWebWorkerOpaqueOriginEnabled"/>
@@ -2462,6 +2509,27 @@ chromium-metrics-reviews@google.com.
   <int value="1456" label="RestrictBackgroundFetchFromServiceWorkerEnabled"/>
   <int value="1457" label="GeminiEnterpriseSettings"/>
   <int value="1458" label="RestrictYouTubeCookiesDeletion"/>
+  <int value="1459" label="AutofillSettings"/>
+  <int value="1460" label="IsolateOriginsShortlist"/>
+  <int value="1461" label="DeviceWeeklyScheduledResuspendDelayMs"/>
+  <int value="1462" label="DefaultAutomaticDownloadsSetting"/>
+  <int value="1463" label="AutomaticDownloadsAllowedForUrls"/>
+  <int value="1464" label="AutomaticDownloadsBlockedForUrls"/>
+  <int value="1465" label="VoiceTypingSettings"/>
+  <int value="1466" label="ProxyProvisioningDomains"/>
+  <int value="1467" label="ThirdPartyAiChatSettings"/>
+  <int value="1468" label="ProcessIsolationEnabled"/>
+  <int value="1469" label="Indigo"/>
+  <int value="1470" label="DeviceOnlinePasswordMismatchBehavior"/>
+  <int value="1471" label="UpdateOnZeroWindowEnabled"/>
+  <int value="1472" label="BackForwardCacheForWebSocketsAllowed"/>
+  <int value="1473" label="GeminiChromeFileUploadSettings"/>
+  <int value="1474" label="FindAndFillWithGeminiSettings"/>
+  <int value="1475" label="OnNetworkRequestEnterpriseConnector"/>
+  <int value="1476" label="EnterprisePublishedSkills"/>
+  <int value="1477" label="OnDataCopiedEnterpriseConnector"/>
+  <int value="1481" label="DeviceOsMigrationTargetDate"/>
+  <int value="1482" label="RendererAccessibilityEnabled"/>
 </enum>
 
 <enum name="EnterprisePoliciesSources">
@@ -2566,6 +2634,19 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="User and device managed by cloud and unaffiliated"/>
 </enum>
 
+<!-- LINT.IfChange(EnterprisePublishedSkillsError) -->
+
+<enum name="EnterprisePublishedSkillsError">
+  <int value="0" label="Unknown"/>
+  <int value="1" label="Exceeds Maximum Limit"/>
+  <int value="2" label="Invalid JSON Type"/>
+  <int value="3" label="Missing URL or Hash"/>
+  <int value="4" label="Invalid or Non-HTTP(S) URL"/>
+  <int value="5" label="Duplicate URL"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/skills/public/skills_metrics.h:EnterprisePublishedSkillsError) -->
+
 <enum name="EnterpriseReportingEventType">
   <int value="0" label="Unknown event"/>
   <int value="1" label="Password reuse event"/>
@@ -2583,6 +2664,57 @@ chromium-metrics-reviews@google.com.
   <int value="13" label="Saas usage report event"/>
   <int value="14" label="Browser launch event"/>
 </enum>
+
+<enum name="EnterpriseReportingUploadResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="Failed (Retry Limit Reached)"/>
+  <int value="2" label="Failed (Permanent Error)"/>
+</enum>
+
+<!-- LINT.IfChange(EnterpriseSignalsDisclaimerModalResult) -->
+
+<enum name="EnterpriseSignalsDisclaimerModalResult">
+  <int value="0" label="Accepted"/>
+  <int value="1" label="Declined"/>
+  <int value="2" label="Dismissed by another window"/>
+  <int value="3" label="Dismissed without explicit user action"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/enterprise/signin/signals_disclaimer_metrics.h:EnterpriseSignalsDisclaimerModalResult) -->
+
+<!-- LINT.IfChange(EnterpriseSignalsDisclaimerNotShownReason) -->
+
+<enum name="EnterpriseSignalsDisclaimerNotShownReason">
+  <int value="0" label="Active web contents/tab not ready"/>
+  <int value="1" label="Profile creation in progress"/>
+  <int value="2" label="Other modal dialog shown"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/enterprise/signin/signals_disclaimer_metrics.h:EnterpriseSignalsDisclaimerNotShownReason) -->
+
+<!-- LINT.IfChange(EnterpriseSignalsDisclaimerProfilePickerResult) -->
+
+<enum name="EnterpriseSignalsDisclaimerProfilePickerResult">
+  <int value="0" label="Accepted"/>
+  <int value="1" label="Declined"/>
+  <int value="2" label="Profile picker closed"/>
+  <int value="3" label="Dismissed without explicit user action"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/enterprise/signin/signals_disclaimer_metrics.h:EnterpriseSignalsDisclaimerProfilePickerResult) -->
+
+<!-- LINT.IfChange(EnterpriseSkillValidationResult) -->
+
+<enum name="EnterpriseSkillValidationResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="Hash Mismatch"/>
+  <int value="2" label="Invalid Format (parse error)"/>
+  <int value="3" label="Invalid Name"/>
+  <int value="4" label="Invalid Description"/>
+  <int value="5" label="Invalid Prompt"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/skills/internal/enterprise_skills_provider.h:EnterpriseSkillValidationResult) -->
 
 <!-- LINT.IfChange(EnterpriseSkyVaultMigrationDialogAction) -->
 
@@ -2689,6 +2821,66 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Not fully managed"/>
   <int value="1" label="Fully managed"/>
 </enum>
+
+<!-- LINT.IfChange(KcerError) -->
+
+<enum name="KcerError">
+  <summary>
+    Error codes reported by Kcer, the ChromeOS key and certificate store. Mirror
+    of kcer::Error in //chromeos/ash/components/kcer/kcer.h.
+  </summary>
+  <int value="0" label="Unknown error"/>
+  <int value="1" label="Not implemented"/>
+  <int value="2" label="Not supported"/>
+  <int value="3" label="Token is not available"/>
+  <int value="4" label="Token initialization failed"/>
+  <int value="5" label="Failed to generate key"/>
+  <int value="6" label="Failed to export public key"/>
+  <int value="7" label="Failed to encode public key"/>
+  <int value="8" label="Failed to import key"/>
+  <int value="9" label="Invalid certificate"/>
+  <int value="10" label="Failed to import certificate"/>
+  <int value="11" label="Failed to remove certificate"/>
+  <int value="12" label="Key not found"/>
+  <int value="13" label="Unknown key type"/>
+  <int value="14" label="Failed to get key ID"/>
+  <int value="15" label="Failed to read attribute"/>
+  <int value="16" label="Failed to write attribute"/>
+  <int value="17" label="Failed to parse key permissions"/>
+  <int value="18" label="Unexpected signing scheme"/>
+  <int value="19" label="Key does not support signing scheme"/>
+  <int value="20" label="Failed to sign: failed to digest"/>
+  <int value="21" label="Failed to sign: failed to add prefix"/>
+  <int value="22" label="Failed to sign: failed to get signature length"/>
+  <int value="23" label="Failed to sign"/>
+  <int value="24" label="Failed to sign: bad signature length"/>
+  <int value="25" label="Failed to DER-encode"/>
+  <int value="26" label="Input too long"/>
+  <int value="27" label="Failed to list keys"/>
+  <int value="28" label="Failed to remove private key"/>
+  <int value="29" label="Failed to remove public key"/>
+  <int value="30" label="Failed to remove objects"/>
+  <int value="31" label="Failed to create SPKI"/>
+  <int value="32" label="Failed to get PKCS#11 ID"/>
+  <int value="33" label="Failed to search for objects"/>
+  <int value="34" label="PKCS#11 session failure"/>
+  <int value="35" label="Bad key params"/>
+  <int value="36" label="Unexpected find result"/>
+  <int value="37" label="Failed to decode key attributes"/>
+  <int value="38" label="Failed to retrieve mechanism list"/>
+  <int value="39" label="Failed to parse key"/>
+  <int value="40" label="Failed to get issuer name"/>
+  <int value="41" label="Failed to get subject name"/>
+  <int value="42" label="Failed to get serial number"/>
+  <int value="43" label="Failed to parse PKCS#12"/>
+  <int value="44" label="Invalid PKCS#12"/>
+  <int value="45" label="PKCS#12 wrong password"/>
+  <int value="46" label="PKCS#12 invalid MAC"/>
+  <int value="47" label="Failed to make cert nickname"/>
+  <int value="48" label="Already exists"/>
+</enum>
+
+<!-- LINT.ThenChange(//chromeos/ash/components/kcer/kcer.h:Error) -->
 
 <!-- LINT.IfChange(LocalAuthFactorsComplexity) -->
 
@@ -2826,6 +3018,18 @@ chromium-metrics-reviews@google.com.
   <int value="2" label="ownership taken"/>
 </enum>
 
+<!-- LINT.IfChange(PlatformManagementStatus) -->
+
+<enum name="PlatformManagementStatus">
+  <int value="0" label="Unmanaged (None)"/>
+  <int value="1" label="Computer Local"/>
+  <int value="2" label="Domain Local"/>
+  <int value="3" label="Cloud"/>
+  <int value="4" label="Cloud Domain"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/policy/core/common/enterprise_management_status_util.h:PlatformManagementStatus) -->
+
 <enum name="PromotionBannerAction">
   <int value="0" label="Promotion banner dismissed">
     The promotion banner was dismissed by the user.
@@ -2895,6 +3099,8 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <enum name="ReportSchedulerReportTrigger">
+<!-- LINT.IfChange(ReportTrigger) -->
+
   <int value="0" label="kTriggerNone"/>
   <int value="1" label="kTriggerTimer">
     The scheduler's periodic timer expired
@@ -2911,6 +3117,11 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="kTriggerSecurity">
     Triggered by a security reporting trigger
   </int>
+  <int value="8" label="kTriggerProfileOpened">
+    Triggered when a profile is opened
+  </int>
+<!-- LINT.ThenChange(//components/enterprise/browser/reporting/report_generation_config.h) -->
+
 </enum>
 
 <enum name="SecondaryGoogleAccountUsagePolicyFetchStatus">
@@ -2925,9 +3136,13 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <enum name="SecurityReportTrigger">
+<!-- LINT.IfChange(SecurityReportTrigger) -->
+
   <int value="0" label="Signals-only report triggered by timer"/>
   <int value="1" label="Signals-only report triggered by cookie change"/>
   <int value="2" label="Signals-only report triggered by policy change"/>
+<!-- LINT.ThenChange(//components/enterprise/browser/reporting/security_signals_service.h:SecurityReportTrigger) -->
+
 </enum>
 
 <enum name="SecuritySignalsMode">
@@ -2968,6 +3183,19 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Canvas"/>
   <int value="7" label="[Deprecated] Google News"/>
   <int value="8" label="Explore"/>
+</enum>
+
+<enum name="WatermarkTimestampTimezoneType">
+  <int value="0" label="Default">Default local wall-clock time.</int>
+  <int value="1" label="UserDevice">
+    Admin-configured local wall-clock time.
+  </int>
+  <int value="2" label="ValidIANATimeZone">
+    Admin-configured valid time zone.
+  </int>
+  <int value="3" label="InvalidFallback">
+    Invalid string received, fell back to local device time.
+  </int>
 </enum>
 
 <enum name="WindowsProfileType">

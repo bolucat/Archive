@@ -156,6 +156,18 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="Crashed"/>
 </enum>
 
+<enum name="ArcContentUrlAccessCheckResult">
+  <int value="0" label="Denied"/>
+  <int value="1" label="Cache Hit"/>
+  <int value="2" label="Database Hit"/>
+</enum>
+
+<enum name="ArcContentUrlGrantAccessResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="No Browser Context"/>
+  <int value="2" label="No Operation Runner"/>
+</enum>
+
 <enum name="ArcCorePriAbiMigEvent">
 <!-- Value from components/arc/mojom/metrics.mojom -->
 
@@ -237,8 +249,8 @@ chromium-metrics-reviews@google.com.
 
 <enum name="ArcNearbyShareDataHandlingResult">
   <int value="0" label="Directory does not exists."/>
-  <int value="1" label="Unexpected null g_browser_process."/>
-  <int value="2" label="Invalid profile."/>
+  <int value="1" label="(Obsolete) Unexpected null g_browser_process."/>
+  <int value="2" label="(Obsolete) Invalid profile."/>
   <int value="3" label="Base directory is empty."/>
   <int value="4" label="Failed to create unique temp directory."/>
   <int value="5" label="External urls are empty."/>

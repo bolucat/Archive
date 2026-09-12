@@ -17,9 +17,12 @@
 #include "partition_alloc/slot_start.h"
 
 namespace partition_alloc {
+namespace internal {
+class ReservationOffsetTableAddressInfo;
+}
 
 struct PA_COMPONENT_EXPORT(PARTITION_ALLOC) SlotAddressAndSize {
-  internal::UntaggedSlotStart slot_start = {};
+  UntaggedSlotStart slot_start = {};
   size_t size = 0u;
 
   // Gets the start address and size of the allocated slot. The input |address|
@@ -29,6 +32,14 @@ struct PA_COMPONENT_EXPORT(PARTITION_ALLOC) SlotAddressAndSize {
   // This isn't a general purpose function, it is used specifically for
   // obtaining BackupRefPtr's in-slot metadata. The caller is responsible for
   // ensuring that the in-slot metadata is in place for this allocation.
+  static SlotAddressAndSize From(
+      uintptr_t address,
+      internal::pool_handle pool,
+      internal::ReservationOffsetTableAddressInfo reservation_info,
+      std::ptrdiff_t metadata_offset);
+
+  // Same as above but will manually look up `ReservationOffsetTableAddressInfo`
+  // and `metadata_offset` for the given `pool`.
   static SlotAddressAndSize From(uintptr_t address, internal::pool_handle pool);
 
   // Terse BRP-specific version of `From()`. Caller must ensure that

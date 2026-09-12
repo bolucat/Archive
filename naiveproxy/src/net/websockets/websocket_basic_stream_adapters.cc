@@ -110,6 +110,11 @@ int WebSocketSpdyStreamAdapter::Write(
     CompletionOnceCallback callback,
     const NetworkTrafficAnnotationTag& traffic_annotation) {
   CHECK(headers_sent_);
+
+  if (end_stream_sent_) {
+    return stream_error_;
+  }
+
   DCHECK(!write_callback_);
   DCHECK(callback);
   DCHECK_LT(0, buf_len);
@@ -156,13 +161,15 @@ void WebSocketSpdyStreamAdapter::OnHeadersReceived(
 void WebSocketSpdyStreamAdapter::OnDataReceived(
     std::unique_ptr<SpdyBuffer> buffer) {
   if (!buffer) {
-    // This is slightly wrong semantically, as it's still possible to write to
-    // the stream at this point. However, if the server closes the stream
-    // without waiting for a close frame from us, that means it is not
-    // interested in a clean shutdown. In which case we don't need to worry
-    // about sending any remaining data we might have buffered. This results in
-    // a call to OnClose() which then informs our delegate.
-    stream_->Close();
+    // The server has half-closed the stream. RFC 8441 section 5 makes HTTP/2
+    // stream closure analogous to TCP connection closure, with orderly closures
+    // "represented as END_STREAM flags", and RFC 6455 section 7.1.1 requires
+    // the transport to be closed once the closing handshake is complete. Close
+    // our half as well: simply dropping the stream locally would stop it
+    // counting against SETTINGS_MAX_CONCURRENT_STREAMS here while leaving the
+    // peer in half-closed(local) indefinitely, leaking a stream per WebSocket.
+    CHECK(headers_sent_);
+    MaybeSendEndStream();
     return;
   }
 
@@ -175,10 +182,42 @@ void WebSocketSpdyStreamAdapter::OnDataReceived(
   }
 }
 
+void WebSocketSpdyStreamAdapter::MaybeSendEndStream() {
+  if (end_stream_sent_ || !stream_) {
+    return;
+  }
+
+  // If there's an existing write pending, then re-queue to execute next time.
+  if (write_callback_) {
+    write_callback_ = base::BindOnce(
+        [](base::WeakPtr<WebSocketSpdyStreamAdapter> self,
+           CompletionOnceCallback cb, int result) {
+          if (self) {
+            self->MaybeSendEndStream();
+          }
+          std::move(cb).Run(result);
+        },
+        weak_factory_.GetWeakPtr(), std::move(write_callback_));
+    return;
+  }
+
+  // Send an empty END_STREAM. This will result in OnClose() being called which
+  // informs our delegate.
+  end_stream_sent_ = true;
+  auto buffer = base::MakeRefCounted<IOBufferWithSize>(0);
+  stream_->SendData(buffer.get(), 0, NO_MORE_DATA_TO_SEND);
+}
+
 void WebSocketSpdyStreamAdapter::OnDataSent() {
+  if (end_stream_sent_) {
+    CHECK(!write_callback_);
+    return;
+  }
+
   DCHECK(write_callback_);
 
-  std::move(write_callback_).Run(write_length_);
+  auto write_callback = std::move(write_callback_);
+  std::move(write_callback).Run(write_length_);
 }
 
 void WebSocketSpdyStreamAdapter::OnTrailers(
@@ -284,7 +323,7 @@ int WebSocketQuicStreamAdapter::Read(IOBuffer* buf,
                                      int buf_len,
                                      CompletionOnceCallback callback) {
   if (!websocket_quic_spdy_stream_) {
-    return ERR_UNEXPECTED;
+    return stream_error_;
   }
 
   int rv = websocket_quic_spdy_stream_->Read(buf, buf_len);
@@ -304,15 +343,29 @@ int WebSocketQuicStreamAdapter::Write(
     CompletionOnceCallback callback,
     const NetworkTrafficAnnotationTag& traffic_annotation) {
   DCHECK(!write_callback_);
-  DCHECK(websocket_quic_spdy_stream_);
   CHECK_GT(buf_len, 0);
   DCHECK(callback);
 
+  if (!websocket_quic_spdy_stream_) {
+    return stream_error_;
+  }
+
   // Queue data to the QUIC stream. WriteOrBufferBody() either sends the data
   // immediately if flow control allows, or buffers it internally.
+  // It can also synchronously close the connection on socket write errors.
+  base::WeakPtr<WebSocketQuicStreamAdapter> weak_this =
+      weak_factory_.GetWeakPtr();
   websocket_quic_spdy_stream_->WriteOrBufferBody(
       {buf->data(), static_cast<size_t>(buf_len)},
       /*fin=*/false);
+  // If the adapter was destroyed by a callback during the write, return
+  // safely without accessing member variables.
+  if (!weak_this) {
+    return ERR_CONNECTION_CLOSED;
+  }
+  if (!websocket_quic_spdy_stream_) {
+    return stream_error_;
+  }
 
   // Check CanWriteNewData() after queuing rather than before. This is necessary
   // because WriteOrBufferBody() may have caused the send buffer to cross its
@@ -359,9 +412,10 @@ void WebSocketQuicStreamAdapter::OnInitialHeadersComplete(
     bool fin,
     size_t frame_len,
     const quic::QuicHeaderList& quic_header_list) {
+  int64_t content_length = -1;
   quiche::HttpHeaderBlock response_headers;
-  if (!quic::SpdyUtils::CopyAndValidateHeaders(quic_header_list, nullptr,
-                                               &response_headers)) {
+  if (!quic::SpdyUtils::CopyAndValidateHeaders(
+          quic_header_list, &content_length, &response_headers)) {
     DLOG(ERROR) << "Failed to parse header list: "
                 << quic_header_list.DebugString();
     websocket_quic_spdy_stream_->ConsumeHeaderList();
@@ -403,21 +457,27 @@ void WebSocketQuicStreamAdapter::OnBodyAvailable() {
 
 void WebSocketQuicStreamAdapter::OnClose(int status) {
   CHECK_LE(status, 0);
-  auto self = weak_factory_.GetWeakPtr();
-  ClearStream();
-
   if (status == OK) {
     status = ERR_CONNECTION_CLOSED;
   }
+  stream_error_ = status;
+
+  base::WeakPtr<WebSocketQuicStreamAdapter> weak_this =
+      weak_factory_.GetWeakPtr();
+  ClearStream();
+
+  // Running a completion callback can delete the current
+  // WebSocketQuicStreamAdapter. In that case, `weak_this` becomes invalid and
+  // OnClose() must return before accessing more member variables.
   if (read_callback_) {
     std::move(read_callback_).Run(status);
-    if (!self) {  // |this| might have been destroyed.
+    if (!weak_this) {
       return;
     }
   }
   if (write_callback_) {
     std::move(write_callback_).Run(status);
-    if (!self) {  // |this| might have been destroyed.
+    if (!weak_this) {
       return;
     }
   }

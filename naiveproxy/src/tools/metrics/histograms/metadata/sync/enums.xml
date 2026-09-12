@@ -349,8 +349,8 @@ chromium-metrics-reviews@google.com.
   <int value="74" label="AutoPinNewTabGroups"/>
   <int value="75" label="ShowGoogleLensShortcut"/>
   <int value="76" label="(obsolete) SharingVapidKey2"/>
-  <int value="77" label="FirstPlusAddressCreationTime"/>
-  <int value="78" label="LastPlusAddressFillingTime"/>
+  <int value="77" label="(obsolete) FirstPlusAddressCreationTime"/>
+  <int value="78" label="(obsolete) LastPlusAddressFillingTime"/>
   <int value="79" label="SafeBrowsingEnhanced"/>
   <int value="80" label="FacilitatedPaymentsEwallet"/>
   <int value="81" label="AutofillBnplEnabled"/>
@@ -381,14 +381,20 @@ chromium-metrics-reviews@google.com.
   <int value="107" label="CrossDeviceTipsHomeModuleEnabled"/>
   <int value="108" label="CrossDeviceMagicStackHomeModuleEnabled"/>
   <int value="109" label="ShowAiModeOmniboxButton"/>
-  <int value="110" label="AutofillAiSyncedOptInStatus"/>
+  <int value="110" label="(obsolete) AutofillAiSyncedOptInStatus"/>
   <int value="111" label="iOSPromoReminder"/>
   <int value="112" label="AutofillAiReauthBeforeViewingSensitiveData"/>
-  <int value="113" label="DriveDisclaimerAccepted"/>
+  <int value="113" label="(obsolete) DriveDisclaimerAccepted"/>
   <int value="114" label="AutofillAiShoppingEntitiesEnabled"/>
   <int value="115" label="PrefTranslateRecentTargets"/>
   <int value="116" label="BookmarkBarVisibilityState"/>
   <int value="117" label="SyncableAccountScopedPrefForTesting"/>
+  <int value="118" label="AutofillAtMemoryTriggerInfo"/>
+  <int value="119" label="AutofillGmailOtpFillingEnabled"/>
+  <int value="120" label="AutofillGmailOtpFillingActivationDismissalTimestamp"/>
+  <int value="121" label="DriveConsentState"/>
+  <int value="122" label="AutofillAiPrivateInferenceOptInStatus"/>
+  <int value="123" label="AutofillWalletReminderNoticeShown"/>
 <!-- LINT.ThenChange(/components/sync_preferences/common_syncable_prefs_database.cc:CommonSyncablePref)-->
 
 <!-- LINT.IfChange(ChromeSyncablePref) -->
@@ -631,7 +637,7 @@ chromium-metrics-reviews@google.com.
   <int value="100220" label="BrowserColorVariant"/>
   <int value="100221" label="GrayscaleThemeEnabled"/>
   <int value="100222" label="UserColor"/>
-  <int value="100223" label="BlockAll3pcToggleEnabled"/>
+  <int value="100223" label="(Obsolete) BlockAll3pcToggleEnabled"/>
   <int value="100224" label="(Obsolete) TrackingProtectionLevel"/>
   <int value="100225" label="UserSpeakOnMuteDetectionEnabled"/>
   <int value="100226" label="ShouldShowSpeakOnMuteOptInNudge"/>
@@ -694,11 +700,12 @@ chromium-metrics-reviews@google.com.
   <int value="100271" label="AccessibilityFaceGazeGesturesToConfidence"/>
   <int value="100272" label="ShelfGeminiAppPinRolls"/>
   <int value="100273"
-      label="ProfileContentSettingsExceptionsTrackingProtection"/>
+      label="(obsolete) ProfileContentSettingsExceptionsTrackingProtection"/>
   <int value="100274"
-      label="ProfileContentSettingsPartitionedExceptionsTrackingProtection"/>
+      label="(obsolete)
+             ProfileContentSettingsPartitionedExceptionsTrackingProtection"/>
   <int value="100275"
-      label="ProfileDefaultContentSettingValuesTrackingProtection"/>
+      label="(obsolete) ProfileDefaultContentSettingValuesTrackingProtection"/>
   <int value="100276" label="ShowForwardButton"/>
   <int value="100277" label="AccessibilityMagnifierFollowsSts"/>
   <int value="100278" label="AccessibilityReadAnythingLanguagesEnabled"/>
@@ -753,7 +760,7 @@ chromium-metrics-reviews@google.com.
       label="OfficeMoveConfirmationShownForCloudToOneDriveSyncable"/>
   <int value="100323" label="PinnedCastMigrationComplete"/>
   <int value="100324" label="AccessibilityAXTreeFixingEnabled"/>
-  <int value="100325" label="TabSearchMigrationComplete"/>
+  <int value="100325" label="(obsolete) TabSearchMigrationComplete"/>
   <int value="100326" label="ReadAloudPlaybackMode"/>
   <int value="100327" label="PinSplitTabButton"/>
   <int value="100328" label="GlicRolloutEligibility"/>
@@ -800,7 +807,7 @@ chromium-metrics-reviews@google.com.
   <int value="100369" label="PinContextualTaskButton"/>
   <int value="100370" label="AccessibilityReadAnythingOmniboxChipIgnoredCount"/>
   <int value="100371" label="AccessibilityReadAnythingLineFocus"/>
-  <int value="100372" label="ProjectsPanelEntrypointEnabled"/>
+  <int value="100372" label="OrganizerPanelEntrypointEnabled"/>
   <int value="100373" label="iOSTabGroupsPromoLastImpressionTimestamp"/>
   <int value="100374" label="iOSTabGroupsPromoImpressionsCounter"/>
   <int value="100375" label="iOSTabGroupsPromoOptOut"/>
@@ -811,6 +818,12 @@ chromium-metrics-reviews@google.com.
   <int value="100380" label="AppRatingPromptShown"/>
   <int value="100381"
       label="AccessibilityReadAnythingLastOpenedPresentationState"/>
+  <int value="100382" label="ProfileContentSettingsExceptionsInlineCueMenu"/>
+  <int value="100383"
+      label="ProfileContentSettingsPartitionedExceptionsInlineCueMenu"/>
+  <int value="100384" label="ProfileDefaultContentSettingValuesInlineCueMenu"/>
+  <int value="100385" label="ExtensionsPinnedByDefault"/>
+  <int value="100386" label="AudioFocusEnforcementEnabled"/>
 <!-- LINT.ThenChange(/chrome/browser/sync/prefs/chrome_syncable_prefs_database.cc:ChromeSyncablePref)-->
 
 <!-- LINT.IfChange(IosSyncablePref) -->
@@ -832,6 +845,10 @@ chromium-metrics-reviews@google.com.
   <int value="200014" label="LevelUpCompletedTasks"/>
   <int value="200015" label="LevelUpHighestLevel"/>
   <int value="200016" label="LevelUpUIEnabled"/>
+  <int value="200017" label="LevelUpTabsDeclutteredStat"/>
+  <int value="200018" label="LevelUpTypingSavedStat"/>
+  <int value="200019" label="LevelUpPasswordsVerifiedStat"/>
+  <int value="200020" label="LevelUpPhotoSearchesPerformedStat"/>
 <!-- LINT.ThenChange(/ios/chrome/browser/sync/model/prefs/ios_chrome_syncable_prefs_database.cc:IosSyncablePref)-->
 
 </enum>
@@ -853,6 +870,7 @@ chromium-metrics-reviews@google.com.
   <int value="11" label="Managed bookmark has sync metadata"/>
   <int value="12" label="Entity missing client tag hash"/>
   <int value="13" label="Entity missing favicon hash"/>
+  <int value="14" label="Invalid metadata (failed validation)"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/sync_bookmarks/synced_bookmark_tracker.h:SyncBookmarkModelMetadataCorruptionReason) -->
@@ -1024,10 +1042,10 @@ chromium-metrics-reviews@google.com.
   <int value="62" label="WebAPKs"/>
   <int value="63" label="Shared Tab Group Data"/>
   <int value="64" label="Collaboration Groups"/>
-  <int value="65" label="Plus Address"/>
+  <int value="65" label="(Obsolete) Plus Address"/>
   <int value="66" label="Product Comparison"/>
   <int value="67" label="Cookies"/>
-  <int value="68" label="Plus Address Settings"/>
+  <int value="68" label="(Obsolete) Plus Address Settings"/>
   <int value="69" label="Autofill Valuable"/>
   <int value="70" label="Shared Tab Group Account Data"/>
   <int value="71" label="SharedComment"/>
@@ -1040,6 +1058,10 @@ chromium-metrics-reviews@google.com.
   <int value="78" label="Themes (iOS)"/>
   <int value="79" label="(Obsolete) Accessibility Annotation"/>
   <int value="80" label="Themes (Android)"/>
+  <int value="81" label="Encrypted Tab Context Container"/>
+  <int value="82" label="Encrypted Tab Context Item"/>
+  <int value="83" label="Notebook"/>
+  <int value="84" label="Journey"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/sync/base/data_type.h:SyncDataTypes) -->
@@ -1330,6 +1352,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Sync needs trusted vault key"/>
   <int value="7" label="Sync trusted vault recoverability degraded"/>
   <int value="8" label="Bookmarks limit exceeded"/>
+  <int value="9" label="Device management error"/>
 </enum>
 
 <!-- LINT.ThenChange(/ios/chrome/browser/settings/model/sync/utils/sync_util.mm:SyncErrorInfobarTypes) -->
@@ -1479,6 +1502,18 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Unknown reason"/>
 </enum>
 
+<!-- LINT.IfChange(SyncMetadataConsistency) -->
+
+<enum name="SyncMetadataConsistency">
+  <int value="0" label="Metadata consistent"/>
+  <int value="1" label="Cache GUID mismatch"/>
+  <int value="2" label="Data type ID mismatch"/>
+  <int value="3" label="Empty persisted authenticated Gaia ID"/>
+  <int value="4" label="Authenticated Gaia ID mismatch"/>
+</enum>
+
+<!-- LINT.ThenChange(/components/sync/model/client_tag_based_data_type_processor.cc:SyncMetadataConsistency) -->
+
 <!-- LINT.IfChange(SyncModelError) -->
 
 <enum name="SyncModelError">
@@ -1596,17 +1631,21 @@ chromium-metrics-reviews@google.com.
   <int value="106" label="kNigoriMissingKeystoreKeysDuringInitialSync"/>
   <int value="107" label="kNigoriMissingLastTrustedVaultKeyInKeybag"/>
   <int value="108" label="kNigoriMissingNewDefaultKeyInKeybag"/>
-  <int value="121" label="kPlusAddressAddOrUpdateProfileFailed"/>
-  <int value="122" label="kPlusAddressClearProfilesFailed"/>
-  <int value="123" label="kPlusAddressDatabaseInitFailed"/>
-  <int value="124" label="kPlusAddressMetadataReadFailed"/>
-  <int value="125" label="kPlusAddressRemoveProfileFailed"/>
-  <int value="126" label="kPlusAddressSettingFailedToParseSpecifics"/>
-  <int value="127" label="kPlusAddressTransactionBeginFailedOnDisableSync"/>
-  <int value="128" label="kPlusAddressTransactionBeginFailedOnIncrementalSync"/>
-  <int value="129" label="kPlusAddressTransactionCommitFailedOnDisableSync"/>
+  <int value="121" label="(Obsolete) kPlusAddressAddOrUpdateProfileFailed"/>
+  <int value="122" label="(Obsolete) kPlusAddressClearProfilesFailed"/>
+  <int value="123" label="(Obsolete) kPlusAddressDatabaseInitFailed"/>
+  <int value="124" label="(Obsolete) kPlusAddressMetadataReadFailed"/>
+  <int value="125" label="(Obsolete) kPlusAddressRemoveProfileFailed"/>
+  <int value="126"
+      label="(Obsolete) kPlusAddressSettingFailedToParseSpecifics"/>
+  <int value="127"
+      label="(Obsolete) kPlusAddressTransactionBeginFailedOnDisableSync"/>
+  <int value="128"
+      label="(Obsolete) kPlusAddressTransactionBeginFailedOnIncrementalSync"/>
+  <int value="129"
+      label="(Obsolete) kPlusAddressTransactionCommitFailedOnDisableSync"/>
   <int value="130"
-      label="kPlusAddressTransactionCommitFailedOnIncrementalSync"/>
+      label="(Obsolete) kPlusAddressTransactionCommitFailedOnIncrementalSync"/>
   <int value="131" label="(Obsolete) kPowerBookmarkDatabaseCommitFailed"/>
   <int value="132" label="(Obsolete) kPowerBookmarkDatabaseInitFailed"/>
   <int value="133" label="(Obsolete) kPowerBookmarkFailedToBeginTransaction"/>
@@ -1670,6 +1709,9 @@ chromium-metrics-reviews@google.com.
   <int value="190" label="kAutofillValuableMetadataFailedToLoadMetadata"/>
   <int value="191" label="kDataTypeControllerInFailedState"/>
   <int value="192" label="kBookmarksLocalCountExceededLimitAfterInitialMerge"/>
+  <int value="193" label="kTabContextContainerFailedToDeserializeSpecifics"/>
+  <int value="194" label="kJourneysFailedToLoadMetadata"/>
+  <int value="195" label="kJourneysDatabaseError"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/sync/model/model_error.h:Type) -->
@@ -1936,6 +1978,8 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="Password Manager keyboard accessory"/>
   <int value="8" label="Passkey Unlock Profile Menu"/>
   <int value="9" label="Passkey Authenticator Window"/>
+  <int value="10" label="Password Save Prompt"/>
+  <int value="11" label="GPM Settings Passkey Promo Card"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/trusted_vault/trusted_vault_client.h:TrustedVaultUserActionTrigger) -->
@@ -1954,6 +1998,7 @@ chromium-metrics-reviews@google.com.
   <int value="9" label="Needs UPM backend upgrade"/>
   <int value="10" label="Needs client upgrade"/>
   <int value="11" label="Bookmarks limit exceeded"/>
+  <int value="12" label="Device Management error"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/sync/service/sync_service.h:UserActionableError) -->

@@ -13,15 +13,17 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include "crypto/sha2.h"
+#include "crypto/hash.h"
 #include "net/base/expiring_cache.h"
 #include "net/base/hash_value.h"
 #include "net/base/net_export.h"
@@ -66,7 +68,7 @@ enum class SSLUpgradeDecision {
 // http://tools.ietf.org/html/ietf-websec-strict-transport-sec.
 class NET_EXPORT TransportSecurityState {
  public:
-  using HashedHost = std::array<uint8_t, crypto::kSHA256Length>;
+  using HashedHost = std::array<uint8_t, crypto::hash::kSha256Size>;
 
   class NET_EXPORT Delegate {
    public:
@@ -497,8 +499,7 @@ class NET_EXPORT TransportSecurityState {
   // These 3 members are for the component-updated "static" PKP data:
   // The values in host_pins_ maps are references to PinSet objects in the
   // pinsets_ vector.
-  std::optional<
-      std::map<std::string, std::pair<const PinSet*, bool>, std::less<>>>
+  std::optional<base::flat_map<std::string, std::pair<const PinSet*, bool>>>
       host_pins_;
   base::Time key_pins_list_last_update_time_;
   std::vector<PinSet> pinsets_;

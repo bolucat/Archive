@@ -186,6 +186,9 @@ class QUICHE_EXPORT QuicConnectionVisitorInterface {
   // Called when the connection receives a packet from a migrated client.
   virtual void OnConnectionMigration(AddressChangeType type) = 0;
 
+  // Called when a new RTT sample is available.
+  virtual void OnRttSampleAvailable(const QuicRttSample& rtt_sample) = 0;
+
   // Called when the peer seems unreachable over the current path.
   virtual void OnPathDegrading() = 0;
 
@@ -835,6 +838,7 @@ class QUICHE_EXPORT QuicConnection
   void OnPathMtuIncreased(QuicPacketLength packet_size) override;
   void OnInFlightEcnPacketAcked() override;
   void OnInvalidEcnFeedback() override;
+  void OnRttSampleAvailable(const QuicRttSample& rtt_sample) override;
 
   // QuicNetworkBlackholeDetector::Delegate
   void OnPathDegradingDetected() override;
@@ -1362,7 +1366,10 @@ class QUICHE_EXPORT QuicConnection
 
   QuicPathValidationContext* GetPathValidationContext() const;
 
+  // TODO(martinduke): Delete this deprecated method once non-QUICHE callers are
+  // updated to provide a reason.
   void CancelPathValidation();
+  void CancelPathValidation(PathValidationFailure failure);
 
   // Returns true if the migration succeeds, otherwise returns false (e.g., no
   // available CIDs, connection disconnected, etc).
@@ -1742,9 +1749,6 @@ class QUICHE_EXPORT QuicConnection
     // be overridden to the current default self address.
     QuicSocketAddress actual_destination_address;
     // 8B remaining in the fourth cacheline.
-    // TODO(martinduke): Remove once gfe2_reloadable_flag_quic_one_dcid is
-    // deprecated.
-    QuicConnectionId destination_connection_id;
   };
   static_assert(offsetof(ReceivedPacketInfo, received_bytes_counted) <= 192);
 
@@ -2207,11 +2211,7 @@ class QUICHE_EXPORT QuicConnection
   // Extract destination connection ID from ReceivedPacketInfo.
   inline QuicConnectionId GetDestinationConnectionId(
       const ReceivedPacketInfo& packet_info) const {
-    if (store_one_dcid_) {
-      QUIC_RELOADABLE_FLAG_COUNT_N(quic_one_dcid, 1, 3);
-      return packet_info.header.destination_connection_id;
-    }
-    return packet_info.destination_connection_id;
+    return packet_info.header.destination_connection_id;
   }
 
   // Send a scone packet immediately after successfully migrating to a new path
@@ -2586,9 +2586,6 @@ class QUICHE_EXPORT QuicConnection
   // If true then flow labels will be changed when a PTO fires, or when
   // a PTO'd packet from a peer is detected.
   bool enable_black_hole_avoidance_via_flow_label_ : 1 = false;
-  // If true, stores only one copy of the destination connection ID in
-  // ReceivedPacketInfo.
-  const bool store_one_dcid_ : 1;
 
   // If true, the connection will accept SCONE packets from the peer.
   bool parse_scone_packets_ : 1 = false;
@@ -2599,7 +2596,8 @@ class QUICHE_EXPORT QuicConnection
   bool quic_close_on_idle_timeout_ : 1 =
       GetQuicReloadableFlag(quic_close_on_idle_timeout);
   // True if spin bit is enabled for this connection.
-  bool spin_bit_enabled_ : 1 = ShouldEnableSpinBit();
+  bool spin_bit_enabled_ : 1 = false;
+  bool fix_mtu_discovery_ : 1 = GetQuicReloadableFlag(quic_fix_mtu_discovery);
 };
 
 }  // namespace quic
