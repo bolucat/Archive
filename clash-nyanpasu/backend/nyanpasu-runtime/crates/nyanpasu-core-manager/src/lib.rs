@@ -5,7 +5,7 @@
 
 mod capability;
 pub mod controller_access;
-pub use controller_access::ControllerAccess;
+pub use controller_access::{ControllerAccess, ControllerAuthorization};
 mod config;
 pub mod control;
 pub mod dns;

@@ -29,7 +29,7 @@ ss-local(1) can be started from command line and run in foreground.
 Here is an example:
 ```
 # Start ss-local with given parameters
-ss-local --server example.com --server-port 12345 --listen-port 1080 --password foobar --cipher aes-256-gcm
+ss-local --server example.com:12345 --listen-port 1080 --password foobar --cipher aes-256-gcm
 ```
 
 \section ss_local_see_also SEE ALSO

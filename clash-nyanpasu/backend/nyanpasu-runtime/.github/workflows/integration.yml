@@ -54,6 +54,9 @@ jobs:
         run: cargo test -p nyanpasu-core-manager --test real_mihomo_smoke -- --ignored --nocapture
       - name: Run core-manager real-core tests
         run: cargo test -p nyanpasu-core-manager --test real_cores -- --ignored --nocapture
+      - name: Run Windows core pipe permission tests
+        if: runner.os == 'Windows'
+        run: cargo test -p nyanpasu-core-manager --test windows_controller_access -- --include-ignored --nocapture
 
   nyanpasu-ipc:
     strategy:
@@ -88,7 +91,7 @@ jobs:
         if: runner.os != 'Windows'
         run: sudo chmod o+w /var/run
       - name: Run nyanpasu-ipc roundtrip tests
-        run: cargo test -p nyanpasu-ipc --all-features
+        run: cargo test -p nyanpasu-ipc -p nyanpasu-windows-security --all-features
 
   coverage:
     name: Coverage (service-runtime + ipc)

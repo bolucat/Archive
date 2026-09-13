@@ -5,6 +5,7 @@ package firewall
 import (
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	eUtils "github.com/apernet/hysteria/extras/v2/utils"
@@ -223,4 +224,71 @@ func TestSetupUDPPortRedirectWithRunnerRollback(t *testing.T) {
 	_, err := setupUDPPortRedirectWithRunner(runner, addr, ports)
 	require.Error(t, err)
 	require.Contains(t, runner.cmds[len(runner.cmds)-1], "-X")
+}
+
+// Wildcard listeners must only capture traffic addressed to this host, including
+// locally generated traffic. Explicit binds must retain their address filter.
+func TestUDPPortRedirectDestinationScope(t *testing.T) {
+	for _, backend := range []string{"nftables", "iptables"} {
+		t.Run(backend, func(t *testing.T) {
+			t.Setenv(firewallBackendEnv, backend)
+			for _, tc := range []struct {
+				name string
+				ip   net.IP
+			}{
+				{"implicit", nil},
+				{"wildcard4", net.IPv4zero},
+				{"wildcard6", net.IPv6unspecified},
+				{"specific4", net.ParseIP("192.0.2.1")},
+				{"specific6", net.ParseIP("2001:db8::1")},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					runner := &fakeRunner{paths: map[string]bool{"nft": true, "iptables": true, "ip6tables": true}}
+					cleanup, err := setupUDPPortRedirectWithRunner(runner,
+						&net.UDPAddr{IP: tc.ip, Port: 443}, eUtils.PortUnion{{443, 443}, {20000, 60000}})
+					require.NoError(t, err)
+					wildcard := tc.ip == nil || tc.ip.IsUnspecified()
+					rules := 0
+					var addedIPTablesRules []string
+					for _, cmd := range runner.cmds {
+						line := strings.Join(cmd, " ")
+						if !strings.Contains(line, "dport") {
+							continue
+						}
+						rules++
+						if backend == "nftables" {
+							if wildcard {
+								require.Contains(t, line, "fib daddr type local udp dport")
+							} else {
+								require.Contains(t, line, "daddr "+tc.ip.String()+" udp dport")
+								require.NotContains(t, line, "fib")
+							}
+						} else {
+							if wildcard {
+								require.Contains(t, line, "-m addrtype --dst-type LOCAL -p udp")
+							} else {
+								require.Contains(t, line, "-d "+tc.ip.String()+" -p udp")
+								require.NotContains(t, line, "addrtype")
+							}
+							addedIPTablesRules = append(addedIPTablesRules, line)
+						}
+					}
+					if wildcard {
+						require.Equal(t, 4, rules, "both hooks and both IP families")
+					} else {
+						require.Equal(t, 2, rules, "both hooks for the bound IP family")
+					}
+					n := len(runner.cmds)
+					require.NoError(t, cleanup.Close())
+					var deleted []string
+					for _, cmd := range runner.cmds[n:] {
+						deleted = append(deleted, strings.Join(cmd, " "))
+					}
+					for _, added := range addedIPTablesRules {
+						require.Contains(t, deleted, strings.Replace(added, " -A ", " -D ", 1))
+					}
+				})
+			}
+		})
+	}
 }

@@ -145,6 +145,7 @@ pub struct InstanceBuilder {
     liveness_probe: Option<ProbeHandle>,
     liveness_with_readiness: bool,
     log_tx: Option<broadcast::Sender<Arc<LogFrame>>>,
+    pipe_security_descriptor: Option<String>,
 }
 
 impl Instance {
@@ -163,6 +164,7 @@ impl Instance {
             liveness_probe: None,
             liveness_with_readiness: false,
             log_tx: None,
+            pipe_security_descriptor: None,
         }
     }
 
@@ -185,6 +187,7 @@ impl Instance {
             liveness_probe,
             liveness_with_readiness,
             log_tx,
+            pipe_security_descriptor,
         } = builder;
         if tokio::fs::metadata(&spec.config_path).await.is_err() {
             return Err(Error::ConfigNotFound(spec.config_path.clone()));
@@ -231,7 +234,14 @@ impl Instance {
         let supervisor = Supervisor::builder({
             let spec = spec.clone();
             let controller = controller.clone();
-            move || build_command(&spec, epoch, &controller)
+            move || {
+                build_command(
+                    &spec,
+                    epoch,
+                    &controller,
+                    pipe_security_descriptor.as_deref(),
+                )
+            }
         })
         .restart_policy(spec.options.restart_policy)
         .backoff(spec.options.backoff)
@@ -462,6 +472,11 @@ impl Instance {
 }
 
 impl InstanceBuilder {
+    pub(crate) fn pipe_security_descriptor(mut self, descriptor: Option<String>) -> Self {
+        self.pipe_security_descriptor = descriptor;
+        self
+    }
+
     pub fn readiness_probe(mut self, probe: ProbeHandle) -> Self {
         self.readiness_probe = Some(probe);
         self
@@ -501,7 +516,12 @@ impl Drop for Instance {
     }
 }
 
-fn build_command(spec: &InstanceSpec, epoch: Epoch, controller: &ResolvedController) -> Command {
+fn build_command(
+    spec: &InstanceSpec,
+    epoch: Epoch,
+    controller: &ResolvedController,
+    pipe_security_descriptor: Option<&str>,
+) -> Command {
     let mut args = kind::run_args(spec.core.kind, spec.core_paths())
         .expect("kind validated in Instance::spawn");
     args.extend(kind::controller_args(spec.core.kind, &controller.host));
@@ -517,6 +537,9 @@ fn build_command(spec: &InstanceSpec, epoch: Epoch, controller: &ResolvedControl
         )
         .env(CLICOLOR_FORCE_ENV_NAME, "0")
         .current_dir(spec.working_dir.as_str());
+    if let Some(sddl) = pipe_security_descriptor {
+        command = command.env("LISTEN_NAMEDPIPE_SDDL", sddl);
+    }
     if let Some(pid_file) = &spec.pid_file {
         command = if epoch_pid_path(spec, epoch).is_some() {
             command.epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {

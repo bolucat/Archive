@@ -4,7 +4,8 @@ use std::{
 };
 
 use futures_util::{Stream, StreamExt};
-use reqwest_websocket::{Message, Upgrade};
+use nyanpasu_utils::reqwest_ext::NamedPipeRequestExt;
+use reqwest_websocket::Message;
 
 use crate::api::{
     self,
@@ -176,8 +177,7 @@ impl Client {
     pub async fn events(&self) -> Result<EventStream> {
         let response = self
             .get(EVENT_URI)
-            .upgrade()
-            .send()
+            .upgrade_with_named_pipe_retry()
             .await
             .map_err(|source| ClientError::WebSocket {
                 operation: EVENT_URI,

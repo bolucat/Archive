@@ -45,7 +45,8 @@ pub trait RetryPolicy: Debug + Send + Sync + 'static {
 
 pub(crate) type SharedRetryPolicy = Arc<dyn RetryPolicy>;
 
-/// The default policy: every operation is attempted exactly once.
+/// The default policy: no business-operation retries. Named-pipe connection
+/// contention is handled separately before any request data is sent.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoRetry;
 

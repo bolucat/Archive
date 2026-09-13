@@ -370,6 +370,10 @@ See [image and build details](docker/static/README.md).
 
 ## Usage
 
+Clients accept a combined remote endpoint: `--server example.com:8388` or
+`--server '[2001:db8::1]:8388'`. Repeat the flag for multiple servers. Legacy
+`-s HOST -p PORT` remains supported; an embedded port takes priority.
+
 For a detailed and complete list of all supported arguments,
 you may refer to the man pages of the applications, respectively.
 

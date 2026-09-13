@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 edition = "2024"
 
 [[test]]
@@ -47,9 +47,13 @@ indexmap = { version = "2", features = ["serde"] }
 serde_json = "1"
 
 [target."cfg(windows)".dependencies]
-windows = { workspace = true }
+nyanpasu-windows-security = { path = "../crates/nyanpasu-windows-security" }
 
 [features]
-client = ["dep:futures-util", "dep:reqwest", "dep:reqwest-websocket"]
+client = ["dep:futures-util", "dep:reqwest", "dep:reqwest-websocket", "nyanpasu-utils/reqwest"]
 server = ["dep:axum", "dep:axum-extra", "dep:tower", "dep:widestring"]
 specta = ["dep:specta", "nyanpasu-utils/specta", "nyanpasu-logging/specta"]
+
+# The pipe-inspection example calls Win32 directly.
+[target."cfg(windows)".dev-dependencies]
+windows.workspace = true

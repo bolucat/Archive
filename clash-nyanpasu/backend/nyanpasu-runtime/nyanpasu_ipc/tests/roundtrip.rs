@@ -64,6 +64,10 @@ use nyanpasu_utils::core::{ClashCoreType, CoreType};
 
 const TEST_VERSION: &str = "9.9.9-roundtrip";
 
+#[cfg(windows)]
+#[path = "roundtrip/windows_pipe_busy.rs"]
+mod windows_pipe_busy;
+
 #[tokio::test]
 async fn viewer_protocol_roundtrips_over_local_transport() {
     use nyanpasu_ipc::{

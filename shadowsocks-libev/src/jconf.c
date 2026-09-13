@@ -135,6 +135,92 @@ parse_addr(const char *str_in, ss_addr_t *addr)
     free(str);
 }
 
+/* CLI endpoints are strict; keep the legacy JSON address parser unchanged. */
+int
+parse_server_endpoint(const char *str, ss_addr_t *addr)
+{
+    ss_addr_t parsed = { 0 };
+    uint16_t port;
+    if (str == NULL || *str == '\0')
+        return -1;
+    for (const char *p = str; *p; p++) {
+        if ((unsigned char)*p <= ' ' || *p == '/' || *p == '@')
+            return -1;
+    }
+    parse_addr(str, &parsed);
+    if (parsed.host == NULL || *parsed.host == '\0')
+        goto invalid;
+    if (str[0] == '[') {
+        const char *end = strchr(str, ']');
+        if (end == NULL || (end[1] != '\0' && end[1] != ':')
+            || (end[1] == ':' && end[2] == '\0'))
+            goto invalid;
+    } else if (strchr(str, '[') || strchr(str, ']')) {
+        goto invalid;
+    }
+    if (str[0] == '[' || strchr(parsed.host, ':')) {
+        /* Validate IPv6 separately from an optional interface scope ID. */
+        struct ss_ip ip;
+        char *literal = strdup(parsed.host);
+        char *scope = strchr(literal, '%');
+        int valid_scope = 1;
+        if (scope != NULL) {
+            *scope++ = '\0';
+            valid_scope = *scope != '\0';
+            for (const char *p = scope; *p; p++) {
+                if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')
+                      || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-' || *p == '.'))
+                    valid_scope = 0;
+            }
+        }
+        int valid = strchr(literal, ':') != NULL && ss_ip_init(&ip, literal) != -1;
+        free(literal);
+        if (!valid || !valid_scope)
+            goto invalid;
+    } else if (strchr(parsed.host, '%')) {
+        goto invalid;
+    }
+    if (parsed.port != NULL) {
+        if (ss_parse_uint16_port(parsed.port, &port) != 0)
+            goto invalid;
+        for (const char *p = parsed.port; *p; p++) {
+            if (*p < '0' || *p > '9')
+                goto invalid;
+        }
+    } else if (str[strlen(str) - 1] == ':' && !strchr(parsed.host, ':')) {
+        goto invalid;
+    }
+    *addr = parsed;
+    return 0;
+invalid:
+    free_addr(&parsed);
+    return -1;
+}
+
+/* Resolve fallback ports before callers reuse the first port for SIP003. */
+int
+complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin)
+{
+    uint16_t first = 0;
+    if (count == 0)
+        return -1;
+    for (int i = 0; i < count; i++) {
+        uint16_t port;
+        const char *value = addr[i].port != NULL ? addr[i].port : fallback;
+        if (value == NULL || ss_parse_uint16_port(value, &port) != 0)
+            return -1;
+        if (plugin && i > 0 && port != first)
+            return -1;
+        if (i == 0)
+            first = port;
+    }
+    for (int i = 0; i < count; i++) {
+        if (addr[i].port == NULL)
+            addr[i].port = strdup(fallback);
+    }
+    return 0;
+}
+
 static int
 parse_dscp(char *str)
 {

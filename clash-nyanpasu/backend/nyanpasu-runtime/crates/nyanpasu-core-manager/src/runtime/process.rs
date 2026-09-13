@@ -49,42 +49,73 @@ impl RuntimeBackend for ProcessRuntimeBackend {
         Box::pin(async move {
             let RuntimeLaunchRequest {
                 effective_spec,
+                capabilities,
                 epoch,
                 controller,
                 log_tx,
             } = request;
-            let authorized_probe = self
-                .probes
-                .controller_access
-                .as_ref()
-                .map(|access| {
-                    let inner = match self.probes.readiness.clone() {
-                        Some(probe) => probe,
-                        None => ProbeHandle::new(
-                            "controller-version",
-                            crate::ControllerVersionProbe::new(&controller)?,
-                        ),
-                    };
-                    Ok::<_, Error>(ProbeHandle::new(
+            let descriptor = if matches!(controller.host, crate::Host::NamedPipe(_))
+                && capabilities.contains(crate::Feature::NamedPipeSecurityDescriptor)
+            {
+                self.probes
+                    .controller_access
+                    .as_ref()
+                    .and_then(|access| access.pipe_security_descriptor())
+                    .map(str::to_owned)
+            } else {
+                None
+            };
+            let mode = if descriptor.is_some() {
+                crate::ControllerAuthorization::Core
+            } else {
+                crate::ControllerAuthorization::Host
+            };
+            let mut builder = Instance::builder(
+                effective_spec,
+                epoch,
+                controller.clone(),
+                self.cancel_token.clone(),
+            )
+            .log_sender(log_tx)
+            .pipe_security_descriptor(descriptor);
+            if let Some(access) = &self.probes.controller_access {
+                let readiness = match self.probes.readiness.clone() {
+                    Some(probe) => probe,
+                    None => ProbeHandle::new(
+                        "controller-version",
+                        crate::ControllerVersionProbe::new(&controller)?,
+                    ),
+                };
+                let liveness = if self.probes.liveness_with_readiness {
+                    readiness.clone()
+                } else {
+                    self.probes.liveness.clone().unwrap_or_else(|| {
+                        ProbeHandle::from_fn("process-alive", |_| async { ProbeResult::Healthy })
+                    })
+                };
+                let wrap = |inner| {
+                    ProbeHandle::new(
                         "authorized-controller",
                         crate::controller_access::AuthorizedProbe {
                             access: access.clone(),
                             inner,
+                            mode,
                         },
-                    ))
-                })
-                .transpose()?;
-            let mut builder =
-                Instance::builder(effective_spec, epoch, controller, self.cancel_token.clone())
-                    .log_sender(log_tx);
-            if let Some(probe) = authorized_probe.or_else(|| self.probes.readiness.clone()) {
-                builder = builder.readiness_probe(probe);
-            }
-            if let Some(probe) = self.probes.liveness.clone() {
-                builder = builder.liveness_probe(probe);
-            }
-            if self.probes.liveness_with_readiness {
-                builder = builder.liveness_with_readiness_probe();
+                    )
+                };
+                builder = builder
+                    .readiness_probe(wrap(readiness))
+                    .liveness_probe(wrap(liveness));
+            } else {
+                if let Some(probe) = self.probes.readiness.clone() {
+                    builder = builder.readiness_probe(probe);
+                }
+                if let Some(probe) = self.probes.liveness.clone() {
+                    builder = builder.liveness_probe(probe);
+                }
+                if self.probes.liveness_with_readiness {
+                    builder = builder.liveness_with_readiness_probe();
+                }
             }
             let instance = builder.spawn().await?;
             Ok(Box::new(instance) as Box<dyn RuntimeInstance>)

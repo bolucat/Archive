@@ -181,6 +181,55 @@ test_read_jconf_rejects_out_of_range_int_options(void)
     remove(path);
 }
 
+static void
+test_server_endpoints(void)
+{
+    const char *valid[][3] = {
+        { "example.com:8388", "example.com", "8388" },
+        { "127.0.0.1:1", "127.0.0.1", "1" },
+        { "[2001:db8::1]:65535", "2001:db8::1", "65535" },
+        { "[fe80::1%eth0]:8388", "fe80::1%eth0", "8388" },
+        { "[fe80::1%3]:8388", "fe80::1%3", "8388" },
+        { "2001:db8::1:8388", "2001:db8::1:8388", NULL },
+        { "fe80::1%eth0", "fe80::1%eth0", NULL },
+        { "::", "::", NULL },
+        { "[::1]", "::1", NULL },
+        { "example.com", "example.com", NULL }
+    };
+    for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
+        ss_addr_t addr = { 0 };
+        assert(parse_server_endpoint(valid[i][0], &addr) == 0);
+        assert(strcmp(addr.host, valid[i][1]) == 0);
+        assert(valid[i][2] ? addr.port && strcmp(addr.port, valid[i][2]) == 0 : addr.port == NULL);
+        free_addr(&addr);
+    }
+    const char *invalid[] = { "", ":8388", "host:", "host:0", "host:65536",
+        "host:-1", "host:+1", "host:abc", "host:80:90", "[::1", "[::1]junk",
+        "[::1]:", "[::1]:0", "[::1]:65536", "[::1]:80:90", "[]:80",
+        "[example.com]:80", "[127.0.0.1]:80", "[bad::host]:80", "host]:80",
+        "[fe80::1%]:80", "[fe80::1%a%b]:80", "host :80", "ss://host:80" };
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        ss_addr_t addr = { 0 };
+        assert(parse_server_endpoint(invalid[i], &addr) == -1);
+        assert(addr.host == NULL && addr.port == NULL);
+    }
+    ss_addr_t addr[2] = { { 0 }, { 0 } };
+    assert(parse_server_endpoint("[::1]:8388", &addr[0]) == 0);
+    assert(parse_server_endpoint("localhost:8389", &addr[1]) == 0);
+    assert(complete_server_ports(addr, 2, NULL, 0) == 0);
+    assert(complete_server_ports(addr, 2, "9000", 0) == 0);
+    assert(strcmp(addr[0].port, "8388") == 0 && strcmp(addr[1].port, "8389") == 0);
+    assert(complete_server_ports(addr, 2, NULL, 1) == -1);
+    free_addr(&addr[1]);
+    memset(&addr[1], 0, sizeof(addr[1]));
+    assert(parse_server_endpoint("::1", &addr[1]) == 0);
+    assert(complete_server_ports(addr, 2, NULL, 0) == -1);
+    assert(complete_server_ports(addr, 2, "8388", 1) == 0);
+    assert(strcmp(addr[1].port, "8388") == 0);
+    free_addr(&addr[0]);
+    free_addr(&addr[1]);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -190,6 +239,7 @@ main(int argc, char **argv)
         read_jconf(argv[2]);
         return 0;
     }
+    test_server_endpoints();
     test_parse_addr_ipv4_with_port();
     test_parse_addr_ipv6_with_port();
     test_parse_addr_hostname_with_port();

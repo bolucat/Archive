@@ -143,7 +143,7 @@ async fn main() {
     let check_mode = args.iter().any(|a| a == "-t");
     let config_path = args
         .iter()
-        .position(|a| a == "-f")
+        .position(|a| a == "-f" || a == "-c")
         .and_then(|i| args.get(i + 1))
         .expect("-f <config> required");
     let config = std::fs::read_to_string(config_path).expect("readable config");
@@ -265,16 +265,50 @@ fn serve_local_transports(ctx: &Arc<Ctx>) -> bool {
         let ctx = ctx.clone();
         tokio::spawn(async move {
             use tokio::net::windows::named_pipe::ServerOptions;
-            let mut server = ServerOptions::new()
-                .first_pipe_instance(true)
-                .create(&path)
-                .expect("create pipe");
+            let create = |first| {
+                use windows::{
+                    Win32::{
+                        Foundation::HLOCAL,
+                        Security::{Authorization::*, *},
+                    },
+                    core::{HSTRING, Owned},
+                };
+                let mut options = ServerOptions::new();
+                options.first_pipe_instance(first);
+                if let Ok(sddl) = std::env::var("LISTEN_NAMEDPIPE_SDDL") {
+                    unsafe {
+                        let mut descriptor = PSECURITY_DESCRIPTOR::default();
+                        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                            &HSTRING::from(sddl),
+                            SDDL_REVISION_1,
+                            &mut descriptor,
+                            None,
+                        )
+                        .unwrap();
+                        let _descriptor = Owned::new(HLOCAL(descriptor.0));
+                        let attributes = SECURITY_ATTRIBUTES {
+                            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                            lpSecurityDescriptor: descriptor.0,
+                            bInheritHandle: false.into(),
+                        };
+                        options
+                            .create_with_security_attributes_raw(
+                                &path,
+                                (&raw const attributes).cast_mut().cast(),
+                            )
+                            .unwrap()
+                    }
+                } else {
+                    options.create(&path).unwrap()
+                }
+            };
+            let mut server = create(true);
             loop {
                 if server.connect().await.is_err() {
                     continue;
                 }
                 let conn = server;
-                server = ServerOptions::new().create(&path).expect("recreate pipe");
+                server = create(false);
                 let ctx = ctx.clone();
                 tokio::spawn(async move { serve_conn(conn, ctx, false).await });
             }

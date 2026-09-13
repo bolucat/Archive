@@ -151,7 +151,12 @@ impl nyanpasu_core_manager::ControllerAccess for HttpOnlyHost {
     fn supports_local_ipc(&self) -> bool {
         self.0.load(std::sync::atomic::Ordering::SeqCst)
     }
-    fn authorize(&self, host: &Host) -> std::io::Result<()> {
+    fn authorize(
+        &self,
+        host: &Host,
+        _pid: u32,
+        _mode: nyanpasu_core_manager::ControllerAuthorization,
+    ) -> std::io::Result<()> {
         assert!(matches!(host, Host::Http(_)));
         Ok(())
     }

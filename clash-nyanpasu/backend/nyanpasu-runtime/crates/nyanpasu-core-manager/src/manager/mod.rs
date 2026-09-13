@@ -720,6 +720,7 @@ impl CoreManager {
         self.inner
             .backend
             .launch(RuntimeLaunchRequest {
+                capabilities: plan.capabilities,
                 effective_spec: plan.effective_spec.clone(),
                 epoch: plan.revision.epoch,
                 controller: plan.controller.clone(),

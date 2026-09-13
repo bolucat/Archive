@@ -184,6 +184,7 @@ async fn the_fake_instance_echoes_its_launch_request() {
 
     let instance = FakeBackend::default()
         .launch(RuntimeLaunchRequest {
+            capabilities: Default::default(),
             effective_spec: spec,
             epoch: common::epoch(7),
             controller,

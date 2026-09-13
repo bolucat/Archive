@@ -195,7 +195,9 @@ func nftFamiliesForAddr(addr *net.UDPAddr) []string {
 
 func nftDestinationMatch(family string, addr *net.UDPAddr) []string {
 	if addr.IP == nil || addr.IP.IsUnspecified() {
-		return nil
+		// A wildcard bind listens on this host's addresses, not every destination.
+		// In particular, OUTPUT must not redirect connections to remote servers.
+		return []string{"fib", "daddr", "type", "local"}
 	}
 	if family == "ip6" {
 		return []string{"ip6", "daddr", addr.IP.String()}
@@ -234,7 +236,7 @@ func iptablesBinariesForAddr(r commandRunner, addr *net.UDPAddr) ([]string, erro
 
 func iptablesDestinationMatch(addr *net.UDPAddr) []string {
 	if addr.IP == nil || addr.IP.IsUnspecified() {
-		return nil
+		return []string{"-m", "addrtype", "--dst-type", "LOCAL"}
 	}
 	return []string{"-d", addr.IP.String()}
 }

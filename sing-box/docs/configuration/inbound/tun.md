@@ -6,7 +6,7 @@ icon: material/new-box
 
     :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
     :material-plus: [multi_queue](#multi_queue)  
-    :material-alert-decagram: [stack](#stack)
+    :material-delete-clock: [stack](#stack)
 
 !!! quote "Changes in sing-box 1.14.0"
 
@@ -125,7 +125,6 @@ icon: material/new-box
 
   ... // UDP NAT Fields
 
-  "stack": "system",
   "multi_queue": false,
   "include_interface": [
     "lan0"
@@ -171,6 +170,7 @@ icon: material/new-box
     }
   },
   // Deprecated
+  "stack": "system",
   "gso": false,
   "inet4_address": [
     "172.19.0.1/30"
@@ -572,9 +572,16 @@ to customize the mapping and filtering behavior.
 
 #### stack
 
+!!! failure "Deprecated in sing-box 1.15.0"
+
+    `stack` is deprecated and will be removed in sing-box 1.17.0.
+    Remove the `stack` option to use sing-tun's own TCP/IP stack.
+    See [Migration](/migration/#migrate-tun-stack).
+
 !!! quote "Changes in sing-box 1.15.0"
 
-    :material-plus: The `go` stack has been added and is now the default.
+    Since 1.15.0, sing-tun uses its own TCP/IP stack, with substantial improvements over all previous
+    implementations in peak performance, energy efficiency, and memory usage.
 
 !!! quote "Changes in sing-box 1.8.0"
 
@@ -582,23 +589,19 @@ to customize the mapping and filtering behavior.
 
 TCP/IP stack.
 
+The following legacy implementations remain available during the deprecation period.
+
 | Stack    | Description                                                                                           | 
 |----------|-------------------------------------------------------------------------------------------------------|
-| `go`     | Perform L3 to L4 translation using the built-in userspace network stack                               |
 | `system` | Perform L3 to L4 translation using the system network stack                                           |
 | `gvisor` | Perform L3 to L4 translation using [gVisor](https://github.com/google/gvisor)'s virtual network stack |
 | `mixed`  | Mixed `system` TCP stack and `gvisor` UDP stack                                                       |
-
-The `go` stack is written for sing-box, does not depend on gVisor, and uses significantly less memory
-than the `gvisor` and `mixed` stacks.
-
-Defaults to the `go` stack.
 
 #### multi_queue
 
 !!! quote ""
 
-    Only supported on Linux, and requires the `go` stack.
+    Only supported on Linux, and requires sing-tun's own TCP/IP stack.
 
 Enable multi-queue support based on `IFF_MULTI_QUEUE`, allowing throughput to scale with the number of CPU cores.
 

@@ -130,8 +130,7 @@ def tunnel_args(ss_tunnel, cipher, password, server_port, local_port, fwd_host, 
     """Build command-line args for ss-tunnel."""
     return [
         ss_tunnel,
-        "-s", "127.0.0.1",
-        "-p", str(server_port),
+        "--server", "127.0.0.1:%d" % server_port,
         "-l", str(local_port),
         "-k", password,
         "-m", cipher,

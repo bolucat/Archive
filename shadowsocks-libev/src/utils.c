@@ -319,12 +319,12 @@ ss_is_ipv6addr(const char *addr)
 
 /* [cli_short_s]
 \par `-s <server_host>`
-Set the server's hostname or IP.
+For clients, set a server endpoint as `HOST:PORT` or `[IPv6]:PORT`; host-only values use the legacy `-p` or configured fallback. Bare IPv6 is never split at its last colon. For server and manager, set the listening address.
 [cli_short_s] */
 
 /* [cli_short_p]
 \par `-p <server_port>`
-Set the server's port number.
+For clients, set the legacy fallback port for server values without an embedded port. For ss-server, set the listening port.
 [cli_short_p] */
 
 /* [cli_short_l]
@@ -638,8 +638,8 @@ usage(void)
     cli_help_option("-b, --outbound-address ADDRESS", "Source address for outbound connections.");
 #endif
 #else
-    cli_help_option("-s, --server HOST", "Remote server hostname or IP; may be repeated.");
-    cli_help_option("-p, --server-port PORT", "Remote server port.");
+    cli_help_option("-s, --server HOST:PORT", "Remote endpoint; IPv6: [ADDRESS]:PORT. Repeatable.");
+    cli_help_option("-p, --server-port PORT", "Legacy fallback for servers without a port.");
     cli_help_option("-b, --listen-address ADDRESS", "Local address to bind.");
     cli_help_option("-l, --listen-port PORT", "Local listening port.");
 #endif

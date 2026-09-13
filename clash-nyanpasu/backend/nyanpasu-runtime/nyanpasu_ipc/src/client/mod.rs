@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+use nyanpasu_utils::reqwest_ext::NamedPipeRequestExt;
 use reqwest::{Method, RequestBuilder, StatusCode, Url};
 
 use crate::{
@@ -17,8 +18,8 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 /// Synthetic base URL for requests over the local IPC transport.
 ///
 /// Requests travel over a named pipe or unix socket; the HTTP authority is
-/// only there to satisfy the protocol, nothing is routed by it.
-const LOCAL_TRANSPORT_BASE_URL: &str = "http://localhost/";
+/// only there to identify nyanpasu-service in logs, nothing is routed by it.
+const LOCAL_TRANSPORT_BASE_URL: &str = "http://nyanpasu-service.localipc/";
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -116,7 +117,10 @@ impl Client {
         let path = crate::utils::get_name_string(placeholder);
         let builder = reqwest::Client::builder().no_proxy().http1_only();
         #[cfg(windows)]
-        let builder = builder.windows_named_pipe(std::path::Path::new(&path));
+        // A failed redirect connection must not replay a completed operation.
+        let builder = builder
+            .windows_named_pipe(std::path::Path::new(&path))
+            .redirect(reqwest::redirect::Policy::none());
         #[cfg(unix)]
         let builder = builder.unix_socket(std::path::Path::new(&path));
         let client = builder.build().map_err(ClientError::BuildClient)?;
@@ -158,7 +162,7 @@ impl Client {
         request: RequestBuilder,
     ) -> Result<reqwest::Response> {
         let response = request
-            .send()
+            .send_with_named_pipe_retry()
             .await
             .map_err(|source| ClientError::Request { operation, source })?;
         let status = response.status();

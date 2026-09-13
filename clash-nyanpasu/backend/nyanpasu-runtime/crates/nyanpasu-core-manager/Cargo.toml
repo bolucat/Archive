@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.6"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -43,3 +43,10 @@ tempfile = "3"
 [features]
 default = []
 test-hooks = []
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Security_Authorization"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+futures-util.workspace = true
+nyanpasu-windows-security = { path = "../nyanpasu-windows-security" }

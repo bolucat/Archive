@@ -20,7 +20,12 @@ overview lookup names.
 Use descriptive long flags or their existing short aliases. Connections use
 different names for the remote server and the local listener:
 
-- Clients: `--server HOST --server-port PORT` selects the remote Shadowsocks server.
+- Clients: `--server HOST:PORT` selects the remote Shadowsocks server.
+  IPv6 endpoints must use brackets, for example `--server '[2001:db8::1]:8388'`
+  or `--server '[fe80::1%eth0]:8388'`. Bare IPv6 remains a host-only address.
+  Repeat `--server` for multiple endpoints, each with its own port. The legacy
+  `--server-port` / `-p` and configured server port are fallbacks only; embedded
+  ports always win. SIP003 plugins require all endpoints to share one port.
 - Listeners: `--listen-address ADDRESS --listen-port PORT` controls where a client
   or server accepts connections. The manager uses `--manager-address` for its
   control socket and configuration or its API for individual server ports.

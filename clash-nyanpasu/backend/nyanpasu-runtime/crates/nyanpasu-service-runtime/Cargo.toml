@@ -3,7 +3,7 @@ name = "nyanpasu-service-runtime"
 # Must stay equal to the `nyanpasu-service` bin version: `consts::APP_VERSION` is
 # this crate's CARGO_PKG_VERSION and is what `status` reports over IPC.
 # publish.yml bumps every workspace member together, so they stay in lockstep.
-version = "2.0.0-rc.7"
+version = "2.0.0-rc.8"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -101,6 +101,7 @@ libc = "0.2"
 whoami = "2"
 
 [target."cfg(windows)".dependencies]
+nyanpasu-windows-security = { path = "../nyanpasu-windows-security" }
 check_elevation = "0.2.4"
 windows = { workspace = true }
 

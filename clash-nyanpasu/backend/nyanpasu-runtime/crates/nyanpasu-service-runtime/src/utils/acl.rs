@@ -66,9 +66,12 @@ pub async fn create_acl_file() -> Result<(), anyhow::Error> {
     if acl_path.exists() {
         return Ok(());
     }
-    let sddl =
-        nyanpasu_ipc::utils::acl::generate_windows_security_descriptor::<&str>(&[], None, None)
-            .context("failed to generate sddl")?;
+    let sddl = nyanpasu_windows_security::acl::generate_windows_security_descriptor::<&str>(
+        &[],
+        None,
+        None,
+    )
+    .context("failed to generate sddl")?;
     File::create(&acl_path).await?;
     set_file_acl_from_sddl(&acl_path, &sddl)?;
     Ok(())

@@ -1,11 +1,11 @@
 use std::{future::Future, path::PathBuf, sync::Arc};
 
 use futures_util::StreamExt;
+use nyanpasu_utils::reqwest_ext::{NamedPipeRequestExt, is_named_pipe_busy};
 use reqwest::{
     Method, RequestBuilder, Response, Url,
     header::{AUTHORIZATION, HeaderValue},
 };
-use reqwest_websocket::Upgrade;
 
 use crate::{
     Error, Result,
@@ -210,13 +210,14 @@ impl Client {
         F: Fn() -> Result<RequestBuilder>,
     {
         self.execute(&metadata, || async {
-            let response = make_request()?
-                .send()
-                .await
-                .map_err(|source| Error::Request {
-                    operation: metadata.operation(),
-                    source,
-                })?;
+            let response =
+                make_request()?
+                    .send_with_named_pipe_retry()
+                    .await
+                    .map_err(|source| Error::Request {
+                        operation: metadata.operation(),
+                        source,
+                    })?;
 
             self.ensure_success(response, metadata.operation()).await
         })
@@ -275,8 +276,7 @@ impl Client {
         let operation = metadata.operation();
         self.execute(&metadata, || async {
             let response = make_request()?
-                .upgrade()
-                .send()
+                .upgrade_with_named_pipe_retry()
                 .await
                 .map_err(|source| Error::WebSocket { operation, source })?;
             response
@@ -301,7 +301,11 @@ impl Client {
         loop {
             match operation().await {
                 Ok(value) => return Ok(value),
-                Err(error) if self.retry_policy.is_retryable(metadata, &error) => {
+                // The transport extension already exhausted the pipe retry budget.
+                Err(error)
+                    if !is_named_pipe_busy(&error)
+                        && self.retry_policy.is_retryable(metadata, &error) =>
+                {
                     let Some(delay) = delays.next() else {
                         return Err(error);
                     };
@@ -405,7 +409,10 @@ impl ClientBuilder {
             Host::NamedPipe(path) => {
                 #[cfg(windows)]
                 {
-                    reqwest = reqwest.windows_named_pipe(path.as_path());
+                    // A failed redirect connection must not replay a completed operation.
+                    reqwest = reqwest
+                        .windows_named_pipe(path.as_path())
+                        .redirect(reqwest::redirect::Policy::none());
                     (
                         Host::NamedPipe(path),
                         Url::parse(LOCAL_TRANSPORT_BASE_URL)

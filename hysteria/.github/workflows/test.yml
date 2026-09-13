@@ -49,7 +49,7 @@ jobs:
 
       - name: Test core
         working-directory: core
-        run: go test -v -count=1 -skip 'Stress' ./...
+        run: go test -v -count=1 -timeout=5m ./...
 
       - name: Test extras
         working-directory: extras

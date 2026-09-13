@@ -33,7 +33,7 @@ pub async fn run(
     let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
         .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
     let (controller_dir, access): (_, Arc<dyn nyanpasu_core_manager::ControllerAccess>) =
-        controller_access_for_host();
+        controller_access_for_host(sids)?;
     let core_manager = CoreManager::with_controller_access(
         ServiceDirs {
             runtime: runtime_dir,
@@ -123,10 +123,20 @@ async fn drain<E: std::error::Error + Send + Sync + 'static>(
     Ok(())
 }
 
-fn controller_access_for_host() -> (
+fn controller_access_for_host(
+    #[cfg(windows)] sids: &[&str],
+    #[cfg(not(windows))] _sids: (),
+) -> anyhow::Result<(
     Option<camino::Utf8PathBuf>,
     Arc<dyn nyanpasu_core_manager::ControllerAccess>,
-) {
+)> {
+    #[cfg(windows)]
+    {
+        Ok((
+            None,
+            Arc::new(controller_access::WindowsControllerAccess::new(sids)?),
+        ))
+    }
     #[cfg(unix)]
     {
         // The installation establishes this authorization group for GUI users.
@@ -152,16 +162,16 @@ fn controller_access_for_host() -> (
                         .ok()
                         .and_then(|path| camino::Utf8PathBuf::from_path_buf(path).ok());
                     if path.is_some() {
-                        return (path, Arc::new(access));
+                        return Ok((path, Arc::new(access)));
                     }
                 }
                 Err(error) => tracing::warn!("service core IPC is unavailable: {error}"),
             }
         }
     }
-    // Windows core-owned pipe ACLs have not yet passed the non-elevated GUI gate.
-    (
+    #[cfg(not(windows))]
+    Ok((
         None,
         Arc::new(controller_access::UnavailableControllerAccess),
-    )
+    ))
 }

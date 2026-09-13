@@ -67,6 +67,8 @@ pub trait RuntimeInstance: Send + Sync {
 /// dependencies. `log_tx` is the manager-owned broadcast channel that outlives
 /// every epoch.
 pub struct RuntimeLaunchRequest {
+    /// Resolved by the manager once; the backend must not probe a different version.
+    pub capabilities: enumset::EnumSet<crate::Feature>,
     pub effective_spec: InstanceSpec,
     pub epoch: Epoch,
     pub controller: ResolvedController,

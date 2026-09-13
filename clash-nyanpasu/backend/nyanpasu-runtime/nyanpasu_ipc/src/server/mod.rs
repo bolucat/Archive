@@ -110,8 +110,9 @@ pub async fn create_server(
     let options = {
         use anyhow::Context;
         use widestring::U16CString;
-        let sdsf = crate::utils::acl::generate_windows_security_descriptor(sids, None, None)
-            .context("failed to generate sdsf")?;
+        let sdsf =
+            nyanpasu_windows_security::acl::generate_windows_security_descriptor(sids, None, None)
+                .context("failed to generate sdsf")?;
         let sdsf = U16CString::from_str(&sdsf).context("failed to convert sdsf to u16cstring")?;
         let sw = SecurityDescriptor::deserialize(&sdsf)?;
         options.security_descriptor(sw)

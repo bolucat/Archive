@@ -978,13 +978,13 @@ Same behavior as `-v`; see that option for details. Short alias: `-v`.
 [cli_long_verbose] */
 
 /* [cli_long_server]
-\par `--server <server_host>`
-Set a remote Shadowsocks server hostname or IP address; may be repeated. Short alias: `-s`.
+\par `--server <HOST:PORT>`
+Set a remote server endpoint; may be repeated with different ports. Use `HOST:PORT` for a hostname or IPv4, and `[IPv6]:PORT` for IPv6 (including `%scope` when needed). Bare IPv6 is always a host, never split into a port. Host-only values require the legacy `--server-port` fallback or a configured port. An endpoint port takes priority over the fallback regardless of option order. SIP003 plugins require the same port for all endpoints. Short alias: `-s`.
 [cli_long_server] */
 
 /* [cli_long_server_port]
 \par `--server-port <server_port>`
-Set the remote Shadowsocks server port. Short alias: `-p`.
+Legacy fallback port for server values without an embedded port. Prefer `--server HOST:PORT`. Short alias: `-p`.
 [cli_long_server_port] */
 
 /* [cli_long_listen_address]
@@ -1162,7 +1162,11 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
             break;
         case 's':
             if (remote_num < MAX_REMOTE_NUM) {
-                parse_addr(optarg, &remote_addr[remote_num++]);
+                if (parse_server_endpoint(optarg, &remote_addr[remote_num]) != 0)
+                    cli_error("invalid server endpoint; use HOST:PORT or [IPv6]:PORT", 's', NULL);
+                remote_num++;
+            } else {
+                cli_error("too many server endpoints", 's', NULL);
             }
             break;
         case 'p':
@@ -1344,6 +1348,10 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         dscp_num = conf->dscp_num;
         dscp     = conf->dscp;
     }
+
+    if (complete_server_ports(remote_addr, remote_num, remote_port, plugin != NULL) != 0)
+        cli_error("each server needs a port (1 to 65535); plugins require a shared port", 's', NULL);
+    remote_port = remote_addr[0].port;
 
     if (remote_num == 0 || remote_port == NULL || local_port == NULL
         || (password == NULL && key == NULL)) {

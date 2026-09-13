@@ -160,6 +160,7 @@ fn generate_security_descriptor_internal<T: AsRef<str>>(
         )
         .context("failed to convert security descriptor to sddl string")?;
 
+        let _allocation = Owned::new(HLOCAL(sddl_string.0.cast()));
         sddl_string
             .to_string()
             .context("failed to convert sddl string to string")
@@ -310,12 +311,13 @@ pub fn get_current_user_sid_string() -> Result<String> {
         OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle)
             .context("failed to open process token")?;
 
+        let token_handle = Owned::new(token_handle);
         let mut token_info_length = 0u32;
-        let _ = GetTokenInformation(token_handle, TokenUser, None, 0, &mut token_info_length);
+        let _ = GetTokenInformation(*token_handle, TokenUser, None, 0, &mut token_info_length);
 
         let mut token_user_buffer = vec![0u8; token_info_length as usize];
         GetTokenInformation(
-            token_handle,
+            *token_handle,
             TokenUser,
             Some(token_user_buffer.as_mut_ptr() as *mut _),
             token_info_length,
@@ -329,6 +331,7 @@ pub fn get_current_user_sid_string() -> Result<String> {
         let mut sid_string = PWSTR::default();
         ConvertSidToStringSidW(user_sid, &mut sid_string)
             .context("failed to convert sid to string")?;
+        let _allocation = Owned::new(HLOCAL(sid_string.0.cast()));
         sid_string
             .to_string()
             .context("failed to convert sid string to string")

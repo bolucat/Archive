@@ -11,6 +11,9 @@ pub mod io;
 
 pub mod runtime;
 
+#[cfg(feature = "reqwest")]
+pub mod reqwest_ext;
+
 #[cfg(feature = "dirs")]
 pub mod dirs;
 

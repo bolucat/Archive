@@ -1,11 +1,18 @@
-use nyanpasu_core_manager::{ControllerAccess, Host};
+use nyanpasu_core_manager::{ControllerAccess, ControllerAuthorization, Host};
 
+#[cfg(any(test, not(windows)))]
 pub struct UnavailableControllerAccess;
+#[cfg(any(test, not(windows)))]
 impl ControllerAccess for UnavailableControllerAccess {
     fn supports_local_ipc(&self) -> bool {
         false
     }
-    fn authorize(&self, host: &Host) -> std::io::Result<()> {
+    fn authorize(
+        &self,
+        host: &Host,
+        _pid: u32,
+        _mode: ControllerAuthorization,
+    ) -> std::io::Result<()> {
         if matches!(host, Host::Http(_)) {
             Ok(())
         } else {
@@ -56,7 +63,12 @@ impl ControllerAccess for UnixControllerAccess {
     fn supports_local_ipc(&self) -> bool {
         true
     }
-    fn authorize(&self, host: &Host) -> std::io::Result<()> {
+    fn authorize(
+        &self,
+        host: &Host,
+        _pid: u32,
+        _mode: ControllerAuthorization,
+    ) -> std::io::Result<()> {
         use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
         let Host::UnixSocket(path) = host else {
             return Ok(());
@@ -97,7 +109,13 @@ mod tests {
         let socket = dir.join("core-1.sock");
         for _ in 0..2 {
             let listener = UnixListener::bind(&socket).unwrap();
-            access.authorize(&Host::unix_socket(&socket)).unwrap();
+            access
+                .authorize(
+                    &Host::unix_socket(&socket),
+                    0,
+                    ControllerAuthorization::Host,
+                )
+                .unwrap();
             let metadata = std::fs::metadata(&socket).unwrap();
             assert_eq!(metadata.mode() & 0o777, 0o660);
             assert_eq!(metadata.gid(), gid);
@@ -106,13 +124,25 @@ mod tests {
         }
         let file = dir.join("config.yaml");
         std::fs::write(&file, "secret: private").unwrap();
-        assert!(access.authorize(&Host::unix_socket(&file)).is_err());
-        let link = dir.join("link.sock");
-        symlink(&file, &link).unwrap();
-        assert!(access.authorize(&Host::unix_socket(&link)).is_err());
         assert!(
             access
-                .authorize(&Host::unix_socket(temp.path().join("outside.sock")))
+                .authorize(&Host::unix_socket(&file), 0, ControllerAuthorization::Host)
+                .is_err()
+        );
+        let link = dir.join("link.sock");
+        symlink(&file, &link).unwrap();
+        assert!(
+            access
+                .authorize(&Host::unix_socket(&link), 0, ControllerAuthorization::Host)
+                .is_err()
+        );
+        assert!(
+            access
+                .authorize(
+                    &Host::unix_socket(temp.path().join("outside.sock")),
+                    0,
+                    ControllerAuthorization::Host
+                )
                 .is_err()
         );
     }
@@ -127,5 +157,67 @@ mod tests {
         let link = temp.path().join("link");
         symlink(&dir, &link).unwrap();
         assert!(UnixControllerAccess::prepare(&link, unsafe { libc::getegid() }).is_err());
+    }
+}
+
+#[cfg(windows)]
+pub struct WindowsControllerAccess {
+    security: nyanpasu_windows_security::pipe::PipeSecurity,
+}
+
+#[cfg(windows)]
+impl WindowsControllerAccess {
+    pub fn new(sids: &[&str]) -> anyhow::Result<Self> {
+        Ok(Self {
+            security: nyanpasu_windows_security::pipe::PipeSecurity::new(sids)?,
+        })
+    }
+}
+
+#[cfg(windows)]
+impl ControllerAccess for WindowsControllerAccess {
+    fn supports_local_ipc(&self) -> bool {
+        true
+    }
+    fn pipe_security_descriptor(&self) -> Option<&str> {
+        Some(self.security.sddl())
+    }
+    fn authorize(
+        &self,
+        host: &Host,
+        pid: u32,
+        mode: ControllerAuthorization,
+    ) -> std::io::Result<()> {
+        match host {
+            Host::NamedPipe(path) => self
+                .security
+                .authorize(path, pid, mode == ControllerAuthorization::Host)
+                .map_err(std::io::Error::other),
+            Host::Http(_) => Ok(()),
+            _ => Err(std::io::Error::other("unsupported controller transport")),
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn host_wiring_uses_the_installation_sid_policy() {
+        let user = nyanpasu_windows_security::acl::get_current_user_sid_string().unwrap();
+        let (directory, access) = super::super::controller_access_for_host(&[&user]).unwrap();
+        assert!(directory.is_none());
+        assert!(access.supports_local_ipc());
+        let expected = nyanpasu_windows_security::pipe::PipeSecurity::new(&[&user]).unwrap();
+        assert_eq!(access.pipe_security_descriptor(), Some(expected.sddl()));
+        assert!(super::super::controller_access_for_host(&["not-a-sid"]).is_err());
+        access
+            .authorize(
+                &Host::http("http://127.0.0.1:9090").unwrap(),
+                0,
+                ControllerAuthorization::Host,
+            )
+            .unwrap();
     }
 }

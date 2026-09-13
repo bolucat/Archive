@@ -526,7 +526,7 @@ def install_into_sysroot(
         banner(f"Installing {package_name}")
         download_or_copy(package, package_path)
         if hash_file(hashlib.sha256(), package_path) != sha256sum:
-            raise ValueError(f"SHA256 mismatch for {package_path} {hash_file(hashlib.sha256(), package_path)} {sha256sum}")
+            raise ValueError(f"SHA256 mismatch for {package_path}")
 
         sub_banner(f"Extracting to {install_root}")
         subprocess.run(

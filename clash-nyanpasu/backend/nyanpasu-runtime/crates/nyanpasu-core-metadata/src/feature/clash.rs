@@ -24,6 +24,8 @@ pub enum Feature {
     UnixSocketIpc,
     /// Supports running without a TCP external controller.
     DisableTcpController,
+    /// Supports specifying a security descriptor when creating a Windows pipe.
+    NamedPipeSecurityDescriptor,
 }
 
 pub trait FeatureSupport {
@@ -91,19 +93,23 @@ impl FeatureSupport for crate::kind::ClashCoreKind {
         match self {
             crate::kind::ClashCoreKind::Mihomo => match feature {
                 Feature::NamedPipeIpc => since(&MIHOMO_PIPE, version),
+                // v1.18.9 adapter/inbound/listen_windows.go reads LISTEN_NAMEDPIPE_SDDL.
+                Feature::NamedPipeSecurityDescriptor => since(&MIHOMO_PIPE, version),
                 Feature::UnixSocketIpc => since(&MIHOMO_UNIX, version),
                 Feature::DisableTcpController => Support::No,
             },
             crate::kind::ClashCoreKind::ClashRust => match feature {
                 Feature::NamedPipeIpc => since(&CLASH_RS_PIPE, version),
+                Feature::NamedPipeSecurityDescriptor => Support::No,
                 Feature::UnixSocketIpc => since(&CLASH_RS_UNIX, version),
                 Feature::DisableTcpController => Support::No,
             },
             // Clash Premium only ever exposed `external-controller` over TCP.
             crate::kind::ClashCoreKind::ClashPremium => match feature {
-                Feature::NamedPipeIpc | Feature::UnixSocketIpc | Feature::DisableTcpController => {
-                    Support::No
-                }
+                Feature::NamedPipeIpc
+                | Feature::UnixSocketIpc
+                | Feature::DisableTcpController
+                | Feature::NamedPipeSecurityDescriptor => Support::No,
             },
             // meow-rs advertises `--ext-ctl-unix` and `--ext-ctl-pipe` in
             // `--help`, but only for mihomo CLI compatibility: both `bail!`
@@ -115,9 +121,10 @@ impl FeatureSupport for crate::kind::ClashCoreKind {
             // `external-controller`, parsed into a `SocketAddr`, and the repo
             // contains no `UnixListener` at all.
             crate::kind::ClashCoreKind::Meow => match feature {
-                Feature::NamedPipeIpc | Feature::UnixSocketIpc | Feature::DisableTcpController => {
-                    Support::No
-                }
+                Feature::NamedPipeIpc
+                | Feature::UnixSocketIpc
+                | Feature::DisableTcpController
+                | Feature::NamedPipeSecurityDescriptor => Support::No,
             },
         }
     }
@@ -138,6 +145,35 @@ fn since(req: &LazyLock<VersionReq>, version: Option<&CoreVersion>) -> Support {
 mod tests {
     use super::*;
     use crate::kind::ClashCoreKind;
+
+    #[test]
+    fn pipe_descriptor_capability_has_an_independent_contract() {
+        let feature = Feature::NamedPipeSecurityDescriptor;
+        assert_eq!(
+            ClashCoreKind::Mihomo.supports(feature, version("1.18.8").as_ref()),
+            Support::No
+        );
+        assert_eq!(
+            ClashCoreKind::Mihomo.supports(feature, version("1.18.9").as_ref()),
+            Support::Yes
+        );
+        assert_eq!(
+            ClashCoreKind::Mihomo.supports(feature, Some(&CoreVersion::Unknown)),
+            Support::No
+        );
+        assert_eq!(
+            ClashCoreKind::Mihomo.supports(feature, Some(&CoreVersion::Nightly)),
+            Support::Yes
+        );
+        assert_eq!(
+            ClashCoreKind::ClashRust.supports(feature, Some(&CoreVersion::Nightly)),
+            Support::No
+        );
+        assert_eq!(
+            serde_json::to_string(&feature).unwrap(),
+            "\"named-pipe-security-descriptor\""
+        );
+    }
 
     fn version(raw: &str) -> Option<CoreVersion> {
         Some(CoreVersion::parse(raw))

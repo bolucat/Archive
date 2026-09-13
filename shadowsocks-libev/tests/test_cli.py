@@ -104,12 +104,12 @@ class CliTests(unittest.TestCase):
                     reservation.bind(('127.0.0.1', 0))
                     port = reservation.getsockname()[1]
                 config = Path(directory) / 'config.json'
-                config.write_text(json.dumps({'server': '127.0.0.1', 'server_port': 9,
+                config.write_text(json.dumps({'server': '127.0.0.1', 'server_port': 0,
                     'local_address': '127.0.0.1', 'local_port': port, 'password': 'test-password',
                     'method': 'aes-128-gcm', 'mode': 'udp_only', 'ipv6_first': True}))
                 with tempfile.TemporaryFile(mode='w+') as log:
                     proc = subprocess.Popen([str(self.binaries['local']), '--config', str(config),
-                        '--listen-port', str(port), '--verbose', *args], stdout=log, stderr=log)
+                        '--server', '127.0.0.1:9', '--listen-port', str(port), '--verbose', *args], stdout=log, stderr=log)
                     try:
                         deadline = time.monotonic() + 5
                         connected = False
@@ -129,6 +129,27 @@ class CliTests(unittest.TestCase):
                     output = log.read()
                     self.assertEqual('udprelay enabled' in output, udp, output)
                     self.assertEqual('resolving hostname to IPv6 address first' in output, ipv6, output)
+
+    def test_server_endpoint_arguments(self):
+        for name in ('local', 'tunnel', 'redir'):
+            if name not in self.binaries:
+                continue
+            for endpoint in ('example.com:8388', '127.0.0.1:8388', '[::1]:8388',
+                             '[fe80::1%eth0]:8388', '2001:db8::1:8388'):
+                result = self.run_cli(name, '--server', endpoint, '--help')
+                self.assertEqual(result.returncode, 0, (name, endpoint, result.stderr))
+            for endpoint in ('[::1', '[::1]:', '[::1]junk', '[::1]:65536',
+                             'host:', ':8388', 'host:0', 'host:bad', '[host]:80'):
+                result = self.run_cli(name, '--server', endpoint)
+                self.assertEqual(result.returncode, 2, (name, endpoint))
+                self.assertEqual(result.stdout, '')
+                self.assertIn('invalid server endpoint', result.stderr)
+            for args in (['--server', '2001:db8::1:8388'],
+                         ['--server', 'host:8388', '--server', 'other'],
+                         ['--server', 'host:8388', '--server', 'other:8389', '--plugin', 'unused']):
+                result = self.run_cli(name, *args)
+                self.assertEqual(result.returncode, 2, (name, args))
+                self.assertIn('each server needs a port', result.stderr)
 
     def test_numeric_option_validation(self):
         for name in self.binaries:

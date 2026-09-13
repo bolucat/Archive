@@ -95,5 +95,7 @@ typedef struct {
 jconf_t *read_jconf(const char *file);
 void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
+int parse_server_endpoint(const char *str, ss_addr_t *addr);
+int complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin);
 
 #endif // _JCONF_H

@@ -16,6 +16,7 @@ name = "containment_probe"
 required-features = ["process"]
 
 [dependencies]
+backon = { version = "1.6", optional = true }
 camino = { version = "1.1", features = ["serde1"], optional = true }
 constcat = "0.6.0"
 derive_builder = { version = "0.20", optional = true }
@@ -33,6 +34,8 @@ processkit = {
   optional = true
 }
 serde = { version = "1", features = ["derive"], optional = true }
+reqwest = { version = "0.13", default-features = false, optional = true }
+reqwest-websocket = { version = "0.6", optional = true }
 shared_child = { version = "1", optional = true }
 specta = { version = "^2.0.0-rc.25", features = ["derive"], optional = true }
 sysinfo = { version = "0.39", optional = true }
@@ -44,6 +47,8 @@ tracing = "0.1"
 tracing-attributes = "0.1"
 
 [dev-dependencies]
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["stream"] }
 tempfile = "3"
 test-log = "0.2"
 
@@ -89,5 +94,6 @@ os = [
   "dep:windows",
 ]
 process = ["dep:encoding_rs", "dep:libc", "dep:processkit", "dep:tokio-util", "os", "atomic_fs"]
+reqwest = ["dep:backon", "dep:reqwest", "dep:reqwest-websocket"]
 serde = ["dep:serde"]
 specta = ["dep:specta"]

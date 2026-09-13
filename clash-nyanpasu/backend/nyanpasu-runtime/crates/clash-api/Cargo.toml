@@ -1,6 +1,6 @@
 [package]
 name = "clash-api"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.6"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -11,6 +11,7 @@ chrono.workspace = true
 futures-core = "0.3"
 futures-util.workspace = true
 indexmap = { version = "2", features = ["serde"] }
+nyanpasu-utils = { path = "../nyanpasu-utils", default-features = false, features = ["reqwest"] }
 ipnet = { version = "2", features = ["serde"] }
 reqwest = { version = "0.13", features = ["json", "query", "stream"] }
 reqwest-websocket = "0.6.0"
