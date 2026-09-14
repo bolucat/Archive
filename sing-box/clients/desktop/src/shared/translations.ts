@@ -1,4 +1,6 @@
-export type DesktopLanguage = "en" | "zh-Hans" | "zh-Hant" | "fa" | "ru";
+export const DESKTOP_LANGUAGES = ["en", "zh-Hans", "zh-Hant", "fa", "ru"] as const;
+
+export type DesktopLanguage = (typeof DESKTOP_LANGUAGES)[number];
 
 type DesktopMessage = Record<Exclude<DesktopLanguage, "en">, string>;
 
@@ -122,6 +124,18 @@ export const DESKTOP_TRANSLATIONS = {
     "zh-Hant": "刪除",
     "fa": "حذف",
     "ru": "Удалить",
+  },
+  "Copy": {
+    "zh-Hans": "复制",
+    "zh-Hant": "複製",
+    "fa": "کپی",
+    "ru": "Копировать",
+  },
+  "Paste": {
+    "zh-Hans": "粘贴",
+    "zh-Hant": "貼上",
+    "fa": "چسباندن",
+    "ru": "Вставить",
   },
   "Share": {
     "zh-Hans": "分享",

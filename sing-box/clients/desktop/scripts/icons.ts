@@ -24,10 +24,6 @@ const linuxSizes = [512, 1024];
 // cover SM_CXSMICON at 100/125/150/200% DPI plus the 256 fallback
 // representation the NativeImage constructor reads.
 const windowsTraySizes = [16, 20, 24, 32, 48, 256];
-// Matches sing-box-for-apple MacLibrary AppIcon.appiconset: the glyph content
-// measures 420x422 inside the 512 canvas, on a transparent background.
-const applicationContentRatio = 0.82;
-
 for (const [source, project] of [
   [applicationIconSource, "https://github.com/SagerNet/sing-box"],
   [statusBarIconSource, "https://github.com/SagerNet/sing-box-for-apple"],
@@ -63,13 +59,12 @@ function centerOnCanvas(glyphPath: string, canvasSize: number, outputPath: strin
 }
 
 function renderApplicationIcon(size: number, workingDirectory: string, outputPath: string) {
-  const contentSize = Math.round(size * applicationContentRatio);
   const glyphPath = path.join(workingDirectory, `glyph-${size}.png`);
   runChecked("rsvg-convert", [
     "--width",
-    String(contentSize),
+    String(size),
     "--height",
-    String(contentSize),
+    String(size),
     "--keep-aspect-ratio",
     "--output",
     glyphPath,

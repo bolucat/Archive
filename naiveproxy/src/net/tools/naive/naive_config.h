@@ -38,6 +38,11 @@ struct NaiveListenConfig {
   bool Parse(const std::string& str);
 };
 
+struct PerProxyConfig {
+  std::set<url::SchemeHostPort> origins_to_force_quic_on;
+  std::map<url::SchemeHostPort, AuthCredentials> auth_store;
+};
+
 struct NaiveConfig {
   std::vector<NaiveListenConfig> listen = {NaiveListenConfig()};
 
@@ -55,8 +60,7 @@ struct NaiveConfig {
 
   // The last server is assumed to be Naive.
   std::vector<ProxyChain> proxy_chains;
-  std::set<url::SchemeHostPort> origins_to_force_quic_on;
-  std::map<url::SchemeHostPort, AuthCredentials> auth_store;
+  std::vector<PerProxyConfig> proxy_configs;
 
   std::string host_resolver_rules;
 

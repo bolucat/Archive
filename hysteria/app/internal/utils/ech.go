@@ -13,8 +13,8 @@ import (
 
 // ECH (Encrypted Client Hello) helpers.
 //
-// Hysteria does not generate ECH keys itself. Users create a key pair with
-// `sing-box generate ech-keypair <public_name>`, which emits two PEM blocks:
+// `hysteria ech --public-name <public_name>` generates a private file with two
+// PEM blocks, also compatible with files from `sing-box generate ech-keypair`:
 //
 //	-----BEGIN ECH KEYS-----      (private, kept on the server)
 //	-----BEGIN ECH CONFIGS-----   (public, published to clients)
@@ -35,7 +35,7 @@ const (
 
 var errInvalidECHKeys = errors.New("invalid ECH keys")
 
-// LoadECHKeys reads an ECH key file as produced by sing-box, and returns the
+// LoadECHKeys reads an ECH key file as produced by Hysteria or sing-box, and returns the
 // server-side ECH keys together with the client-facing ECHConfigList derived
 // from them. All returned keys have SendAsRetry set so the server advertises
 // them as retry configs when a client offers a stale config.
@@ -46,7 +46,7 @@ func LoadECHKeys(path string) (keys []tls.EncryptedClientHelloKey, configList []
 	}
 	blob := findPEMBlock(data, pemBlockECHKeys)
 	if blob == nil {
-		return nil, nil, fmt.Errorf("%w: no %q PEM block found (generate one with `sing-box generate ech-keypair <public_name>`)", errInvalidECHKeys, pemBlockECHKeys)
+		return nil, nil, fmt.Errorf("%w: no %q PEM block found (generate one with `hysteria ech --public-name <public_name>`)", errInvalidECHKeys, pemBlockECHKeys)
 	}
 	keys, err = parseECHKeysBlob(blob)
 	if err != nil {

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.nekohasekai.sfl</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>sing-box</name>
+  <summary>The universal proxy platform</summary>
+  <description>
+    <p>Linux client for sing-box, the universal proxy platform</p>
+  </description>
+  <keywords>
+    <keyword>network</keyword>
+  </keywords>
+  <launchable type="desktop-id">sing-box.desktop</launchable>
+  <developer id="io.nekohasekai">
+    <name>nekohasekai</name>
+  </developer>
+  <url type="homepage">https://sing-box.sagernet.org/</url>
+  <url type="bugtracker">https://github.com/SagerNet/sing-box/issues</url>
+  <url type="vcs-browser">https://github.com/SagerNet/sing-box</url>
+  <provides>
+    <binary>sing-box</binary>
+    <mediatype>application/x-sing-box-profile</mediatype>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+</component>

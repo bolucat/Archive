@@ -1,11 +1,9 @@
 .terminal-symbol-bar {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: relative;
   z-index: var(--z-terminal-bar);
   box-sizing: border-box;
   display: flex;
+  flex: 0 0 auto;
   gap: var(--space-6);
   align-items: center;
   padding: var(--space-6) var(--space-10);
@@ -16,9 +14,15 @@
   scrollbar-width: none;
   background: var(--surface);
   border-top: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+}
+
+.terminal-symbol-bar.floating {
+  position: fixed;
+  right: 0;
+  left: 0;
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  -webkit-overflow-scrolling: touch;
 }
 
 .terminal-symbol-bar::-webkit-scrollbar {

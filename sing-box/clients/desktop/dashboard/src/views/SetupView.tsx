@@ -18,8 +18,13 @@ import styles from "./SetupView.module.css";
 const CONNECT_TIMEOUT_MS = 8000;
 const AUTODETECT_TIMEOUT_MS = 8000;
 
-async function testConnection(server: Server, signal: AbortSignal, t: Translate): Promise<void> {
-  const api = new DaemonApi(server);
+async function testConnection(
+  server: Server,
+  language: string,
+  signal: AbortSignal,
+  t: Translate,
+): Promise<void> {
+  const api = new DaemonApi(server, language);
   for await (const _ of api.client.subscribeServiceStatus({}, { signal })) {
     void _;
     return;
@@ -34,7 +39,7 @@ export function SetupView(props: {
   accent: AccentPreference;
   onAccentChange: (accent: AccentPreference) => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
@@ -57,7 +62,7 @@ export function SetupView(props: {
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AUTODETECT_TIMEOUT_MS);
-    void checkServerReachable(normalized, "", controller.signal)
+    void checkServerReachable(normalized, "", language, controller.signal)
       .then((reachable) => {
         if (reachable) {
           setUrl((current) => (current === "" ? normalized : current));
@@ -68,7 +73,7 @@ export function SetupView(props: {
       controller.abort();
       clearTimeout(timer);
     };
-  }, []);
+  }, [language]);
 
   const normalizedUrl = normalizeServerUrl(url);
   const valid = normalizedUrl !== "";
@@ -90,7 +95,7 @@ export function SetupView(props: {
         secret,
       };
       await Promise.race([
-        testConnection(server, controller.signal, t),
+        testConnection(server, language, controller.signal, t),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             controller.abort();

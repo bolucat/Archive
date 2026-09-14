@@ -6,6 +6,8 @@ import type { Group } from "../shared/gen/daemon/started_service_pb";
 import { DaemonOwnership } from "../shared/gen/experimental/boxdd/desktop_service_pb";
 import type { DaemonConnectionState } from "../shared/ipc";
 import { desktopService, startedService } from "./daemon";
+import { preferredLocale } from "./locale";
+import { onPreferenceChanged } from "./preferences";
 import { bundledDaemonVersion, probeService } from "./repair";
 
 const RECONNECT_DELAY = 3000;
@@ -34,7 +36,21 @@ class DaemonState extends EventEmitter {
       this.setConnection({ phase: "unavailable", errorMessage: "daemon socket is not configured" });
       return;
     }
+    onPreferenceChanged((name) => {
+      if (name === "language" && this.connection.phase === "connected") {
+        void this.syncLocale();
+      }
+    });
     void this.loopConnection();
+  }
+
+  private async syncLocale(): Promise<void> {
+    try {
+      await desktopService!.setLocale(
+        { locale: preferredLocale() },
+        { timeoutMs: HANDSHAKE_TIMEOUT },
+      );
+    } catch {}
   }
 
   retryConnection() {
@@ -95,6 +111,7 @@ class DaemonState extends EventEmitter {
         if (info.ownership !== DaemonOwnership.CALLER) {
           throw new Error("daemon returned an invalid ownership state");
         }
+        await this.syncLocale();
         attempt = 0;
         this.setConnection({ phase: "connected", daemonVersion: info.version });
       } catch (error) {
@@ -113,6 +130,7 @@ class DaemonState extends EventEmitter {
       }
       const session = new AbortController();
       void this.loopGroups(session.signal);
+      this.emit("session", session.signal);
       try {
         for await (const message of startedService!.subscribeServiceStatus(
           {},

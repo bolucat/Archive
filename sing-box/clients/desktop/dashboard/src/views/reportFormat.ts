@@ -58,3 +58,38 @@ export function oomReportFileDisplayName(name: string, t: Translate): string {
       return name;
   }
 }
+
+export function powerReportTitle(
+  name: string,
+  recordedAt: number | null,
+  language: string,
+): string {
+  return recordedAt !== null ? formatAbbreviatedDateTime(recordedAt, language) : name;
+}
+
+export function powerReportPath(name: string, recordedAt: number | null): string {
+  const path = `tools/power-reports/${encodeURIComponent(name)}`;
+  return recordedAt !== null ? `${path}?at=${recordedAt}` : path;
+}
+
+export function powerReportFilePath(
+  name: string,
+  file: string,
+  recordedAt: number | null,
+): string {
+  const path = `${powerReportPath(name, null)}/${encodeURIComponent(file)}`;
+  return recordedAt !== null ? `${path}?at=${recordedAt}` : path;
+}
+
+export function powerReportFileDisplayName(name: string, t: Translate): string {
+  switch (name) {
+    case "metadata.json":
+      return t("Metadata");
+    case "configuration.json":
+      return t("Configuration");
+    case "go.log":
+      return t("Log");
+    default:
+      return name;
+  }
+}

@@ -5,8 +5,9 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import { useStream } from "../api/stream";
-import { GrpcWebSocketStream } from "../api/websocket";
 import { useApi, useIsMobile } from "../app/context";
+import { useDesktopHost } from "../app/desktop";
+import { showError } from "../app/errorStore";
 import { useKeyboardInset, useTerminalConfig } from "../app/hooks";
 import { useI18n } from "../app/i18n";
 import { useLatestRef } from "../app/useLatest";
@@ -25,8 +26,7 @@ import {
   type TerminalKey,
 } from "../lib/terminalKeys";
 import {
-  TailscaleSSHClientMessageSchema,
-  TailscaleSSHServerMessageSchema,
+  StartedService,
   type TailscalePeer,
 } from "../gen/daemon/started_service_pb";
 import {
@@ -38,6 +38,7 @@ import {
   peerSSHAvailable,
   SSH_DEFAULT_TERMINAL_TYPE,
   SSH_DEFAULT_USERNAME,
+  sshSessionPath,
   type SSHSessionOptions,
 } from "../lib/tailscaleSSH";
 import {
@@ -48,6 +49,7 @@ import {
   terminalFontSize,
   type Scheme,
 } from "../lib/terminalTheme";
+import { cx } from "../lib/cx";
 import styles from "./TerminalView.module.css";
 
 export function TailscaleSSHView(props: {
@@ -99,7 +101,14 @@ function TailscaleSSHSession(props: {
   const [initialSession] = useState(() =>
     buildSSHSession(props.tag, props.peer, props.username, props.terminalType),
   );
-  return <TerminalContainer tag={props.tag} initialSession={initialSession} setWindowTitle />;
+  return (
+    <TerminalContainer
+      tag={props.tag}
+      initialSession={initialSession}
+      setWindowTitle
+      peerID={props.peer.stableID}
+    />
+  );
 }
 
 export function TerminalOverlay(props: {
@@ -137,8 +146,10 @@ function TerminalContainer(props: {
   initialSession: SSHSessionOptions;
   onClose?: () => void;
   setWindowTitle?: boolean;
+  peerID?: string;
 }) {
   const api = useApi();
+  const desktop = useDesktopHost();
   const { t } = useI18n();
   const tailscale = useStream(api.tailscale);
   const idRef = useRef(1);
@@ -163,10 +174,12 @@ function TerminalContainer(props: {
     }
     if (onCloseRef.current) {
       onCloseRef.current();
+    } else if (desktop && props.setWindowTitle) {
+      desktop.terminal.closeWindow();
     } else {
       window.close();
     }
-  }, [state.sessions.length, onCloseRef]);
+  }, [desktop, props.setWindowTitle, state.sessions.length, onCloseRef]);
 
   const addSession = (options: SSHSessionOptions) => {
     const id = ++idRef.current;
@@ -216,9 +229,24 @@ function TerminalContainer(props: {
     );
   };
 
+  const standalone = props.setWindowTitle === true;
+  const windowChrome = desktop !== null && standalone;
+  const currentPeerID = props.peerID;
+
+  const openSessionWindow = (stableID: string, username: string, terminalType: string) => {
+    const path = sshSessionPath(props.tag, stableID, username, terminalType);
+    if (desktop) {
+      desktop.terminal.openWindow(path);
+      return;
+    }
+    const url = new URL(location.href);
+    url.hash = `#/${path}`;
+    window.open(url.toString(), "_blank", "width=960,height=640");
+  };
+
   return (
     <>
-      <div className="page-header">
+      <div className={cx("page-header", windowChrome && styles.windowHeader)}>
         {props.onClose && (
           <IconButton title={t("Close")} onClick={props.onClose}>
             <Icon name="close" size={18} />
@@ -227,38 +255,75 @@ function TerminalContainer(props: {
         <h1 className="page-title">{activeTitle}</h1>
         <div className="actions">
           {active?.statusLine && <span className="hint">{active.statusLine}</span>}
-          {state.sessions.length > 0 && (
-            <OthersMenu>
-              {rememberedPeers.length === 0 ? (
-                <MenuItem icon="add" onSelect={duplicateSession}>
-                  {t("New Session")}
-                </MenuItem>
-              ) : (
-                <SubMenu label={t("New Session")} icon="add">
-                  {active && (
-                    <MenuItem icon="content_copy" onSelect={duplicateSession}>
-                      {active.options.peerName}
-                    </MenuItem>
-                  )}
-                  {rememberedPeers.map((peer) => (
-                    <MenuItem key={peer.stableID} onSelect={() => openRememberedPeer(peer.stableID)}>
-                      {peerDisplayName(peer)}
-                    </MenuItem>
-                  ))}
-                </SubMenu>
-              )}
-              <div className="menu-divider" />
-              {state.sessions.map((session) => (
-                <MenuItem
-                  key={session.id}
-                  checked={session.id === state.activeID}
-                  onSelect={() => setState((current) => ({ ...current, activeID: session.id }))}
-                >
-                  {sessionDisplayTitle(session)}
-                </MenuItem>
-              ))}
-            </OthersMenu>
-          )}
+          {state.sessions.length > 0 &&
+            (standalone ? (
+              <OthersMenu icon="add" title={t("New Session")}>
+                {currentPeerID !== undefined && (
+                  <MenuItem
+                    icon="content_copy"
+                    onSelect={() =>
+                      openSessionWindow(
+                        currentPeerID,
+                        props.initialSession.username,
+                        props.initialSession.terminalType,
+                      )
+                    }
+                  >
+                    {props.initialSession.peerName}
+                  </MenuItem>
+                )}
+                {rememberedPeers.map((peer) => (
+                  <MenuItem
+                    key={peer.stableID}
+                    onSelect={() =>
+                      openSessionWindow(
+                        peer.stableID,
+                        prefs[peer.stableID]?.username ?? SSH_DEFAULT_USERNAME,
+                        prefs[peer.stableID]?.terminalType ?? SSH_DEFAULT_TERMINAL_TYPE,
+                      )
+                    }
+                  >
+                    {peerDisplayName(peer)}
+                  </MenuItem>
+                ))}
+              </OthersMenu>
+            ) : (
+              <OthersMenu>
+                {rememberedPeers.length === 0 ? (
+                  <MenuItem icon="add" onSelect={duplicateSession}>
+                    {t("New Session")}
+                  </MenuItem>
+                ) : (
+                  <SubMenu label={t("New Session")} icon="add">
+                    {active && (
+                      <MenuItem icon="content_copy" onSelect={duplicateSession}>
+                        {active.options.peerName}
+                      </MenuItem>
+                    )}
+                    {rememberedPeers.map((peer) => (
+                      <MenuItem
+                        key={peer.stableID}
+                        onSelect={() => openRememberedPeer(peer.stableID)}
+                      >
+                        {peerDisplayName(peer)}
+                      </MenuItem>
+                    ))}
+                  </SubMenu>
+                )}
+                <div className="menu-divider" />
+                {state.sessions.map((session) => (
+                  <MenuItem
+                    key={session.id}
+                    checked={session.id === state.activeID}
+                    onSelect={() =>
+                      setState((current) => ({ ...current, activeID: session.id }))
+                    }
+                  >
+                    {sessionDisplayTitle(session)}
+                  </MenuItem>
+                ))}
+              </OthersMenu>
+            ))}
         </div>
       </div>
       {state.sessions.length === 0 && (
@@ -299,6 +364,7 @@ function TerminalSession(props: {
   onExit: (clean: boolean) => void;
 }) {
   const api = useApi();
+  const desktop = useDesktopHost();
   const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -344,64 +410,133 @@ function TerminalSession(props: {
     terminalRef.current = terminal;
     fitRef.current = fit;
 
+    const pasteClipboardText = (text: string | null) => {
+      if (text !== null && text !== "" && terminalRef.current === terminal) {
+        terminal.paste(text);
+      }
+    };
+    if (desktop?.platform === "win32") {
+      terminal.attachCustomKeyEventHandler((event) => {
+        const controlShortcut =
+          event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+        if (controlShortcut && event.code === "KeyC" && terminal.hasSelection()) {
+          event.preventDefault();
+          void desktop.terminal
+            .writeClipboardText(terminal.getSelection())
+            .then(() => {
+              if (terminalRef.current === terminal) {
+                terminal.clearSelection();
+              }
+            })
+            .catch(showError);
+          return false;
+        }
+        if (
+          controlShortcut &&
+          event.code === "KeyV"
+        ) {
+          event.preventDefault();
+          void desktop.terminal.readClipboardText().then(pasteClipboardText).catch(showError);
+          return false;
+        }
+        return true;
+      });
+    }
+    const handleContextMenu = (event: MouseEvent) => {
+      if (desktop === null) {
+        return;
+      }
+      event.preventDefault();
+      void desktop.terminal
+        .openContextMenu(terminal.getSelection())
+        .then((result) => {
+          if (result?.action === "copy") {
+            if (terminalRef.current === terminal) {
+              terminal.clearSelection();
+            }
+          } else if (result?.action === "paste") {
+            pasteClipboardText(result.text);
+          }
+        })
+        .catch(showError)
+        .finally(() => {
+          if (terminalRef.current === terminal) {
+            terminal.focus();
+          }
+        });
+    };
+    host.addEventListener("contextmenu", handleContextMenu);
+
     let ready = false;
     let lastStatus: string | null = null;
-    const stream = new GrpcWebSocketStream({
-      config: api.config,
-      service: "daemon.StartedService",
-      method: "StartTailscaleSSHSession",
-      requestSchema: TailscaleSSHClientMessageSchema,
-      responseSchema: TailscaleSSHServerMessageSchema,
-      onMessage: (message) => {
-        switch (message.message.case) {
-          case "authBanner":
-            setBanner(message.message.value.message);
-            break;
-          case "ready":
-            ready = true;
-            lastStatus = null;
-            setStatusLine(null);
-            setConnecting(false);
-            break;
-          case "output":
-            terminal.write(message.message.value.data);
-            break;
-          case "exit": {
-            const exit = message.message.value;
-            let text = tRef.current("Session exited with code {code}", { code: exit.exitCode });
-            if (exit.signal !== "") {
-              text += ` ${tRef.current("(signal {signal})", { signal: exit.signal })}`;
+    const stream = api.openBidirectionalStream(
+      StartedService.method.startTailscaleSSHSession,
+      {
+        onMessage: (message) => {
+          switch (message.message.case) {
+            case "authBanner": {
+              const bannerMessage = message.message.value.message.trim();
+              if (bannerMessage !== "") {
+                setBanner((previous) => {
+                  if (!previous) {
+                    return bannerMessage;
+                  }
+                  if (previous.includes(bannerMessage)) {
+                    return previous;
+                  }
+                  return `${previous}\n\n${bannerMessage}`;
+                });
+              }
+              break;
             }
-            if (exit.errorMessage !== "") {
-              text += `: ${exit.errorMessage}`;
+            case "ready":
+              ready = true;
+              lastStatus = null;
+              setStatusLine(null);
+              setConnecting(false);
+              setBanner(null);
+              break;
+            case "output":
+              terminal.write(message.message.value.data);
+              break;
+            case "exit": {
+              const exit = message.message.value;
+              let text = tRef.current("Session exited with code {code}", { code: exit.exitCode });
+              if (exit.signal !== "") {
+                text += ` ${tRef.current("(signal {signal})", { signal: exit.signal })}`;
+              }
+              if (exit.errorMessage !== "") {
+                text += `: ${exit.errorMessage}`;
+              }
+              lastStatus = text;
+              setStatusLine(text);
+              setConnecting(false);
+              onExitRef.current(exit.exitCode === 0 && exit.errorMessage === "");
+              break;
             }
-            lastStatus = text;
-            setStatusLine(text);
-            setConnecting(false);
-            onExitRef.current(exit.exitCode === 0 && exit.errorMessage === "");
-            break;
+            case "error":
+              lastStatus = message.message.value.message;
+              setStatusLine(lastStatus);
+              setConnecting(false);
+              break;
           }
-          case "error":
-            lastStatus = message.message.value.message;
-            setStatusLine(lastStatus);
-            setConnecting(false);
-            break;
-        }
+        },
+        onEnd: (status, error) => {
+          if (status && status.code !== 0) {
+            setStatusLine(
+              status.message ||
+                tRef.current("Stream ended with status {code}", { code: status.code }),
+            );
+          } else if (error && !ready) {
+            setStatusLine(error);
+          } else {
+            setStatusLine(lastStatus ?? tRef.current("Session closed"));
+          }
+          setConnecting(false);
+          terminal.options.cursorBlink = false;
+        },
       },
-      onEnd: (status, error) => {
-        if (status && status.code !== 0) {
-          setStatusLine(
-            status.message || tRef.current("Stream ended with status {code}", { code: status.code }),
-          );
-        } else if (error && !ready) {
-          setStatusLine(error);
-        } else {
-          setStatusLine(lastStatus ?? tRef.current("Session closed"));
-        }
-        setConnecting(false);
-        terminal.options.cursorBlink = false;
-      },
-    });
+    );
 
     stream.send({
       message: {
@@ -417,8 +552,6 @@ function TerminalSession(props: {
         },
       },
     });
-    lastStatus = tRef.current("Connecting...");
-    setStatusLine(lastStatus);
 
     const encoder = new TextEncoder();
     const sendRaw = (text: string) => {
@@ -458,6 +591,7 @@ function TerminalSession(props: {
     resizeObserver.observe(host);
 
     return () => {
+      host.removeEventListener("contextmenu", handleContextMenu);
       resizeObserver.disconnect();
       dataSubscription.dispose();
       resizeSubscription.dispose();
@@ -470,6 +604,7 @@ function TerminalSession(props: {
     };
   }, [
     api,
+    desktop,
     props.session,
     configRef,
     modifiersRef,
@@ -549,16 +684,15 @@ function TerminalSession(props: {
   };
 
   const handlePaste = () => {
-    const clipboard = navigator.clipboard;
-    if (clipboard?.readText) {
-      void clipboard.readText().then(
-        (text) => {
+    const readText = desktop?.terminal.readClipboardText() ?? navigator.clipboard?.readText();
+    if (readText) {
+      void readText
+        .then((text) => {
           if (text) {
-            sendRawRef.current?.(text);
+            terminalRef.current?.paste(text);
           }
-        },
-        () => {},
-      );
+        })
+        .catch(showError);
     }
     setModifiers((current) => consumeArmed(current));
     terminalRef.current?.focus();
@@ -566,23 +700,25 @@ function TerminalSession(props: {
 
   const keyboardVisible = isMobile && keyboardInset > 100;
   const barVisible = props.active && (keyboardVisible || (symbolBarAlwaysShow && !isMobile));
-  const hostStyle: CSSProperties = {};
+  const barFloating = barVisible && keyboardVisible;
+  const wrapStyle: CSSProperties = {};
   if (activeTheme.background) {
-    hostStyle.background = activeTheme.background;
+    wrapStyle.background = activeTheme.background;
   }
-  if (barVisible) {
-    hostStyle.paddingBottom = `calc(${keyboardInset + SYMBOL_BAR_HEIGHT + 8}px + env(safe-area-inset-bottom, 0px))`;
+  if (barFloating) {
+    wrapStyle.paddingBottom = `calc(${keyboardInset + SYMBOL_BAR_HEIGHT + 8}px + env(safe-area-inset-bottom, 0px))`;
   }
 
   return (
     <TerminalSessionLayout
       active={props.active}
       hostRef={hostRef}
-      hostStyle={Object.keys(hostStyle).length > 0 ? hostStyle : undefined}
+      wrapStyle={Object.keys(wrapStyle).length > 0 ? wrapStyle : undefined}
       connecting={connecting}
       banner={banner}
       connectingLabel={t("Connecting...")}
       barVisible={barVisible}
+      barFloating={barFloating}
       keyboardInset={keyboardInset}
       modifiers={modifiers}
       onModifier={handleModifier}

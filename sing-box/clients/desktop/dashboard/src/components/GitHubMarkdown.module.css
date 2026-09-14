@@ -1,0 +1,85 @@
+.markdown {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: var(--space-14) 0 var(--space-8);
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+}
+
+.markdown h1,
+.markdown h2 {
+  font-size: var(--text-md);
+}
+
+.markdown p {
+  margin: var(--space-8) 0;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-inline-start: var(--space-20);
+  margin: var(--space-8) 0;
+}
+
+.markdown li {
+  margin: var(--space-2) 0;
+}
+
+.markdown code {
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+
+.markdown pre {
+  padding: var(--space-8) var(--space-10);
+  margin: var(--space-8) 0;
+  overflow-x: auto;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.markdown blockquote {
+  padding-inline-start: var(--space-10);
+  margin: var(--space-8) 0;
+  color: var(--text-secondary);
+  border-inline-start: 3px solid var(--border-strong);
+}
+
+.markdown hr {
+  margin: var(--space-12) 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.markdown a {
+  color: var(--info);
+}

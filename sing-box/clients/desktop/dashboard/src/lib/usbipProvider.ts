@@ -1,13 +1,13 @@
 import { useEffect, useReducer, useRef } from "react";
 
-import type { Server } from "../api/config";
+import type { BidirectionalStream, GrpcStatus } from "../api/bidirectional";
+import type { DaemonApi } from "../api/daemon";
 import { showError } from "../app/errorStore";
 import { useI18n, type Translate } from "../app/i18n";
 import { useLatestRef } from "../app/useLatest";
-import { GrpcWebSocketStream, type GrpcStatus } from "../api/websocket";
 import {
+  StartedService,
   USBProviderMessageSchema,
-  USBServerMessageSchema,
   type USBServerMessage,
   type USBURBRequest,
 } from "../gen/daemon/started_service_pb";
@@ -60,7 +60,7 @@ function usbDevicesMatch(a: UsbDeviceIdentity, b: UsbDeviceIdentity): boolean {
 }
 
 export class UsbipProviderSession {
-  private stream: GrpcWebSocketStream<typeof USBProviderMessageSchema, typeof USBServerMessageSchema>;
+  private stream: BidirectionalStream<typeof USBProviderMessageSchema>;
   private nextDeviceId = 1;
   private usbDevices = new Map<string, USBDevice>();
   private reconnectIntents: UsbDeviceIdentity[] = [];
@@ -93,18 +93,13 @@ export class UsbipProviderSession {
   };
 
   constructor(
-    config: Server,
+    api: DaemonApi,
     private serverTag: string,
     private onUpdate: () => void,
     private onError: (error: unknown) => void,
     private translate: Translate,
   ) {
-    this.stream = new GrpcWebSocketStream({
-      config,
-      service: "daemon.StartedService",
-      method: "ProvideUSBDevices",
-      requestSchema: USBProviderMessageSchema,
-      responseSchema: USBServerMessageSchema,
+    this.stream = api.openBidirectionalStream(StartedService.method.provideUSBDevices, {
       onMessage: (message) => this.onMessage(message),
       onEnd: (status, error) => this.onEnd(status, error),
     });
@@ -447,7 +442,7 @@ export interface UsbipProvider {
   detach: (deviceId: string) => void;
 }
 
-export function useUsbipProvider(config: Server, serverTag: string): UsbipProvider {
+export function useUsbipProvider(api: DaemonApi, serverTag: string): UsbipProvider {
   const status = webusbStatus();
   const { t } = useI18n();
   const sessionRef = useRef<UsbipProviderSession | null>(null);
@@ -460,12 +455,16 @@ export function useUsbipProvider(config: Server, serverTag: string): UsbipProvid
       sessionRef.current?.close();
       sessionRef.current = null;
     };
-  }, [config, serverTag]);
+  }, [api, serverTag]);
 
   const ensureSession = (): UsbipProviderSession => {
     if (!sessionRef.current || sessionRef.current.closed) {
-      sessionRef.current = new UsbipProviderSession(config, serverTag, forceUpdate, showError, (key, params) =>
-        translateRef.current(key, params),
+      sessionRef.current = new UsbipProviderSession(
+        api,
+        serverTag,
+        forceUpdate,
+        showError,
+        (key, params) => translateRef.current(key, params),
       );
     }
     return sessionRef.current;

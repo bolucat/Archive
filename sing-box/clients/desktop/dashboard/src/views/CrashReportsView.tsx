@@ -27,6 +27,7 @@ import {
   Toggle,
 } from "../components/ui";
 import { cx } from "../lib/cx";
+import { canShareFiles, shareError, shareFile } from "../lib/sharing";
 import styles from "./CrashReportsView.module.css";
 import { ToolsPageHeader } from "./ToolsView";
 import { crashReportFileDisplayName, crashReportTitle } from "./reportFormat";
@@ -225,7 +226,7 @@ function CrashReportDetailContent({
             <div className="nav-list">
               {files.map((file) =>
                 file.isBinary ? (
-                  <div key={file.name} className={cx("nav-row", styles.staticRow)}>
+                  <div key={file.name} className={cx("nav-row", "static", styles.staticRow)}>
                     <span>{crashReportFileDisplayName(file.name, t)}</span>
                   </div>
                 ) : (
@@ -246,10 +247,24 @@ function CrashReportDetailContent({
       </div>
       {sharing && files !== null && (
         <ReportShareDialog
+          host={host}
           hasConfiguration={files.some((file) => file.name === "configuration.json")}
           hasLog={false}
           onSave={(options) => {
             host.reports.crash.exportFile(name, options).catch(showError);
+          }}
+          onShare={(options) => {
+            host.reports.crash
+              .createArchive(name, options)
+              .then((archive) =>
+                shareFile(host, archive.fileName, archive.data, archive.mediaType),
+              )
+              .catch((error) => {
+                const reportableError = shareError(error);
+                if (reportableError !== null) {
+                  showError(reportableError);
+                }
+              });
           }}
           onClose={() => setSharing(false)}
         />
@@ -259,9 +274,11 @@ function CrashReportDetailContent({
 }
 
 export function ReportShareDialog(props: {
+  host: DesktopHost;
   hasConfiguration: boolean;
   hasLog: boolean;
   onSave: (options: DesktopCrashReportExportOptions) => void;
+  onShare: (options: DesktopCrashReportExportOptions) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -272,6 +289,11 @@ export function ReportShareDialog(props: {
   const save = () => {
     props.onClose();
     props.onSave({ withConfiguration, withLog: props.hasLog ? withLog : true, encrypt });
+  };
+
+  const share = () => {
+    props.onClose();
+    props.onShare({ withConfiguration, withLog: props.hasLog ? withLog : true, encrypt });
   };
 
   return (
@@ -310,6 +332,12 @@ export function ReportShareDialog(props: {
           <Icon name="save" size={13} />
           {t("Save")}
         </Button>
+        {canShareFiles(props.host) && (
+          <Button variant="primary" onClick={share}>
+            <Icon name="share" size={13} />
+            {t("Share")}
+          </Button>
+        )}
       </div>
     </Dialog>
   );

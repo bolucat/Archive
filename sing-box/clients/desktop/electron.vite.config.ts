@@ -46,6 +46,11 @@ export default defineConfig({
     define: {
       __APP_VERSION__: JSON.stringify(readApplicationVersion()),
     },
+    resolve: {
+      alias: {
+        "@dashboard": resolve(import.meta.dirname, "dashboard/src"),
+      },
+    },
   },
   preload: {
     build: {

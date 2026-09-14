@@ -1,8 +1,16 @@
 param(
     [Parameter(Mandatory = $true)][string]$InstallationDirectory,
+    [string]$ApplicationDataDirectory,
+    [string]$DaemonWorkingDirectory,
+    [string]$InstallationID,
+    [string]$ResultOutputPath,
+    [string]$ResultCodePath,
+    [string]$ProcessIDPath,
     [switch]$AllowUnsafeInstallationDirectory,
-    [switch]$RepairInstallationAncestors,
-    [switch]$ResetWorkingDirectory
+    [Alias("RepairInstallationAncestors")][switch]$RepairPathAncestors,
+    [switch]$ResetWorkingDirectory,
+    [switch]$PrepareApplicationDataDirectory,
+    [switch]$DeleteDataDirectories
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +21,37 @@ $trustedInstallationIdentities = @(
     "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
 )
 $dangerousInstallationAccess = [uint32]0x500D0040
+
+function Write-InstallerOutput([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($ResultOutputPath)) {
+        Write-Output $Value
+        return
+    }
+    [System.IO.File]::WriteAllText(
+        $ResultOutputPath,
+        $Value,
+        [System.Text.Encoding]::Unicode
+    )
+}
+
+function Exit-Installer([int]$Code) {
+    if (-not [string]::IsNullOrWhiteSpace($ResultCodePath)) {
+        [System.IO.File]::WriteAllText(
+            $ResultCodePath,
+            [string]$Code,
+            [System.Text.Encoding]::ASCII
+        )
+    }
+    exit $Code
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ProcessIDPath)) {
+    [System.IO.File]::WriteAllText(
+        $ProcessIDPath,
+        [string]$PID,
+        [System.Text.Encoding]::ASCII
+    )
+}
 
 Add-Type -TypeDefinition @'
 using Microsoft.Win32.SafeHandles;
@@ -31,6 +70,9 @@ namespace Box.Installer
         private const uint ShareWrite = 0x00000002;
         private const uint ShareDelete = 0x00000004;
         private const uint OpenExisting = 3;
+        private const uint CreateAlways = 2;
+        private const uint GenericRead = 0x80000000;
+        private const uint GenericWrite = 0x40000000;
         private const uint OpenReparsePoint = 0x00200000;
         private const uint BackupSemantics = 0x02000000;
         private const int FileObject = 1;
@@ -121,6 +163,58 @@ namespace Box.Installer
                 {
                     Marshal.FreeHGlobal(descriptor);
                 }
+            }
+        }
+
+        public static string ReadDirectoryMarker(string path)
+        {
+            SafeFileHandle handle = CreateFile(
+                path + ":sing-box.installation-id",
+                GenericRead,
+                ShareRead | ShareWrite | ShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                BackupSemantics,
+                IntPtr.Zero
+            );
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                if (error == 2 || error == 3)
+                {
+                    return null;
+                }
+                throw new Win32Exception(error);
+            }
+            using (FileStream stream = new FileStream(handle, FileAccess.Read))
+            using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+
+        public static void WriteDirectoryMarker(string path, string value)
+        {
+            SafeFileHandle handle = CreateFile(
+                path + ":sing-box.installation-id",
+                GenericWrite,
+                ShareRead,
+                IntPtr.Zero,
+                CreateAlways,
+                BackupSemantics,
+                IntPtr.Zero
+            );
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new Win32Exception(error);
+            }
+            using (FileStream stream = new FileStream(handle, FileAccess.Write))
+            using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            {
+                writer.Write(value);
             }
         }
     }
@@ -254,22 +348,22 @@ namespace Box.Installer
 }
 '@
 
-function Get-ExistingInstallationPath {
-    $currentPath = [System.IO.Path]::GetFullPath($InstallationDirectory)
+function Get-ExistingPath([string]$TargetPath) {
+    $currentPath = [System.IO.Path]::GetFullPath($TargetPath)
     while (-not (Test-Path -LiteralPath $currentPath)) {
         $parentPath = [System.IO.Directory]::GetParent($currentPath)
         if ($null -eq $parentPath) {
-            throw "The installation directory has no existing ancestor."
+            throw "The directory has no existing ancestor."
         }
         $currentPath = $parentPath.FullName
     }
     return $currentPath
 }
 
-function Get-InstallationAncestorPaths([string]$VolumeRoot) {
+function Get-InstallationAncestorPaths([string]$TargetPath, [string]$VolumeRoot) {
     $paths = [System.Collections.Generic.List[string]]::new()
     $currentPath = [System.IO.Directory]::GetParent(
-        [System.IO.Path]::GetFullPath($InstallationDirectory)
+        [System.IO.Path]::GetFullPath($TargetPath)
     ).FullName
     while (-not (Test-Path -LiteralPath $currentPath)) {
         $parentPath = [System.IO.Directory]::GetParent($currentPath)
@@ -295,6 +389,32 @@ function Get-InstallationAncestorPaths([string]$VolumeRoot) {
         $currentPath = $parentPath.FullName
     }
     return $paths
+}
+
+function Test-PathOverlap([string]$FirstPath, [string]$SecondPath) {
+    $first = [System.IO.Path]::GetFullPath($FirstPath).TrimEnd("\")
+    $second = [System.IO.Path]::GetFullPath($SecondPath).TrimEnd("\")
+    return $first.Equals($second, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $first.StartsWith($second + "\", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $second.StartsWith($first + "\", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-FixedNTFSVolume([string]$TargetPath) {
+    $existingPath = Get-ExistingPath $TargetPath
+    $volume = [Box.Installer.InstallationVolume]::ResolveVolumePath($existingPath)
+    $driveType = [Box.Installer.InstallationVolume]::ResolveDriveType($volume)
+    if ($driveType -ne [Box.Installer.InstallationVolume]::FixedDrive) {
+        throw "The directory is not on a fixed local drive: $volume"
+    }
+    $fileSystem = [Box.Installer.InstallationVolume]::ResolveFileSystemName($volume)
+    if (-not [string]::Equals(
+            $fileSystem,
+            "NTFS",
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "The directory is not on NTFS: $fileSystem"
+    }
+    return $volume
 }
 
 function Get-RawDirectorySecurity([string]$Path) {
@@ -352,7 +472,7 @@ function Get-UnsafeInstallationAncestor([string[]]$Paths) {
     return $repairableAncestor
 }
 
-function Repair-InstallationAncestor([string]$Path) {
+function Repair-PathAncestor([string]$Path) {
     $accessControl = Get-Acl -LiteralPath $Path
     $binary = $accessControl.GetSecurityDescriptorBinaryForm()
     $security = [System.Security.AccessControl.RawSecurityDescriptor]::new($binary, 0)
@@ -398,6 +518,14 @@ function Repair-InstallationAncestor([string]$Path) {
     )
 }
 
+function Repair-PathAncestorPermissions([string[]]$Paths) {
+    [array]::Reverse($Paths)
+    foreach ($path in $Paths) {
+        Repair-PathAncestor $path
+    }
+    [array]::Reverse($Paths)
+}
+
 function Remove-WorkingDirectoryTree([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
         return
@@ -421,6 +549,56 @@ function Remove-WorkingDirectoryTree([string]$Path) {
     [System.IO.Directory]::Delete($item.FullName)
 }
 
+function Set-ApplicationDataDirectoryAccessControl([string]$Path) {
+    $system = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-18")
+    $administrators = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
+    $authenticatedUsers = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-11")
+    & "$env:SystemRoot\System32\icacls.exe" $Path /setowner "*S-1-5-32-544" /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not set the application data directory owner: $LASTEXITCODE"
+    }
+    $accessControl = [System.Security.AccessControl.DirectorySecurity]::new()
+    $accessControl.SetOwner($administrators)
+    $accessControl.SetAccessRuleProtection($true, $false)
+    $inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    foreach ($identity in @($system, $administrators, $authenticatedUsers)) {
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $identity,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        [void]$accessControl.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $Path -AclObject $accessControl
+}
+
+function Initialize-ApplicationDataDirectory([string]$Path, [string]$ID) {
+    if ([string]::IsNullOrWhiteSpace($ID)) {
+        throw "The installation ID is missing."
+    }
+    if (Test-Path -LiteralPath $Path) {
+        $item = Get-Item -LiteralPath $Path -Force
+        if (-not $item.PSIsContainer -or ($item.Attributes -band $reparsePoint)) {
+            throw "The application data directory is invalid."
+        }
+        $existingID = [Box.Installer.DirectoryAccessControl]::ReadDirectoryMarker($Path)
+        if ($existingID -eq $ID) {
+            return
+        }
+        $existingEntry = Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1
+        if ($null -ne $existingEntry) {
+            throw "The application data directory must be empty."
+        }
+    } else {
+        [void][System.IO.Directory]::CreateDirectory($Path)
+    }
+    Set-ApplicationDataDirectoryAccessControl $Path
+    [Box.Installer.DirectoryAccessControl]::WriteDirectoryMarker($Path, $ID)
+}
+
 if ($MyInvocation.InvocationName -eq ".") {
     return
 }
@@ -428,7 +606,7 @@ if ($MyInvocation.InvocationName -eq ".") {
 try {
     if (-not $AllowUnsafeInstallationDirectory) {
         try {
-            $existingInstallationPath = Get-ExistingInstallationPath
+            $existingInstallationPath = Get-ExistingPath $InstallationDirectory
             $installationVolume = [Box.Installer.InstallationVolume]::ResolveVolumePath(
                 $existingInstallationPath
             )
@@ -436,8 +614,8 @@ try {
                 $installationVolume
             )
             if ($installationDriveType -ne [Box.Installer.InstallationVolume]::FixedDrive) {
-                Write-Output $installationVolume
-                exit 14
+                Write-InstallerOutput $installationVolume
+                Exit-Installer 14
             }
             $installationFileSystem = [Box.Installer.InstallationVolume]::ResolveFileSystemName(
                 $installationVolume
@@ -447,84 +625,211 @@ try {
                     "NTFS",
                     [System.StringComparison]::OrdinalIgnoreCase
                 )) {
-                Write-Output $installationFileSystem
-                exit 15
+                Write-InstallerOutput $installationFileSystem
+                Exit-Installer 15
             }
         } catch {
-            Write-Output "$installationVolume`: $($_.Exception.Message)"
-            exit 16
+            Write-InstallerOutput "$installationVolume`: $($_.Exception.Message)"
+            Exit-Installer 16
         }
 
         if (Test-Path -LiteralPath $InstallationDirectory) {
             $installationItem = Get-Item -LiteralPath $InstallationDirectory -Force
             if (-not $installationItem.PSIsContainer -or ($installationItem.Attributes -band $reparsePoint)) {
-                exit 10
+                Exit-Installer 10
             }
             $installationReparsePoint = Get-ChildItem -LiteralPath $InstallationDirectory -Force -Recurse |
                 Where-Object { $_.Attributes -band $reparsePoint } |
                 Select-Object -First 1
             if ($null -ne $installationReparsePoint) {
-                exit 10
+                Exit-Installer 10
             }
         }
 
-        $installationAncestorPaths = @(Get-InstallationAncestorPaths $installationVolume)
+        $installationAncestorPaths = @(
+            Get-InstallationAncestorPaths $InstallationDirectory $installationVolume
+        )
         $unsafeInstallationAncestor = Get-UnsafeInstallationAncestor $installationAncestorPaths
-        if ($RepairInstallationAncestors) {
-            [array]::Reverse($installationAncestorPaths)
-            foreach ($installationAncestorPath in $installationAncestorPaths) {
-                Repair-InstallationAncestor $installationAncestorPath
-            }
+        if ($RepairPathAncestors) {
+            Repair-PathAncestorPermissions $installationAncestorPaths
             $unsafeInstallationAncestor = Get-UnsafeInstallationAncestor $installationAncestorPaths
             if ($null -ne $unsafeInstallationAncestor) {
-                Write-Output $unsafeInstallationAncestor.Path
-                exit 32
+                Write-InstallerOutput $unsafeInstallationAncestor.Path
+                Exit-Installer 32
             }
         }
         if ($null -ne $unsafeInstallationAncestor) {
-            Write-Output $unsafeInstallationAncestor.Path
-            exit ([int]$unsafeInstallationAncestor.ExitCode)
+            Write-InstallerOutput $unsafeInstallationAncestor.Path
+            Exit-Installer ([int]$unsafeInstallationAncestor.ExitCode)
         }
     }
 
-    $commonApplicationData = [Environment]::GetFolderPath(
-        [Environment+SpecialFolder]::CommonApplicationData
-    )
-    $workingDirectory = Join-Path $commonApplicationData "sing-box-daemon"
+    if ([string]::IsNullOrWhiteSpace($DaemonWorkingDirectory)) {
+        $commonApplicationData = [Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::CommonApplicationData
+        )
+        $DaemonWorkingDirectory = Join-Path $commonApplicationData "sing-box-daemon"
+    }
+    $workingDirectory = [System.IO.Path]::GetFullPath($DaemonWorkingDirectory)
+    if (Test-PathOverlap $InstallationDirectory $workingDirectory) {
+        Write-InstallerOutput $workingDirectory
+        Exit-Installer 23
+    }
+    try {
+        $workingVolume = Resolve-FixedNTFSVolume $workingDirectory
+        $workingAncestorPaths = @(
+            Get-InstallationAncestorPaths $workingDirectory $workingVolume
+        )
+        $unsafeWorkingAncestor = Get-UnsafeInstallationAncestor $workingAncestorPaths
+        if ($AllowUnsafeInstallationDirectory -and
+            $null -ne $unsafeWorkingAncestor -and
+            $unsafeWorkingAncestor.ExitCode -in @(12, 13)) {
+            $unsafeWorkingAncestor = $null
+        } elseif ($RepairPathAncestors -and
+            $null -ne $unsafeWorkingAncestor -and
+            $unsafeWorkingAncestor.ExitCode -eq 13) {
+            Repair-PathAncestorPermissions $workingAncestorPaths
+            $unsafeWorkingAncestor = Get-UnsafeInstallationAncestor $workingAncestorPaths
+            if ($null -ne $unsafeWorkingAncestor -and
+                $unsafeWorkingAncestor.ExitCode -eq 13) {
+                Write-InstallerOutput $unsafeWorkingAncestor.Path
+                Exit-Installer 32
+            }
+        }
+        if ($null -ne $unsafeWorkingAncestor) {
+            Write-InstallerOutput $unsafeWorkingAncestor.Path
+            if ($unsafeWorkingAncestor.ExitCode -eq 13) {
+                Exit-Installer 17
+            }
+            Exit-Installer 27
+        }
+    } catch {
+        Write-InstallerOutput $_.Exception.Message
+        Exit-Installer 27
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ApplicationDataDirectory)) {
+        $ApplicationDataDirectory = [System.IO.Path]::GetFullPath($ApplicationDataDirectory)
+        if ((Test-PathOverlap $InstallationDirectory $ApplicationDataDirectory) -or
+            (Test-PathOverlap $workingDirectory $ApplicationDataDirectory)) {
+            Write-InstallerOutput $ApplicationDataDirectory
+            Exit-Installer 24
+        }
+        try {
+            $applicationDataVolume = Resolve-FixedNTFSVolume $ApplicationDataDirectory
+            $applicationDataAncestorPaths = @(
+                Get-InstallationAncestorPaths $ApplicationDataDirectory $applicationDataVolume
+            )
+            $unsafeApplicationDataAncestor = Get-UnsafeInstallationAncestor `
+                $applicationDataAncestorPaths
+            if ($AllowUnsafeInstallationDirectory -and
+                $null -ne $unsafeApplicationDataAncestor -and
+                $unsafeApplicationDataAncestor.ExitCode -in @(12, 13)) {
+                $unsafeApplicationDataAncestor = $null
+            } elseif ($RepairPathAncestors -and
+                $null -ne $unsafeApplicationDataAncestor -and
+                $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                Repair-PathAncestorPermissions $applicationDataAncestorPaths
+                $unsafeApplicationDataAncestor = Get-UnsafeInstallationAncestor `
+                    $applicationDataAncestorPaths
+                if ($null -ne $unsafeApplicationDataAncestor -and
+                    $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                    Write-InstallerOutput $unsafeApplicationDataAncestor.Path
+                    Exit-Installer 32
+                }
+            }
+            if ($null -ne $unsafeApplicationDataAncestor) {
+                Write-InstallerOutput $unsafeApplicationDataAncestor.Path
+                if ($unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                    Exit-Installer 18
+                }
+                Exit-Installer 28
+            }
+            if (Test-Path -LiteralPath $ApplicationDataDirectory) {
+                $applicationDataItem = Get-Item -LiteralPath $ApplicationDataDirectory -Force
+                if (-not $applicationDataItem.PSIsContainer -or
+                    ($applicationDataItem.Attributes -band $reparsePoint)) {
+                    throw "The application data directory is invalid."
+                }
+                $applicationDataReparsePoint = Get-ChildItem `
+                    -LiteralPath $ApplicationDataDirectory `
+                    -Force `
+                    -Recurse |
+                    Where-Object { $_.Attributes -band $reparsePoint } |
+                    Select-Object -First 1
+                if ($null -ne $applicationDataReparsePoint) {
+                    throw "The application data directory contains a reparse point."
+                }
+            }
+        } catch {
+            Write-InstallerOutput $_.Exception.Message
+            Exit-Installer 28
+        }
+    }
+
     if ($ResetWorkingDirectory) {
         Remove-WorkingDirectoryTree $workingDirectory
         if (Test-Path -LiteralPath $workingDirectory) {
-            exit 31
+            Exit-Installer 31
         }
-        exit 0
+        Exit-Installer 0
+    }
+    if ($DeleteDataDirectories) {
+        Remove-WorkingDirectoryTree $workingDirectory
+        if (Test-Path -LiteralPath $workingDirectory) {
+            Exit-Installer 31
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ApplicationDataDirectory)) {
+            $directoryID = [Box.Installer.DirectoryAccessControl]::ReadDirectoryMarker(
+                $ApplicationDataDirectory
+            )
+            if ($directoryID -ne $InstallationID) {
+                Write-InstallerOutput "The application data directory does not belong to this installation."
+                Exit-Installer 26
+            }
+            Remove-WorkingDirectoryTree $ApplicationDataDirectory
+            if (Test-Path -LiteralPath $ApplicationDataDirectory) {
+                Exit-Installer 26
+            }
+        }
+        Exit-Installer 0
+    }
+    if ($PrepareApplicationDataDirectory -and
+        -not [string]::IsNullOrWhiteSpace($ApplicationDataDirectory)) {
+        try {
+            Initialize-ApplicationDataDirectory $ApplicationDataDirectory $InstallationID
+        } catch {
+            Write-InstallerOutput $_.Exception.Message
+            Exit-Installer 25
+        }
     }
     if (-not (Test-Path -LiteralPath $workingDirectory)) {
-        exit 0
+        Exit-Installer 0
     }
 
     $workingItem = Get-Item -LiteralPath $workingDirectory -Force
     if (-not $workingItem.PSIsContainer -or ($workingItem.Attributes -band $reparsePoint)) {
-        exit 20
+        Exit-Installer 20
     }
     $workingReparsePoint = Get-ChildItem -LiteralPath $workingDirectory -Force -Recurse |
         Where-Object { $_.Attributes -band $reparsePoint } |
         Select-Object -First 1
     if ($null -ne $workingReparsePoint) {
-        exit 20
+        Exit-Installer 20
     }
 
-    $expectedIdentities = @(
-        "S-1-5-18",
-        "S-1-5-32-544",
-        (Get-ServiceSid "sing-box-daemon")
-    )
+    $expectedIdentities = @{
+        "S-1-5-18" = $false
+        "S-1-5-32-544" = $false
+        (Get-ServiceSid "sing-box-daemon") = $false
+    }
     $accessControl = Get-Acl -LiteralPath $workingDirectory
     $owner = $accessControl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
     if ($owner -ne "S-1-5-18") {
-        exit 21
+        Exit-Installer 21
     }
     if (-not $accessControl.AreAccessRulesProtected) {
-        exit 22
+        Exit-Installer 22
     }
 
     $rules = @($accessControl.GetAccessRules(
@@ -532,25 +837,38 @@ try {
         $false,
         [System.Security.Principal.SecurityIdentifier]
     ))
-    if ($rules.Count -ne $expectedIdentities.Count) {
-        exit 22
+    if ($rules.Count -lt $expectedIdentities.Count) {
+        Exit-Installer 22
     }
     foreach ($rule in $rules) {
-        if ($rule.IdentityReference.Value -notin $expectedIdentities -or
-            $rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+            Exit-Installer 22
+        }
+        $identity = $rule.IdentityReference.Value
+        if (-not $expectedIdentities.ContainsKey($identity)) {
+            continue
+        }
+        if ($expectedIdentities[$identity] -or
             [int]$rule.FileSystemRights -ne [int][System.Security.AccessControl.FileSystemRights]::FullControl -or
             $rule.InheritanceFlags -ne (
                 [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
                 [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
             ) -or
             $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
-            exit 22
+            Exit-Installer 22
         }
+        $expectedIdentities[$identity] = $true
     }
-    exit 0
+    if ($expectedIdentities.Values -contains $false) {
+        Exit-Installer 22
+    }
+    Exit-Installer 0
 } catch {
-    [Console]::Error.WriteLine(
-        "$($_.Exception.Message)$([Environment]::NewLine)$($_.ScriptStackTrace)"
-    )
-    exit 30
+    $message = "$($_.Exception.Message)$([Environment]::NewLine)$($_.ScriptStackTrace)"
+    if ([string]::IsNullOrWhiteSpace($ResultOutputPath)) {
+        [Console]::Error.WriteLine($message)
+    } else {
+        Write-InstallerOutput $message
+    }
+    Exit-Installer 30
 }

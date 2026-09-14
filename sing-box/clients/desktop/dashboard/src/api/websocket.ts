@@ -13,6 +13,7 @@ export interface GrpcStatus {
 
 export interface WebSocketStreamOptions<Req extends DescMessage, Res extends DescMessage> {
   config: Server;
+  language: string;
   service: string;
   method: string;
   requestSchema: Req;
@@ -22,7 +23,7 @@ export interface WebSocketStreamOptions<Req extends DescMessage, Res extends Des
 }
 
 export class GrpcWebSocketStream<Req extends DescMessage, Res extends DescMessage> {
-  private socket: WebSocket;
+  private socket: WebSocket | null = null;
   private buffer = new Uint8Array(0);
   private pendingSends: Uint8Array<ArrayBuffer>[] = [];
   private opened = false;
@@ -32,29 +33,36 @@ export class GrpcWebSocketStream<Req extends DescMessage, Res extends DescMessag
 
   constructor(private options: WebSocketStreamOptions<Req, Res>) {
     const baseUrl = serverConnectUrl(options.config.url).replace(/^http/, "ws");
-    this.socket = new WebSocket(`${baseUrl}/${options.service}/${options.method}`, [
-      "grpc-websockets",
-    ]);
-    this.socket.binaryType = "arraybuffer";
-    this.socket.onopen = () => {
-      let headers = "content-type: application/grpc-web+proto\r\nx-grpc-web: 1\r\n";
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(`${baseUrl}/${options.service}/${options.method}`, [
+        "grpc-websockets",
+      ]);
+    } catch (error) {
+      queueMicrotask(() => this.end(null, String(error)));
+      return;
+    }
+    this.socket = socket;
+    socket.binaryType = "arraybuffer";
+    socket.onopen = () => {
+      let headers = `content-type: application/grpc-web+proto\r\nx-grpc-web: 1\r\naccept-language: ${options.language}\r\n`;
       if (options.config.secret) {
         headers += `authorization: Bearer ${options.config.secret}\r\n`;
       }
-      this.socket.send(new TextEncoder().encode(headers));
+      socket.send(new TextEncoder().encode(headers));
       this.opened = true;
       for (const pending of this.pendingSends) {
-        this.socket.send(pending);
+        socket.send(pending);
       }
       this.pendingSends = [];
     };
-    this.socket.onmessage = (event) => {
+    socket.onmessage = (event) => {
       this.receive(new Uint8Array(event.data as ArrayBuffer));
     };
-    this.socket.onerror = () => {
+    socket.onerror = () => {
       this.end(null, "websocket connection failed");
     };
-    this.socket.onclose = (event) => {
+    socket.onclose = (event) => {
       if (this.status) {
         this.end(this.status);
       } else {
@@ -64,6 +72,9 @@ export class GrpcWebSocketStream<Req extends DescMessage, Res extends DescMessag
   }
 
   send(message: MessageInitShape<Req>) {
+    if (this.ended || this.socket === null) {
+      return;
+    }
     const data = toBinary(this.options.requestSchema, create(this.options.requestSchema, message));
     const frame = new Uint8Array(6 + data.length);
     frame[2] = (data.length >>> 24) & 0xff;
@@ -81,8 +92,11 @@ export class GrpcWebSocketStream<Req extends DescMessage, Res extends DescMessag
   }
 
   close() {
+    if (this.ended) {
+      return;
+    }
     this.ended = true;
-    this.socket.close();
+    this.socket?.close();
   }
 
   private end(status: GrpcStatus | null, error?: string) {
@@ -90,7 +104,7 @@ export class GrpcWebSocketStream<Req extends DescMessage, Res extends DescMessag
       return;
     }
     this.ended = true;
-    this.socket.close();
+    this.socket?.close();
     this.options.onEnd(status, error);
   }
 

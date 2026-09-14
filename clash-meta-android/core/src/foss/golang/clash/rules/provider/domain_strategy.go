@@ -14,9 +14,9 @@ import (
 )
 
 type domainStrategy struct {
-	count      int
-	domainTrie *trie.DomainTrie[struct{}]
-	domainSet  *trie.DomainSet
+	count            int
+	domainSetBuilder trie.DomainSetBuilder
+	domainSet        *trie.DomainSet
 }
 
 func (d *domainStrategy) Behavior() P.RuleBehavior {
@@ -32,27 +32,26 @@ func (d *domainStrategy) Count() int {
 }
 
 func (d *domainStrategy) Reset() {
-	d.domainTrie = trie.New[struct{}]()
+	d.domainSetBuilder.Reset()
 	d.domainSet = nil
 	d.count = 0
 }
 
 func (d *domainStrategy) Insert(rule string) {
 	if strings.ContainsRune(rule, '/') {
-		log.Warnln("invalid domain:[%s]", rule)
+		log.Warnln("skip invalid domain from rule provider: invalid domain %q: slash is not allowed", rule)
 		return
 	}
-	err := d.domainTrie.Insert(rule, struct{}{})
+	err := d.domainSetBuilder.Insert(rule)
 	if err != nil {
-		log.Warnln("invalid domain:[%s]", rule)
+		log.Warnln("skip invalid domain from rule provider: %s", err)
 	} else {
 		d.count++
 	}
 }
 
 func (d *domainStrategy) FinishInsert() {
-	d.domainSet = d.domainTrie.NewDomainSet()
-	d.domainTrie = nil
+	d.domainSet = d.domainSetBuilder.Build()
 }
 
 func (d *domainStrategy) FromMrs(r io.Reader, count int) error {
@@ -72,6 +71,9 @@ func (d *domainStrategy) WriteMrs(w io.Writer) error {
 	return d.domainSet.WriteBin(w)
 }
 
+// DumpMrs emits a compact domain rule list in lexicographical order through f.
+// A "domain" entry and a ".domain" entry are represented by one "+.domain" rule;
+// either entry alone is emitted unchanged. Returning false from f stops iteration.
 func (d *domainStrategy) DumpMrs(f func(key string) bool) {
 	if d.domainSet != nil {
 		var keys []string
@@ -79,12 +81,28 @@ func (d *domainStrategy) DumpMrs(f func(key string) bool) {
 			keys = append(keys, key)
 			return true
 		})
+
+		// Group exact and suffix-only entries for the same domain.
+		// Set entries are unique, so each group contains at most two entries.
+		slices.SortFunc(keys, func(left, right string) int {
+			left = strings.TrimPrefix(left, ".")
+			right = strings.TrimPrefix(right, ".")
+			return strings.Compare(left, right)
+		})
+		for index := 0; index+1 < len(keys); index++ {
+			domain := strings.TrimPrefix(keys[index], ".")
+			if domain == strings.TrimPrefix(keys[index+1], ".") {
+				// Both the domain itself and its subdomains are covered by one "+." rule.
+				keys[index] = "+." + domain
+				keys[index+1] = ""
+				index++
+			}
+		}
+		keys = slices.DeleteFunc(keys, func(key string) bool { return key == "" })
+		// Sort the compact rules by their full text, including wildcard prefixes.
 		slices.Sort(keys)
 
 		for _, key := range keys {
-			if _, ok := slices.BinarySearch(keys, "+."+key); ok {
-				continue // ignore the rules added by trie internal processing
-			}
 			if !f(key) {
 				return
 			}

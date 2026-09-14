@@ -1,4 +1,4 @@
-import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type KeyboardEvent, type MouseEventHandler, type ReactElement, type ReactNode, type RefObject } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type KeyboardEvent, type MouseEventHandler, type PointerEventHandler, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { encode as encodeQR } from "uqr";
 
@@ -161,13 +161,88 @@ export function EmptyState(props: { icon?: IconName; className?: string; childre
   );
 }
 
+const LONG_PRESS_DELAY = 500;
+const LONG_PRESS_MOVE_LIMIT = 10;
+const CONTEXT_MENU_MARGIN = 8;
+
 export function useContextMenu(menu: ReactNode) {
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pressRef = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const openedByPressRef = useRef(false);
   useDismiss(menuRef, point !== null, () => setPoint(null));
+  useLayoutEffect(() => {
+    if (point === null || !menuRef.current) {
+      return;
+    }
+    const rect = menuRef.current.getBoundingClientRect();
+    const left = clampToViewport(point.x, rect.width, window.innerWidth);
+    const top = clampToViewport(point.y, rect.height, window.innerHeight);
+    if (left !== point.x || top !== point.y) {
+      setPoint({ x: left, y: top });
+    }
+  }, [point]);
+  const cancelLongPress = () => {
+    if (pressRef.current !== null) {
+      window.clearTimeout(pressRef.current.timer);
+      pressRef.current = null;
+    }
+  };
+  useEffect(
+    () => () => {
+      if (pressRef.current !== null) {
+        window.clearTimeout(pressRef.current.timer);
+      }
+    },
+    [],
+  );
   const onContextMenu: MouseEventHandler<HTMLElement> = (event) => {
     event.preventDefault();
+    cancelLongPress();
     setPoint({ x: event.clientX, y: event.clientY });
+  };
+  const onPointerDown: PointerEventHandler<HTMLElement> = (event) => {
+    openedByPressRef.current = false;
+    cancelLongPress();
+    if (event.pointerType === "mouse") {
+      return;
+    }
+    const x = event.clientX;
+    const y = event.clientY;
+    pressRef.current = {
+      x,
+      y,
+      timer: window.setTimeout(() => {
+        pressRef.current = null;
+        openedByPressRef.current = true;
+        setPoint({ x, y });
+      }, LONG_PRESS_DELAY),
+    };
+  };
+  const onPointerMove: PointerEventHandler<HTMLElement> = (event) => {
+    const press = pressRef.current;
+    if (
+      press !== null &&
+      (Math.abs(event.clientX - press.x) > LONG_PRESS_MOVE_LIMIT ||
+        Math.abs(event.clientY - press.y) > LONG_PRESS_MOVE_LIMIT)
+    ) {
+      cancelLongPress();
+    }
+  };
+  const onClickCapture: MouseEventHandler<HTMLElement> = (event) => {
+    if (openedByPressRef.current) {
+      openedByPressRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const triggerProps = {
+    onContextMenu,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp: cancelLongPress,
+    onPointerCancel: cancelLongPress,
+    onClickCapture,
   };
   const element =
     point !== null
@@ -189,7 +264,11 @@ export function useContextMenu(menu: ReactNode) {
           document.body,
         )
       : null;
-  return { onContextMenu, element };
+  return { triggerProps, element };
+}
+
+function clampToViewport(position: number, size: number, viewport: number) {
+  return Math.max(CONTEXT_MENU_MARGIN, Math.min(position, viewport - size - CONTEXT_MENU_MARGIN));
 }
 
 export function NavRow(props: {
@@ -201,7 +280,7 @@ export function NavRow(props: {
   contextMenu?: ReactNode;
 }) {
   const contextMenu = useContextMenu(props.contextMenu);
-  const onContextMenu = props.contextMenu != null ? contextMenu.onContextMenu : undefined;
+  const triggerProps = props.contextMenu != null ? contextMenu.triggerProps : undefined;
   const menu = contextMenu.element;
   const inner = (
     <>
@@ -219,7 +298,7 @@ export function NavRow(props: {
           href={props.href}
           target="_blank"
           rel="noreferrer"
-          onContextMenu={onContextMenu}
+          {...triggerProps}
         >
           {inner}
         </a>
@@ -229,12 +308,49 @@ export function NavRow(props: {
   }
   return (
     <>
-      <button type="button" className="nav-row" onClick={props.onClick} onContextMenu={onContextMenu}>
+      <button type="button" className="nav-row" onClick={props.onClick} {...triggerProps}>
         {inner}
       </button>
       {menu}
     </>
   );
+}
+
+export function NavLines(props: { children: ReactNode }) {
+  return <div className="nav-lines">{props.children}</div>;
+}
+
+export function NavLine(props: {
+  icon: IconName;
+  label: ReactNode;
+  value?: ReactNode;
+  chevron?: boolean;
+  onClick?: () => void;
+  href?: string;
+}) {
+  const inner = (
+    <>
+      <Icon name={props.icon} size={15} />
+      <span className="nav-line-label">{props.label}</span>
+      {props.value != null && <span className="nav-line-value">{props.value}</span>}
+      {props.chevron === true && <Icon name="keyboard_arrow_right" size={14} />}
+    </>
+  );
+  if (props.href != null) {
+    return (
+      <a className="nav-line" href={props.href} target="_blank" rel="noreferrer">
+        {inner}
+      </a>
+    );
+  }
+  if (props.onClick != null) {
+    return (
+      <button type="button" className="nav-line" onClick={props.onClick}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className="nav-line static">{inner}</div>;
 }
 
 export function MenuLink(props: { href: string; children: ReactNode }) {
@@ -540,7 +656,8 @@ function useMenuPopover(
       return;
     }
     const menu = menuRef.current;
-    const anchorRect = anchorRef.current.getBoundingClientRect();
+    const anchor = anchorRef.current;
+    const anchorRect = anchor.getBoundingClientRect();
     if (width === "anchor") {
       menu.style.width = `${anchorRect.width}px`;
       menu.style.minWidth = `${anchorRect.width}px`;
@@ -549,7 +666,7 @@ function useMenuPopover(
     }
     menu.showPopover();
     const menuRect = menu.getBoundingClientRect();
-    const rightToLeft = getComputedStyle(anchorRef.current).direction === "rtl";
+    const rightToLeft = getComputedStyle(anchor).direction === "rtl";
     const alignRightEdge = alignEnd !== rightToLeft;
     let left = alignRightEdge ? anchorRect.right - menuRect.width : anchorRect.left;
     left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
@@ -560,9 +677,13 @@ function useMenuPopover(
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     const onScroll = (event: Event) => {
-      if (!(event.target instanceof Node) || !menu.contains(event.target)) {
-        dismissRef.current();
+      if (!(event.target instanceof Node) || menu.contains(event.target)) {
+        return;
       }
+      if (!event.target.contains(anchor)) {
+        return;
+      }
+      dismissRef.current();
     };
     window.addEventListener("scroll", onScroll, true);
     return () => window.removeEventListener("scroll", onScroll, true);
@@ -846,9 +967,20 @@ export function QRCode(props: { value: string }) {
   );
 }
 
-let openModalCount = 0;
+let openDialogCount = 0;
+let openDrawerCount = 0;
 
-function useShowModal(focusSelf = false) {
+function syncScrimAttribute() {
+  if (openDialogCount > 0) {
+    document.documentElement.dataset.scrim = "";
+  } else if (openDrawerCount > 0) {
+    document.documentElement.dataset.scrim = "drawer";
+  } else {
+    delete document.documentElement.dataset.scrim;
+  }
+}
+
+function useShowModal(kind: "dialog" | "drawer", focusSelf = false) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -856,19 +988,25 @@ function useShowModal(focusSelf = false) {
       return;
     }
     dialog.showModal();
-    openModalCount += 1;
-    document.documentElement.dataset.scrim = "";
+    if (kind === "drawer") {
+      openDrawerCount += 1;
+    } else {
+      openDialogCount += 1;
+    }
+    syncScrimAttribute();
     if (focusSelf) {
       dialog.focus();
     }
     return () => {
       dialog.close();
-      openModalCount -= 1;
-      if (openModalCount === 0) {
-        delete document.documentElement.dataset.scrim;
+      if (kind === "drawer") {
+        openDrawerCount -= 1;
+      } else {
+        openDialogCount -= 1;
       }
+      syncScrimAttribute();
     };
-  }, [focusSelf]);
+  }, [kind, focusSelf]);
   return ref;
 }
 
@@ -891,7 +1029,7 @@ function closeOnBackdropPointerDown(
 }
 
 function Drawer(props: { onClose: () => void; ariaLabel: string; children: ReactNode }) {
-  const ref = useShowModal(true);
+  const ref = useShowModal("drawer", true);
   return (
     <dialog
       ref={ref}
@@ -920,7 +1058,7 @@ function reactNodeText(node: ReactNode): string {
 }
 
 export function Dialog(props: { onClose: () => void; className?: string; children: ReactNode }) {
-  const ref = useShowModal();
+  const ref = useShowModal("dialog");
   let accessibleName = "Dialog";
   for (const child of Children.toArray(props.children)) {
     if (

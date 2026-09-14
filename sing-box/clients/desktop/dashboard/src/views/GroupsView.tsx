@@ -9,7 +9,7 @@ import { useI18n } from "../app/i18n";
 import { Icon } from "../components/Icon";
 import { PageHeader } from "../components/PageHeader";
 import { StreamStates } from "../components/StreamBanner";
-import { Badge, Card, IconButton, Spinner } from "../components/ui";
+import { Badge, Card, IconButton, MenuItem, Spinner, useContextMenu } from "../components/ui";
 import type { Group, GroupItem } from "../gen/daemon/started_service_pb";
 import styles from "./GroupsView.module.css";
 import { cx } from "../lib/cx";
@@ -70,7 +70,7 @@ function GroupCard(props: { group: Group }) {
   };
 
   return (
-    <div className={styles.groupCard}>
+    <div className={cx(styles.groupCard, expanded && styles.expanded)}>
       <Card
         title={
           <>
@@ -98,22 +98,12 @@ function GroupCard(props: { group: Group }) {
         {expanded ? (
           <div className={styles.groupItems}>
             {group.items.map((item) => (
-              <button
-                type="button"
+              <GroupItemCard
                 key={item.tag}
-                className={cx(styles.groupItem, item.tag === selected && styles.selected)}
-                onClick={() => selectItem(item)}
-              >
-                <span className={styles.itemTag}>{item.tag}</span>
-                <span className={styles.itemMeta}>
-                  <span>{proxyDisplayType(item.type)}</span>
-                  {item.urlTestDelay > 0 && (
-                    <span className={cx(styles.delayText, styles[urlTestDelayTone(item.urlTestDelay)])}>
-                      {item.urlTestDelay}ms
-                    </span>
-                  )}
-                </span>
-              </button>
+                item={item}
+                selected={item.tag === selected}
+                onSelect={() => selectItem(item)}
+              />
             ))}
           </div>
         ) : (
@@ -132,5 +122,38 @@ function GroupCard(props: { group: Group }) {
         )}
       </Card>
     </div>
+  );
+}
+
+function GroupItemCard(props: { item: GroupItem; selected: boolean; onSelect: () => void }) {
+  const api = useApi();
+  const { t } = useI18n();
+  const item = props.item;
+  const menu = useContextMenu(
+    <MenuItem icon="speed" onSelect={() => api.urlTest(item.tag).catch(showError)}>
+      {t("URL test")}
+    </MenuItem>,
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        className={cx(styles.groupItem, props.selected && styles.selected)}
+        onClick={props.onSelect}
+        {...menu.triggerProps}
+      >
+        <span className={styles.itemTag}>{item.tag}</span>
+        <span className={styles.itemMeta}>
+          <span>{proxyDisplayType(item.type)}</span>
+          {item.urlTestDelay > 0 && (
+            <span className={cx(styles.delayText, styles[urlTestDelayTone(item.urlTestDelay)])}>
+              {item.urlTestDelay}ms
+            </span>
+          )}
+        </span>
+      </button>
+      {menu.element}
+    </>
   );
 }

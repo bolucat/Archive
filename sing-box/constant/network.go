@@ -5,7 +5,7 @@ import (
 	F "github.com/sagernet/sing/common/format"
 )
 
-const UDPSocketBufferSize = 4 << 20
+const UDPSocketBufferSize = 8 << 20
 
 type InterfaceType uint8
 

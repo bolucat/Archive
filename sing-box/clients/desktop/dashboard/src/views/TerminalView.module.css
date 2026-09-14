@@ -17,15 +17,13 @@
   padding-top: calc(var(--space-6) + env(safe-area-inset-top, 0px));
 }
 
+/* The fit addon derives the terminal size from getComputedStyle(parent).height,
+   which reports the border box under box-sizing: border-box, so any padding on
+   the element the terminal is mounted into is counted as usable space. Padding
+   lives on the wrapper instead. */
 :global(.terminal-page) .terminal-host {
   flex: 1;
   min-height: 0;
-  padding: var(--space-8);
-  background: var(--terminal-bg);
-}
-
-.terminal-overlay .terminal-host {
-  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
 }
 
 :global(.terminal-page) .terminal-host-wrap {
@@ -34,16 +32,26 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  padding: var(--space-8);
+  overflow: hidden;
+  background: var(--terminal-bg);
+}
+
+.terminal-overlay .terminal-host-wrap {
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
 }
 
 :global(.page.terminal-page) {
   --scrollbar-thumb: var(--scrollbar-thumb-on-dark);
   --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-on-dark);
 
+  flex: 1;
+  min-height: 0;
   padding: 0;
+  overflow: hidden;
 }
 
-:global(body:has(> #root > .page.terminal-page)) {
+:global(body:has(.page.terminal-page)) {
   overflow: hidden;
 }
 
@@ -64,6 +72,39 @@
   text-overflow: ellipsis;
   font-size: var(--text-md);
   white-space: nowrap;
+}
+
+:global(.terminal-page) .window-header {
+  height: 52px;
+  min-height: 52px;
+  padding: 0 var(--space-12);
+  -webkit-app-region: drag;
+}
+
+:global(.terminal-page) .window-header :global(button),
+:global(.terminal-page) .window-header :global(.menu-anchor) {
+  -webkit-app-region: no-drag;
+}
+
+:global(.terminal-page) .window-header :global(.page-title) {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: normal;
+}
+
+:global(body[data-platform="darwin"] .terminal-page) .window-header {
+  --titlebar-inset: 96px;
+
+  padding-inline-start: var(--titlebar-inset);
+}
+
+:global(body[data-platform="win32"] .terminal-page) .window-header {
+  padding-inline-end: calc(var(--window-controls-width, 138px) + var(--space-12));
+}
+
+:global(body[data-platform="linux"] .terminal-page) .window-header {
+  padding-inline-end: calc(var(--window-controls-width, 96px) + var(--space-12));
 }
 
 :global(.terminal-page .xterm-viewport) {

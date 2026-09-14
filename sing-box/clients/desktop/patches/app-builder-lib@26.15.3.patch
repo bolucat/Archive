@@ -1,15 +1,59 @@
 diff --git a/templates/nsis/installSection.nsh b/templates/nsis/installSection.nsh
-index 4508b2c..415298e 100644
+index 4508b2c..0463c18 100644
 --- a/templates/nsis/installSection.nsh
 +++ b/templates/nsis/installSection.nsh
-@@ -38,3 +38,6 @@ ${ifNot} ${UAC_IsInnerInstance}
+@@ -9,5 +9,8 @@ StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+ # must be called before uninstallOldVersion
+ !insertmacro setLinkVars
+-
++!ifmacrodef customInstallBeforeCheckAppRunning
++  !insertmacro customInstallBeforeCheckAppRunning
++!endif
++
+ !ifdef ONE_CLICK
+   !ifdef HEADER_ICO
+@@ -38,3 +41,6 @@ ${ifNot} ${UAC_IsInnerInstance}
+ !endif
+-
++!ifmacrodef customInstallBeforeInstallationChanges
++  !insertmacro customInstallBeforeInstallationChanges
++!endif
++
+ Var /GLOBAL keepShortcuts
+@@ -52,5 +58,8 @@ ${if} $isTryToKeepShortcuts == "true"
+   ${endIf}
+ ${endif}
+-
++!ifmacrodef customInstallBeforeRemovingPreviousVersion
++  !insertmacro customInstallBeforeRemovingPreviousVersion
++!endif
++
+ !insertmacro uninstallOldVersion SHELL_CONTEXT
+ !insertmacro handleUninstallResult SHELL_CONTEXT
+@@ -65,5 +74,8 @@ SetOutPath $INSTDIR
+   File /oname=uninstallerIcon.ico "${UNINSTALLER_ICON}"
  !endif
 -
 +!ifmacrodef customInstallBeforeApplicationFiles
 +  !insertmacro customInstallBeforeApplicationFiles
 +!endif
 +
- Var /GLOBAL keepShortcuts
+ !insertmacro installApplicationFiles
+ !insertmacro registryAddInstallInfo
+diff --git a/templates/nsis/assistedInstaller.nsh b/templates/nsis/assistedInstaller.nsh
+index 3c6bb19..91f87e8 100644
+--- a/templates/nsis/assistedInstaller.nsh
++++ b/templates/nsis/assistedInstaller.nsh
+@@ -12,4 +12,8 @@
+   !ifmacrodef licensePage
+-    !insertmacro skipPageIfUpdated
++    !ifmacrodef customLicensePagePre
++      !insertmacro customLicensePagePre
++    !else
++      !insertmacro skipPageIfUpdated
++    !endif
+     !insertmacro licensePage
+   !endif
 diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
 index b0937c5..2c14203 100644
 --- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
@@ -20,6 +64,9 @@ index b0937c5..2c14203 100644
 -      Quit
 -
        doStopProcess:
+@@ -122 +119 @@
+-      DetailPrint "$(appClosing)"
++      DetailPrint "$(closingApplication)"
 diff --git a/templates/nsis/multiUser.nsh b/templates/nsis/multiUser.nsh
 index 5b95e10..ddc04eb 100644
 --- a/templates/nsis/multiUser.nsh
@@ -35,3 +82,55 @@ index 5b95e10..ddc04eb 100644
 +      !endif
 +
        !ifdef MENU_FILENAME
+diff --git a/out/targets/LinuxTargetHelper.js b/out/targets/LinuxTargetHelper.js
+--- a/out/targets/LinuxTargetHelper.js
++++ b/out/targets/LinuxTargetHelper.js
+@@ -185,8 +185,10 @@ class LinuxTargetHelper {
+     getSanitizedVersion(target) {
+         const { appInfo: { version }, } = this.packager;
+         switch (target) {
+-            case "pacman":
+-                return version.replace(/-/g, "_");
++            case "pacman": {
++                const prereleaseSeparator = version.indexOf("-");
++                return prereleaseSeparator === -1 ? version : version.slice(0, prereleaseSeparator);
++            }
+             case "rpm":
+             case "deb":
+                 return version.replace(/-/g, "~");
+diff --git a/out/targets/FpmTarget.js b/out/targets/FpmTarget.js
+--- a/out/targets/FpmTarget.js
++++ b/out/targets/FpmTarget.js
+@@ -161,7 +161,20 @@ class FpmTarget extends core_1.Target {
+             artifactPath,
+         ];
+         const meta = await this.computeFpmMetaInfoOptions();
+         args.push(...(0, builder_util_runtime_2.objectToArgs)({ name: meta.name, maintainer: (_a = meta.maintainer) !== null && _a !== void 0 ? _a : null, vendor: meta.vendor, url: meta.url }));
++        const sourceDateEpoch = process.env.SOURCE_DATE_EPOCH;
++        if (target === "rpm" && sourceDateEpoch != null) {
++            if (!/^[0-9]+$/.test(sourceDateEpoch)) {
++                throw new Error(`Invalid SOURCE_DATE_EPOCH: ${sourceDateEpoch}`);
++            }
++            const releaseDate = new Date(Number(sourceDateEpoch) * 1000);
++            const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
++            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
++            const changelogDate = `${weekdays[releaseDate.getUTCDay()]} ${months[releaseDate.getUTCMonth()]} ${releaseDate.getUTCDate()} ${releaseDate.getUTCFullYear()}`;
++            const changelogPath = await packager.info.tempDirManager.getTempFile({ suffix: "-rpm-changelog" });
++            await (0, promises_1.writeFile)(changelogPath, `* ${changelogDate} ${meta.vendor} - ${this.helper.getSanitizedVersion(target)}\n- Package created with FPM\n`);
++            args.push("--rpm-changelog", changelogPath);
++        }
+         const packageCategory = options.packageCategory;
+         if (packageCategory != null) {
+             args.push("--category", packageCategory);
+@@ -207,6 +207,7 @@ class FpmTarget extends core_1.Target {
+         (0, builder_util_1.use)(packager.info.metadata.license, it => args.push("--license", it));
+-        (0, builder_util_1.use)(appInfo.buildNumber, it => args.push("--iteration", 
+-        // dashes are not supported for iteration in older versions of fpm
+-        // https://github.com/jordansissel/fpm/issues/1833
+-        it.split("-").join("_")));
++        const prereleaseSeparator = appInfo.version.indexOf("-");
++        const packageRelease = target === "pacman" && prereleaseSeparator !== -1
++            ? `0.${appInfo.version.slice(prereleaseSeparator + 1)}`
++            : appInfo.buildNumber;
++        (0, builder_util_1.use)(packageRelease, it => args.push("--iteration", it.split("-").join("_")));
+         (0, builder_util_1.use)(options.fpm, it => args.push(...it));

@@ -1,0 +1,119 @@
+.file-list {
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.file-item {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+  padding-inline-end: var(--space-10);
+}
+
+.file-item + .file-item {
+  border-top: 1px solid var(--border);
+}
+
+.file-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-12) var(--space-14);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.file-main:hover {
+  background: var(--hover);
+}
+
+.file-name {
+  composes: text-body-emphasized from global;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.file-busy {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+}
+
+.file-action,
+.file-menu :global(.icon-button) {
+  width: 26px;
+  height: 26px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  background: var(--neutral-soft);
+  border-radius: var(--radius-pill);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width var(--transition-medium);
+}
+
+.empty-hint {
+  max-width: 420px;
+  margin: var(--space-8) auto 0;
+  font-size: var(--text-xs);
+}
+
+.file-input {
+  display: none;
+}
+
+.transfer-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-12) var(--space-10) var(--space-12) var(--space-14);
+}
+
+.transfer-item + .transfer-item {
+  border-top: 1px solid var(--border);
+}
+
+.transfer-head {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.transfer-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.dialog-busy {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-16) 0;
+}

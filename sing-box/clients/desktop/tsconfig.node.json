@@ -15,7 +15,17 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@dashboard/*": ["./dashboard/src/*"]
+    }
   },
-  "include": ["electron.vite.config.ts", "scripts", "src/main", "src/preload", "src/shared"]
+  "include": [
+    "electron.vite.config.ts",
+    "scripts",
+    "src/main",
+    "src/preload",
+    "src/shared",
+    "dashboard/src/lib/taildrop.ts"
+  ]
 }

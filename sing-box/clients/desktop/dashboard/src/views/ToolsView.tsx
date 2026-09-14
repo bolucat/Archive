@@ -16,12 +16,29 @@ import { useStreamingAction } from "../app/hooks";
 import { useI18n } from "../app/i18n";
 import { Icon } from "../components/Icon";
 import { PageHeader } from "../components/PageHeader";
-import { Badge, Button, Card, DataLine, Dialog, Field, NavRow, Select, Spinner, Toggle } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  DataLine,
+  Dialog,
+  Field,
+  MenuItem,
+  MenuLabel,
+  NavRow,
+  Select,
+  Spinner,
+  Toggle,
+} from "../components/ui";
 import {
   ServiceStatus_Type,
   type NetworkQualityTestProgress,
   type STUNTestProgress,
+  type TailscaleEndpointStatus,
 } from "../gen/daemon/started_service_pb";
+import { useTaildropSendSessions } from "../lib/taildropSend";
+import { allPeers, peerDisplayName, peerSSHAvailable } from "../lib/tailscaleSSH";
+import { useTailscaleSSH } from "./TailscaleSSHConnect";
 
 const NETWORK_QUALITY_DEFAULT_URL = "https://mensura.cdn-apple.com/api/v1/gm/config";
 const STUN_DEFAULT_SERVER = "stun.voipgate.com:3478";
@@ -36,7 +53,7 @@ export function ToolsView() {
     <div className="page">
       <PageHeader title={t("Tools")} />
       <div className="settings-stack">
-        {started && <TailscaleEndpointRows />}
+        {started && <EndpointRows />}
         {started && <UsbipServerRows />}
         <div>
           <div className="list-section-title">{t("Network")}</div>
@@ -60,6 +77,7 @@ function DebugRows() {
   const { t } = useI18n();
   const [crashUnreadCount, setCrashUnreadCount] = useState(0);
   const [oomUnreadCount, setOOMUnreadCount] = useState(0);
+  const [powerUnreadCount, setPowerUnreadCount] = useState(0);
 
   useEffect(() => {
     if (host === null) {
@@ -79,6 +97,14 @@ function DebugRows() {
       .then((reports) => {
         if (!stale) {
           setOOMUnreadCount(reports.filter((report) => !report.isRead).length);
+        }
+      })
+      .catch(() => {});
+    host.reports.power
+      .list()
+      .then((reports) => {
+        if (!stale) {
+          setPowerUnreadCount(reports.filter((report) => !report.isRead).length);
         }
       })
       .catch(() => {});
@@ -106,37 +132,147 @@ function DebugRows() {
           detail={oomUnreadCount > 0 ? oomUnreadCount : undefined}
           onClick={() => navigate("tools/oom-reports")}
         />
+        <NavRow
+          icon="bolt"
+          title={t("Power Report")}
+          detail={powerUnreadCount > 0 ? powerUnreadCount : undefined}
+          onClick={() => navigate("tools/power-reports")}
+        />
       </div>
     </div>
   );
 }
 
-function TailscaleEndpointRows() {
+function EndpointRows() {
   const api = useApi();
   const { t } = useI18n();
   const tailscale = useStream(api.tailscale);
-  const endpoints = tailscale.data.endpoints;
-  if (!tailscale.data.loaded || endpoints.length === 0) {
+  const supportsVPN = useSupportsCapability("openVpnAndOpenConnect");
+  const endpoints = tailscale.data.loaded ? tailscale.data.endpoints : [];
+  const tailscaleRows = endpoints.map((endpoint) => (
+    <TailscaleEndpointRow
+      key={`tailscale/${endpoint.endpointTag}`}
+      endpoint={endpoint}
+      title={
+        endpoints.length > 1 && endpoint.endpointTag !== ""
+          ? t("Tailscale: {tag}", { tag: endpoint.endpointTag })
+          : "Tailscale"
+      }
+    />
+  ));
+  if (!supportsVPN) {
+    return <EndpointsSection rows={tailscaleRows} />;
+  }
+  return <OpenVPNAndOpenConnectEndpointRows tailscaleRows={tailscaleRows} />;
+}
+
+function OpenVPNAndOpenConnectEndpointRows(props: { tailscaleRows: ReactNode[] }) {
+  const api = useApi();
+  const openConnect = useStream(api.openConnect);
+  const openVPN = useStream(api.openVPN);
+  const rows = [
+    ...props.tailscaleRows,
+    ...openConnect.data.endpoints.map((endpoint) => (
+      <OpenConnectEndpointRow
+        key={`openconnect/${endpoint.endpointTag}`}
+        tag={endpoint.endpointTag}
+        showTag={openConnect.data.endpoints.length > 1}
+      />
+    )),
+    ...openVPN.data.endpoints.map((endpoint) => (
+      <OpenVPNEndpointRow
+        key={`openvpn/${endpoint.endpointTag}`}
+        tag={endpoint.endpointTag}
+        showTag={openVPN.data.endpoints.length > 1}
+      />
+    )),
+  ];
+  return <EndpointsSection rows={rows} />;
+}
+
+function EndpointsSection(props: { rows: ReactNode[] }) {
+  const { t } = useI18n();
+  if (props.rows.length === 0) {
     return null;
   }
   return (
     <div>
       <div className="list-section-title">{t("Endpoints")}</div>
-      <div className="nav-list">
-        {endpoints.map((endpoint) => (
-          <NavRow
-            key={endpoint.endpointTag}
-            icon="hub"
-            title={
-              endpoints.length > 1 && endpoint.endpointTag !== ""
-                ? t("Tailscale: {tag}", { tag: endpoint.endpointTag })
-                : "Tailscale"
-            }
-            onClick={() => navigate(`tools/tailscale/${encodeURIComponent(endpoint.endpointTag)}`)}
-          />
-        ))}
-      </div>
+      <div className="nav-list">{props.rows}</div>
     </div>
+  );
+}
+
+function OpenConnectEndpointRow(props: { tag: string; showTag: boolean }) {
+  return (
+    <NavRow
+      icon="route"
+      title={props.showTag && props.tag !== "" ? `OpenConnect: ${props.tag}` : "OpenConnect"}
+      onClick={() => navigate(`tools/openconnect/${encodeURIComponent(props.tag)}`)}
+    />
+  );
+}
+
+function OpenVPNEndpointRow(props: { tag: string; showTag: boolean }) {
+  return (
+    <NavRow
+      icon="route"
+      title={props.showTag && props.tag !== "" ? `OpenVPN: ${props.tag}` : "OpenVPN"}
+      onClick={() => navigate(`tools/openvpn/${encodeURIComponent(props.tag)}`)}
+    />
+  );
+}
+
+function TailscaleEndpointRow(props: { endpoint: TailscaleEndpointStatus; title: string }) {
+  const api = useApi();
+  const { t } = useI18n();
+  const ssh = useTailscaleSSH(props.endpoint.endpointTag);
+  const sshPeers = allPeers(props.endpoint).filter(peerSSHAvailable);
+  const supportsTaildrop = useSupportsCapability("taildrop");
+  const unreadCount = supportsTaildrop ? props.endpoint.unreadFileCount : 0;
+  const hasFailedSend = useTaildropSendSessions(api, props.endpoint.endpointTag).some(
+    (session) => session.error !== "",
+  );
+
+  let connectMenu: ReactNode;
+  if (sshPeers.length === 1) {
+    connectMenu = (
+      <MenuItem icon="terminal" onSelect={() => ssh.connect(sshPeers[0])}>
+        {t("Connect via SSH")}
+      </MenuItem>
+    );
+  } else if (sshPeers.length > 1) {
+    connectMenu = (
+      <>
+        <MenuLabel>{t("Connect via SSH")}</MenuLabel>
+        {sshPeers.map((peer) => (
+          <MenuItem key={peer.stableID} onSelect={() => ssh.connect(peer)}>
+            {peerDisplayName(peer)}
+          </MenuItem>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <NavRow
+        icon="hub"
+        title={props.title}
+        detail={
+          hasFailedSend ? (
+            <Badge tone="danger">!</Badge>
+          ) : unreadCount > 0 ? (
+            <Badge tone="accent">{unreadCount}</Badge>
+          ) : undefined
+        }
+        onClick={() =>
+          navigate(`tools/tailscale/${encodeURIComponent(props.endpoint.endpointTag)}`)
+        }
+        contextMenu={connectMenu}
+      />
+      {ssh.element}
+    </>
   );
 }
 

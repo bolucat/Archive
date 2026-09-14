@@ -99,7 +99,37 @@ export interface DesktopCrashReportExportOptions {
   encrypt: boolean;
 }
 
+export interface DesktopReportArchive {
+  fileName: string;
+  data: Uint8Array;
+  mediaType: string;
+}
+
 export type DesktopSpeedMode = "disabled" | "enabled" | "unified";
+
+export type DesktopUpdateTrack = "stable" | "beta";
+export type DesktopUpdateInstallResult = "started" | "signer-mismatch" | "not-newer";
+
+export interface DesktopUpdateInfo {
+  versionName: string;
+  releaseURL: string;
+  downloadURL: string;
+  releaseNotes: string;
+  isPrerelease: boolean;
+  fileSize: number;
+}
+
+export interface DesktopUpdatesState {
+  supported: boolean;
+  track: DesktopUpdateTrack;
+  checkUpdateEnabled: boolean;
+  prompted: boolean;
+  info: DesktopUpdateInfo | null;
+  checking: boolean;
+  downloading: boolean;
+  installing: boolean;
+  downloadProgress: number;
+}
 
 export interface DesktopSettingsState {
   speedMode: DesktopSpeedMode;
@@ -109,6 +139,64 @@ export interface DesktopSettingsState {
   oomKillerEnabled: boolean;
   oomMemoryLimitMB: number;
   oomKillerKillConnections: boolean;
+  powerReportEnabled: boolean;
+}
+
+export type DesktopTerminalContextMenuResult =
+  | { action: "copy" }
+  | { action: "paste"; text: string }
+  | null;
+
+export interface DesktopOpenConnectBrowserRequest {
+  url: string;
+  finalURL: string;
+  cookieNames: string[];
+  earlyCookieNames: string[];
+  headerNames: string[];
+  callbackURLPrefixes: string[];
+}
+
+export interface DesktopOpenConnectBrowserResult {
+  finalURL: string;
+  cookies: Array<{ name: string; value: string }>;
+  headers: Array<{ name: string; values: string[] }>;
+}
+
+export interface DesktopTaildropFile {
+  name: string;
+  size: number;
+  path: string;
+}
+
+export type DesktopTaildropSendEvent =
+  | {
+      sessionID: number;
+      type: "progress";
+      fileIndex: number;
+      sentBytes: number;
+      fileCompleted: boolean;
+    }
+  | { sessionID: number; type: "finished"; code: number; error: string };
+
+export interface DesktopTaildropDownloadProgress {
+  downloadID: number;
+  transferred: number;
+  size: number;
+}
+
+export type DesktopTaildropDownloadAction = "save" | "open" | "share";
+
+export interface DesktopTaildropDownloadRequest {
+  downloadID: number;
+  endpointTag: string;
+  name: string;
+  action: DesktopTaildropDownloadAction;
+}
+
+export interface DesktopTaildropSendRequest {
+  endpointTag: string;
+  peerStableID: string;
+  files: DesktopTaildropFile[];
 }
 
 export interface DesktopHost {
@@ -120,6 +208,27 @@ export interface DesktopHost {
     getState(): Promise<DaemonConnectionState>;
     onStateChanged(listener: (state: DaemonConnectionState) => void): () => void;
     retryConnection(): void;
+  };
+  terminal: {
+    openWindow(route: string): void;
+    closeWindow(): void;
+    readClipboardText(): Promise<string>;
+    writeClipboardText(text: string): Promise<void>;
+    openContextMenu(selectionText: string): Promise<DesktopTerminalContextMenuResult>;
+  };
+  profileEditor: {
+    openWindow(profileId: string, readOnly: boolean): void;
+    closeWindow(): void;
+    setDirty(dirty: boolean): void;
+    onCloseRequested(listener: () => void): () => void;
+  };
+  openConnectBrowser: {
+    authenticate(
+      browserSessionID: string,
+      storageID: string,
+      request: DesktopOpenConnectBrowserRequest,
+    ): Promise<DesktopOpenConnectBrowserResult | null>;
+    cancel(browserSessionID: string): void;
   };
   setup: {
     repairInstall(): Promise<boolean>;
@@ -137,6 +246,7 @@ export interface DesktopHost {
   configuration: {
     check(content: string): Promise<void>;
     format(content: string): Promise<string>;
+    generateSchema(): Promise<string>;
   };
   tools: {
     startStandaloneNetworkQualityTest(
@@ -154,6 +264,8 @@ export interface DesktopHost {
   };
   core: {
     info(): Promise<{ version: string }>;
+    securitySettings(): Promise<{ available: boolean; insecureModeEnabled: boolean }>;
+    setInsecureModeEnabled(enabled: boolean): Promise<void>;
     workingDirectory(): Promise<{ path: string; size: number }>;
     destroyWorkingDirectory(): Promise<void>;
   };
@@ -163,6 +275,7 @@ export interface DesktopHost {
       read(name: string): Promise<DesktopCrashReportFile[]>;
       markRead(name: string): Promise<void>;
       exportFile(name: string, options: DesktopCrashReportExportOptions): Promise<boolean>;
+      createArchive(name: string, options: DesktopCrashReportExportOptions): Promise<DesktopReportArchive>;
       remove(name: string): Promise<void>;
       removeAll(): Promise<void>;
     };
@@ -171,6 +284,16 @@ export interface DesktopHost {
       read(name: string): Promise<DesktopOOMReportFile[]>;
       markRead(name: string): Promise<void>;
       exportFile(name: string, options: DesktopCrashReportExportOptions): Promise<boolean>;
+      createArchive(name: string, options: DesktopCrashReportExportOptions): Promise<DesktopReportArchive>;
+      remove(name: string): Promise<void>;
+      removeAll(): Promise<void>;
+    };
+    power: {
+      list(): Promise<DesktopOOMReport[]>;
+      read(name: string): Promise<DesktopOOMReportFile[]>;
+      markRead(name: string): Promise<void>;
+      exportFile(name: string, options: DesktopCrashReportExportOptions): Promise<boolean>;
+      createArchive(name: string, options: DesktopCrashReportExportOptions): Promise<DesktopReportArchive>;
       remove(name: string): Promise<void>;
       removeAll(): Promise<void>;
     };
@@ -205,17 +328,42 @@ export interface DesktopHost {
     setOOMKillerEnabled(value: boolean): Promise<void>;
     setOOMMemoryLimitMB(value: number): Promise<void>;
     setOOMKillerKillConnections(value: boolean): Promise<void>;
+    setPowerReportEnabled(value: boolean): Promise<void>;
     cacheSize(): Promise<number>;
     clearCache(): Promise<void>;
   };
+  updates: {
+    state(): Promise<DesktopUpdatesState>;
+    check(): Promise<DesktopUpdateInfo | null>;
+    getGitHubToken(): Promise<string>;
+    setGitHubToken(value: string): Promise<void>;
+    downloadAndInstall(): Promise<DesktopUpdateInstallResult>;
+    installWithElevation(): Promise<boolean>;
+    setTrack(track: DesktopUpdateTrack): Promise<void>;
+    setCheckUpdateEnabled(value: boolean): Promise<void>;
+    setPrompted(): Promise<void>;
+    markShown(): Promise<void>;
+    onStateChanged(listener: (state: DesktopUpdatesState) => void): () => void;
+    onPresentRequested(listener: () => void): () => void;
+  };
+  taildrop: {
+    pathForFile(file: File): string;
+    startSend(sessionID: number, request: DesktopTaildropSendRequest): void;
+    cancelSend(sessionID: number): void;
+    onSendEvent(listener: (event: DesktopTaildropSendEvent) => void): () => void;
+    download(request: DesktopTaildropDownloadRequest): Promise<boolean>;
+    onDownloadProgress(listener: (progress: DesktopTaildropDownloadProgress) => void): () => void;
+  };
   // window.close() destroys sandboxed renderer webContents without emitting the host window's close event.
   application: {
+    shareFile(fileName: string, data: Uint8Array | string): Promise<void>;
     showMainWindow(): void;
     closeTrayMenu(): void;
     quit(): void;
   };
   onImportRemoteProfile(listener: (request: { name: string; url: string }) => void): () => void;
   onImportProfileFile(listener: (request: { fileName: string; data: Uint8Array }) => void): () => void;
+  onTaildropSendRequested(listener: (files: DesktopTaildropFile[]) => void): () => void;
 }
 
 export const DesktopHostContext = createContext<DesktopHost | null>(null);

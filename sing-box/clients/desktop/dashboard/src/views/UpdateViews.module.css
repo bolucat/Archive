@@ -1,0 +1,55 @@
+.update-dialog {
+  width: 560px;
+}
+
+.release-notes {
+  max-height: 300px;
+  padding: var(--space-10) var(--space-12);
+  margin-top: var(--space-12);
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.progress-row {
+  margin-top: var(--space-14);
+}
+
+.progress-track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  background: var(--inset);
+  border-radius: var(--radius-pill);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 0.15s ease-out;
+}
+
+.progress-indeterminate {
+  position: absolute;
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  animation: update-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes update-progress-slide {
+  0% {
+    inset-inline-start: -40%;
+  }
+
+  100% {
+    inset-inline-start: 100%;
+  }
+}
+
+.actions-spacer {
+  flex: 1;
+}

@@ -3,17 +3,10 @@ import { ipcMain } from "electron";
 import { SETTINGS_CALL } from "../shared/ipc";
 import type { DesktopSettings, ProfilesResult, TraySpeedMode } from "../shared/ipc";
 import { applicationCacheSize, clearApplicationCache } from "./appCache";
-import { Preference } from "./database";
+import { parseBooleanPreference, Preference } from "./database";
 import { openAtLogin, setOpenAtLogin } from "./loginItem";
 import { parseMainWindowState } from "./windowState";
 import type { MainWindowState } from "./windowState";
-
-function parseBoolean(value: unknown): boolean {
-  if (typeof value !== "boolean") {
-    throw new Error("invalid boolean preference");
-  }
-  return value;
-}
 
 function parsePositiveNumber(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
@@ -37,7 +30,7 @@ const speedModePreference = new Preference<TraySpeedMode>(
 const oomKillerEnabledPreference = new Preference(
   "oom_killer_enabled",
   false,
-  parseBoolean,
+  parseBooleanPreference,
 );
 const oomMemoryLimitPreference = new Preference(
   "oom_memory_limit_mb",
@@ -47,10 +40,19 @@ const oomMemoryLimitPreference = new Preference(
 const oomKillerKillConnectionsPreference = new Preference(
   "oom_killer_kill_connections",
   false,
-  parseBoolean,
+  parseBooleanPreference,
 );
-const trayEnabledPreference = new Preference("tray_enabled", true, parseBoolean);
-const trayInBackgroundPreference = new Preference("tray_in_background", true, parseBoolean);
+const powerReportEnabledPreference = new Preference(
+  "power_report_enabled",
+  false,
+  parseBooleanPreference,
+);
+const trayEnabledPreference = new Preference("tray_enabled", true, parseBooleanPreference);
+const trayInBackgroundPreference = new Preference(
+  "tray_in_background",
+  true,
+  parseBooleanPreference,
+);
 const mainWindowStatePreference = new Preference<MainWindowState | undefined>(
   "main_window_state",
   undefined,
@@ -76,15 +78,17 @@ export async function saveMainWindowState(state: MainWindowState): Promise<void>
   mainWindowStatePreference.set({ ...state });
 }
 
-export async function oomStartOptions(): Promise<{
+export async function serviceStartOptions(): Promise<{
   oomKillerEnabled: boolean;
   oomKillerDisabled: boolean;
   oomMemoryLimit: bigint;
+  powerReportEnabled: boolean;
 }> {
   return {
     oomKillerEnabled: oomKillerEnabledPreference.get(),
     oomKillerDisabled: !oomKillerKillConnectionsPreference.get(),
     oomMemoryLimit: BigInt(oomMemoryLimitPreference.get()) * 1024n * 1024n,
+    powerReportEnabled: powerReportEnabledPreference.get(),
   };
 }
 
@@ -98,6 +102,7 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
       oomKillerEnabled: oomKillerEnabledPreference.get(),
       oomMemoryLimitMB: oomMemoryLimitPreference.get(),
       oomKillerKillConnections: oomKillerKillConnectionsPreference.get(),
+      powerReportEnabled: powerReportEnabledPreference.get(),
     };
   },
 
@@ -106,21 +111,21 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
   },
 
   async setOpenAtLogin(value: boolean): Promise<void> {
-    setOpenAtLogin(parseBoolean(value));
+    setOpenAtLogin(parseBooleanPreference(value));
   },
 
   async setTrayEnabled(value: boolean): Promise<void> {
-    const enabled = parseBoolean(value);
+    const enabled = parseBooleanPreference(value);
     trayEnabledPreference.set(enabled);
     setTrayVisibility(enabled);
   },
 
   async setTrayInBackground(value: boolean): Promise<void> {
-    trayInBackgroundPreference.set(parseBoolean(value));
+    trayInBackgroundPreference.set(parseBooleanPreference(value));
   },
 
   async setOOMKillerEnabled(value: boolean): Promise<void> {
-    oomKillerEnabledPreference.set(parseBoolean(value));
+    oomKillerEnabledPreference.set(parseBooleanPreference(value));
   },
 
   async setOOMMemoryLimitMB(value: number): Promise<void> {
@@ -128,7 +133,11 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
   },
 
   async setOOMKillerKillConnections(value: boolean): Promise<void> {
-    oomKillerKillConnectionsPreference.set(parseBoolean(value));
+    oomKillerKillConnectionsPreference.set(parseBooleanPreference(value));
+  },
+
+  async setPowerReportEnabled(value: boolean): Promise<void> {
+    powerReportEnabledPreference.set(parseBooleanPreference(value));
   },
 
   async cacheSize(): Promise<number> {

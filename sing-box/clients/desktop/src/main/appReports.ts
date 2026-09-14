@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { CrashReportEntry, CrashReportExportOptions, CrashReportFile } from "../shared/ipc";
@@ -32,15 +33,15 @@ function reportsDirectory(): string {
   return join(app.getPath("userData"), "crash_reports");
 }
 
-function uniqueReportPath(date: Date): string {
+function uniqueReportPath(root: string, date: Date): string {
   // The daemon and libbox use Go's "2006-01-02T15-04-05" UTC layout.
   const pad = (value: number) => String(value).padStart(2, "0");
   const baseName =
     `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
     `T${pad(date.getUTCHours())}-${pad(date.getUTCMinutes())}-${pad(date.getUTCSeconds())}`;
-  let candidate = join(reportsDirectory(), baseName);
+  let candidate = join(root, baseName);
   for (let suffix = 1; existsSync(candidate); suffix++) {
-    candidate = join(reportsDirectory(), `${baseName}-${suffix}`);
+    candidate = join(root, `${baseName}-${suffix}`);
   }
   return candidate;
 }
@@ -59,7 +60,30 @@ interface RuntimeCrashMetadata {
   exceptionReason: string;
 }
 
-export function captureRuntimeCrash(kind: string, error: unknown): void {
+export interface RuntimeCrashCaptureResult {
+  reportPath: string | null;
+  saveError: string | null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function writeRuntimeCrash(
+  root: string,
+  now: Date,
+  kind: string,
+  metadata: RuntimeCrashMetadata,
+  body: string,
+): string {
+  const reportPath = uniqueReportPath(root, now);
+  mkdirSync(reportPath, { recursive: true });
+  writeMetadataSync(reportPath, now, metadata);
+  writeFileSync(join(reportPath, runtimeLogFileName), `${kind}\n\n${body}\n`);
+  return reportPath;
+}
+
+export function captureRuntimeCrash(kind: string, error: unknown): RuntimeCrashCaptureResult {
   const now = new Date();
   const errorObject = error instanceof Error ? error : new Error(String(error));
   const metadata: RuntimeCrashMetadata = {
@@ -71,12 +95,28 @@ export function captureRuntimeCrash(kind: string, error: unknown): void {
       ? errorObject.stack
       : `${errorObject.name}: ${errorObject.message}`;
   try {
-    const reportPath = uniqueReportPath(now);
-    mkdirSync(reportPath, { recursive: true });
-    writeMetadataSync(reportPath, now, metadata);
-    writeFileSync(join(reportPath, runtimeLogFileName), `${kind}\n\n${body}\n`);
-  } catch {
-    return;
+    return {
+      reportPath: writeRuntimeCrash(reportsDirectory(), now, kind, metadata, body),
+      saveError: null,
+    };
+  } catch (primaryError) {
+    try {
+      return {
+        reportPath: writeRuntimeCrash(
+          join(tmpdir(), "sing-box-crash_reports"),
+          now,
+          kind,
+          metadata,
+          body,
+        ),
+        saveError: null,
+      };
+    } catch (fallbackError) {
+      return {
+        reportPath: null,
+        saveError: `primary storage: ${errorMessage(primaryError)}; temporary storage: ${errorMessage(fallbackError)}`,
+      };
+    }
   }
 }
 
@@ -102,7 +142,7 @@ export function archiveNativeCrashDumps(): void {
   for (const dumpPath of dumps) {
     try {
       const info = statSync(dumpPath);
-      const reportPath = uniqueReportPath(info.mtime);
+      const reportPath = uniqueReportPath(reportsDirectory(), info.mtime);
       mkdirSync(reportPath, { recursive: true });
       writeMetadataSync(reportPath, info.mtime, {
         exceptionName: "NativeCrash",

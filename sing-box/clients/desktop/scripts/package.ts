@@ -9,25 +9,42 @@ import {
   Platform,
 } from "electron-builder";
 
-import { findSingBoxDirectory } from "./sing-box";
-import { readApplicationVersion } from "./version";
+import { findBoxDirectory } from "./sing-box";
+import { configureReproducibleBuild } from "./reproducibility";
+import { readApplicationVersion, readGoVersion } from "./version";
+import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const singBoxDirectory = findSingBoxDirectory();
+const singBoxDirectory = findBoxDirectory();
+const dashboardDirectory = path.join(repositoryRoot, "dashboard");
 const signingConfigurationPath = path.join(
   repositoryRoot,
   "signing.local.json",
 );
-const packageMode = process.argv[2] ?? "win";
-const developmentPackage =
-  packageMode === "win-dev" || packageMode === "win-dev-architecture";
+const developmentPackage = process.argv[2] === "dev";
+const packageModeArgumentIndex = developmentPackage ? 3 : 2;
+const packageMode = process.argv[packageModeArgumentIndex] ?? "win";
+const packageArguments = process.argv
+  .slice(packageModeArgumentIndex + 1)
+  .filter((argument) => argument !== "--");
+
+const sourceDateEpoch = configureReproducibleBuild([
+  repositoryRoot,
+  singBoxDirectory,
+  dashboardDirectory,
+]);
+const goVersion = readGoVersion();
 
 interface WindowsSigningConfiguration {
   certificateFile: string;
   certificatePassword: string;
+}
+
+function goEnvironment(): NodeJS.ProcessEnv {
+  return { ...process.env, GOTOOLCHAIN: goVersion };
 }
 
 function runChecked(
@@ -46,6 +63,26 @@ function runChecked(
   }
   if (result.status !== 0) {
     throw new Error(`${command} exited with code ${result.status ?? 1}`);
+  }
+}
+
+function verifyGoVersion() {
+  const result = spawnSync("go", ["env", "GOVERSION"], {
+    cwd: singBoxDirectory,
+    encoding: "utf-8",
+    env: goEnvironment(),
+  });
+  if (result.error) {
+    throw new Error(`go: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`go exited with code ${result.status ?? 1}`);
+  }
+  const actualVersion = result.stdout.trim();
+  if (actualVersion !== goVersion) {
+    throw new Error(
+      `Go ${goVersion} is required, current version is ${actualVersion}`,
+    );
   }
 }
 
@@ -85,7 +122,7 @@ function ensureGenerated() {
     );
   }
   if (!fs.existsSync(path.join(repositoryRoot, "dashboard", "node_modules"))) {
-    runChecked("pnpm", ["-C", "dashboard", "install"]);
+    runChecked("pnpm", ["-C", "dashboard", "install", "--frozen-lockfile"]);
   }
   runChecked("pnpm", ["-C", "dashboard", "generate"]);
   runChecked("pnpm", ["generate"]);
@@ -111,7 +148,7 @@ function buildBoxdd(
       `-target=${goOperatingSystem}/${goArchitecture}`,
       `-output=${outputPath}`,
     ],
-    undefined,
+    goEnvironment(),
     singBoxDirectory,
   );
 }
@@ -155,11 +192,11 @@ function stageWindowsCronetLibrary(
   builderArchitecture: string,
 ) {
   const modulePath = `github.com/sagernet/cronet-go/lib/windows_${goArchitecture}`;
-  const result = spawnSync(
-    "go",
-    ["list", "-m", "-f", "{{.Dir}}", modulePath],
-    { cwd: singBoxDirectory, encoding: "utf-8" },
-  );
+  const result = spawnSync("go", ["list", "-m", "-f", "{{.Dir}}", modulePath], {
+    cwd: singBoxDirectory,
+    encoding: "utf-8",
+    env: goEnvironment(),
+  });
   if (result.error) {
     throw new Error(`go: ${result.error.message}`);
   }
@@ -265,7 +302,7 @@ async function runWindowsElectronBuilder(
             certificatePassword: signingConfiguration.certificatePassword,
           },
         },
-        nsis: { artifactName },
+        nsis: { artifactName, warningsAsErrors: false },
       },
     });
   } finally {
@@ -291,6 +328,8 @@ const windowsArchitectures = [
     artifactArchitecture: "x64",
     portableExecutableMachine: 0x8664,
     includesCronet: true,
+    winDivertDriver: "WinDivert64.sys",
+    includesUSBIPDrivers: true,
   },
   {
     goArchitecture: "386",
@@ -299,6 +338,8 @@ const windowsArchitectures = [
     artifactArchitecture: "x86",
     portableExecutableMachine: 0x014c,
     includesCronet: false,
+    winDivertDriver: "WinDivert32.sys",
+    includesUSBIPDrivers: false,
   },
   {
     goArchitecture: "arm64",
@@ -307,6 +348,8 @@ const windowsArchitectures = [
     artifactArchitecture: "arm64",
     portableExecutableMachine: 0xaa64,
     includesCronet: true,
+    winDivertDriver: null,
+    includesUSBIPDrivers: true,
   },
 ] as const;
 
@@ -317,9 +360,20 @@ async function packageWindowsArchitecture(artifactArchitecture: string) {
   if (architecture === undefined) {
     throw new Error(`unknown Windows architecture: ${artifactArchitecture}`);
   }
-  const stagedPaths = ["sing-box-daemon.exe"];
+  const stagedPaths = ["sing-box-daemon.exe", "windows_share.node"];
   if (architecture.includesCronet) {
     stagedPaths.push("libcronet.dll");
+  }
+  if (architecture.winDivertDriver !== null) {
+    stagedPaths.push(architecture.winDivertDriver);
+  }
+  if (architecture.includesUSBIPDrivers) {
+    stagedPaths.push(
+      "VBoxUSB.sys",
+      "VBoxUSBMon.sys",
+      "usbip2_ude.sys",
+      "usbip2_filter.sys",
+    );
   }
   for (const stagedPath of stagedPaths) {
     verifyPortableExecutableArchitecture(
@@ -347,9 +401,7 @@ async function packageWindowsArchitecture(artifactArchitecture: string) {
 }
 
 async function packageWindows() {
-  const requestedArchitectures = new Set(
-    process.argv.slice(3).filter((argument) => argument !== "--"),
-  );
+  const requestedArchitectures = new Set(packageArguments);
   const supportedArchitectures = new Set<string>(
     windowsArchitectures.map(
       (architecture) => architecture.artifactArchitecture,
@@ -404,6 +456,33 @@ async function packageWindows() {
       }
     }),
   );
+  console.info(
+    `[package] building Windows sharing modules: ${selectedArchitectures.map((architecture) => architecture.artifactArchitecture).join(", ")}`,
+  );
+  for (const architecture of selectedArchitectures) {
+    await buildWindowsShareModule(
+      architecture.builderArchitectureName,
+      path.join(
+        repositoryRoot,
+        "bin",
+        "windows",
+        architecture.builderArchitectureName,
+        "windows_share.node",
+      ),
+    );
+  }
+  for (const architecture of selectedArchitectures) {
+    verifyPortableExecutableArchitecture(
+      path.join(
+        repositoryRoot,
+        "bin",
+        "windows",
+        architecture.builderArchitectureName,
+        "windows_share.node",
+      ),
+      architecture.portableExecutableMachine,
+    );
+  }
   const buildEnvironment = {
     ...process.env,
     ELECTRON_BUILDER_DISABLE_BUILD_CACHE: "true",
@@ -417,7 +496,8 @@ async function packageWindows() {
         "tsx",
         [
           "scripts/package.ts",
-          developmentPackage ? "win-dev-architecture" : "win-architecture",
+          ...(developmentPackage ? ["dev"] : []),
+          "win-architecture",
           architecture.artifactArchitecture,
         ],
         buildEnvironment,
@@ -432,48 +512,86 @@ async function packageWindows() {
   }
 }
 
+const linuxArchitectures = [
+  {
+    goArchitecture: "amd64",
+    builderArchitectureArgument: "--x64",
+    artifactArchitecture: "x64",
+  },
+  {
+    goArchitecture: "arm64",
+    builderArchitectureArgument: "--arm64",
+    artifactArchitecture: "arm64",
+  },
+  {
+    goArchitecture: "arm",
+    builderArchitectureArgument: "--armv7l",
+    artifactArchitecture: "armv7l",
+  },
+] as const;
+
+const linuxTargets = new Set(["deb", "rpm", "pacman"]);
+
 async function packageLinux() {
+  const requestedArchitectures = new Set<string>();
+  const requestedTargets: string[] = [];
+  const supportedArchitectures = new Set<string>(
+    linuxArchitectures.map((architecture) => architecture.artifactArchitecture),
+  );
+  for (const argument of packageArguments) {
+    if (supportedArchitectures.has(argument)) {
+      requestedArchitectures.add(argument);
+    } else if (linuxTargets.has(argument)) {
+      requestedTargets.push(argument);
+    } else {
+      throw new Error(`unknown Linux package argument: ${argument}`);
+    }
+  }
+  const selectedArchitectures = linuxArchitectures.filter(
+    (architecture) =>
+      requestedArchitectures.size === 0 ||
+      requestedArchitectures.has(architecture.artifactArchitecture),
+  );
   runChecked("electron-vite", ["build"]);
-  for (const [goArchitecture, builderArchitecture] of [
-    ["amd64", "--x64"],
-    ["arm64", "--arm64"],
-  ]) {
+  for (const architecture of selectedArchitectures) {
     await buildBoxdd(
       "linux",
-      goArchitecture,
+      architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "sing-box-daemon"),
     );
-    runChecked("electron-builder", [
+    const argumentsList = [
       "--linux",
-      builderArchitecture,
+      ...requestedTargets,
+      architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",
       `--config.extraMetadata.version=${readApplicationVersion()}`,
+      ...(developmentPackage
+        ? [
+            "--config.compression=store",
+            "--config.linux.artifactName=SFL-${version}-${arch}-dev.${ext}",
+            "--config.pacman.artifactName=SFL-${version}-${arch}-dev.pkg.tar.zst",
+          ]
+        : []),
       "--publish",
       "never",
-    ]);
+    ];
+    runChecked("electron-builder", argumentsList);
   }
 }
 
 async function main(): Promise<void> {
-  if (
-    packageMode !== "win-architecture" &&
-    packageMode !== "win-dev-architecture"
-  ) {
+  console.info(`[package] SOURCE_DATE_EPOCH=${sourceDateEpoch}`);
+  verifyGoVersion();
+  if (packageMode !== "win-architecture") {
     ensureGenerated();
   }
   switch (packageMode) {
     case "win":
       await packageWindows();
       break;
-    case "win-dev":
-      await packageWindows();
-      break;
-    case "win-dev-architecture":
-      await packageWindowsArchitecture(process.argv[3] ?? "");
-      break;
     case "win-architecture":
-      await packageWindowsArchitecture(process.argv[3] ?? "");
+      await packageWindowsArchitecture(packageArguments[0] ?? "");
       break;
     case "linux":
       await packageLinux();

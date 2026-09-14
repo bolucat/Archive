@@ -17,8 +17,8 @@ import type {
 import { writeApplicationCacheFile } from "./appCache";
 import { desktopService } from "./daemon";
 import { Preference, settingsDatabase } from "./database";
-import { decodeSecureString, encodeSecureString } from "./secureStorage";
-import { oomStartOptions } from "./settings";
+import { serviceStartOptions } from "./settings";
+import { userAgent } from "./userAgent";
 import { applicationService } from "./worker";
 import { daemonState } from "./state";
 
@@ -98,7 +98,7 @@ function profileFromRow(row: ProfileRow): ProfileMetadata {
     autoUpdateIntervalMinutes: row.auto_update_interval_minutes,
   };
   if (row.remote_url !== null) {
-    profile.remoteUrl = decodeSecureString(row.remote_url);
+    profile.remoteUrl = row.remote_url;
   }
   if (row.last_updated !== null) {
     profile.lastUpdated = row.last_updated;
@@ -204,7 +204,7 @@ async function readLimitedResponse(
 // HTTP 200, reporting other statuses as "HTTP <Status>: <body>".
 async function fetchRemoteContent(remoteUrl: string): Promise<string> {
   const requestUrl = new URL(remoteUrl);
-  const headers = new Headers({ "User-Agent": `sing-box/${__APP_VERSION__}` });
+  const headers = new Headers({ "User-Agent": userAgent() });
   if (requestUrl.username !== "" || requestUrl.password !== "") {
     const credentials = `${decodeURIComponent(requestUrl.username)}:${decodeURIComponent(requestUrl.password)}`;
     headers.set(
@@ -262,9 +262,7 @@ async function insertProfile(
         profile.id,
         profile.name,
         profile.type,
-        profile.remoteUrl === undefined
-          ? null
-          : encodeSecureString(profile.remoteUrl),
+        profile.remoteUrl ?? null,
         profile.autoUpdate ? 1 : 0,
         profile.autoUpdateIntervalMinutes,
         profile.lastUpdated ?? null,
@@ -283,6 +281,7 @@ async function importProfileData(
 ): Promise<void> {
   if (fileName.toLowerCase().endsWith(".bpf")) {
     const content = await applicationService.decodeProfile({ data });
+    await checkConfig(content.config);
     const remote = content.type === ProfileContent_Type.REMOTE;
     // Shared profile files carry LastUpdated in either seconds or milliseconds.
     let lastUpdated: number | undefined;
@@ -336,7 +335,7 @@ async function startServiceWithContent(content: string): Promise<void> {
   }
   await desktopService.startService({
     configContent: content,
-    options: await oomStartOptions(),
+    options: await serviceStartOptions(),
   });
 }
 
@@ -482,7 +481,9 @@ const handlers: Record<
       profile.lastUpdated = Date.now();
     } else {
       content = init.content ?? "{}";
-      await checkConfig(content);
+      if (init.content !== undefined) {
+        await checkConfig(content);
+      }
     }
     return await insertProfile(profile, content);
   },
@@ -513,7 +514,7 @@ const handlers: Record<
               "UPDATE profiles SET remote_url = ?, last_updated = ? WHERE id = ?",
             )
             .run(
-              encodeSecureString(patch.remoteUrl),
+              patch.remoteUrl,
               remoteContent === null
                 ? (profile.lastUpdated ?? null)
                 : Date.now(),

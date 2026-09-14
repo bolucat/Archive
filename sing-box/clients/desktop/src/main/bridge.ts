@@ -1,6 +1,7 @@
 import { fromBinary, toBinary } from "@bufbuild/protobuf";
 import type { DescMethod, DescMethodStreaming, DescMethodUnary, DescService } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { createWritableIterable } from "@connectrpc/connect/protocol";
 import { BrowserWindow, ipcMain } from "electron";
 import type { WebContents } from "electron";
 
@@ -9,8 +10,10 @@ import {
   DAEMON_STATE_CHANGED,
   DAEMON_STATE_GET,
   DAEMON_STREAM_CANCEL,
+  DAEMON_STREAM_END,
   DAEMON_STREAM_EVENT,
   DAEMON_STREAM_OPEN,
+  DAEMON_STREAM_SEND,
   DAEMON_UNARY,
 } from "../shared/ipc";
 import type { BridgeError, StreamEvent, UnaryResult } from "../shared/ipc";
@@ -40,19 +43,51 @@ function bridgeError(error: unknown): BridgeError {
   return { code: connectError.code, message: connectError.rawMessage };
 }
 
-export function registerDaemonBridge() {
-  const streams = new Map<number, Map<number, AbortController>>();
+class StreamInput {
+  private readonly input = createWritableIterable<Uint8Array>();
+  private ended = false;
 
-  const senderStreams = (sender: WebContents): Map<number, AbortController> => {
+  send(message: Uint8Array) {
+    if (this.ended) {
+      return;
+    }
+    void this.input.write(message).catch(() => {});
+  }
+
+  end() {
+    if (this.ended) {
+      return;
+    }
+    this.ended = true;
+    this.input.close();
+  }
+
+  async *messages(method: DescMethodStreaming) {
+    for await (const message of this.input) {
+      yield fromBinary(method.input, message);
+    }
+  }
+}
+
+interface ActiveStream {
+  controller: AbortController;
+  input: StreamInput;
+}
+
+export function registerDaemonBridge() {
+  const streams = new Map<number, Map<number, ActiveStream>>();
+
+  const senderStreams = (sender: WebContents): Map<number, ActiveStream> => {
     const existing = streams.get(sender.id);
     if (existing !== undefined) {
       return existing;
     }
-    const created = new Map<number, AbortController>();
+    const created = new Map<number, ActiveStream>();
     streams.set(sender.id, created);
     sender.once("destroyed", () => {
-      for (const controller of created.values()) {
-        controller.abort();
+      for (const stream of created.values()) {
+        stream.input.end();
+        stream.controller.abort();
       }
       if (streams.get(sender.id) === created) {
         streams.delete(sender.id);
@@ -68,7 +103,13 @@ export function registerDaemonBridge() {
 
   ipcMain.handle(
     DAEMON_UNARY,
-    async (_event, serviceName: string, methodName: string, request: Uint8Array): Promise<UnaryResult> => {
+    async (
+      _event,
+      serviceName: string,
+      methodName: string,
+      header: [string, string][],
+      request: Uint8Array,
+    ): Promise<UnaryResult> => {
       const method = findMethod(serviceName, methodName);
       if (method === undefined || method.methodKind !== "unary") {
         return { ok: false, error: { code: Code.Unimplemented, message: "unknown method" } };
@@ -79,12 +120,13 @@ export function registerDaemonBridge() {
       }
       try {
         const unaryMethod = method as DescMethodUnary;
+        const input = fromBinary(unaryMethod.input, request);
         const response = await transport.unary(
           unaryMethod,
           undefined,
           undefined,
-          undefined,
-          fromBinary(unaryMethod.input, request),
+          new Headers(header),
+          input,
         );
         return { ok: true, data: toBinary(unaryMethod.output, response.message) };
       } catch (error) {
@@ -95,8 +137,13 @@ export function registerDaemonBridge() {
 
   ipcMain.on(
     DAEMON_STREAM_OPEN,
-    (event, id: number, serviceName: string, methodName: string, request: Uint8Array) => {
-      console.log("stream-open", serviceName, methodName);
+    (
+      event,
+      id: number,
+      serviceName: string,
+      methodName: string,
+      header: [string, string][],
+    ) => {
       const sender = event.sender;
       const send = (payload: StreamEvent) => {
         if (!sender.isDestroyed()) {
@@ -104,7 +151,7 @@ export function registerDaemonBridge() {
         }
       };
       const method = findMethod(serviceName, methodName);
-      if (method === undefined || method.methodKind !== "server_streaming") {
+      if (method === undefined || method.methodKind === "unary") {
         send({ id, type: "end", error: { code: Code.Unimplemented, message: "unknown method" } });
         return;
       }
@@ -114,21 +161,24 @@ export function registerDaemonBridge() {
         return;
       }
       const controller = new AbortController();
+      const input = new StreamInput();
+      const active: ActiveStream = { controller, input };
       const activeStreams = senderStreams(sender);
-      activeStreams.get(id)?.abort();
-      activeStreams.set(id, controller);
+      const previous = activeStreams.get(id);
+      if (previous !== undefined) {
+        previous.input.end();
+        previous.controller.abort();
+      }
+      activeStreams.set(id, active);
       void (async () => {
         try {
           const streamingMethod = method as DescMethodStreaming;
-          const input = fromBinary(streamingMethod.input, request);
           const response = await transport.stream(
             streamingMethod,
             controller.signal,
             undefined,
-            undefined,
-            (async function* () {
-              yield input;
-            })(),
+            new Headers(header),
+            input.messages(streamingMethod),
           );
           for await (const message of response.message) {
             send({ id, type: "message", data: toBinary(streamingMethod.output, message) });
@@ -139,7 +189,8 @@ export function registerDaemonBridge() {
             send({ id, type: "end", error: bridgeError(error) });
           }
         } finally {
-          if (activeStreams.get(id) === controller) {
+          input.end();
+          if (activeStreams.get(id) === active) {
             activeStreams.delete(id);
           }
           if (activeStreams.size === 0 && streams.get(sender.id) === activeStreams) {
@@ -150,9 +201,19 @@ export function registerDaemonBridge() {
     },
   );
 
+  ipcMain.on(DAEMON_STREAM_SEND, (event, id: number, request: Uint8Array) => {
+    streams.get(event.sender.id)?.get(id)?.input.send(request);
+  });
+
+  ipcMain.on(DAEMON_STREAM_END, (event, id: number) => {
+    streams.get(event.sender.id)?.get(id)?.input.end();
+  });
+
   ipcMain.on(DAEMON_STREAM_CANCEL, (event, id: number) => {
     const activeStreams = streams.get(event.sender.id);
-    activeStreams?.get(id)?.abort();
+    const active = activeStreams?.get(id);
+    active?.input.end();
+    active?.controller.abort();
     activeStreams?.delete(id);
     if (activeStreams?.size === 0) {
       streams.delete(event.sender.id);

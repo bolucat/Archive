@@ -1,27 +1,28 @@
 import { createClient } from "@connectrpc/connect";
 
+import { navigate } from "@dashboard/app/context";
 import type { DesktopHost } from "@dashboard/app/desktop";
 import { showError } from "@dashboard/app/errorStore";
 
 import { ApplicationService } from "@shared/gen/experimental/boxdd/desktop_service_pb";
+import type { TaildropSendFile } from "@shared/ipc";
 import { DesktopApi } from "./api";
 import { createIpcTransport } from "./transport";
 
 function bufferedEvent<T>(subscribe: (listener: (value: T) => void) => void) {
-  let pending: T | null = null;
+  const pending: T[] = [];
   let active: ((value: T) => void) | null = null;
   subscribe((value) => {
     if (active !== null) {
       active(value);
     } else {
-      pending = value;
+      pending.push(value);
     }
   });
   return (listener: (value: T) => void) => {
     active = listener;
-    if (pending !== null) {
-      listener(pending);
-      pending = null;
+    while (pending.length > 0) {
+      listener(pending.shift() as T);
     }
     return () => {
       if (active === listener) {
@@ -36,6 +37,7 @@ export function createDesktopHost(): DesktopHost {
   const transport = createIpcTransport();
   const desktopApi = new DesktopApi(transport);
   const applicationClient = createClient(ApplicationService, transport);
+  let configSchemaPromise: Promise<string> | null = null;
   const preferenceValues = { ...bridge.preferences.initial };
   const preferenceListeners = new Set<(name: string) => void>();
 
@@ -56,13 +58,18 @@ export function createDesktopHost(): DesktopHost {
   const importProfileFile = bufferedEvent<{ fileName: string; data: Uint8Array }>((listener) => {
     bridge.app.onProfileFileImport(listener);
   });
+  const taildropSendRequested = bufferedEvent<TaildropSendFile[]>((listener) => {
+    bridge.app.onTaildropSendRequested(listener);
+  });
+
+  bridge.app.onNavigate(navigate);
 
   return {
     platform: bridge.platform,
     appVersion: () => bridge.app.version(),
     transport,
     preferences: {
-      get: (name) => preferenceValues[name],
+      get: (name) => structuredClone(preferenceValues[name]),
       set: (name, value) => {
         preferenceValues[name] = value;
         void bridge.preferences.set(name, value).catch(showError);
@@ -80,6 +87,28 @@ export function createDesktopHost(): DesktopHost {
       getState: () => bridge.daemon.getState(),
       onStateChanged: (listener) => bridge.daemon.onStateChanged(listener),
       retryConnection: () => bridge.daemon.retryConnection(),
+    },
+    terminal: {
+      openWindow: (route) => {
+        void bridge.terminal.openWindow(route).catch(showError);
+      },
+      closeWindow: () => bridge.terminal.closeWindow(),
+      readClipboardText: () => bridge.terminal.readClipboardText(),
+      writeClipboardText: (text) => bridge.terminal.writeClipboardText(text),
+      openContextMenu: (selectionText) => bridge.terminal.openContextMenu(selectionText),
+    },
+    profileEditor: {
+      openWindow: (profileId, readOnly) => {
+        void bridge.profileEditor.openWindow(profileId, readOnly).catch(showError);
+      },
+      closeWindow: () => bridge.profileEditor.closeWindow(),
+      setDirty: (dirty) => bridge.profileEditor.setDirty(dirty),
+      onCloseRequested: (listener) => bridge.profileEditor.onCloseRequested(listener),
+    },
+    openConnectBrowser: {
+      authenticate: (browserSessionID, storageID, request) =>
+        bridge.openConnectBrowser.authenticate(browserSessionID, storageID, request),
+      cancel: (browserSessionID) => bridge.openConnectBrowser.cancel(browserSessionID),
     },
     setup: {
       repairInstall: () => bridge.setup.repairInstall(),
@@ -99,6 +128,17 @@ export function createDesktopHost(): DesktopHost {
         await applicationClient.checkConfig({ content });
       },
       format: async (content) => (await applicationClient.formatConfig({ content })).content,
+      generateSchema: () => {
+        if (configSchemaPromise === null) {
+          configSchemaPromise = applicationClient
+            .generateConfigSchema({})
+            .then((result) => result.content);
+          configSchemaPromise.catch(() => {
+            configSchemaPromise = null;
+          });
+        }
+        return configSchemaPromise;
+      },
     },
     tools: {
       startStandaloneNetworkQualityTest: (request, options) =>
@@ -123,6 +163,8 @@ export function createDesktopHost(): DesktopHost {
     },
     core: {
       info: () => bridge.core.info(),
+      securitySettings: () => bridge.core.securitySettings(),
+      setInsecureModeEnabled: (enabled) => bridge.core.setInsecureModeEnabled(enabled),
       workingDirectory: () => bridge.core.workingDirectory(),
       destroyWorkingDirectory: () => bridge.core.destroyWorkingDirectory(),
     },
@@ -132,6 +174,7 @@ export function createDesktopHost(): DesktopHost {
         read: (name) => bridge.reports.read(name),
         markRead: (name) => bridge.reports.markRead(name),
         exportFile: (name, options) => bridge.reports.exportFile(name, options),
+        createArchive: (name, options) => bridge.reports.createArchive(name, options),
         remove: (name) => bridge.reports.remove(name),
         removeAll: () => bridge.reports.removeAll(),
       },
@@ -140,8 +183,18 @@ export function createDesktopHost(): DesktopHost {
         read: (name) => bridge.reports.oomRead(name),
         markRead: (name) => bridge.reports.oomMarkRead(name),
         exportFile: (name, options) => bridge.reports.oomExportFile(name, options),
+        createArchive: (name, options) => bridge.reports.oomCreateArchive(name, options),
         remove: (name) => bridge.reports.oomRemove(name),
         removeAll: () => bridge.reports.oomRemoveAll(),
+      },
+      power: {
+        list: () => bridge.reports.powerList(),
+        read: (name) => bridge.reports.powerRead(name),
+        markRead: (name) => bridge.reports.powerMarkRead(name),
+        exportFile: (name, options) => bridge.reports.powerExportFile(name, options),
+        createArchive: (name, options) => bridge.reports.powerCreateArchive(name, options),
+        remove: (name) => bridge.reports.powerRemove(name),
+        removeAll: () => bridge.reports.powerRemoveAll(),
       },
       triggerDebugCrash: (type) => desktopApi.triggerDebugCrash(type),
       triggerAppCrash: (type) => bridge.reports.triggerAppCrash(type),
@@ -176,10 +229,19 @@ export function createDesktopHost(): DesktopHost {
       setOOMKillerEnabled: (value) => bridge.settings.setOOMKillerEnabled(value),
       setOOMMemoryLimitMB: (value) => bridge.settings.setOOMMemoryLimitMB(value),
       setOOMKillerKillConnections: (value) => bridge.settings.setOOMKillerKillConnections(value),
+      setPowerReportEnabled: (value) => bridge.settings.setPowerReportEnabled(value),
       cacheSize: () => bridge.settings.cacheSize(),
       clearCache: () => bridge.settings.clearCache(),
     },
+    updates: bridge.updates,
+    taildrop: bridge.taildrop,
     application: {
+      shareFile: async (fileName, data) => {
+        await bridge.app.shareFile(
+          fileName,
+          typeof data === "string" ? new TextEncoder().encode(data) : data,
+        );
+      },
       showMainWindow: () => {
         void bridge.app.showMainWindow();
       },
@@ -192,5 +254,6 @@ export function createDesktopHost(): DesktopHost {
     },
     onImportRemoteProfile: (listener) => importRemoteProfile(listener),
     onImportProfileFile: (listener) => importProfileFile(listener),
+    onTaildropSendRequested: (listener) => taildropSendRequested(listener),
   };
 }

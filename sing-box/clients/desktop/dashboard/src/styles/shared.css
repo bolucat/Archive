@@ -350,7 +350,7 @@ a.menu-item {
   border-top: 1px solid var(--border);
 }
 
-.nav-row:hover {
+.nav-row:hover:not(.static) {
   background: var(--hover);
 }
 
@@ -374,6 +374,78 @@ a.menu-item {
 
 .nav-row > .icon:last-child {
   color: var(--text-faint);
+}
+
+.nav-lines {
+  margin: calc(var(--space-20) * -1);
+}
+
+.nav-line {
+  display: flex;
+  gap: var(--space-10);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-12) var(--space-20);
+  font-size: var(--text-base);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+a.nav-line {
+  text-decoration: none;
+}
+
+.nav-line.static {
+  cursor: default;
+}
+
+.nav-line:first-child {
+  border-radius: calc(var(--radius-card) - var(--radius-xs)) calc(var(--radius-card) - var(--radius-xs)) 0 0;
+}
+
+.nav-line:last-child {
+  border-bottom: 0;
+  border-radius: 0 0 calc(var(--radius-card) - var(--radius-xs)) calc(var(--radius-card) - var(--radius-xs));
+}
+
+.nav-line:only-child {
+  border-radius: calc(var(--radius-card) - var(--radius-xs));
+}
+
+.nav-line:hover:not(.static) {
+  background: var(--hover);
+}
+
+.nav-line > .icon:first-child {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.nav-line-label {
+  font-weight: var(--weight-medium);
+}
+
+.nav-line-value {
+  display: inline-flex;
+  gap: var(--space-8);
+  align-items: center;
+  margin-inline-start: auto;
+  color: var(--text-secondary);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.nav-line > .icon:last-child {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+[dir="rtl"] .nav-line > .icon:last-child {
+  transform: scaleX(-1);
 }
 
 .button {

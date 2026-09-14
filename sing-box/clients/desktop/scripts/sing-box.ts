@@ -7,7 +7,7 @@ const repositoryRoot = path.resolve(
   "..",
 );
 
-export function findSingBoxDirectory(): string {
+export function findBoxDirectory(): string {
   const candidates = [
     path.resolve(repositoryRoot, "../.."),
     path.resolve(repositoryRoot, "../sing-box"),

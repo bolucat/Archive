@@ -17,7 +17,8 @@ import styles from "./DesktopToolbar.module.css";
 import { cx } from "../lib/cx";
 
 export function DesktopToolbar(props: {
-  title?: string;
+  title?: ReactNode;
+  titleControls?: ReactNode;
   picker?: ReactNode;
   controls?: ReactNode;
   leadRef?: (element: HTMLElement | null) => void;
@@ -31,6 +32,7 @@ export function DesktopToolbar(props: {
         {props.controls}
         <div className={styles.toolbarLead} ref={props.leadRef} />
         {props.title !== undefined && <div className={styles.toolbarTitle}>{props.title}</div>}
+        {props.titleControls}
       </div>
       <div className={cx(styles.toolbarSection, styles.toolbarEnd)} ref={props.endRef} />
     </header>

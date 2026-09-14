@@ -4,10 +4,11 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { findSingBoxDirectory } from "./sing-box";
+import { findBoxDirectory } from "./sing-box";
+import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const singBoxDirectory = findSingBoxDirectory();
+const singBoxDirectory = findBoxDirectory();
 
 const scriptArguments = process.argv.slice(2);
 if (scriptArguments[0] === "--") {
@@ -70,8 +71,32 @@ function ensureGenerated() {
   }
 }
 
+async function ensureWindowsShareModule() {
+  const moduleDirectory = path.join(repositoryRoot, "native", "windows-share");
+  const outputPath = path.join(moduleDirectory, "build", "Release", "windows_share.node");
+  const sourcePaths = [
+    path.join(moduleDirectory, "Cargo.lock"),
+    path.join(moduleDirectory, "Cargo.toml"),
+    path.join(moduleDirectory, "build.rs"),
+    path.join(moduleDirectory, "src", "lib.rs"),
+  ];
+  const outputModifiedAt = fs.existsSync(outputPath) ? fs.statSync(outputPath).mtimeMs : 0;
+  if (sourcePaths.every((sourcePath) => fs.statSync(sourcePath).mtimeMs <= outputModifiedAt)) {
+    return;
+  }
+  await buildWindowsShareModule(process.arch, outputPath);
+  if (!fs.existsSync(outputPath)) {
+    throw new Error(`Windows sharing module does not exist: ${outputPath}`);
+  }
+}
+
 function startApplication(socketPath: string): ChildProcess {
   const electronArguments = [`--daemon-socket=${socketPath}`];
+  // electron-vite exits and tears down the process group when the instance it
+  // spawned exits, so the relaunch in src/main/index.ts cannot survive it.
+  if (process.platform === "linux" && process.env.DISPLAY !== undefined) {
+    electronArguments.push("--ozone-platform=x11");
+  }
   if (commandLine["user-data"]) {
     electronArguments.push(`--user-data=${commandLine["user-data"]}`);
   }
@@ -135,6 +160,9 @@ function applicationExitCode(application: ChildProcess): Promise<number> {
 async function main(): Promise<number> {
   ensureGenerated();
   if (commandLine["daemon-socket"]) {
+    if (process.platform === "win32") {
+      await ensureWindowsShareModule();
+    }
     applicationProcess = startApplication(commandLine["daemon-socket"]);
     return applicationExitCode(applicationProcess);
   }

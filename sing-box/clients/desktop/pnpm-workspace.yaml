@@ -3,6 +3,8 @@ trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 259200
 patchedDependencies:
   app-builder-lib@26.15.3: patches/app-builder-lib@26.15.3.patch
+overrides:
+  "dbus-next>usocket": "-"
 allowBuilds:
   "@bufbuild/buf": true
   electron: true

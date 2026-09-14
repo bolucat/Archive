@@ -18,12 +18,15 @@
 }
 
 :global(body[data-platform="win32"]) .toolbar {
-  --window-controls-inset: 150px;
+  padding-inline-end: calc(var(--window-controls-width, 138px) + var(--space-12));
+}
 
-  padding-inline-end: var(--window-controls-inset);
+:global(body[data-platform="linux"]) .toolbar {
+  padding-inline-end: calc(var(--window-controls-width, 96px) + var(--space-12));
 }
 
 .toolbar :global(button),
+.toolbar :global(a),
 .toolbar :global(.select) {
   -webkit-app-region: no-drag;
 }

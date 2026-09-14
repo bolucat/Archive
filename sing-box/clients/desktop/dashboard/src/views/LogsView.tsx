@@ -4,6 +4,7 @@ import type { LogEntry } from "../api/daemon";
 import { pad2 } from "../api/format";
 import { isTerminalCode, useStream } from "../api/stream";
 import { useApi } from "../app/context";
+import { useDesktopHost } from "../app/desktop";
 import { showError } from "../app/errorStore";
 import { useStreamOutage } from "../app/hooks";
 import { useI18n } from "../app/i18n";
@@ -11,8 +12,9 @@ import { Icon } from "../components/Icon";
 import { PageHeader } from "../components/PageHeader";
 import { StreamErrorBanner } from "../components/StreamBanner";
 import { EmptyState, IconButton, MenuItem, OthersMenu, SearchInput, Spinner, SubMenu } from "../components/ui";
-import { LogLevel, ServiceStatus_Type } from "../gen/daemon/started_service_pb";
+import { LogLevel } from "../gen/daemon/started_service_pb";
 import { ansiColorCss, parseAnsi, parseCssColor, stripAnsi, type Rgb } from "../lib/ansi";
+import { canShare, shareError, shareFile } from "../lib/sharing";
 import styles from "./LogsView.module.css";
 
 const MAX_VISIBLE_LOGS = 1000;
@@ -47,18 +49,18 @@ function logFileName(): string {
 }
 
 function onShareError(error: unknown): void {
-  if (error instanceof DOMException && error.name === "AbortError") {
-    return;
+  const reportableError = shareError(error);
+  if (reportableError !== null) {
+    showError(reportableError);
   }
-  showError(error);
 }
 
 export function LogsView() {
   const api = useApi();
+  const host = useDesktopHost();
   const { t } = useI18n();
   const logs = useStream(api.logs);
   const outage = useStreamOutage(logs, isTerminalCode(logs.errorCode));
-  const serviceStatus = useStream(api.serviceStatus);
   const [level, setLevel] = useState<LogLevel | null>(null);
   const [paused, setPaused] = useState(false);
   const [frozen, setFrozen] = useState<LogEntry[]>([]);
@@ -66,7 +68,6 @@ export function LogsView() {
   const viewRef = useRef<HTMLDivElement>(null);
   const background = useLogBackground();
 
-  const started = serviceStatus.data.status?.status === ServiceStatus_Type.STARTED;
   const effectiveLevel = level ?? logs.data.defaultLevel ?? LogLevel.INFO;
 
   const togglePause = () => {
@@ -98,7 +99,7 @@ export function LogsView() {
   );
 
   const logsText = () => filtered.map((entry) => stripAnsi(entry.message)).join("\n");
-  const canShare = typeof navigator.share === "function";
+  const sharingAvailable = canShare(host);
 
   const saveLogs = () => {
     const url = URL.createObjectURL(new Blob([logsText()], { type: "text/plain" }));
@@ -111,12 +112,7 @@ export function LogsView() {
 
   const shareLogs = () => {
     const text = logsText();
-    const file = new File([text], logFileName(), { type: "text/plain" });
-    if (navigator.canShare?.({ files: [file] })) {
-      void navigator.share({ files: [file] }).catch(onShareError);
-    } else {
-      void navigator.share({ text }).catch(onShareError);
-    }
+    void shareFile(host, logFileName(), text, "text/plain").catch(onShareError);
   };
 
   useLayoutEffect(() => {
@@ -145,8 +141,6 @@ export function LogsView() {
     );
   } else if (outage !== null) {
     body = null;
-  } else if (!started && serviceStatus.phase === "active") {
-    body = <EmptyState icon="text_snippet">{t("Service not started")}</EmptyState>;
   } else if (logs.phase === "connecting") {
     body = (
       <EmptyState>
@@ -195,7 +189,7 @@ export function LogsView() {
                 <MenuItem icon="save" onSelect={saveLogs}>
                   {t("To File")}
                 </MenuItem>
-                {canShare && (
+                {sharingAvailable && (
                   <MenuItem icon="share" onSelect={shareLogs}>
                     {t("Share")}
                   </MenuItem>

@@ -257,6 +257,14 @@ test_naive('Multiple proxies - command line', 'socks5h://127.0.0.1:{PORT2}',
            '--log --listen=http://:{PORT3} --listen=http://:{PORT4} --proxy=socks://127.0.0.1:{PORT5}',
            '--log --listen=socks://:{PORT5}')
 
+test_naive('Multiple proxies - different auth', 'socks5h://127.0.0.1:{PORT1}',
+           '--log --listen=socks://:{PORT1} --listen=socks://:{PORT2} --proxy=http://user1:pass1@127.0.0.1:{PORT3} --proxy=http://user2:pass2@127.0.0.1:{PORT3}',
+           '--log --listen=http://user1:pass1@127.0.0.1:{PORT3}')
+
+test_naive('Multiple proxies - different auth', 'socks5h://127.0.0.1:{PORT2}',
+           '--log --listen=socks://:{PORT1} --listen=socks://:{PORT2} --proxy=http://user1:pass1@127.0.0.1:{PORT3} --proxy=http://user2:pass2@127.0.0.1:{PORT3}',
+           '--log --listen=http://user2:pass2@127.0.0.1:{PORT3}')
+
 test_naive('Trivial - listen scheme only', 'socks5h://127.0.0.1:1080',
            '--log --listen=socks://')
 

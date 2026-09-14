@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { useI18n, type MessageKey } from "../app/i18n";
 import {
@@ -8,6 +8,7 @@ import {
   type SpecialKeyId,
   type TerminalKey,
 } from "../lib/terminalKeys";
+import { cx } from "../lib/cx";
 import { Icon } from "./Icon";
 import styles from "./TerminalSymbolBar.module.css";
 
@@ -27,14 +28,15 @@ export function TerminalSymbolBar(props: {
   onModifier: (mod: ModKey) => void;
   onKey: (key: TerminalKey) => void;
   onPaste: () => void;
-  style?: CSSProperties;
+  floating: boolean;
+  keyboardInset: number;
 }) {
   const { t } = useI18n();
 
   return (
     <div
-      className={styles.terminalSymbolBar}
-      style={props.style}
+      className={cx(styles.terminalSymbolBar, props.floating && styles.floating)}
+      style={props.floating ? { bottom: props.keyboardInset } : undefined}
       role="toolbar"
       aria-label={t("Terminal keys")}
     >

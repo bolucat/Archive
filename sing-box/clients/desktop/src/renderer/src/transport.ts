@@ -1,7 +1,7 @@
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import type { MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createWritableIterable } from "@connectrpc/connect/protocol";
 
 import type { StreamEvent } from "@shared/ipc";
 
@@ -17,11 +17,12 @@ export function createIpcTransport(): Transport {
     });
   }
   return {
-    async unary(method, signal, _timeoutMs, _header, input) {
+    async unary(method, signal, _timeoutMs, header, input) {
       signal?.throwIfAborted();
       const result = await window.desktop.daemon.unary(
         method.parent.typeName,
         method.name,
+        Array.from(new Headers(header).entries()),
         toBinary(method.input, create(method.input, input)),
       );
       if (!result.ok) {
@@ -36,52 +37,82 @@ export function createIpcTransport(): Transport {
         message: fromBinary(method.output, result.data),
       };
     },
-    async stream(method, signal, _timeoutMs, _header, input) {
-      if (method.methodKind !== "server_streaming") {
-        throw new ConnectError("only server streaming is bridged", Code.Unimplemented);
-      }
+    async stream(method, signal, _timeoutMs, header, input) {
       signal?.throwIfAborted();
-      let request: MessageInitShape<typeof method.input> | undefined;
-      for await (const message of input) {
-        request = message;
-        break;
-      }
       const id = nextStreamId++;
-      const queue: StreamEvent[] = [];
-      let notify: (() => void) | null = null;
+      const events = createWritableIterable<StreamEvent>();
+      let completed = false;
+      let disposed = false;
+      let inputError: unknown;
+      const finish = (event: StreamEvent, error?: unknown) => {
+        if (completed || disposed) {
+          return;
+        }
+        completed = true;
+        inputError = error;
+        void events.write(event).catch(() => {});
+        events.close();
+      };
       streamHandlers.set(id, (event) => {
-        queue.push(event);
-        notify?.();
-        notify = null;
+        if (completed || disposed) {
+          return;
+        }
+        if (event.type === "end") {
+          finish(event);
+          return;
+        }
+        void events.write(event).catch(() => {});
       });
       const abort = () => {
         window.desktop.daemon.streamCancel(id);
-        streamHandlers.get(id)?.({
-          id,
-          type: "end",
-          error: { code: Code.Canceled, message: "stream canceled" },
-        });
+        finish(
+          { id, type: "end" },
+          new ConnectError("stream canceled", Code.Canceled),
+        );
       };
       signal?.addEventListener("abort", abort, { once: true });
       window.desktop.daemon.streamOpen(
         id,
         method.parent.typeName,
         method.name,
-        toBinary(method.input, create(method.input, request)),
+        Array.from(new Headers(header).entries()),
       );
+      const inputIterator = input[Symbol.asyncIterator]();
+      void (async () => {
+        try {
+          for (;;) {
+            const next = await inputIterator.next();
+            if (next.done) {
+              break;
+            }
+            if (completed || disposed) {
+              return;
+            }
+            window.desktop.daemon.streamSend(
+              id,
+              toBinary(method.input, create(method.input, next.value)),
+            );
+          }
+          if (!completed && !disposed) {
+            window.desktop.daemon.streamEnd(id);
+          }
+        } catch (error) {
+          if (!completed && !disposed) {
+            window.desktop.daemon.streamCancel(id);
+            finish({ id, type: "end" }, error);
+          }
+        }
+      })();
       const output = method.output;
       async function* messages() {
         try {
-          for (;;) {
-            while (queue.length === 0) {
-              await new Promise<void>((resolve) => {
-                notify = resolve;
-              });
-            }
-            const event = queue.shift()!;
+          for await (const event of events) {
             if (event.type === "message") {
               yield fromBinary(output, event.data);
               continue;
+            }
+            if (inputError !== undefined) {
+              throw ConnectError.from(inputError);
             }
             if (event.error) {
               throw new ConnectError(event.error.message, event.error.code);
@@ -89,6 +120,12 @@ export function createIpcTransport(): Transport {
             return;
           }
         } finally {
+          disposed = true;
+          events.close();
+          if (!completed) {
+            window.desktop.daemon.streamCancel(id);
+          }
+          void inputIterator.return?.();
           streamHandlers.delete(id);
           signal?.removeEventListener("abort", abort);
         }

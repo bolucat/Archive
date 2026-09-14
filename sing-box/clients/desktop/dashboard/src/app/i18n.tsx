@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { Select } from "../components/ui";
+import { watchStoredValues } from "../lib/storage";
 import { LANGUAGES, TRANSLATIONS, type Language, type MessageKey, type PluralForms } from "./translations";
 import {
   detectSystemLanguage,
@@ -71,6 +72,10 @@ export function useI18n(): I18n {
 export function I18nProvider(props: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<LanguagePreference>(() =>
     loadLanguagePreference(),
+  );
+  useEffect(
+    () => watchStoredValues(() => setPreferenceState(loadLanguagePreference())),
+    [],
   );
   const systemLanguage = useSyncExternalStore(
     subscribeSystemLanguage,

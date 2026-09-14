@@ -74,6 +74,10 @@
   color: var(--accent);
 }
 
+.nav-item :global(.badge) {
+  margin-inline-start: auto;
+}
+
 .server-picker {
   position: relative;
   padding-top: var(--space-10);

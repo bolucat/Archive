@@ -7,8 +7,9 @@ import type { DesktopHost, DesktopProfile, DesktopProfileType } from "../app/des
 import { useDesktopProfiles } from "../app/desktop";
 import { showError } from "../app/errorStore";
 import { useI18n } from "../app/i18n";
+import { DesktopToolbar } from "../components/DesktopToolbar";
 import { Icon } from "../components/Icon";
-import type { JsonEditorHandle } from "../components/JsonEditor";
+import type { JsonEditorHandle, JsonEditorSchema } from "../components/JsonEditor";
 import {
   Button,
   Card,
@@ -26,6 +27,8 @@ import {
 import { ProfileQRSDialog } from "./ProfileQRSDialog";
 import styles from "./ProfileViews.module.css";
 import { cx } from "../lib/cx";
+import { createCheckScheduler, type CheckScheduler } from "../lib/checkScheduler";
+import { canShareFiles, shareError, shareFile } from "../lib/sharing";
 
 const JsonEditor = lazy(() =>
   import("../components/JsonEditor").then((module) => ({ default: module.JsonEditor })),
@@ -63,6 +66,33 @@ function ShareMenuItems(props: {
   onShowQRS: () => void;
 }) {
   const { t } = useI18n();
+  const shareProfileFile = () => {
+    props.host.profiles
+      .encodeData(props.profile.id)
+      .then((data) =>
+        shareFile(props.host, `${props.profile.name}.bpf`, data, "application/octet-stream"),
+      )
+      .catch((error) => {
+        const reportableError = shareError(error);
+        if (reportableError !== null) {
+          showError(reportableError);
+        }
+      });
+  };
+  const shareProfileContent = () => {
+    props.host.profiles
+      .readContent(props.profile.id)
+      .then((content) =>
+        shareFile(props.host, `${props.profile.name}.json`, content, "application/json"),
+      )
+      .catch((error) => {
+        const reportableError = shareError(error);
+        if (reportableError !== null) {
+          showError(reportableError);
+        }
+      });
+  };
+  const fileSharingAvailable = canShareFiles(props.host);
   return (
     <>
       <MenuItem
@@ -71,12 +101,22 @@ function ShareMenuItems(props: {
       >
         {t("Save File")}
       </MenuItem>
+      {fileSharingAvailable && (
+        <MenuItem icon="share" onSelect={shareProfileFile}>
+          {t("Share File")}
+        </MenuItem>
+      )}
       <MenuItem
         icon="save"
         onSelect={() => void props.host.profiles.exportFile(props.profile.id).catch(showError)}
       >
         {t("Save Content JSON")}
       </MenuItem>
+      {fileSharingAvailable && (
+        <MenuItem icon="share" onSelect={shareProfileContent}>
+          {t("Share Content JSON File")}
+        </MenuItem>
+      )}
       {props.profile.type === "remote" && (
         <MenuItem icon="qr_code" onSelect={props.onShowQR}>
           {t("Share URL as QR Code")}
@@ -451,7 +491,6 @@ function EditProfileDialog(props: {
   const [remoteUrl, setRemoteUrl] = useState(profile.remoteUrl ?? "");
   const [autoUpdate, setAutoUpdate] = useState(profile.autoUpdate);
   const [interval, setIntervalValue] = useState(String(profile.autoUpdateIntervalMinutes));
-  const [editingContent, setEditingContent] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -484,17 +523,6 @@ function EditProfileDialog(props: {
       .catch(showError)
       .finally(() => setBusy(false));
   };
-
-  if (editingContent) {
-    return (
-      <ProfileContentDialog
-        host={props.host}
-        profile={profile}
-        readOnly={profile.type === "remote"}
-        onClose={() => setEditingContent(false)}
-      />
-    );
-  }
 
   return (
     <Dialog onClose={requestClose}>
@@ -537,7 +565,7 @@ function EditProfileDialog(props: {
       <div className="row-actions dialog-actions">
         <Button
           style={{ marginInlineEnd: "auto" }}
-          onClick={() => setEditingContent(true)}
+          onClick={() => props.host.profileEditor.openWindow(profile.id, profile.type === "remote")}
         >
           {profile.type === "remote" ? t("View Content") : t("Edit Content")}
         </Button>
@@ -574,11 +602,10 @@ function EditProfileDialog(props: {
 
 const EDITOR_SYMBOLS = ['"', ":", ",", "{", "}", "[", "]", "true", "false"];
 
-function ProfileContentDialog(props: {
+export function ProfileContentWindow(props: {
   host: DesktopHost;
-  profile: DesktopProfile;
+  profileId: string;
   readOnly: boolean;
-  onClose: () => void;
 }) {
   const host = props.host;
   const { t } = useI18n();
@@ -589,45 +616,76 @@ function ProfileContentDialog(props: {
   const [canRedo, setCanRedo] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [busy, setBusy] = useState(false);
-  const checkTimer = useRef<number | null>(null);
+  const [schema, setSchema] = useState<JsonEditorSchema | null>(null);
+  const contentRef = useRef<string | null>(null);
+  const savedContentRef = useRef<string | null>(null);
   const editorRef = useRef<JsonEditorHandle>(null);
+  const checkSchedulerRef = useRef<CheckScheduler | null>(null);
+  if (checkSchedulerRef.current === null) {
+    checkSchedulerRef.current = createCheckScheduler({
+      delayMs: 1000,
+      isBlocked: () => editorRef.current?.isCompletionActive() ?? false,
+      run: () => {
+        const value = contentRef.current;
+        if (value === null || value.trim() === "") {
+          return;
+        }
+        host.configuration.check(value).then(
+          () => setCheckError(null),
+          (error: unknown) => setCheckError(describeError(error).message),
+        );
+      },
+    });
+  }
+  const checkScheduler = checkSchedulerRef.current;
 
   useEffect(() => {
     host.profiles
-      .readContent(props.profile.id)
+      .readContent(props.profileId)
       .then((value) => {
+        contentRef.current = value;
+        savedContentRef.current = value;
         setContent(() => value);
         setSavedContent(() => value);
       })
       .catch((error: unknown) => {
         showError(error);
-        props.onClose();
+        host.profileEditor.closeWindow();
       });
     return () => {
-      if (checkTimer.current !== null) {
-        window.clearTimeout(checkTimer.current);
-      }
+      checkScheduler.cancel();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.profile.id]);
+  }, [host, props.profileId, checkScheduler]);
+
+  useEffect(() => {
+    let cancelled = false;
+    host.configuration
+      .generateSchema()
+      .then((content) => {
+        if (!cancelled) {
+          setSchema(JSON.parse(content) as JsonEditorSchema);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [host]);
 
   const edit = (value: string, undoAvailable: boolean, redoAvailable: boolean) => {
+    contentRef.current = value;
+    host.profileEditor.setDirty(!props.readOnly && value !== savedContentRef.current);
     setContent(() => value);
     setCanUndo(() => undoAvailable);
     setCanRedo(() => redoAvailable);
-    setCheckError(null);
-    if (checkTimer.current !== null) {
-      window.clearTimeout(checkTimer.current);
+    if (!(editorRef.current?.isCompletionActive() ?? false)) {
+      setCheckError(null);
     }
     if (value.trim() === "") {
+      checkScheduler.cancel();
       return;
     }
-    checkTimer.current = window.setTimeout(() => {
-      host.configuration.check(value).then(
-        () => setCheckError(null),
-        (error: unknown) => setCheckError(describeError(error).message),
-      );
-    }, 2000);
+    checkScheduler.schedule();
   };
 
   const format = () => {
@@ -647,103 +705,73 @@ function ProfileContentDialog(props: {
       .finally(() => setBusy(false));
   };
 
-  const save = () => {
-    if (content === null) {
-      return;
+  const save = async (): Promise<boolean> => {
+    const nextSavedContent = contentRef.current;
+    if (nextSavedContent === null) {
+      return false;
     }
     setBusy(true);
-    host.profiles
-      .writeContent(props.profile.id, content)
-      .then(props.onClose)
-      .catch(showError)
-      .finally(() => setBusy(false));
+    try {
+      await host.profiles.writeContent(props.profileId, nextSavedContent);
+      savedContentRef.current = nextSavedContent;
+      const savedAllChanges = contentRef.current === nextSavedContent;
+      host.profileEditor.setDirty(!savedAllChanges);
+      setSavedContent(() => nextSavedContent);
+      return savedAllChanges;
+    } catch (error) {
+      showError(error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
 
   const changed = !props.readOnly && content !== null && content !== savedContent;
 
-  const requestClose = () => {
-    if (changed) {
-      setConfirmingClose(true);
-    } else {
-      props.onClose();
-    }
-  };
+  useEffect(() => {
+    host.profileEditor.setDirty(changed);
+  }, [host, changed]);
+
+  useEffect(
+    () =>
+      host.profileEditor.onCloseRequested(() => {
+        if (
+          !props.readOnly &&
+          contentRef.current !== null &&
+          contentRef.current !== savedContentRef.current
+        ) {
+          setConfirmingClose(true);
+        } else {
+          host.profileEditor.closeWindow();
+        }
+      }),
+    [host, props.readOnly],
+  );
+
+  const title = props.readOnly ? t("View Content") : t("Edit Content");
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
 
   return (
-    <Dialog onClose={requestClose} className={styles.profileEditorDialog}>
-      <h3>{props.readOnly ? t("View Content") : t("Edit Content")}</h3>
-      {savedContent === null ? (
-        <div className={styles.profileEditor} />
-      ) : (
-        <Suspense fallback={<div className={styles.profileEditor} />}>
-          <JsonEditor
-            ref={editorRef}
-            className={styles.profileEditor}
-            initialValue={savedContent}
-            readOnly={props.readOnly}
-            onChange={edit}
-            onSave={props.readOnly ? undefined : save}
-          />
-        </Suspense>
-      )}
-      {checkError !== null && (
-        <div className={cx("banner error", styles.editorBanner)}>
-          <span className={styles.editorBannerMessage}>{checkError}</span>
-          <IconButton title={t("Close")} onClick={() => setCheckError(null)}>
-            <Icon name="close" size={14} />
-          </IconButton>
-        </div>
-      )}
-      {!props.readOnly && savedContent !== null && (
-        <div className={styles.editorToolbar} role="toolbar" aria-label={t("Edit Content")}>
-          <button
-            type="button"
-            className={styles.editorKey}
-            title={t("Undo")}
-            aria-label={t("Undo")}
-            disabled={!canUndo}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => editorRef.current?.undo()}
-          >
-            <Icon name="undo" size={16} />
-          </button>
-          <button
-            type="button"
-            className={styles.editorKey}
-            title={t("Redo")}
-            aria-label={t("Redo")}
-            disabled={!canRedo}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => editorRef.current?.redo()}
-          >
-            <Icon name="redo" size={16} />
-          </button>
-          <button
-            type="button"
-            className={styles.editorKey}
-            disabled={busy}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={format}
-          >
-            {t("Format")}
-          </button>
-          <span className={styles.editorToolbarDivider} aria-hidden="true" />
-          {EDITOR_SYMBOLS.map((symbol) => (
-            <button
-              key={symbol}
-              type="button"
-              className={cx(styles.editorKey, styles.editorSymbol)}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => editorRef.current?.insertSymbol(symbol)}
+    <div className={styles.profileEditorWindow}>
+      <DesktopToolbar
+        window
+        title={title}
+        titleControls={
+          props.readOnly ? undefined : (
+            <IconButton
+              title={t("Save")}
+              aria-label={t("Save")}
+              disabled={busy || !changed}
+              onClick={() => void save()}
             >
-              {symbol}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="row-actions dialog-actions">
-        {props.readOnly ? (
-          <>
+              <Icon name="save" size={18} />
+            </IconButton>
+          )
+        }
+        controls={
+          props.readOnly ? (
             <Button
               disabled={content === null}
               onClick={() => {
@@ -752,39 +780,114 @@ function ProfileContentDialog(props: {
             >
               {t("Copy")}
             </Button>
-            <Button variant="primary" onClick={props.onClose}>
-              {t("Close")}
-            </Button>
-          </>
+          ) : undefined
+        }
+      />
+      <main className={styles.profileEditorContent}>
+        {savedContent === null ? (
+          <div className={styles.profileEditor} />
         ) : (
-          <>
-            <Button onClick={requestClose}>
-              {t("Cancel")}
-            </Button>
-            <Button variant="primary" disabled={busy || content === null} onClick={save}>
-              {t("Save")}
-            </Button>
-          </>
+          <Suspense fallback={<div className={styles.profileEditor} />}>
+            <JsonEditor
+              ref={editorRef}
+              className={styles.profileEditor}
+              initialValue={savedContent}
+              readOnly={props.readOnly}
+              schema={schema}
+              onChange={edit}
+              onSave={props.readOnly ? undefined : () => void save()}
+              onCompletionOpenChange={(open) => {
+                if (!open) {
+                  checkScheduler.unblocked();
+                }
+              }}
+            />
+          </Suspense>
         )}
-      </div>
+        {checkError !== null && (
+          <div className={cx("banner error", styles.editorBanner)}>
+            <span className={styles.editorBannerMessage}>{checkError}</span>
+            <IconButton title={t("Close")} onClick={() => setCheckError(null)}>
+              <Icon name="close" size={14} />
+            </IconButton>
+          </div>
+        )}
+        {!props.readOnly && savedContent !== null && (
+          <div className={styles.editorToolbar} role="toolbar" aria-label={t("Edit Content")}>
+            <button
+              type="button"
+              className={styles.editorKey}
+              title={t("Undo")}
+              aria-label={t("Undo")}
+              disabled={!canUndo}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => editorRef.current?.undo()}
+            >
+              <Icon name="undo" size={16} />
+            </button>
+            <button
+              type="button"
+              className={styles.editorKey}
+              title={t("Redo")}
+              aria-label={t("Redo")}
+              disabled={!canRedo}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => editorRef.current?.redo()}
+            >
+              <Icon name="redo" size={16} />
+            </button>
+            <button
+              type="button"
+              className={styles.editorKey}
+              disabled={busy}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={format}
+            >
+              {t("Format")}
+            </button>
+            <span className={styles.editorToolbarDivider} aria-hidden="true" />
+            {EDITOR_SYMBOLS.map((symbol) => (
+              <button
+                key={symbol}
+                type="button"
+                className={cx(styles.editorKey, styles.editorSymbol)}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => editorRef.current?.insertSymbol(symbol)}
+              >
+                {symbol}
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
       {confirmingClose && (
         <Dialog onClose={() => setConfirmingClose(false)}>
           <h3>{t("Unsaved Changes")}</h3>
           <p className="dialog-message">{t("Do you want to save the changes you made?")}</p>
           <div className="row-actions dialog-actions">
-            <Button variant="danger" onClick={props.onClose}>
+            <Button variant="danger" onClick={() => host.profileEditor.closeWindow()}>
               {t("Don't Save")}
             </Button>
             <Button onClick={() => setConfirmingClose(false)}>
               {t("Cancel")}
             </Button>
-            <Button variant="primary" disabled={busy} onClick={save}>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => {
+                void save().then((saved) => {
+                  if (saved) {
+                    host.profileEditor.closeWindow();
+                  }
+                });
+              }}
+            >
               {t("Save")}
             </Button>
           </div>
         </Dialog>
       )}
-    </Dialog>
+    </div>
   );
 }
 

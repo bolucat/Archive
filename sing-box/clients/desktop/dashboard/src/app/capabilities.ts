@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 
 export const MIN_API_VERSION = {
   usbip: 2,
+  openVpnAndOpenConnect: 3,
+  taildrop: 4,
 } as const;
 
 export type Capability = keyof typeof MIN_API_VERSION;

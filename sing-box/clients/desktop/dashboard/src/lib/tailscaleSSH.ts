@@ -105,6 +105,19 @@ export function peerSSHAvailable(peer: TailscalePeer): boolean {
   return peer.online && peer.sshHostKeys.length > 0 && peer.tailscaleIPs.length > 0;
 }
 
+export function sshSessionPath(
+  endpointTag: string,
+  peerStableID: string,
+  username: string,
+  terminalType: string,
+): string {
+  const query = new URLSearchParams({ username, terminalType });
+  return (
+    `tools/tailscale/${encodeURIComponent(endpointTag)}/ssh/${encodeURIComponent(peerStableID)}` +
+    `?${query.toString()}`
+  );
+}
+
 export function buildSSHSession(
   endpointTag: string,
   peer: TailscalePeer,

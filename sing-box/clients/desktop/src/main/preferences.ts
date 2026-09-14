@@ -6,7 +6,13 @@ import {
   PREFERENCES_SNAPSHOT,
 } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
-import { preferenceSnapshot, removePreference, setPreference } from "./database";
+import { DESKTOP_LANGUAGES } from "../shared/translations";
+import {
+  parseBooleanPreference,
+  preferenceSnapshot,
+  removePreference,
+  setPreference,
+} from "./database";
 
 type PreferenceParser = (value: unknown) => unknown;
 
@@ -85,7 +91,7 @@ const rendererPreferences: Record<string, PreferenceParser> = {
     }
     return value;
   },
-  language: stringChoice("en", "zh-Hans", "zh-Hant", "fa", "ru"),
+  language: stringChoice(...DESKTOP_LANGUAGES),
   "dashboard-cards": (value) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new Error("invalid dashboard cards preference");
@@ -98,12 +104,7 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   },
   "connection-state-filter": stringChoice("all", "active", "closed"),
   "connection-sort": stringChoice("date", "traffic", "trafficTotal"),
-  "disable-deprecated-warnings": (value) => {
-    if (typeof value !== "boolean") {
-      throw new Error("invalid boolean preference");
-    }
-    return value;
-  },
+  "disable-deprecated-warnings": parseBooleanPreference,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {
@@ -115,12 +116,21 @@ const rendererPreferences: Record<string, PreferenceParser> = {
 };
 
 const rendererPreferenceNames = Object.keys(rendererPreferences);
+const preferenceChangeListeners = new Set<(name: string) => void>();
+
+export function onPreferenceChanged(listener: (name: string) => void): () => void {
+  preferenceChangeListeners.add(listener);
+  return () => preferenceChangeListeners.delete(listener);
+}
 
 function notifyPreferenceChanged(name: string, value?: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.webContents.isDestroyed()) {
       window.webContents.send(PREFERENCES_CHANGED, name, value);
     }
+  }
+  for (const listener of preferenceChangeListeners) {
+    listener(name);
   }
 }
 

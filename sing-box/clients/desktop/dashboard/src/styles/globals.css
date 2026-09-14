@@ -109,6 +109,7 @@
   --space-56: 56px;
   --space-64: 64px;
 
+  --z-sticky-header: 10;
   --z-menu: 100;
   --z-pill: 200;
   --z-statusbar: 300;
@@ -177,6 +178,15 @@
 [data-scrim] {
   --window-controls-surface: color-mix(in srgb, var(--surface), black 32%);
   --window-controls-text: color-mix(in srgb, var(--text), black 32%);
+
+  transition:
+    --window-controls-surface 0.18s ease,
+    --window-controls-text 0.18s ease;
+}
+
+[data-scrim="drawer"]:not([dir="rtl"]) {
+  --window-controls-surface: var(--bg);
+  --window-controls-text: var(--text);
 }
 
 [data-accent="default"] {

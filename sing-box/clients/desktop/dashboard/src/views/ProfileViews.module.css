@@ -134,17 +134,28 @@
   align-items: center;
 }
 
-dialog.profile-editor-dialog {
-  width: min(720px, 90vw);
+.profile-editor-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.profile-editor-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .profile-editor {
   box-sizing: border-box;
+  flex: 1;
   width: 100%;
-  height: 50vh;
+  min-height: 0;
 }
 
-.editor-banner {
+.profile-editor-content .editor-banner {
+  align-items: center;
   margin-top: var(--space-10);
   margin-bottom: 0;
 }
@@ -156,13 +167,16 @@ dialog.profile-editor-dialog {
 }
 
 .editor-toolbar {
+  box-sizing: border-box;
   display: flex;
   flex: 0 0 auto;
   gap: var(--space-6);
   align-items: center;
-  margin-top: var(--space-10);
+  padding: var(--space-6) var(--space-10);
   overflow: auto hidden;
   scrollbar-width: none;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 
 .editor-toolbar::-webkit-scrollbar {
@@ -213,5 +227,6 @@ dialog.profile-editor-dialog {
 
 .spin {
   display: inline-flex;
+  pointer-events: none;
   animation: spin 1s linear infinite;
 }

@@ -74,10 +74,10 @@ func New(config LC.VlessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 		return nil, err
 	}
 	if sl.decryption != nil {
+		decryption := sl.decryption
 		defer func() { // decryption must be closed to avoid the goroutine leak
 			if err != nil {
-				_ = sl.decryption.Close()
-				sl.decryption = nil
+				_ = decryption.Close()
 			}
 		}()
 	}
@@ -328,11 +328,12 @@ func (l *Listener) AddrList() (addrList []net.Addr) {
 func (l *Listener) HandleConn(conn net.Conn, tunnel C.Tunnel, additions ...inbound.Addition) {
 	ctx := sing.WithAdditions(context.TODO(), additions...)
 	if l.decryption != nil {
-		var err error
-		conn, err = l.decryption.Handshake(conn, nil)
+		c, err := l.decryption.Handshake(conn, nil)
 		if err != nil {
+			_ = conn.Close()
 			return
 		}
+		conn = c
 	}
 	err := l.service.NewConnection(ctx, conn, metadata.Metadata{
 		Protocol: "vless",

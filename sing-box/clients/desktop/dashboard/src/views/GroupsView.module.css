@@ -6,11 +6,24 @@
   margin-bottom: var(--space-14);
 }
 
+.group-card :global(.card-header) {
+  padding: var(--space-20) var(--space-20) var(--space-12);
+  margin: calc(-1 * var(--space-20)) calc(-1 * var(--space-20)) 0;
+  background: var(--card);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+.group-card.expanded :global(.card-header) {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky-header);
+}
+
 .group-items {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: var(--space-10);
-  margin-top: var(--space-12);
+  margin-top: 0;
 }
 
 .group-item {
@@ -20,10 +33,13 @@
   padding: var(--space-10) var(--space-12);
   text-align: start;
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   transition: border-color var(--transition-fast), background var(--transition-fast);
+  -webkit-touch-callout: none;
 }
 
 .group-item:hover {
@@ -75,7 +91,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4);
-  margin-top: var(--space-12);
+  margin-top: 0;
 }
 
 .group-dot {
@@ -109,5 +125,10 @@
 @media (max-width: 720px) {
   .group-items {
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+  .group-card :global(.card-header) {
+      padding: var(--space-14) var(--space-14) var(--space-12);
+      margin: calc(-1 * var(--space-14)) calc(-1 * var(--space-14)) 0;
     }
 }

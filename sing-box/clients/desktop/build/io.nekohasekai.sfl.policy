@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>SagerNet</vendor>
+  <vendor_url>https://sing-box.sagernet.org/</vendor_url>
+  <action id="io.nekohasekai.sfl.take-over-service">
+    <description>Take over the sing-box service from another user</description>
+    <message>Authentication is required to stop another user's sing-box service.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  <action id="io.nekohasekai.sfl.set-insecure-mode">
+    <description>Enable insecure mode for the sing-box service</description>
+    <message>Authentication is required to allow sing-box configurations to use privileges unrelated to networking.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

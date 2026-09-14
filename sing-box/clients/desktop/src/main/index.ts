@@ -1,18 +1,39 @@
-import { app, BrowserWindow, crashReporter, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, crashReporter, dialog, ipcMain, screen, session, shell } from "electron";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { APP_TITLE_BAR_OVERLAY, DEEP_LINK_IMPORT, PROFILE_FILE_IMPORT } from "../shared/ipc";
-import type { DeepLinkImport, ProfileFileImport, TitleBarOverlayColors } from "../shared/ipc";
-import { archiveNativeCrashDumps, captureRuntimeCrash } from "./appReports";
+import {
+  APP_NAVIGATE,
+  APP_TITLE_BAR_OVERLAY,
+  DEEP_LINK_IMPORT,
+  PROFILE_FILE_IMPORT,
+  TAILDROP_SEND_REQUEST,
+  UPDATES_PRESENT,
+} from "../shared/ipc";
+import type {
+  DeepLinkImport,
+  ProfileFileImport,
+  TaildropSendFile,
+  TitleBarOverlayColors,
+} from "../shared/ipc";
+import { configureApplicationPaths } from "./applicationPaths";
+import {
+  archiveNativeCrashDumps,
+  captureRuntimeCrash,
+} from "./appReports";
+import type { RuntimeCrashCaptureResult } from "./appReports";
 import { registerApplication } from "./application";
 import { registerDaemonBridge } from "./bridge";
 import { registerCore } from "./core";
 import { settingsDatabase } from "./database";
-import { developmentRendererURL, developmentSwitchValue, hardenPackagedRuntime } from "./development";
+import { developmentRendererURL, developmentSwitchValue } from "./development";
+import { applyDisplayScaleFactor } from "./displayScale";
 import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./loginItem";
+import { registerNotifications } from "./notifications";
 import { registerPreferences } from "./preferences";
+import { registerOpenConnectBrowser } from "./openConnectBrowser";
+import { registerProfileEditorWindows } from "./profileEditorWindows";
 import { registerProfiles } from "./profiles";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
@@ -26,37 +47,70 @@ import {
   trayInBackground,
 } from "./settings";
 import { daemonState } from "./state";
+import { createTaildropSendBatcher, registerTaildrop, taildropSendPaths } from "./taildrop";
 import { initializeTray, updateTrayVisibility } from "./tray";
+import { registerUpdates, runStartupUpdateCheck } from "./updates";
 import { prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
-import { secureApplicationUserData } from "./userDataSecurity";
+import { registerTerminalWindows } from "./terminalWindows";
+import { applyTitleBarOverlayColors, titleBarOverlay } from "./titleBarOverlay";
 import {
   MAIN_WINDOW_MINIMUM_HEIGHT,
   MAIN_WINDOW_MINIMUM_WIDTH,
   restoredMainWindowBounds,
 } from "./windowState";
 
+let handlingFatalError = false;
+
+function fatalErrorMessage(error: unknown, capture: RuntimeCrashCaptureResult): string {
+  const errorObject = error instanceof Error ? error : new Error(String(error));
+  const reason = `${errorObject.name}: ${errorObject.message}`;
+  if (capture.reportPath !== null) {
+    return `sing-box stopped unexpectedly.\n\n${reason}\n\nCrash report:\n${capture.reportPath}`;
+  }
+  return `sing-box stopped unexpectedly.\n\n${reason}\n\nThe crash report could not be saved:\n${capture.saveError ?? "unknown error"}`;
+}
+
 function handleFatal(kind: string, error: unknown): never {
-  captureRuntimeCrash(kind, error);
+  if (handlingFatalError) {
+    process.exit(1);
+  }
+  handlingFatalError = true;
+  const capture = captureRuntimeCrash(kind, error);
+  const message = fatalErrorMessage(error, capture);
+  try {
+    dialog.showErrorBox("sing-box", message);
+  } catch (dialogError) {
+    process.stderr.write(`${message}\n\nFailed to show the error dialog: ${String(dialogError)}\n`);
+  }
   process.exit(1);
 }
 process.on("uncaughtException", (error) => handleFatal("uncaughtException", error));
 process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", reason));
-hardenPackagedRuntime();
 
-const userDataPath = developmentSwitchValue("user-data");
-if (userDataPath) {
-  app.setPath("userData", userDataPath);
+// Electron selects native Wayland when WAYLAND_DISPLAY is set, where the
+// custom tray menu window cannot be positioned; under XWayland it can. Ozone
+// is initialized before the main script runs and the resolved platform is
+// appended to the command line, so appendSwitch cannot change it anymore.
+if (
+  process.platform === "linux" &&
+  process.env.DISPLAY !== undefined &&
+  app.commandLine.getSwitchValue("ozone-platform") === "wayland" &&
+  !process.argv.some((argument) => argument.startsWith("--ozone-platform")) &&
+  process.env.ELECTRON_OZONE_PLATFORM_HINT === undefined
+) {
+  app.relaunch({ args: process.argv.slice(1).concat("--ozone-platform=x11") });
+  app.exit(0);
 }
-secureApplicationUserData();
+
+if (process.platform === "linux" && app.commandLine.getSwitchValue("ozone-platform") === "x11") {
+  applyDisplayScaleFactor();
+}
+
+configureApplicationPaths(developmentSwitchValue("user-data"));
 
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });
 
 const testScriptPath = developmentSwitchValue("test-script");
-
-const TITLE_BAR_OVERLAY_HEIGHT = 51;
-
-// Electron's native Windows/Linux controls overlay does not follow the page theme.
-let titleBarOverlayColors: TitleBarOverlayColors | undefined;
 
 function createWindow(): BrowserWindow {
   const restoredState = process.platform === "win32" ? storedMainWindowState() : undefined;
@@ -84,10 +138,7 @@ function createWindow(): BrowserWindow {
     show: false,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     trafficLightPosition: process.platform === "darwin" ? { x: 18, y: 19 } : undefined,
-    titleBarOverlay:
-      process.platform === "darwin"
-        ? undefined
-        : { height: TITLE_BAR_OVERLAY_HEIGHT, ...titleBarOverlayColors },
+    titleBarOverlay: titleBarOverlay(),
     icon: process.platform === "linux" ? resourcePath("icons", "512x512.png") : undefined,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
@@ -117,35 +168,55 @@ function createWindow(): BrowserWindow {
       event.preventDefault();
     }
   });
+  window.webContents.on("preload-error", (_event, preloadPath, error) => {
+    handleFatal(
+      "main-window-preload-error",
+      new Error(`preload script failed: ${preloadPath}`, { cause: error }),
+    );
+  });
   window.webContents.on("render-process-gone", (_event, details) => {
-    if (details.reason !== "clean-exit") {
-      captureRuntimeCrash(
+    if (!quitting && details.reason !== "clean-exit") {
+      handleFatal(
         "render-process-gone",
         new Error(`renderer ${details.reason} (exit code ${details.exitCode})`),
       );
     }
   });
   const rendererURL = developmentRendererURL();
+  let loadPromise: Promise<void>;
   if (rendererURL !== "") {
-    void window.loadURL(rendererURL);
+    loadPromise = window.loadURL(rendererURL);
   } else {
-    void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+    loadPromise = window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
   }
+  void loadPromise.catch((error: unknown) => handleFatal("main-window-load", error));
   attachTestInstrumentation(window);
   mainWindow = window;
   window.on("closed", () => {
     if (mainWindow === window) {
       mainWindow = null;
     }
-    if (!quitting && !trayInBackground()) {
-      app.quit();
-    }
+    maybeQuitAfterWindowClosed();
   });
   return window;
 }
 
 let mainWindow: BrowserWindow | null = null;
+let terminalWindows: Set<BrowserWindow> | null = null;
+let profileEditorWindows: Set<BrowserWindow> | null = null;
 let quitting = false;
+
+function maybeQuitAfterWindowClosed() {
+  if (
+    !quitting &&
+    mainWindow === null &&
+    !terminalWindows?.size &&
+    !profileEditorWindows?.size &&
+    !trayInBackground()
+  ) {
+    app.quit();
+  }
+}
 
 app.on("before-quit", () => {
   quitting = true;
@@ -209,14 +280,29 @@ function showWindow(): BrowserWindow {
   return createWindow();
 }
 
-function parseImportLink(link: string): DeepLinkImport | null {
+function parseDeepLink(link: string): URL | null {
   let parsed: URL;
   try {
     parsed = new URL(link);
   } catch {
     return null;
   }
-  if (parsed.protocol !== "sing-box:" || parsed.host !== "import-remote-profile") {
+  if (parsed.protocol !== "sing-box:") {
+    return null;
+  }
+  if (parsed.host !== "") {
+    return parsed;
+  }
+  try {
+    return new URL(`sing-box://${parsed.pathname}${parsed.search}${parsed.hash}`);
+  } catch {
+    return null;
+  }
+}
+
+function parseImportLink(link: string): DeepLinkImport | null {
+  const parsed = parseDeepLink(link);
+  if (parsed === null || parsed.host !== "import-remote-profile") {
     return null;
   }
   const remoteUrl = parsed.searchParams.get("url");
@@ -258,6 +344,37 @@ function handleDeepLink(link: string) {
   sendWhenLoaded(DEEP_LINK_IMPORT, request);
 }
 
+function notificationRoute(parsed: URL): string | null {
+  if (parsed.host !== "taildrop") {
+    return null;
+  }
+  const endpointTag = parsed.searchParams.get("endpoint");
+  if (!endpointTag) {
+    return null;
+  }
+  return `tools/tailscale/${encodeURIComponent(endpointTag)}/taildrop`;
+}
+
+function handleNotificationOpen(openURL: string) {
+  const deepLink = parseDeepLink(openURL);
+  if (deepLink !== null) {
+    const route = notificationRoute(deepLink);
+    if (route !== null) {
+      sendWhenLoaded(APP_NAVIGATE, route);
+    }
+    return;
+  }
+  let external: URL;
+  try {
+    external = new URL(openURL);
+  } catch {
+    return;
+  }
+  if (external.protocol === "http:" || external.protocol === "https:") {
+    void shell.openExternal(openURL);
+  }
+}
+
 function handleProfileFile(path: string) {
   void readFile(path).then(
     (data) => {
@@ -269,6 +386,24 @@ function handleProfileFile(path: string) {
     () => {},
   );
 }
+
+const TAILDROP_SEND_REQUEST_LIFETIME = 60_000;
+
+function deliverTaildropSend(files: TaildropSendFile[]) {
+  const window = showWindow();
+  if (!window.webContents.isLoading()) {
+    window.webContents.send(TAILDROP_SEND_REQUEST, files);
+    return;
+  }
+  const deadline = Date.now() + TAILDROP_SEND_REQUEST_LIFETIME;
+  window.webContents.once("did-finish-load", () => {
+    if (Date.now() <= deadline) {
+      window.webContents.send(TAILDROP_SEND_REQUEST, files);
+    }
+  });
+}
+
+const queueTaildropSend = createTaildropSendBatcher(deliverTaildropSend);
 
 function deepLinkFromArguments(argv: string[]): string | undefined {
   return argv.find((argument) => argument.startsWith("sing-box://"));
@@ -283,11 +418,15 @@ if (!singleInstanceLock) {
   app.quit();
 } else {
   app.setAsDefaultProtocolClient("sing-box");
+  if (process.platform === "win32") {
+    app.setAppUserModelId("io.nekohasekai.sfw");
+  }
 
-  app.on("second-instance", (_event, argv) => {
+  app.on("second-instance", (_event, argv, workingDirectory) => {
     const link = deepLinkFromArguments(argv);
     const profileFile = profileFileFromArguments(argv);
-    if (!hasLoginItemArgument(argv) || link || profileFile) {
+    const taildropPaths = taildropSendPaths(argv, workingDirectory);
+    if (!hasLoginItemArgument(argv) || link || profileFile || taildropPaths.length > 0) {
       showWindow();
     }
     if (link) {
@@ -296,6 +435,7 @@ if (!singleInstanceLock) {
     if (profileFile) {
       handleProfileFile(profileFile);
     }
+    queueTaildropSend(taildropPaths);
   });
 
   app.on("open-url", (event, url) => {
@@ -320,16 +460,25 @@ if (!singleInstanceLock) {
     });
     settingsDatabase();
     archiveNativeCrashDumps();
+    terminalWindows = registerTerminalWindows(maybeQuitAfterWindowClosed);
+    profileEditorWindows = registerProfileEditorWindows(maybeQuitAfterWindowClosed);
     registerApplication(showWindow);
     ipcMain.on(APP_TITLE_BAR_OVERLAY, (event, colors: TitleBarOverlayColors) => {
       if (process.platform === "darwin") {
         return;
       }
-      titleBarOverlayColors = colors;
       const window = BrowserWindow.fromWebContents(event.sender);
-      window?.setTitleBarOverlay({ ...colors, height: TITLE_BAR_OVERLAY_HEIGHT });
+      if (
+        window !== null &&
+        (window === mainWindow ||
+          terminalWindows?.has(window) === true ||
+          profileEditorWindows?.has(window) === true)
+      ) {
+        applyTitleBarOverlayColors(window, colors);
+      }
     });
     registerDaemonBridge();
+    registerOpenConnectBrowser();
     registerSetup(() => daemonState.retryConnection());
     registerCore();
     registerReports();
@@ -337,10 +486,19 @@ if (!singleInstanceLock) {
     registerProfiles();
     registerServers();
     registerSettings(updateTrayVisibility);
+    registerTaildrop();
+    registerNotifications(handleNotificationOpen);
+    registerUpdates();
     const link = deepLinkFromArguments(process.argv);
     const profileFile = profileFileFromArguments(process.argv);
+    const taildropPaths = taildropSendPaths(process.argv, process.cwd());
     const startInTray =
-      wasOpenedAtLogin() && trayEnabled() && trayInBackground() && !link && !profileFile;
+      wasOpenedAtLogin() &&
+      trayEnabled() &&
+      trayInBackground() &&
+      !link &&
+      !profileFile &&
+      taildropPaths.length === 0;
     migrateLoginItem();
     if (!startInTray) {
       createWindow();
@@ -364,5 +522,7 @@ if (!singleInstanceLock) {
     if (profileFile) {
       handleProfileFile(profileFile);
     }
+    queueTaildropSend(taildropPaths);
+    void runStartupUpdateCheck(() => sendWhenLoaded(UPDATES_PRESENT, null));
   });
 }

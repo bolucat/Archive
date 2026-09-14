@@ -1,0 +1,60 @@
+.state-value {
+  display: inline-flex;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.auth-card {
+  padding: var(--space-14);
+}
+
+.auth-form {
+  min-width: 0;
+}
+
+.message {
+  margin: 0 0 var(--space-14);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+}
+
+.verifying {
+  display: flex;
+  gap: var(--space-10);
+  align-items: center;
+  min-height: var(--space-28);
+  font-weight: var(--weight-medium);
+}
+
+.deadline {
+  display: inline-flex;
+  padding: var(--space-4) var(--space-10);
+  margin: 0 0 var(--space-14);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--medium);
+  background: var(--medium-soft);
+  border-radius: var(--radius-pill);
+}
+
+.deadline.expired {
+  color: var(--text-faint);
+  background: var(--neutral-soft);
+}
+
+.qr-copy {
+  display: flex;
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}

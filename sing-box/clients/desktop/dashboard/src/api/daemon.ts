@@ -1,3 +1,4 @@
+import type { DescMessage, DescMethodBiDiStreaming } from "@bufbuild/protobuf";
 import type { Client, Transport } from "@connectrpc/connect";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
@@ -11,11 +12,19 @@ import {
   GroupItem,
   LogLevel,
   ServiceStatus,
+  ServiceStatus_Type,
   StartedService,
   Status,
   TailscaleEndpointStatus,
   USBIPServerStatus,
+  type OpenConnectEndpointStatus,
+  type OpenVPNEndpointStatus,
 } from "../gen/daemon/started_service_pb";
+import {
+  openBidirectionalStream,
+  type BidirectionalStream,
+  type BidirectionalStreamHandlers,
+} from "./bidirectional";
 import { serverConnectUrl, type Server } from "./config";
 import { StreamStore } from "./stream";
 
@@ -84,6 +93,16 @@ export interface UsbipData {
   loaded: boolean;
 }
 
+export interface OpenConnectData {
+  endpoints: OpenConnectEndpointStatus[];
+  loaded: boolean;
+}
+
+export interface OpenVPNData {
+  endpoints: OpenVPNEndpointStatus[];
+  loaded: boolean;
+}
+
 export interface ServerInfo {
   version: string;
   apiVersion: number;
@@ -94,6 +113,8 @@ const SUBSCRIPTION_INTERVAL = 1_000_000_000n;
 export class DaemonApi {
   readonly config: Server;
   readonly client: Client<typeof StartedService>;
+  private readonly bidirectionalTransport: Transport | undefined;
+  private readonly language: string;
 
   readonly serviceStatus: StreamStore<ServiceStatusData>;
   readonly status: StreamStore<StatusData>;
@@ -104,28 +125,32 @@ export class DaemonApi {
   readonly outbounds: StreamStore<OutboundsData>;
   readonly tailscale: StreamStore<TailscaleData>;
   readonly usbip: StreamStore<UsbipData>;
+  readonly openConnect: StreamStore<OpenConnectData>;
+  readonly openVPN: StreamStore<OpenVPNData>;
 
   private logSequence = 0;
   private versionCache: ServerInfo | null = null;
 
-  constructor(config: Server, transport?: Transport) {
+  constructor(config: Server, language: string, transport?: Transport) {
     this.config = config;
+    this.language = language;
+    this.bidirectionalTransport = transport ? withLanguageHeader(transport, language) : undefined;
     this.client = createClient(
       StartedService,
-      transport ??
+      this.bidirectionalTransport ??
         createGrpcWebTransport({
           baseUrl: serverConnectUrl(config.url),
-          interceptors: config.secret
-            ? [
-                (next) => (request) => {
-                  request.header.set("Authorization", `Bearer ${config.secret}`);
-                  return next(request);
-                },
-              ]
-            : [],
+          interceptors: [
+            (next) => (request) => {
+              request.header.set("Accept-Language", language);
+              if (config.secret) {
+                request.header.set("Authorization", `Bearer ${config.secret}`);
+              }
+              return next(request);
+            },
+          ],
         }),
     );
-
     this.serviceStatus = new StreamStore<ServiceStatusData>(
       () => ({ status: null }),
       async ({ signal, update }) => {
@@ -178,22 +203,48 @@ export class DaemonApi {
     this.logs = new StreamStore<LogsData>(
       () => ({ entries: [], defaultLevel: null }),
       async ({ signal, update }) => {
-        const defaultLevel = await this.client.getDefaultLogLevel({}, { signal });
-        update((data) => ({ ...data, defaultLevel: defaultLevel.level }));
-        for await (const message of this.client.subscribeLog({}, { signal })) {
-          update((data) => {
-            let entries = message.reset ? [] : data.entries;
-            const appended = message.messages.map((logMessage) => ({
-              id: this.logSequence++,
-              level: logMessage.level,
-              message: logMessage.message,
-            }));
-            entries = entries.concat(appended);
-            if (entries.length > LOG_MAX_ENTRIES) {
-              entries = entries.slice(entries.length - LOG_MAX_ENTRIES);
+
+        let levelFetched = false;
+        const fetchDefaultLevel = () => {
+          const statusType = this.serviceStatus.getSnapshot().data.status?.status;
+          if (
+            levelFetched ||
+            (statusType !== ServiceStatus_Type.STARTING &&
+              statusType !== ServiceStatus_Type.STARTED)
+          ) {
+            return;
+          }
+          levelFetched = true;
+          void this.client.getDefaultLogLevel({}, { signal }).then(
+            (defaultLevel) => update((data) => ({ ...data, defaultLevel: defaultLevel.level })),
+            () => {
+              levelFetched = false;
+            },
+          );
+        };
+        const unsubscribeStatus = this.serviceStatus.subscribe(fetchDefaultLevel);
+        try {
+          for await (const message of this.client.subscribeLog({}, { signal })) {
+            if (message.reset) {
+              levelFetched = false;
+              fetchDefaultLevel();
             }
-            return { ...data, entries };
-          });
+            update((data) => {
+              let entries = message.reset ? [] : data.entries;
+              const appended = message.messages.map((logMessage) => ({
+                id: this.logSequence++,
+                level: logMessage.level,
+                message: logMessage.message,
+              }));
+              entries = entries.concat(appended);
+              if (entries.length > LOG_MAX_ENTRIES) {
+                entries = entries.slice(entries.length - LOG_MAX_ENTRIES);
+              }
+              return { ...data, entries };
+            });
+          }
+        } finally {
+          unsubscribeStatus();
         }
       },
     );
@@ -303,6 +354,41 @@ export class DaemonApi {
         }
       },
     );
+
+    this.openConnect = new StreamStore<OpenConnectData>(
+      () => ({ endpoints: [], loaded: false }),
+      async ({ signal, update }) => {
+        await this.requireApiVersion(MIN_API_VERSION.openVpnAndOpenConnect);
+        for await (const message of this.client.subscribeOpenConnectStatus({}, { signal })) {
+          update(() => ({ endpoints: message.endpoints, loaded: true }));
+        }
+      },
+      true,
+    );
+
+    this.openVPN = new StreamStore<OpenVPNData>(
+      () => ({ endpoints: [], loaded: false }),
+      async ({ signal, update }) => {
+        await this.requireApiVersion(MIN_API_VERSION.openVpnAndOpenConnect);
+        for await (const message of this.client.subscribeOpenVPNStatus({}, { signal })) {
+          update(() => ({ endpoints: message.endpoints, loaded: true }));
+        }
+      },
+      true,
+    );
+  }
+
+  openBidirectionalStream<I extends DescMessage, O extends DescMessage>(
+    method: DescMethodBiDiStreaming<I, O>,
+    handlers: BidirectionalStreamHandlers<O>,
+  ): BidirectionalStream<I> {
+    return openBidirectionalStream(
+      this.config,
+      this.language,
+      method,
+      handlers,
+      this.bidirectionalTransport,
+    );
   }
 
   retryNow(): void {
@@ -315,6 +401,8 @@ export class DaemonApi {
     this.outbounds.retryNow();
     this.tailscale.retryNow();
     this.usbip.retryNow();
+    this.openConnect.retryNow();
+    this.openVPN.retryNow();
   }
 
   reconnectNow(): void {
@@ -329,8 +417,8 @@ export class DaemonApi {
     this.usbip.reconnectNow();
   }
 
-  async urlTest(groupTag: string): Promise<void> {
-    await this.client.uRLTest({ outboundTag: groupTag });
+  async urlTest(outboundTag: string): Promise<void> {
+    await this.client.uRLTest({ outboundTag });
   }
 
   async selectOutbound(groupTag: string, outboundTag: string): Promise<void> {
@@ -365,6 +453,13 @@ export class DaemonApi {
     return this.versionCache;
   }
 
+  private async requireApiVersion(min: number): Promise<void> {
+    const { apiVersion } = await this.serverInfo();
+    if (apiVersion < min) {
+      throw new ConnectError(`requires server API version ${min}`, Code.Unimplemented);
+    }
+  }
+
   async getStartedAt(): Promise<number> {
     const response = await this.client.getStartedAt({});
     return Number(response.startedAt);
@@ -382,6 +477,20 @@ export class DaemonApi {
   async tailscaleLogout(endpointTag: string): Promise<void> {
     await this.client.tailscaleLogout({ endpointTag });
   }
+}
+
+function withLanguageHeader(transport: Transport, language: string): Transport {
+  const addLanguage = (header: HeadersInit | undefined) => {
+    const result = new Headers(header);
+    result.set("Accept-Language", language);
+    return result;
+  };
+  return {
+    unary: (method, signal, timeoutMs, header, input, contextValues) =>
+      transport.unary(method, signal, timeoutMs, addLanguage(header), input, contextValues),
+    stream: (method, signal, timeoutMs, header, input, contextValues) =>
+      transport.stream(method, signal, timeoutMs, addLanguage(header), input, contextValues),
+  };
 }
 
 function appendHistory(history: number[], value: number): number[] {

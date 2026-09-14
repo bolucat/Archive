@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 
 import { formatRelativeTime, isHttpUrl, type DelayTone } from "../api/format";
 import { useStream } from "../api/stream";
+import { useSupportsCapability } from "../app/capabilities";
 import { navigate, useApi, useIsMobile, useNow } from "../app/context";
 import { showError } from "../app/errorStore";
 import { useStreamingAction } from "../app/hooks";
-import { useI18n } from "../app/i18n";
-import { Icon, type IconName } from "../components/Icon";
+import { useI18n, type Translate } from "../app/i18n";
+import { Icon } from "../components/Icon";
 import { StreamStates } from "../components/StreamBanner";
 import {
   Badge,
@@ -20,31 +21,25 @@ import {
   Field,
   IconButton,
   MenuItem,
+  NavLine,
+  NavLines,
   OthersMenu,
   QRCode,
   Sparkline,
   StateDot,
-  Toggle,
 } from "../components/ui";
 import type {
   TailscaleEndpointStatus,
   TailscalePeer,
   TailscalePingResponse,
 } from "../gen/daemon/started_service_pb";
-import {
-  allPeers,
-  buildSSHSession,
-  loadSSHPrefs,
-  peerDisplayName,
-  saveSSHPrefs,
-  SSH_DEFAULT_TERMINAL_TYPE,
-  SSH_DEFAULT_USERNAME,
-  type SSHSessionOptions,
-} from "../lib/tailscaleSSH";
-import { TerminalOverlay } from "./TerminalView";
+import { cx } from "../lib/cx";
+import { allPeers, loadSSHPrefs, peerDisplayName } from "../lib/tailscaleSSH";
+import { useTaildropSendSessions } from "../lib/taildropSend";
+import { taildropPath, useTaildropSend } from "./TaildropView";
+import { useTailscaleSSH } from "./TailscaleSSHConnect";
 import { ToolsPageHeader } from "./ToolsView";
 import styles from "./TailscaleView.module.css";
-import { cx } from "../lib/cx";
 
 export function TailscaleEndpointView(props: { tag: string }) {
   const api = useApi();
@@ -52,10 +47,14 @@ export function TailscaleEndpointView(props: { tag: string }) {
   const tailscale = useStream(api.tailscale);
   const isMobile = useIsMobile();
   const [peerDetail, setPeerDetail] = useState<string | null>(null);
-  const [sshPromptPeer, setSSHPromptPeer] = useState<TailscalePeer | null>(null);
-  const [mobileSSH, setMobileSSH] = useState<SSHSessionOptions | null>(null);
   const [exitPickerOpen, setExitPickerOpen] = useState(false);
   const [authQROpen, setAuthQROpen] = useState(false);
+  const ssh = useTailscaleSSH(props.tag);
+  const taildropSupported = useSupportsCapability("taildrop");
+  const taildrop = useTaildropSend(props.tag);
+  const taildropSessions = useTaildropSendSessions(api, props.tag);
+  const taildropSending = taildropSessions.length > 0;
+  const taildropFailed = taildropSessions.some((session) => session.error !== "");
 
   const endpoint = tailscale.data.endpoints.find((entry) => entry.endpointTag === props.tag);
   const peers = allPeers(endpoint);
@@ -65,38 +64,14 @@ export function TailscaleEndpointView(props: { tag: string }) {
     peerDetail === "self"
       ? endpoint?.self
       : peers.find((peer) => peer.stableID === peerDetail);
-
-  const openSSHSession = ({
-    peer,
-    username,
-    terminalType,
-  }: {
-    peer: TailscalePeer;
-    username: string;
-    terminalType: string;
-  }) => {
-    if (isMobile) {
-      setMobileSSH(buildSSHSession(props.tag, peer, username, terminalType));
-      return;
-    }
-    const path =
-      `tools/tailscale/${encodeURIComponent(props.tag)}/ssh/${encodeURIComponent(peer.stableID)}` +
-      `?username=${encodeURIComponent(username)}&terminalType=${encodeURIComponent(terminalType)}`;
-    const url = new URL(location.href);
-    url.hash = `#/${path}`;
-    if (!window.open(url.toString(), "_blank", "width=960,height=640")) {
-      navigate(path);
-    }
-  };
-
-  const connectSSH = (peer: TailscalePeer) => {
-    const prefs = loadSSHPrefs()[peer.stableID];
-    if (prefs?.remember) {
-      openSSHSession({ peer, username: prefs.username, terminalType: prefs.terminalType });
-    } else {
-      setSSHPromptPeer(() => peer);
-    }
-  };
+  const canSendFiles = (peer: TailscalePeer) =>
+    taildropSupported &&
+    endpoint !== undefined &&
+    endpoint.canShareFiles &&
+    peer.online &&
+    peer.canReceiveFiles;
+  const detailCanSendFiles =
+    detailPeer !== undefined && peerDetail !== "self" && canSendFiles(detailPeer);
 
   const dialogs = (
     <>
@@ -114,25 +89,8 @@ export function TailscaleEndpointView(props: { tag: string }) {
           <CopyValue value={endpoint.authURL} className={styles.qrCopy} />
         </Dialog>
       )}
-      {sshPromptPeer && (
-        <SSHPrompt
-          key={sshPromptPeer.stableID}
-          peer={sshPromptPeer}
-          onCancel={() => setSSHPromptPeer(null)}
-          onConnect={(username, terminalType, remember) => {
-            saveSSHPrefs(sshPromptPeer.stableID, { username, terminalType, remember });
-            setSSHPromptPeer(null);
-            openSSHSession({ peer: sshPromptPeer, username, terminalType });
-          }}
-        />
-      )}
-      {mobileSSH && (
-        <TerminalOverlay
-          tag={props.tag}
-          initialSession={mobileSSH}
-          onClose={() => setMobileSSH(null)}
-        />
-      )}
+      {ssh.element}
+      {taildrop.element}
     </>
   );
 
@@ -152,8 +110,12 @@ export function TailscaleEndpointView(props: { tag: string }) {
         peer={detailPeer}
         isSelf={peerDetail === "self"}
         onClose={() => setPeerDetail(null)}
-        onConnectSSH={() => connectSSH(detailPeer)}
-        onEditSSH={() => setSSHPromptPeer(detailPeer)}
+        onConnectSSH={() => ssh.connect(detailPeer)}
+        onEditSSH={() => ssh.prompt(detailPeer)}
+        onPickFiles={detailCanSendFiles ? () => taildrop.pick(detailPeer) : undefined}
+        onDropFiles={
+          detailCanSendFiles ? (files) => taildrop.send(detailPeer, files) : undefined
+        }
       />
     </DetailShell>
   );
@@ -188,15 +150,21 @@ export function TailscaleEndpointView(props: { tag: string }) {
           <StatusCard
             endpoint={endpoint}
             hasExitNodes={exitNodeCandidates.length > 0}
+            hasTaildrop={taildropSupported}
+            hasSending={taildropSending}
+            hasFailedSend={taildropFailed}
             onShowSelf={() => setPeerDetail("self")}
             onOpenExitPicker={() => setExitPickerOpen(true)}
             onOpenAuthQR={() => setAuthQROpen(true)}
+            onOpenTaildrop={() => navigate(taildropPath(props.tag))}
           />
           {running && allPeers.length > 0 && (
             <PeerSections
               endpoint={endpoint}
+              canSendFiles={canSendFiles}
               onShowPeer={setPeerDetail}
-              onConnectSSH={connectSSH}
+              onConnectSSH={ssh.connect}
+              onSendFiles={taildrop.send}
             />
           )}
         </div>
@@ -205,6 +173,23 @@ export function TailscaleEndpointView(props: { tag: string }) {
       {dialogs}
     </div>
   );
+}
+
+function taildropLineValue(
+  endpoint: TailscaleEndpointStatus,
+  sending: boolean,
+  t: Translate,
+): string {
+  if (endpoint.waitingFileCount === 1) {
+    return t("1 file");
+  }
+  if (endpoint.waitingFileCount > 1) {
+    return t("{count} files", { count: endpoint.waitingFileCount });
+  }
+  if (endpoint.receivingFileCount > 0) {
+    return t("Receive");
+  }
+  return sending ? t("Send") : "";
 }
 
 const BACKEND_STATE_TONES: Record<string, DelayTone> = {
@@ -217,9 +202,13 @@ const BACKEND_STATE_TONES: Record<string, DelayTone> = {
 function StatusCard(props: {
   endpoint: TailscaleEndpointStatus;
   hasExitNodes: boolean;
+  hasTaildrop: boolean;
+  hasSending: boolean;
+  hasFailedSend: boolean;
   onShowSelf: () => void;
   onOpenExitPicker: () => void;
   onOpenAuthQR: () => void;
+  onOpenTaildrop: () => void;
 }) {
   const { t } = useI18n();
   const endpoint = props.endpoint;
@@ -229,20 +218,23 @@ function StatusCard(props: {
     <div>
       <div className="list-section-title">{t("Status")}</div>
       <Card>
-        <div className={styles.navLines}>
-          <div className={cx(styles.navLine, styles.static)}>
-            <Icon name="power_settings_new" size={15} />
-            <span className={styles.navLineLabel}>{t("State")}</span>
-            <span className={styles.navLineValue}>
-              <StateDot tone={BACKEND_STATE_TONES[endpoint.backendState] ?? "neutral"} />
-              {endpoint.backendState || t("Unknown")}
-            </span>
-          </div>
+        <NavLines>
+          <NavLine
+            icon="power_settings_new"
+            label={t("State")}
+            value={
+              <>
+                <StateDot tone={BACKEND_STATE_TONES[endpoint.backendState] ?? "neutral"} />
+                {endpoint.stateText}
+              </>
+            }
+          />
           {running && endpoint.self && (
             <NavLine
               icon="computer"
               label={t("This device")}
               value={peerDisplayName(endpoint.self)}
+              chevron
               onClick={props.onShowSelf}
             />
           )}
@@ -251,44 +243,53 @@ function StatusCard(props: {
               icon="router"
               label={t("Exit node")}
               value={endpoint.exitNode ? peerDisplayName(endpoint.exitNode) : t("Disabled")}
+              chevron
               onClick={props.onOpenExitPicker}
             />
           )}
+          {running &&
+            props.hasTaildrop &&
+            (endpoint.waitingFileCount > 0 ||
+              endpoint.receivingFileCount > 0 ||
+              props.hasSending) && (
+              <NavLine
+                icon="download"
+                label="Taildrop"
+                value={
+                  props.hasFailedSend ? (
+                    <Badge tone="danger">!</Badge>
+                  ) : (
+                    taildropLineValue(endpoint, props.hasSending, t)
+                  )
+                }
+                chevron
+                onClick={props.onOpenTaildrop}
+              />
+            )}
           {endpoint.authURL !== "" && (
             <>
               {isHttpUrl(endpoint.authURL) && (
-                <a className={styles.navLine} href={endpoint.authURL} target="_blank" rel="noreferrer">
-                  <Icon name="open_in_new" size={15} />
-                  <span className={styles.navLineLabel}>{t("Open auth URL")}</span>
-                </a>
+                <NavLine icon="open_in_new" label={t("Open auth URL")} href={endpoint.authURL} />
               )}
-              <button type="button" className={styles.navLine} onClick={props.onOpenAuthQR}>
-                <Icon name="qr_code" size={15} />
-                <span className={styles.navLineLabel}>{t("Show auth URL QR code")}</span>
-              </button>
+              <NavLine
+                icon="qr_code"
+                label={t("Show auth URL QR code")}
+                onClick={props.onOpenAuthQR}
+              />
             </>
           )}
-        </div>
+        </NavLines>
       </Card>
     </div>
   );
 }
 
-function NavLine(props: { icon: IconName; label: string; value: string; onClick: () => void }) {
-  return (
-    <button type="button" className={styles.navLine} onClick={props.onClick}>
-      <Icon name={props.icon} size={15} />
-      <span className={styles.navLineLabel}>{props.label}</span>
-      <span className={styles.navLineValue}>{props.value}</span>
-      <Icon name="keyboard_arrow_right" size={14} />
-    </button>
-  );
-}
-
 function PeerSections(props: {
   endpoint: TailscaleEndpointStatus;
+  canSendFiles: (peer: TailscalePeer) => boolean;
   onShowPeer: (id: string) => void;
   onConnectSSH: (peer: TailscalePeer) => void;
+  onSendFiles: (peer: TailscalePeer, files: File[]) => void;
 }) {
   const groups = props.endpoint.userGroups.flatMap((group) =>
     group.peers.length > 0 ? [{ group, peers: group.peers }] : [],
@@ -310,6 +311,9 @@ function PeerSections(props: {
                     ? () => props.onConnectSSH(peer)
                     : undefined
                 }
+                onSendFiles={
+                  props.canSendFiles(peer) ? (files) => props.onSendFiles(peer, files) : undefined
+                }
               />
             ))}
           </div>
@@ -319,12 +323,50 @@ function PeerSections(props: {
   );
 }
 
-function PeerRow(props: { peer: TailscalePeer; onOpen: () => void; onConnectSSH?: () => void }) {
+function useFileDrop(onFiles: ((files: File[]) => void) | undefined) {
+  const [active, setActive] = useState(false);
+  if (onFiles === undefined) {
+    return { active: false, props: {} };
+  }
+  return {
+    active,
+    props: {
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (!event.dataTransfer.types.includes("Files")) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setActive(true);
+      },
+      onDragLeave: (event: DragEvent<HTMLElement>) => {
+        const target = event.relatedTarget;
+        if (target instanceof Node && event.currentTarget.contains(target)) {
+          return;
+        }
+        setActive(false);
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        setActive(false);
+        onFiles(Array.from(event.dataTransfer.files));
+      },
+    },
+  };
+}
+
+function PeerRow(props: {
+  peer: TailscalePeer;
+  onOpen: () => void;
+  onConnectSSH?: () => void;
+  onSendFiles?: (files: File[]) => void;
+}) {
   const { t, language } = useI18n();
   const peer = props.peer;
   const now = useNow(30_000);
+  const drop = useFileDrop(props.onSendFiles);
   return (
-    <div className={styles.peerItem}>
+    <div className={cx(styles.peerItem, drop.active && styles.peerItemDropTarget)} {...drop.props}>
       <button type="button" className={styles.peerItemMain} onClick={props.onOpen}>
         <StateDot tone={peer.online ? "good" : undefined} />
         <span className="peer-name">{peerDisplayName(peer)}</span>
@@ -358,6 +400,22 @@ function PeerRow(props: { peer: TailscalePeer; onOpen: () => void; onConnectSSH?
   );
 }
 
+function TaildropZone(props: { onPick: () => void; onDrop: (files: File[]) => void }) {
+  const { t } = useI18n();
+  const drop = useFileDrop(props.onDrop);
+  return (
+    <button
+      type="button"
+      className={cx(styles.dropZone, drop.active && styles.dropZoneActive)}
+      onClick={props.onPick}
+      {...drop.props}
+    >
+      <Icon name="upload_file" size={18} />
+      {t("Drop files here to send, or click to select")}
+    </button>
+  );
+}
+
 function PeerDetailBody(props: {
   endpoint: TailscaleEndpointStatus;
   peer: TailscalePeer;
@@ -365,6 +423,8 @@ function PeerDetailBody(props: {
   onClose: () => void;
   onConnectSSH: () => void;
   onEditSSH: () => void;
+  onPickFiles?: () => void;
+  onDropFiles?: (files: File[]) => void;
 }) {
   const api = useApi();
   const { t, language } = useI18n();
@@ -375,6 +435,7 @@ function PeerDetailBody(props: {
   const sshAvailable = !props.isSelf && peer.online && peer.sshHostKeys.length > 0;
   const sshRemembered = loadSSHPrefs()[peer.stableID]?.remember ?? false;
   const canLogout = props.isSelf && !props.endpoint.keyAuth;
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   return (
     <>
@@ -387,20 +448,30 @@ function PeerDetailBody(props: {
           )}
           {canLogout && (
             <div className="row-actions" style={{ marginTop: 10 }}>
-              <Button
-                variant="danger"
-                size="small"
-                onClick={() => {
-                  if (confirm(t("Log out from this Tailscale network?"))) {
-                    void api.tailscaleLogout(props.endpoint.endpointTag).catch(showError);
-                    props.onClose();
-                  }
-                }}
-              >
+              <Button variant="danger" size="small" onClick={() => setConfirmingLogout(true)}>
                 <Icon name="logout" size={13} />
                 {t("Log out")}
               </Button>
             </div>
+          )}
+          {confirmingLogout && (
+            <Dialog onClose={() => setConfirmingLogout(false)}>
+              <h3>{t("Log out")}</h3>
+              <div className="dialog-message">{t("Log out from this Tailscale network?")}</div>
+              <div className="row-actions dialog-actions">
+                <Button onClick={() => setConfirmingLogout(false)}>{t("Cancel")}</Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setConfirmingLogout(false);
+                    void api.tailscaleLogout(props.endpoint.endpointTag).catch(showError);
+                    props.onClose();
+                  }}
+                >
+                  {t("Log out")}
+                </Button>
+              </div>
+            </Dialog>
           )}
         </>
       )}
@@ -416,6 +487,13 @@ function PeerDetailBody(props: {
 
       {!props.isSelf && peer.online && (
         <PingSection endpoint={props.endpoint} peer={peer} />
+      )}
+
+      {props.onPickFiles && props.onDropFiles && (
+        <>
+          <div className="drawer-section">Taildrop</div>
+          <TaildropZone onPick={props.onPickFiles} onDrop={props.onDropFiles} />
+        </>
       )}
 
       <DetailSection title={t("Details")}>
@@ -505,10 +583,19 @@ function PingSection(props: { endpoint: TailscaleEndpointStatus; peer: Tailscale
       {latest && (
         <>
           <DataLine
-            label={latest.isDirect ? t("Direct connection") : t("DERP-relayed connection")}
+            label={
+              latest.isDirect
+                ? t("Direct connection")
+                : latest.peerRelay !== ""
+                  ? t("Peer relay connection")
+                  : t("DERP-relayed connection")
+            }
             value={`${latest.latencyMs.toFixed(1)} ms`}
           />
-          {!latest.isDirect && latest.derpRegionCode !== "" && (
+          {!latest.isDirect && latest.peerRelay !== "" && (
+            <DataLine label={t("Peer relay")} value={latest.peerRelay} />
+          )}
+          {!latest.isDirect && latest.peerRelay === "" && latest.derpRegionCode !== "" && (
             <DataLine label={t("DERP region")} value={latest.derpRegionCode} />
           )}
           {latest.isDirect && latest.endpoint !== "" && (
@@ -586,75 +673,6 @@ function ExitNodePicker(props: {
           )}
         </button>
       ))}
-    </Dialog>
-  );
-}
-
-function SSHPrompt(props: {
-  peer: TailscalePeer;
-  onCancel: () => void;
-  onConnect: (username: string, terminalType: string, remember: boolean) => void;
-}) {
-  const { t } = useI18n();
-  const [initial] = useState(() => loadSSHPrefs()[props.peer.stableID]);
-  const [username, setUsername] = useState(initial?.username ?? SSH_DEFAULT_USERNAME);
-  const [terminalType, setTerminalType] = useState(
-    initial?.terminalType ?? SSH_DEFAULT_TERMINAL_TYPE,
-  );
-  const [remember, setRemember] = useState(initial?.remember ?? false);
-
-  const connect = () => {
-    const trimmed = username.trim();
-    if (trimmed === "") {
-      return;
-    }
-    props.onConnect(trimmed, terminalType.trim() || SSH_DEFAULT_TERMINAL_TYPE, remember);
-  };
-
-  return (
-    <Dialog onClose={props.onCancel}>
-      <h3>{t("SSH Configuration")}</h3>
-      <div className="hint" style={{ marginBottom: 12 }}>{peerDisplayName(props.peer)}</div>
-      <Field label={t("Username")}>
-        <input
-          className="input"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              connect();
-            }
-          }}
-        />
-      </Field>
-      <Field label={t("Terminal type")}>
-        <input
-          className="input"
-          value={terminalType}
-          onChange={(event) => setTerminalType(event.target.value)}
-        />
-      </Field>
-      <Toggle label={t("Remember SSH options")} value={remember} onChange={setRemember} />
-      <div className="hint" style={{ display: "grid", gap: 6 }}>
-        <div>
-          {t(
-            "If enabled, Connect will open the session directly without asking again. This also applies to the shortcut menu on this peer's entry in the peer list.",
-          )}
-        </div>
-        <div>
-          {t(
-            "This peer will also appear in the New Session menu when connected to other peers via SSH.",
-          )}
-        </div>
-      </div>
-      <div className="row-actions dialog-actions">
-        <Button onClick={props.onCancel}>
-          {t("Cancel")}
-        </Button>
-        <Button variant="primary" disabled={username.trim() === ""} onClick={connect}>
-          {t("Connect")}
-        </Button>
-      </div>
     </Dialog>
   );
 }

@@ -3,7 +3,6 @@ import { ipcMain } from "electron";
 import { SERVERS_CALL } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
 import { Preference, settingsDatabase } from "./database";
-import { decodeSecureString, encodeSecureString } from "./secureStorage";
 
 interface StoredServer {
   id: string;
@@ -86,8 +85,8 @@ function loadServers(): StoredServersState {
   const servers = rows.map((row) => ({
     id: row.id,
     name: row.name,
-    url: decodeSecureString(row.url),
-    secret: decodeSecureString(row.secret),
+    url: row.url,
+    secret: row.secret,
   }));
   const activeId = activeServerPreference.get();
   if (activeId !== null && !servers.some((server) => server.id === activeId)) {
@@ -101,8 +100,6 @@ function saveServers(value: unknown): void {
   const rows = state.servers.map((server, itemOrder) => ({
     ...server,
     itemOrder,
-    url: encodeSecureString(server.url),
-    secret: encodeSecureString(server.secret),
   }));
   const store = settingsDatabase();
   store.transaction(() => {

@@ -33,11 +33,12 @@ function linkifyBanner(text: string): ReactNode[] {
 export function TerminalSessionLayout(props: {
   active: boolean;
   hostRef: RefObject<HTMLDivElement | null>;
-  hostStyle?: CSSProperties;
+  wrapStyle?: CSSProperties;
   connecting: boolean;
   banner: string | null;
   connectingLabel: string;
   barVisible: boolean;
+  barFloating: boolean;
   keyboardInset: number;
   modifiers: Modifiers;
   onModifier: (modifier: ModKey) => void;
@@ -46,11 +47,14 @@ export function TerminalSessionLayout(props: {
 }) {
   return (
     <>
-      <div className={styles.terminalHostWrap} style={!props.active ? { display: "none" } : undefined}>
-        <div className={styles.terminalHost} style={props.hostStyle} ref={props.hostRef} />
-        {props.active && props.connecting && (
+      <div
+        className={styles.terminalHostWrap}
+        style={props.active ? props.wrapStyle : { ...props.wrapStyle, display: "none" }}
+      >
+        <div className={styles.terminalHost} ref={props.hostRef} />
+        {props.active && (props.connecting || props.banner) && (
           <div className={styles.terminalConnecting}>
-            <Spinner className={styles.terminalConnectingSpinner} />
+            {props.connecting && <Spinner className={styles.terminalConnectingSpinner} />}
             {props.banner ? (
               <div className={cx("card", styles.terminalBanner)}>{linkifyBanner(props.banner)}</div>
             ) : (
@@ -65,7 +69,8 @@ export function TerminalSessionLayout(props: {
           onModifier={props.onModifier}
           onKey={props.onKey}
           onPaste={props.onPaste}
-          style={{ bottom: props.keyboardInset }}
+          floating={props.barFloating}
+          keyboardInset={props.keyboardInset}
         />
       )}
     </>

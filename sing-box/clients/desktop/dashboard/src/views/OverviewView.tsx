@@ -58,13 +58,6 @@ export function OverviewView() {
     }
   }
 
-  const fatalMessage =
-    host !== null &&
-    statusType === ServiceStatus_Type.FATAL &&
-    serviceStatus.data.status?.errorMessage !== ""
-      ? serviceStatus.data.status?.errorMessage
-      : undefined;
-
   return (
     <div className="page">
       <PageHeader
@@ -81,12 +74,6 @@ export function OverviewView() {
         }
       />
       <StreamBanner snapshot={serviceStatus} />
-      {fatalMessage !== undefined && (
-        <div className="banner error">
-          <Icon name="warning_amber" />
-          <div>{fatalMessage}</div>
-        </div>
-      )}
       {started ? (
         <OverviewCards config={cardsConfig} host={host} />
       ) : host !== null ? (

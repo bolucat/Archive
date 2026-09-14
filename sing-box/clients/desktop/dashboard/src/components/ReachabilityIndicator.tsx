@@ -19,7 +19,7 @@ const DEBOUNCE_MS = 300;
 const PROBE_TIMEOUT_MS = 8000;
 
 export function useServerReachability(url: string, secret: string): Reachability {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const normalized = normalizeServerUrl(url);
   const [state, setState] = useState<Reachability>({ status: "idle", error: null });
   const firstRun = useRef(true);
@@ -37,7 +37,11 @@ export function useServerReachability(url: string, secret: string): Reachability
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const debounce = setTimeout(() => {
       timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-      probeServerReachable({ id: "", name: "", url: normalized, secret }, controller.signal)
+      probeServerReachable(
+        { id: "", name: "", url: normalized, secret },
+        language,
+        controller.signal,
+      )
         .then(() => {
           if (!cancelled) {
             setState({ status: "online", error: null });
@@ -65,7 +69,7 @@ export function useServerReachability(url: string, secret: string): Reachability
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [normalized, secret, t]);
+  }, [normalized, secret, language, t]);
 
   return state;
 }

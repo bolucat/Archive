@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 
 import { DaemonApi } from "./api/daemon";
@@ -30,6 +30,37 @@ const HOVER_CLOSE_DELAY = 180;
 
 const GROUPS_SUBMENU = "\0groups";
 const PROFILES_SUBMENU = "\0profiles";
+
+function numericStyleValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function alignCascadeToParent(root: HTMLElement, level: string) {
+  const parent = root.querySelector<HTMLElement>(
+    `[data-tray-submenu-parent="${level}"][data-tray-submenu-active="true"]`,
+  );
+  const cascade = root.querySelector<HTMLElement>(`[data-tray-cascade-level="${level}"]`);
+  if (parent === null || cascade === null) {
+    return;
+  }
+  cascade.style.transform = "";
+  const content = root.closest<HTMLElement>("[data-tray-content]");
+  if (content === null) {
+    return;
+  }
+  const contentBounds = content.getBoundingClientRect();
+  const contentStyle = getComputedStyle(content);
+  const minimumTop = contentBounds.top + numericStyleValue(contentStyle.paddingTop);
+  const maximumBottom = contentBounds.bottom - numericStyleValue(contentStyle.paddingBottom);
+  const cascadeBounds = cascade.getBoundingClientRect();
+  const maximumTop = Math.max(minimumTop, maximumBottom - cascadeBounds.height);
+  const targetTop = Math.min(
+    Math.max(parent.getBoundingClientRect().top, minimumTop),
+    maximumTop,
+  );
+  cascade.style.transform = `translateY(${Math.round(targetTop - cascadeBounds.top)}px)`;
+}
 
 export function TrayMenu(props: { desktop: DesktopHost }) {
   return (
@@ -123,18 +154,28 @@ function useMenuKeyboard(controller: SubmenuController, closeMenu: () => void) {
 
 function TrayMenuContent(props: { host: DesktopHost }) {
   const host = props.host;
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const closeMenu = () => host.application.closeTrayMenu();
   useTrayTheme();
   const controller = useSubmenuController();
   useMenuKeyboard(controller, closeMenu);
-  const api = useMemo(() => new DaemonApi(TRAY_LOCAL_SERVER, host.transport), [host]);
+  const api = useMemo(
+    () => new DaemonApi(TRAY_LOCAL_SERVER, language, host.transport),
+    [host, language],
+  );
   const connection = useDaemonConnection(host);
   const serviceStatus = useStream(api.serviceStatus);
   const groups = useStream(api.groups);
   const { selectedId, profiles } = useDesktopProfiles(host);
   const errorMessage = useCurrentError();
   const [busy, setBusy] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (contentRef.current !== null) {
+      alignCascadeToParent(contentRef.current, "1");
+    }
+  });
 
   const connected = connection.phase === "connected";
   const statusType = serviceStatus.data.status?.status ?? ServiceStatus_Type.IDLE;
@@ -176,6 +217,7 @@ function TrayMenuContent(props: { host: DesktopHost }) {
       controller.activeKey === PROFILES_SUBMENU ? (
         <div
           className={styles.submenu}
+          data-tray-cascade-level="1"
           onMouseEnter={controller.cancelClose}
           onMouseLeave={controller.scheduleClose}
         >
@@ -203,6 +245,7 @@ function TrayMenuContent(props: { host: DesktopHost }) {
       onMouseDown={dismissOnBackground}
     >
       <div
+        ref={contentRef}
         className={styles.content}
         role="presentation"
         data-tray-content
@@ -296,8 +339,9 @@ function ParentRow(props: {
       className={cx(styles.row, active && styles.rowActive)}
       aria-haspopup="menu"
       aria-expanded={active}
+      data-tray-submenu-parent="1"
+      data-tray-submenu-active={active}
       onMouseEnter={() => controller.open(menuKey)}
-      onMouseLeave={controller.scheduleClose}
       onClick={() => controller.open(menuKey)}
       onKeyDown={(event) => {
         if (event.key === "ArrowRight" || event.key === "Enter") {
@@ -321,6 +365,7 @@ function GroupsCascade(props: {
 }) {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const closeTimer = useRef<number | null>(null);
+  const cascadeRef = useRef<HTMLDivElement>(null);
   const activeGroup = props.groups.find((group) => group.tag === activeTag) ?? null;
   const largestGroup = props.groups.reduce<Group | null>(
     (largest, group) => largest === null || group.items.length > largest.items.length ? group : largest,
@@ -346,10 +391,18 @@ function GroupsCascade(props: {
     setActiveTag(() => tag);
   };
 
+  useLayoutEffect(() => {
+    if (cascadeRef.current !== null) {
+      alignCascadeToParent(cascadeRef.current, "2");
+    }
+  });
+
   useEffect(() => cancelClose, []);
   return (
     <div
+      ref={cascadeRef}
       className={styles.cascade}
+      data-tray-cascade-level="1"
       onMouseEnter={props.onMouseEnter}
       onMouseLeave={props.onMouseLeave}
     >
@@ -360,7 +413,6 @@ function GroupsCascade(props: {
           activeTag={activeTag}
           onOpen={open}
           onClose={close}
-          onScheduleClose={scheduleClose}
         />
       </div>
       <div
@@ -370,7 +422,7 @@ function GroupsCascade(props: {
       >
         {largestGroup !== null && <GroupNodesPlaceholder group={largestGroup} />}
         {activeGroup !== null && (
-          <div className={styles.submenu}>
+          <div className={styles.submenu} data-tray-cascade-level="2">
             <GroupNodes group={activeGroup} api={props.api} onClose={close} />
           </div>
         )}
@@ -385,7 +437,6 @@ function GroupsSubmenu(props: {
   activeTag: string | null;
   onOpen: (tag: string) => void;
   onClose: () => void;
-  onScheduleClose: () => void;
 }) {
   const { t } = useI18n();
   const [testingAll, setTestingAll] = useState(false);
@@ -428,8 +479,9 @@ function GroupsSubmenu(props: {
             className={cx(styles.row, props.activeTag === group.tag && styles.rowActive)}
             aria-haspopup="menu"
             aria-expanded={props.activeTag === group.tag}
+            data-tray-submenu-parent="2"
+            data-tray-submenu-active={props.activeTag === group.tag}
             onMouseEnter={() => props.onOpen(group.tag)}
-            onMouseLeave={props.onScheduleClose}
             onClick={() => props.onOpen(group.tag)}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "Enter") {

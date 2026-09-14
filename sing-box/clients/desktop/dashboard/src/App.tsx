@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import {
   loadServersState,
@@ -9,7 +9,7 @@ import {
 } from "./api/config";
 import { DaemonApi } from "./api/daemon";
 import { formatDateTime, formatUptime, isHttpUrl } from "./api/format";
-import { isTerminalCode, useStream } from "./api/stream";
+import { isTerminalCode, useStream, type StreamStore } from "./api/stream";
 import { ServiceStatus_Type, type DeprecatedWarning } from "./gen/daemon/started_service_pb";
 import { CapabilitiesContext, makeCapabilities } from "./app/capabilities";
 import {
@@ -67,13 +67,24 @@ import {
   OOMReportListView,
 } from "./views/OOMReportsView";
 import {
+  PowerReportDetailView,
+  PowerReportFileView,
+  PowerReportListView,
+} from "./views/PowerReportsView";
+import {
   crashReportFileDisplayName,
   crashReportTitle,
   oomReportFileDisplayName,
   oomReportTitle,
+  powerReportFileDisplayName,
+  powerReportTitle,
 } from "./views/reportFormat";
 import { OverviewView } from "./views/OverviewView";
-import { ImportProfileFileDialog, ImportRemoteProfileDialog } from "./views/ProfileViews";
+import {
+  ImportProfileFileDialog,
+  ImportRemoteProfileDialog,
+  ProfileContentWindow,
+} from "./views/ProfileViews";
 import {
   AppSettingsView,
   CoreView,
@@ -85,10 +96,14 @@ import {
   TerminalThemePickerView,
 } from "./views/SettingsView";
 import { SetupView } from "./views/SetupView";
+import { UpdatesGate } from "./views/UpdateViews";
 import { NetworkQualityView, STUNTestView, ToolsView } from "./views/ToolsView";
+import { TaildropNavBadge, TaildropSendRequestDialog, TaildropView } from "./views/TaildropView";
 import { TailscaleEndpointView } from "./views/TailscaleView";
 import { TailscaleSSHView } from "./views/TerminalView";
 import { UsbipView } from "./views/UsbipView";
+import { OpenConnectView } from "./views/OpenConnectView";
+import { OpenVPNView } from "./views/OpenVPNView";
 import styles from "./App.module.css";
 import { cx } from "./lib/cx";
 
@@ -102,6 +117,7 @@ export type Route =
   | { page: "tools/stun" }
   | { page: "tools/tailscale"; tag: string }
   | { page: "tools/tailscale/ssh"; tag: string; peerID: string; username: string; terminalType: string }
+  | { page: "tools/tailscale/taildrop"; tag: string }
   | { page: "tools/usbip"; tag: string }
   | { page: "tools/crash-reports" }
   | { page: "tools/crash-reports/detail"; name: string; crashedAt: number | null }
@@ -109,6 +125,11 @@ export type Route =
   | { page: "tools/oom-reports" }
   | { page: "tools/oom-reports/detail"; name: string; recordedAt: number | null }
   | { page: "tools/oom-reports/file"; name: string; file: string; recordedAt: number | null }
+  | { page: "tools/power-reports" }
+  | { page: "tools/power-reports/detail"; name: string; recordedAt: number | null }
+  | { page: "tools/power-reports/file"; name: string; file: string; recordedAt: number | null }
+  | { page: "tools/openconnect"; tag: string }
+  | { page: "tools/openvpn"; tag: string }
   | { page: "settings" }
   | { page: "settings/app" }
   | { page: "settings/core" }
@@ -116,7 +137,8 @@ export type Route =
   | { page: "settings/preferences/terminal" }
   | { page: "settings/preferences/terminal/theme"; scheme: "light" | "dark" }
   | { page: "settings/preferences/terminal/custom"; scheme: "light" | "dark" }
-  | { page: "settings/servers" };
+  | { page: "settings/servers" }
+  | { page: "profile-editor"; profileId: string; readOnly: boolean };
 
 function routeFromHash(locationHash: string): Route {
   const hash = locationHash.replace(/^#\/?/, "");
@@ -132,6 +154,15 @@ function routeFromHash(locationHash: string): Route {
       }
     });
   switch (segments[0]) {
+    case "profile-editor":
+      if (segments[1]) {
+        return {
+          page: "profile-editor",
+          profileId: segments[1],
+          readOnly: query.get("readOnly") === "true",
+        };
+      }
+      return { page: "overview" };
     case "groups":
       return { page: "groups" };
     case "connections":
@@ -154,9 +185,16 @@ function routeFromHash(locationHash: string): Route {
               terminalType: query.get("terminalType") || SSH_DEFAULT_TERMINAL_TYPE,
             };
           }
+          if (segments[3] === "taildrop") {
+            return { page: "tools/tailscale/taildrop", tag: segments[2] ?? "" };
+          }
           return { page: "tools/tailscale", tag: segments[2] ?? "" };
         case "usbip":
           return { page: "tools/usbip", tag: segments[2] ?? "" };
+        case "openconnect":
+          return { page: "tools/openconnect", tag: segments[2] ?? "" };
+        case "openvpn":
+          return { page: "tools/openvpn", tag: segments[2] ?? "" };
         case "crash-reports": {
           if (segments[2]) {
             const atParam = query.get("at");
@@ -188,6 +226,22 @@ function routeFromHash(locationHash: string): Route {
             return { page: "tools/oom-reports/detail", name: segments[2], recordedAt };
           }
           return { page: "tools/oom-reports" };
+        }
+        case "power-reports": {
+          if (segments[2]) {
+            const atParam = query.get("at");
+            const recordedAt = atParam !== null && /^\d+$/.test(atParam) ? Number(atParam) : null;
+            if (segments[3]) {
+              return {
+                page: "tools/power-reports/file",
+                name: segments[2],
+                file: segments[3],
+                recordedAt,
+              };
+            }
+            return { page: "tools/power-reports/detail", name: segments[2], recordedAt };
+          }
+          return { page: "tools/power-reports" };
         }
         default:
           return { page: "tools" };
@@ -228,12 +282,24 @@ function locationHashSnapshot(): string {
   return location.hash;
 }
 
+// Tools subpages that require the service to be started.
+// Unlike network-quality/stun, they fall back to the tools list rather than
+// overview when the service stops.
 function isStartedOnlyToolsSubpage(page: string): boolean {
-  return page.startsWith("tools/tailscale") || page.startsWith("tools/usbip");
+  return (
+    page.startsWith("tools/tailscale") ||
+    page.startsWith("tools/usbip") ||
+    page.startsWith("tools/openconnect") ||
+    page.startsWith("tools/openvpn")
+  );
 }
 
 function isLocalReportsPage(page: string): boolean {
-  return page.startsWith("tools/crash-reports") || page.startsWith("tools/oom-reports");
+  return (
+    page.startsWith("tools/crash-reports") ||
+    page.startsWith("tools/oom-reports") ||
+    page.startsWith("tools/power-reports")
+  );
 }
 
 function routeTitle(route: Route, t: Translate, language: string): string {
@@ -256,8 +322,14 @@ function routeTitle(route: Route, t: Translate, language: string): string {
       return route.tag !== "" ? t("Tailscale: {tag}", { tag: route.tag }) : "Tailscale";
     case "tools/tailscale/ssh":
       return t("Tools");
+    case "tools/tailscale/taildrop":
+      return "Taildrop";
     case "tools/usbip":
       return route.tag !== "" ? t("USB/IP: {tag}", { tag: route.tag }) : "USB/IP";
+    case "tools/openconnect":
+      return route.tag !== "" ? `OpenConnect: ${route.tag}` : "OpenConnect";
+    case "tools/openvpn":
+      return route.tag !== "" ? `OpenVPN: ${route.tag}` : "OpenVPN";
     case "tools/crash-reports":
       return t("Crash Report");
     case "tools/crash-reports/detail":
@@ -270,6 +342,12 @@ function routeTitle(route: Route, t: Translate, language: string): string {
       return oomReportTitle(route.name, route.recordedAt, language);
     case "tools/oom-reports/file":
       return oomReportFileDisplayName(route.file, t);
+    case "tools/power-reports":
+      return t("Power Report");
+    case "tools/power-reports/detail":
+      return powerReportTitle(route.name, route.recordedAt, language);
+    case "tools/power-reports/file":
+      return powerReportFileDisplayName(route.file, t);
     case "settings":
       return t("Settings");
     case "settings/app":
@@ -286,7 +364,20 @@ function routeTitle(route: Route, t: Translate, language: string): string {
       return t("Custom theme");
     case "settings/servers":
       return t("Remote Control");
+    case "profile-editor":
+      return route.readOnly ? t("View Content") : t("Edit Content");
   }
+}
+
+function EndpointToolbarTitle<T>(props: {
+  stream: StreamStore<T>;
+  count: (data: T) => number;
+  tag: string;
+  title: string;
+  taggedTitle: string;
+}) {
+  const status = useStream(props.stream);
+  return props.count(status.data) > 1 && props.tag !== "" ? props.taggedTitle : props.title;
 }
 
 const DESKTOP_LOCAL_SERVER: Server = { id: "local", name: "sing-box", url: "", secret: "" };
@@ -465,6 +556,16 @@ function DesktopApp(props: { host: DesktopHost }) {
     />
   );
 
+  if (state.route.page === "profile-editor") {
+    return (
+      <ProfileContentWindow
+        host={host}
+        profileId={state.route.profileId}
+        readOnly={state.route.readOnly}
+      />
+    );
+  }
+
   if (local && connection.phase !== "connected") {
     if (!connectionHasResolved) {
       return (
@@ -484,6 +585,7 @@ function DesktopApp(props: { host: DesktopHost }) {
           serversState={state.serversState}
           onSelectServer={(server) => selectServer(server.id)}
         />
+        <UpdatesGate host={host} />
       </div>
     );
   }
@@ -513,6 +615,7 @@ function DesktopApp(props: { host: DesktopHost }) {
         accent={state.accent}
         onAccentChange={state.updateAccent}
       />
+      <UpdatesGate host={host} />
     </div>
   );
 }
@@ -559,14 +662,15 @@ interface ShellProps {
 
 function Shell(props: ShellProps) {
   const host = useDesktopHost();
+  const { language } = useI18n();
   const [generation, setGeneration] = useState(0);
   const api = useMemo(
     () =>
       host !== null && props.desktopLocal === true
-        ? new DaemonApi(props.server, host.transport)
-        : new DaemonApi(props.server),
+        ? new DaemonApi(props.server, language, host.transport)
+        : new DaemonApi(props.server, language),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.server, host, props.desktopLocal, generation],
+    [props.server, host, props.desktopLocal, language, generation],
   );
   return (
     <DesktopLocalContext.Provider value={host !== null && props.desktopLocal === true}>
@@ -588,6 +692,23 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [leadSlot, setLeadSlot] = useState<HTMLElement | null>(null);
   const [endSlot, setEndSlot] = useState<HTMLElement | null>(null);
+  const reportedFatalError = useRef<string | null>(null);
+
+  const serviceStatusType = serviceStatus.data.status?.status;
+  const fatalError =
+    serviceStatusType === ServiceStatus_Type.FATAL
+      ? serviceStatus.data.status?.errorMessage || t("Service failed to start")
+      : null;
+  useEffect(() => {
+    if (fatalError === null) {
+      reportedFatalError.current = null;
+      return;
+    }
+    if (reportedFatalError.current !== fatalError) {
+      reportedFatalError.current = fatalError;
+      showError(fatalError);
+    }
+  }, [fatalError]);
 
   const lostError = useStreamOutage(
     serviceStatus,
@@ -636,7 +757,7 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
     setMenuOpen(false);
   }, [route]);
 
-  const started = serviceStatus.data.status?.status === ServiceStatus_Type.STARTED;
+  const started = serviceStatusType === ServiceStatus_Type.STARTED;
   const hasGroups = started && groups.data.loaded && groups.data.groups.length > 0;
   const known = serviceStatus.phase !== "connecting" || serviceStatus.data.status !== null;
 
@@ -650,6 +771,12 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
       (route.page === "connections" && !started) ||
       (isStartedOnlyToolsSubpage(route.page) && !started) ||
       (route.page === "tools/usbip" && capabilities.ready && !capabilities.supports("usbip")) ||
+      (route.page === "tools/tailscale/taildrop" &&
+        capabilities.ready &&
+        !capabilities.supports("taildrop")) ||
+      ((route.page === "tools/openconnect" || route.page === "tools/openvpn") &&
+        capabilities.ready &&
+        !capabilities.supports("openVpnAndOpenConnect")) ||
       (isLocalReportsPage(route.page) && localHost === null);
     if (invisible) {
       navigate(
@@ -701,7 +828,13 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
     );
   }
 
-  const navItem = (page: string, title: string, icon: IconName, active: boolean) => (
+  const navItem = (
+    page: string,
+    title: string,
+    icon: IconName,
+    active: boolean,
+    accessory?: ReactNode,
+  ) => (
     <button
       type="button"
       key={page}
@@ -713,13 +846,20 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
     >
       <Icon name={icon} />
       {title}
+      {accessory}
     </button>
   );
 
   const mainPages = (
     <>
       {navItem("logs", t("Logs"), "text_snippet", route.page === "logs")}
-      {navItem("tools", t("Tools"), "terminal", route.page.startsWith("tools"))}
+      {navItem(
+        "tools",
+        t("Tools"),
+        "terminal",
+        route.page.startsWith("tools"),
+        started && capabilities.supports("taildrop") ? <TaildropNavBadge /> : undefined,
+      )}
       {navItem("settings", t("Settings"), "settings", route.page.startsWith("settings"))}
     </>
   );
@@ -734,7 +874,10 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
       {route.page === "tools/network-quality" && <NetworkQualityView />}
       {route.page === "tools/stun" && <STUNTestView />}
       {route.page === "tools/tailscale" && <TailscaleEndpointView tag={route.tag} />}
+      {route.page === "tools/tailscale/taildrop" && <TaildropView tag={route.tag} />}
       {route.page === "tools/usbip" && <UsbipView tag={route.tag} />}
+      {route.page === "tools/openconnect" && <OpenConnectView tag={route.tag} />}
+      {route.page === "tools/openvpn" && <OpenVPNView tag={route.tag} />}
       {route.page === "tools/crash-reports" && <CrashReportListView />}
       {route.page === "tools/crash-reports/detail" && (
         <CrashReportDetailView name={route.name} crashedAt={route.crashedAt} />
@@ -748,6 +891,13 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
       )}
       {route.page === "tools/oom-reports/file" && (
         <OOMReportFileView name={route.name} file={route.file} recordedAt={route.recordedAt} />
+      )}
+      {route.page === "tools/power-reports" && <PowerReportListView />}
+      {route.page === "tools/power-reports/detail" && (
+        <PowerReportDetailView name={route.name} recordedAt={route.recordedAt} />
+      )}
+      {route.page === "tools/power-reports/file" && (
+        <PowerReportFileView name={route.name} file={route.file} recordedAt={route.recordedAt} />
       )}
       {route.page === "settings" && <SettingsView />}
       {route.page === "settings/app" && (
@@ -842,7 +992,43 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
         {host !== null ? (
           <div className={styles.contentColumn}>
             <DesktopToolbar
-              title={routeTitle(route, t, language)}
+              title={
+                route.page === "tools/tailscale" ? (
+                  <EndpointToolbarTitle
+                    stream={api.tailscale}
+                    count={(data) => data.endpoints.length}
+                    tag={route.tag}
+                    title="Tailscale"
+                    taggedTitle={t("Tailscale: {tag}", { tag: route.tag })}
+                  />
+                ) : route.page === "tools/usbip" ? (
+                  <EndpointToolbarTitle
+                    stream={api.usbip}
+                    count={(data) => data.servers.length}
+                    tag={route.tag}
+                    title="USB/IP"
+                    taggedTitle={t("USB/IP: {tag}", { tag: route.tag })}
+                  />
+                ) : route.page === "tools/openconnect" ? (
+                  <EndpointToolbarTitle
+                    stream={api.openConnect}
+                    count={(data) => data.endpoints.length}
+                    tag={route.tag}
+                    title="OpenConnect"
+                    taggedTitle={`OpenConnect: ${route.tag}`}
+                  />
+                ) : route.page === "tools/openvpn" ? (
+                  <EndpointToolbarTitle
+                    stream={api.openVPN}
+                    count={(data) => data.endpoints.length}
+                    tag={route.tag}
+                    title="OpenVPN"
+                    taggedTitle={`OpenVPN: ${route.tag}`}
+                  />
+                ) : (
+                  routeTitle(route, t, language)
+                )
+              }
               picker={props.desktopPicker}
               controls={
                 props.desktopLocal === true ? (
@@ -870,6 +1056,7 @@ function ShellContent(props: ShellProps & { onRetry: () => void }) {
         {started && <DeprecatedWarningsGate />}
         {localHost !== null && <ImportRemoteProfileDialog host={localHost} />}
         {localHost !== null && <ImportProfileFileDialog host={localHost} />}
+        {localHost !== null && <TaildropSendRequestDialog host={localHost} />}
       </div>
     </CapabilitiesContext.Provider>
   );

@@ -1,6 +1,7 @@
 package trie_test
 
 import (
+	"fmt"
 	"net/netip"
 	"testing"
 
@@ -113,33 +114,92 @@ func TestTrie_InvalidWildcardPlacement(t *testing.T) {
 	// DomainTrie.Search (treats a stray wildcard as a literal label) and
 	// DomainSet.Has (treats the wildcard byte as a wildcard) can never disagree.
 	valid := []string{"+.example.com", "*.example.com", "+.*", "stun.*.*.*", "*", "a.*", "*.a"}
-	for _, d := range valid {
-		tree := trie.New[netip.Addr]()
-		assert.NoErrorf(t, tree.Insert(d, localIP), "should accept %q", d)
-	}
+	t.Run("valid", func(t *testing.T) {
+		for _, d := range valid {
+			tree := trie.New[netip.Addr]()
+			assert.NoErrorf(t, tree.Insert(d, localIP), "should accept %q", d)
+		}
+	})
 
-	invalid := []string{"stun.+", "a.+.b", "a.+", "+", "+.+.com", "a*b.com", "*a.com", "a*.com"}
-	for _, d := range invalid {
-		tree := trie.New[netip.Addr]()
-		assert.ErrorIsf(t, tree.Insert(d, localIP), trie.ErrInvalidDomain, "should reject %q", d)
+	invalid := []struct {
+		domain string
+		reason string
+	}{
+		{domain: "stun.+", reason: `"+" wildcard is only allowed in the first label`},
+		{domain: "a.+.b", reason: `"+" wildcard is only allowed in the first label`},
+		{domain: "a.+", reason: `"+" wildcard is only allowed in the first label`},
+		{domain: "+", reason: `"+" wildcard must be followed by another label`},
+		{domain: "+.+.com", reason: `"+" wildcard is only allowed in the first label`},
+		{domain: "a+b.com", reason: `"+" wildcard must occupy the entire label 1`},
+		{domain: "a*b.com", reason: `"*" wildcard must occupy the entire label 1`},
+		{domain: "*a.com", reason: `"*" wildcard must occupy the entire label 1`},
+		{domain: "a*.com", reason: `"*" wildcard must occupy the entire label 1`},
 	}
+	t.Run("invalid", func(t *testing.T) {
+		for _, testCase := range invalid {
+			tree := trie.New[netip.Addr]()
+			err := tree.Insert(testCase.domain, localIP)
+			assert.ErrorIsf(t, err, trie.ErrInvalidDomain, "should reject %q", testCase.domain)
+			assert.ErrorContainsf(t, err, testCase.reason, "should explain why %q was rejected", testCase.domain)
+		}
+	})
 
 	// Accepted patterns must stay consistent between Search and DomainSet.Has.
 	queries := []string{"example.com", "a.example.com", "com", "x.com", "za.com", "anything.at.all"}
-	for _, d := range valid {
-		tree := trie.New[netip.Addr]()
-		assert.NoError(t, tree.Insert(d, localIP))
-		set := tree.NewDomainSet()
-		for _, q := range queries {
-			searchHit := tree.Search(q) != nil
-			setHit := set != nil && set.Has(q)
-			assert.Equalf(t, searchHit, setHit, "pattern %q query %q: Search=%v Has=%v", d, q, searchHit, setHit)
+	t.Run("consistency", func(t *testing.T) {
+		for _, d := range valid {
+			tree := trie.New[netip.Addr]()
+			assert.NoError(t, tree.Insert(d, localIP))
+			setFromTrie := tree.NewDomainSet()
+			var builder trie.DomainSetBuilder
+			assert.NoError(t, builder.Insert(d))
+			setFromBuilder := builder.Build()
+			assert.Equal(t, setFromTrie, setFromBuilder)
+			for _, q := range queries {
+				searchHit := tree.Search(q) != nil
+				trieSetHit := setFromTrie != nil && setFromTrie.Has(q)
+				builderSetHit := setFromBuilder != nil && setFromBuilder.Has(q)
+				assert.Equalf(t, searchHit, trieSetHit, "pattern %q query %q: Search=%v TrieSet=%v", d, q, searchHit, trieSetHit)
+				assert.Equalf(t, searchHit, builderSetHit, "pattern %q query %q: Search=%v BuilderSet=%v", d, q, searchHit, builderSetHit)
+			}
 		}
+	})
+}
+
+func TestTrie_ValidAndSplitDomain(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		assertValid := func(domain string, expected []string) {
+			parts, err := trie.ValidAndSplitDomain(domain)
+			assert.NoErrorf(t, err, "should accept %q", domain)
+			assert.Equal(t, expected, parts)
+		}
+		assertValid("GOOGLE.COM", []string{"google", "com"})
+		assertValid("Mijia Cloud", []string{"mijia cloud"})
+	})
+
+	invalid := []struct {
+		domain string
+		reason string
+	}{
+		{domain: "", reason: "domain is empty"},
+		{domain: "example.com.", reason: "trailing dot is not allowed"},
+		{domain: " example.com", reason: "leading whitespace is not allowed"},
+		{domain: "example.com ", reason: "trailing whitespace is not allowed"},
+		{domain: "A..COM", reason: "label 2 is empty"},
 	}
+	t.Run("invalid", func(t *testing.T) {
+		for _, testCase := range invalid {
+			parts, err := trie.ValidAndSplitDomain(testCase.domain)
+			assert.Nil(t, parts)
+			assert.ErrorIs(t, err, trie.ErrInvalidDomain)
+			assert.ErrorContains(t, err, testCase.reason)
+			assert.ErrorContains(t, err, fmt.Sprintf("%q", testCase.domain))
+		}
+	})
 }
 
 func TestTrie_Foreach(t *testing.T) {
-	tree := trie.New[netip.Addr]()
+	tree := trie.New[int]()
 	domainList := []string{
 		"google.com",
 		"stun.*.*.*",
@@ -147,25 +207,37 @@ func TestTrie_Foreach(t *testing.T) {
 		"+.baidu.com",
 		"*.baidu.com",
 		"*.*.baidu.com",
+		"baidu.com",
+		".example.org",
 	}
-	for _, domain := range domainList {
-		assert.NoError(t, tree.Insert(domain, localIP))
+	for index, domain := range domainList {
+		assert.NoError(t, tree.Insert(domain, index))
 	}
-	count := 0
-	tree.Foreach(func(domain string, data netip.Addr) bool {
-		count++
+	rebuilt := trie.New[int]()
+	values := make(map[string]int)
+	tree.Foreach(func(domain string, data int) bool {
+		assert.NotContains(t, values, domain)
+		values[domain] = data
+		assert.NoError(t, rebuilt.Insert(domain, data))
 		return true
 	})
-	assert.Equal(t, 7, count)
-}
-
-func TestTrie_Space(t *testing.T) {
-	validDomain := func(domain string) bool {
-		_, ok := trie.ValidAndSplitDomain(domain)
-		return ok
+	assert.Equal(t, map[string]int{
+		"google.com":        0,
+		"stun.*.*.*":        1,
+		"test.*.google.com": 2,
+		".baidu.com":        3,
+		"*.baidu.com":       4,
+		"*.*.baidu.com":     5,
+		"baidu.com":         6,
+		".example.org":      7,
+	}, values)
+	for _, tree := range []*trie.DomainTrie[int]{tree, rebuilt} {
+		for domain, expected := range map[string]int{"google.com": 0, "baidu.com": 6, "a.b.c.baidu.com": 3, "www.example.org": 7} {
+			node := tree.Search(domain)
+			if assert.NotNil(t, node, domain) {
+				assert.Equal(t, expected, node.Data(), domain)
+			}
+		}
+		assert.Nil(t, tree.Search("example.org"))
 	}
-	assert.True(t, validDomain("google.com"))
-	assert.False(t, validDomain(" google.com"))
-	assert.False(t, validDomain(" google.com "))
-	assert.True(t, validDomain("Mijia Cloud"))
 }

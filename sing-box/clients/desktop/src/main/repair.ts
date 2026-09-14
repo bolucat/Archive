@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { SETUP_CALL } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
+import { applicationPaths } from "./applicationPaths";
 
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
@@ -85,8 +86,29 @@ function powerShellQuote(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+function windowsCommandLineQuote(value: string): string {
+  if (value !== "" && !/[\s"]/u.test(value)) {
+    return value;
+  }
+  let quoted = '"';
+  let backslashes = 0;
+  for (const character of value) {
+    if (character === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (character === '"') {
+      quoted += "\\".repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+      continue;
+    }
+    quoted += "\\".repeat(backslashes) + character;
+    backslashes = 0;
+  }
+  return quoted + "\\".repeat(backslashes * 2) + '"';
+}
+
 const PKEXEC_EXIT_CODE_CANCELLED = 126;
-const PKEXEC_EXIT_CODE_NOT_AUTHORIZED = 127;
 
 function runElevatedLinux(commandArguments: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -94,7 +116,7 @@ function runElevatedLinux(commandArguments: string[]): Promise<number> {
       "pkexec",
       [daemonBinaryPath(), ...commandArguments],
       { timeout: 120000 },
-      (error) => {
+      (error, _stdout, stderr) => {
         if (error && typeof error.code !== "number") {
           if (error.code === "ENOENT") {
             resolve(EXIT_CODE_LAUNCH_FAILED);
@@ -108,11 +130,16 @@ function runElevatedLinux(commandArguments: string[]): Promise<number> {
           return;
         }
         const exitCode = error.code as number;
-        if (
-          exitCode === PKEXEC_EXIT_CODE_CANCELLED ||
-          exitCode === PKEXEC_EXIT_CODE_NOT_AUTHORIZED
-        ) {
+        if (exitCode === PKEXEC_EXIT_CODE_CANCELLED) {
           resolve(EXIT_CODE_CANCELLED);
+          return;
+        }
+        const message = stderr
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line !== "");
+        if (message !== undefined) {
+          reject(new Error(message));
           return;
         }
         resolve(exitCode);
@@ -122,14 +149,24 @@ function runElevatedLinux(commandArguments: string[]): Promise<number> {
 }
 
 function runElevatedWindows(commandArguments: string[]): Promise<number> {
-  const argumentList = commandArguments.map(powerShellQuote).join(",");
+  const argumentList = commandArguments.map(windowsCommandLineQuote).join(" ");
   const script = [
     "try {",
-    `$process = Start-Process -FilePath ${powerShellQuote(daemonBinaryPath())} -ArgumentList ${argumentList} -Verb RunAs -Wait -PassThru`,
+    "$startInfo = [System.Diagnostics.ProcessStartInfo]::new()",
+    `$startInfo.FileName = ${powerShellQuote(daemonBinaryPath())}`,
+    `$startInfo.Arguments = ${powerShellQuote(argumentList)}`,
+    "$startInfo.UseShellExecute = $true",
+    "$startInfo.Verb = 'runas'",
+    "$process = [System.Diagnostics.Process]::Start($startInfo)",
+    "$process.WaitForExit()",
     "exit $process.ExitCode",
     "} catch {",
-    "if ($_.Exception.InnerException -is [System.ComponentModel.Win32Exception] -and $_.Exception.InnerException.NativeErrorCode -eq 1223) {",
+    "$exception = $_.Exception",
+    "while ($null -ne $exception) {",
+    "if ($exception -is [System.ComponentModel.Win32Exception] -and $exception.NativeErrorCode -eq 1223) {",
     `exit ${EXIT_CODE_CANCELLED}`,
+    "}",
+    "$exception = $exception.InnerException",
     "}",
     `exit ${EXIT_CODE_LAUNCH_FAILED}`,
     "}",
@@ -150,12 +187,36 @@ function runElevatedWindows(commandArguments: string[]): Promise<number> {
   });
 }
 
+export async function runElevatedServiceCommand(
+  commandArguments: string[],
+): Promise<boolean> {
+  if (process.platform !== "win32" && process.platform !== "linux") {
+    throw new Error("elevated service commands are not supported on this platform");
+  }
+  const exitCode = await (process.platform === "linux"
+    ? runElevatedLinux(commandArguments)
+    : runElevatedWindows(commandArguments));
+  if (exitCode === 0) {
+    return true;
+  }
+  if (exitCode === EXIT_CODE_CANCELLED) {
+    return false;
+  }
+  if (exitCode === EXIT_CODE_LAUNCH_FAILED) {
+    throw new Error("failed to launch the elevated service command");
+  }
+  throw new Error(`service command failed with exit code ${exitCode}`);
+}
+
 async function repair(action: "install" | "start", onRepaired: () => void): Promise<boolean> {
   if (!repairSupported) {
     throw new Error("service repair is not supported on this platform");
   }
   const serviceAction = process.platform === "linux" && action === "install" ? "restart" : action;
   const commandArguments = ["service", serviceAction];
+  if (process.platform === "win32" && action === "install") {
+    commandArguments.push("--working-directory", applicationPaths().daemonData);
+  }
   const exitCode = await (process.platform === "linux"
     ? runElevatedLinux(commandArguments)
     : runElevatedWindows(commandArguments));

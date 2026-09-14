@@ -1,9 +1,14 @@
 import { app } from "electron";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const accessControlScript = String.raw`
+const windowsAccessControlScript = String.raw`
 $ErrorActionPreference = "Stop"
 $path = $env:sing_box_user_data_path
 $secureExistingData = $env:sing_box_secure_existing_data -eq "1"
@@ -14,7 +19,7 @@ $principals = @(
   [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
 )
 
-function Set-SingBoxAccessControl([string] $targetPath, [bool] $directory) {
+function Set-BoxAccessControl([string] $targetPath, [bool] $directory) {
   if ($directory) {
     $security = [System.Security.AccessControl.DirectorySecurity]::new()
     $inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
@@ -54,19 +59,42 @@ if ($secureExistingData) {
     }
   }
   foreach ($item in ($items | Sort-Object { $_.FullName.Length } -Descending)) {
-    Set-SingBoxAccessControl $item.FullName $item.PSIsContainer
+    Set-BoxAccessControl $item.FullName $item.PSIsContainer
   }
 }
 
-Set-SingBoxAccessControl $path $true
+Set-BoxAccessControl $path $true
 `;
 
-export function secureApplicationUserData(): void {
+function secureLinuxApplicationUserData(userDataPath: string): void {
+  const userId = process.getuid?.();
+  if (userId === undefined) {
+    throw new Error("the current Linux user ID is unavailable");
+  }
+  process.umask(0o077);
+  mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
+  const rootInfo = lstatSync(userDataPath);
+  if (
+    !rootInfo.isDirectory() ||
+    rootInfo.isSymbolicLink() ||
+    rootInfo.uid !== userId ||
+    (rootInfo.mode & 0o077) !== 0
+  ) {
+    throw new Error(
+      "the sing-box user data path is not a private directory owned by the current user",
+    );
+  }
+}
+
+export function secureApplicationUserData(userDataPath: string): void {
+  if (process.platform === "linux") {
+    secureLinuxApplicationUserData(userDataPath);
+    return;
+  }
+  mkdirSync(userDataPath, { recursive: true });
   if (process.platform !== "win32" || !app.isPackaged) {
     return;
   }
-  const userDataPath = app.getPath("userData");
-  mkdirSync(userDataPath, { recursive: true });
   const markerPath = join(userDataPath, ".access-control");
   const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
   const powerShellPath = join(
@@ -82,7 +110,7 @@ export function secureApplicationUserData(): void {
       "-NoProfile",
       "-NonInteractive",
       "-EncodedCommand",
-      Buffer.from(accessControlScript, "utf16le").toString("base64"),
+      Buffer.from(windowsAccessControlScript, "utf16le").toString("base64"),
     ],
     {
       windowsHide: true,

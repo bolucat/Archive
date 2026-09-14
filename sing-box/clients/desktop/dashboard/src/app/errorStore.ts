@@ -19,7 +19,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function showError(error: unknown) {
-  queue = [...queue, describeError(error).message];
+  const message = describeError(error).message;
+  if (queue.includes(message)) {
+    return;
+  }
+  queue = [...queue, message];
   emit();
 }
 

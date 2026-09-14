@@ -23,7 +23,7 @@ function ensureTrayMenuWindow(initialBounds: Rectangle): BrowserWindow {
   const window = new BrowserWindow({
     ...initialBounds,
     show: false,
-    opacity: 0,
+    opacity: process.platform === "linux" ? undefined : 0,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -33,7 +33,14 @@ function ensureTrayMenuWindow(initialBounds: Rectangle): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    focusable: false,
+    // Chromium creates a window that is not focusable at creation time as an
+    // override-redirect window on X11, which the window manager never manages:
+    // it stays unfocusable for the rest of its life, so blur is never
+    // delivered, and its stacking order is out of the compositor's hands.
+    // setSkipTaskbar does nothing on Linux, so the taskbar entry a focusable
+    // window would get is avoided through the window type instead.
+    focusable: process.platform === "linux",
+    type: process.platform === "linux" ? "toolbar" : undefined,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -53,7 +60,9 @@ function ensureTrayMenuWindow(initialBounds: Rectangle): BrowserWindow {
     window.webContents.once("did-finish-load", () => resolve());
   });
   window.setIgnoreMouseEvents(true);
-  window.showInactive();
+  if (process.platform !== "linux") {
+    window.showInactive();
+  }
   const rendererURL = developmentRendererURL();
   if (rendererURL !== "") {
     void window.loadURL(`${rendererURL}/tray.html`);
@@ -63,13 +72,17 @@ function ensureTrayMenuWindow(initialBounds: Rectangle): BrowserWindow {
   return window;
 }
 
-function hideTrayMenu() {
+export function hideTrayMenu() {
   if (menuWindow === null || menuState === "closed") {
     return;
   }
   menuState = "closed";
   hiddenAt = Date.now();
-  menuWindow.setOpacity(0);
+  if (process.platform === "linux") {
+    menuWindow.hide();
+  } else {
+    menuWindow.setOpacity(0);
+  }
   menuWindow.setIgnoreMouseEvents(true);
   menuWindow.setFocusable(false);
   menuWindow.setAlwaysOnTop(false);
@@ -185,8 +198,13 @@ export async function showTrayMenu(anchor: Rectangle) {
   window.setBounds(placement.bounds);
   window.setAlwaysOnTop(true);
   window.setFocusable(true);
+  window.setSkipTaskbar(true);
   window.setIgnoreMouseEvents(false);
-  window.setOpacity(1);
+  if (process.platform === "linux") {
+    window.show();
+  } else {
+    window.setOpacity(1);
+  }
   menuState = "open";
   window.focus();
   await window.webContents.executeJavaScript(

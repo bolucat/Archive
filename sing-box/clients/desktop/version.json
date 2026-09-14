@@ -1,3 +1,4 @@
 {
-  "version": "1.14.0-alpha.43"
+  "version": "1.14.1",
+  "go_version": "go1.26.8"
 }

@@ -44,7 +44,7 @@ export function UsbipView(props: { tag: string }) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const usbip = useStream(api.usbip);
-  const provider = useUsbipProvider(api.config, props.tag);
+  const provider = useUsbipProvider(api, props.tag);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [detailKey, setDetailKey] = useState<string | null>(null);
 

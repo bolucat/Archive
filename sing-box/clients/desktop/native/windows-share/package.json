@@ -1,0 +1,7 @@
+{
+  "name": "@sing-box/windows-share",
+  "version": "0.0.0",
+  "private": true,
+  "main": "build/Release/windows_share.node",
+  "os": ["win32"]
+}

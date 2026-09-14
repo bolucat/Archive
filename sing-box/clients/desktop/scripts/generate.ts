@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { sync as spawnSync } from "cross-spawn";
 
-import { findSingBoxDirectory } from "./sing-box";
+import { findBoxDirectory } from "./sing-box";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bufExecutable = path.join(
@@ -29,7 +29,7 @@ const result = spawnSync(
     "--path",
     "daemon/managed_service.proto",
   ],
-  { cwd: findSingBoxDirectory(), stdio: "inherit" },
+  { cwd: findBoxDirectory(), stdio: "inherit" },
 );
 if (result.error) {
   throw result.error;

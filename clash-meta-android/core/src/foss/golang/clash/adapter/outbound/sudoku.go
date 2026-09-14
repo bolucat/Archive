@@ -77,7 +77,9 @@ func (s *Sudoku) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Con
 	if err != nil {
 		return nil, err
 	}
-	defer func() { safeConnClose(c, err) }()
+	defer func(c net.Conn) {
+		safeConnClose(c, err)
+	}(c)
 
 	addrBuf, err := sudoku.EncodeAddress(cfg.TargetAddress)
 	if err != nil {
@@ -300,7 +302,6 @@ func (s *Sudoku) dialAndHandshake(ctx context.Context, cfg *sudoku.ProtocolConfi
 					PathRoot:     cfg.HTTPMaskPathRoot,
 					AuthKey:      sudoku.ClientAEADSeed(cfg.Key),
 					Upgrade:      upgrade,
-					Multiplex:    muxMode,
 					DialContext:  s.dialer.DialContext,
 				})
 				if err != nil {
@@ -322,7 +323,9 @@ func (s *Sudoku) dialAndHandshake(ctx context.Context, cfg *sudoku.ProtocolConfi
 		return nil, fmt.Errorf("%s connect error: %w", s.addr, err)
 	}
 
-	defer func() { safeConnClose(c, err) }()
+	defer func(c net.Conn) {
+		safeConnClose(c, err)
+	}(c)
 
 	if ctx.Done() != nil {
 		done := N.SetupContextForConn(ctx, c)
@@ -350,6 +353,9 @@ func (s *Sudoku) resetHTTPMaskClient() {
 	s.httpMaskMu.Lock()
 	defer s.httpMaskMu.Unlock()
 	if s.httpMaskClient != nil {
+		// A failed session must not tear down the shared transport used by
+		// concurrent sessions. Close only idle connections here; the adapter's
+		// final Close owns the permanent client shutdown.
 		s.httpMaskClient.CloseIdleConnections()
 		s.httpMaskClient = nil
 		s.httpMaskKey = ""

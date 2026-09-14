@@ -8,6 +8,7 @@ import { ManagedService } from "../shared/gen/daemon/managed_service_pb";
 import { StartedService } from "../shared/gen/daemon/started_service_pb";
 import { DesktopService } from "../shared/gen/experimental/boxdd/desktop_service_pb";
 import { developmentSwitchValue } from "./development";
+import { localeInterceptor } from "./locale";
 import { daemonWorkerTransport } from "./worker";
 
 let daemonTransport: Transport | null;
@@ -26,6 +27,7 @@ if (process.platform === "win32" && app.isPackaged) {
   } else {
     daemonTransport = createGrpcTransport({
       baseUrl: "http://sing-box",
+      interceptors: [localeInterceptor],
       nodeOptions: {
         createConnection: () => net.connect({ path: socketPath }),
       },
