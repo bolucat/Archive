@@ -10,6 +10,22 @@ use crate::{
     client::{
         ClientSetupArgs, LegacyBridgeSet, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
         TauriUiEventSink,
+        effects::executor::ApplicationEffectExecutor,
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            adapters::{
+                ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
+                TauriWindowControl,
+            },
+            ports::HotkeyAction,
+        },
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
+        },
+        ui_effects::adapters::{
+            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
+        },
     },
     utils::path::PathResolver,
 };
@@ -19,7 +35,10 @@ use tauri_specta::Event;
 
 const RESTART_BUDGET: u8 = 3;
 
-pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), anyhow::Error> {
+/// Bound to `tauri::Wry` rather than generic over the runtime: the window
+/// helpers the hotkey adapter drives are themselves written against the
+/// concrete handle, and this is the only runtime the app is ever built with.
+pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
     {
@@ -53,6 +72,10 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
                 .context("Failed to spawn service actor")?;
         anyhow::Ok((core, service))
     })?;
+    // The sink end of the hotkey channel goes into the actor; the receiving end
+    // is pumped into the facade once the client exists. See `hotkey_action_pump`.
+    let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
     let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
@@ -74,11 +97,14 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
             window: Arc::new(LegacyWindowBridge::new(legacy_lock.clone())),
             clash: Arc::new(LegacyClashBridge::new(legacy_lock)),
         },
-        ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle.clone())),
+        ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        effects,
+        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
+        accelerators: Arc::new(PlatformAcceleratorValidator),
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());
@@ -87,15 +113,96 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         legacy_verge_path,
         legacy_verge_store,
     ));
+    tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
+    // The widget needs the client's connection stream and the client needs the
+    // widget controller, so the controller is built empty and filled here, in
+    // the one place that has both. Its desired configuration arrives with the
+    // startup effect reconcile like every other effect.
+    let widget_manager =
+        tauri::async_runtime::block_on(crate::widget::setup(client.subscribe_clash_connections()))
+            .context("Failed to setup the network statistic widget")?;
+    widget_controller
+        .install(Arc::new(widget_manager))
+        .context("Failed to install the network statistic widget")?;
     app.manage(client);
 
     Ok(())
 }
 
-fn forward_actor_events<R: tauri::Runtime>(
-    app_handle: tauri::AppHandle<R>,
+/// Carries pressed shortcuts from the OS callback into the facade.
+///
+/// Serial on purpose: holding a shortcut down must not put several conflicting
+/// config mutations in flight at once.
+async fn hotkey_action_pump(
+    mut actions: tokio::sync::mpsc::UnboundedReceiver<HotkeyAction>,
     client: NyanpasuClient,
 ) {
+    while let Some(action) = actions.recv().await {
+        if let Err(error) = client.dispatch_hotkey_action(action).await {
+            tracing::warn!(%error, %action, "hotkey action failed");
+        }
+    }
+}
+
+/// Builds the effect executor and the actors behind it.
+///
+/// Assembled here rather than inside the client so that `ClientSetupArgs` keeps
+/// exposing one effect dependency: the composition root owns the concrete
+/// adapters, and a test still injects a single port.
+fn build_application_effects(
+    app_handle: &tauri::AppHandle,
+    paths: &PathResolver,
+    hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
+) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
+    // The AppImage path is read here, at the only place that legitimately has
+    // the Tauri environment, and handed to the adapter as a plain value.
+    #[cfg(target_os = "linux")]
+    let appimage = {
+        use tauri::Manager as _;
+        app_handle
+            .env()
+            .appimage
+            .and_then(|path| path.into_string().ok())
+    };
+    #[cfg(not(target_os = "linux"))]
+    let appimage = {
+        let _ = app_handle;
+        None
+    };
+
+    let auto_launch = AutoLaunchConfig::resolve(appimage)
+        .and_then(AutoLaunchBackend::new)
+        .context("Failed to resolve the auto-launch registration")?;
+    let pac = HttpPacBackend::new(utf8_path(paths.cache_dir().join("pac.js"))?)
+        .context("Failed to build the PAC backend")?;
+
+    let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(SystemProxyArgs {
+        os: Arc::new(SysproxyOsProxy),
+        auto_launch: Arc::new(auto_launch),
+        pac: Arc::new(pac),
+        schedule_guard_ticks: true,
+    }))
+    .context("Failed to spawn the system proxy actor")?;
+    let hotkeys = tauri::async_runtime::block_on(HotkeyClient::spawn(HotkeyArgs {
+        registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone())),
+        sink: Arc::new(ChannelActionSink::new(hotkey_tx)),
+    }))
+    .context("Failed to spawn the hotkey actor")?;
+
+    let widget = Arc::new(TauriWidgetController::default());
+    let executor = Arc::new(ApplicationEffectExecutor::new(
+        system_proxy,
+        hotkeys,
+        Arc::new(PlatformAcceleratorValidator),
+        Arc::new(RustI18nLocaleSink),
+        Arc::new(TracingLoggerRefresher),
+        widget.clone(),
+        Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+    ));
+    Ok((executor, widget))
+}
+
+fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
     let mut core_events = client.subscribe_core_events();
     let core_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {

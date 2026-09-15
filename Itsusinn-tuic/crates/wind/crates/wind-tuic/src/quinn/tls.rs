@@ -131,6 +131,14 @@ mod tests {
 			skip_cert_verify: true,
 			alpn,
 			reconnect: crate::quinn::outbound::ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: crate::quinn::CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: crate::quinn::UdpRelayMode::Native,
 		}
 	}
 

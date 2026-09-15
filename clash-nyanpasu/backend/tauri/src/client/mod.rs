@@ -1,10 +1,13 @@
 mod application;
+pub mod application_workflow;
 mod clash_api;
 mod clash_config;
 mod clash_streams;
 pub mod core_lifecycle;
+pub(crate) mod effects;
 mod error;
 mod event_sink;
+pub mod hotkey;
 pub mod logs;
 mod ports;
 pub mod profiles;
@@ -13,6 +16,8 @@ pub mod runtime;
 pub mod runtime_inspection;
 mod session_state;
 mod system_dns;
+pub mod system_proxy;
+pub mod ui_effects;
 
 use self::{
     application::ApplicationClient, clash_config::ClashConfigClient,
@@ -78,6 +83,9 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+    pub window: Arc<dyn hotkey::ports::WindowControl>,
+    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[derive(Clone)]
@@ -263,11 +271,17 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
-    core_lifecycle: core_lifecycle::CoreLifecycleClient,
+    application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
+    updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
+    effects: effects::ApplicationEffects,
+    window: Arc<dyn hotkey::ports::WindowControl>,
+    /// The platform's accelerator rule, used to reject a hotkey list before it
+    /// is committed rather than after the effect has torn the old grabs down.
+    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[allow(dead_code)]
@@ -283,6 +297,9 @@ impl NyanpasuClient {
             service,
             system_dns,
             binary_installer,
+            effects,
+            window,
+            accelerators,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -308,7 +325,7 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
+                let (notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
                 let profiles = profiles::ProfilesClient::new(
                     profiles_path,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -343,6 +360,9 @@ impl NyanpasuClient {
             system_dns,
             dirty_rx,
             binary_installer,
+            effects,
+            window,
+            accelerators,
         ))
     }
 
@@ -363,18 +383,21 @@ impl NyanpasuClient {
         system_dns: Arc<dyn SystemDnsCache>,
         dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+        window: Arc<dyn hotkey::ports::WindowControl>,
+        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
-        let core_lifecycle =
-            core_lifecycle::CoreLifecycleClient::spawn(core_lifecycle::CoreLifecycleArgs {
+        let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
+            application_workflow::ApplicationWorkflowArgs {
                 snapshots: runtime::RuntimeSnapshotStore::default(),
                 application: application.clone(),
                 clash: clash_config.clone(),
                 profiles: profiles.clone(),
                 core: core_v2.clone(),
                 service,
-                builder: Arc::new(core_lifecycle::adapters::FsRuntimeBuildAdapter {
+                builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
                     paths: runtime_paths.clone(),
                     ports: ports.clone(),
@@ -382,8 +405,20 @@ impl NyanpasuClient {
                 installer: binary_installer,
                 ui: ui_sink.clone(),
                 dirty: dirty_rx,
-            })
-            .await?;
+            },
+        )
+        .await?;
+        let updater = crate::core::updater::UpdaterClient::spawn(
+            Arc::new(crate::core::updater::HttpUpdaterBackend::new(
+                std::env::current_exe()?
+                    .parent()
+                    .context("executable has no parent directory")?
+                    .to_path_buf(),
+                ports.clone(),
+            )),
+            Arc::new(application_workflow.clone()),
+        )
+        .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
         let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
@@ -399,11 +434,15 @@ impl NyanpasuClient {
                 profiles_dir,
                 runtime_paths,
                 ui_sink,
-                core_lifecycle,
+                application_workflow,
                 core_api: core_v2,
                 proxies,
                 streams,
+                updater,
                 system_dns,
+                effects: effects::ApplicationEffects::new(effects),
+                window,
+                accelerators,
             }),
         })
     }
@@ -412,8 +451,8 @@ impl NyanpasuClient {
         &self.inner.runtime_paths
     }
 
-    pub fn core_lifecycle_status(&self) -> core_lifecycle::CoreLifecycleStatus {
-        self.inner.core_lifecycle.status()
+    pub fn core_lifecycle_status(&self) -> application_workflow::CoreLifecycleStatus {
+        self.inner.application_workflow.status()
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -424,25 +463,25 @@ impl NyanpasuClient {
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.reconcile().await
+        self.inner.application_workflow.reconcile().await
     }
 
     pub async fn stop_core(
         &self,
     ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.stop_core().await
+        self.inner.application_workflow.stop_core().await
     }
 
     pub async fn recover_core(
         &self,
     ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.recover_core().await
+        self.inner.application_workflow.recover_core().await
     }
 
     pub async fn probe_service(
         &self,
     ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.probe_service().await
+        self.inner.application_workflow.probe_service().await
     }
 
     pub async fn replace_core_binary(
@@ -450,7 +489,7 @@ impl NyanpasuClient {
         artifact: core_lifecycle::ports::PreparedCoreBinary,
     ) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .replace_binary(artifact)
             .await
             .map_err(client_error_from_core)
@@ -459,39 +498,39 @@ impl NyanpasuClient {
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.select_core(core).await
+        self.inner.application_workflow.select_core(core).await
     }
     pub async fn change_execution_host(
         &self,
         host: ExecutionHost,
     ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.change_host(host).await
+        self.inner.application_workflow.change_host(host).await
     }
     pub async fn set_execution_host(
         &self,
         service_mode: bool,
     ) -> Result<runtime::MutationOutcome<()>> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .set_execution_host(service_mode)
             .await
             .map_err(client_error_from_core)
     }
     pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.core_lifecycle.core_status()
+        self.inner.application_workflow.core_status()
     }
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.core_lifecycle.core_events()
+        self.inner.application_workflow.core_events()
     }
     pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.core_lifecycle.service_status()
+        self.inner.application_workflow.service_status()
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.core_lifecycle.service_events()
+        self.inner.application_workflow.service_events()
     }
     pub async fn restore_execution_host(&self) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .restore_host()
             .await
             .map_err(client_error_from_core)
@@ -499,38 +538,60 @@ impl NyanpasuClient {
     pub async fn install_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.install_service().await
+        self.inner.application_workflow.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.start_service().await
+        self.inner.application_workflow.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.stop_service().await
+        self.inner.application_workflow.stop_service().await
     }
 
     pub async fn restart_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.restart_service().await
+        self.inner.application_workflow.restart_service().await
     }
 
     pub async fn uninstall_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.uninstall_service().await
+        self.inner.application_workflow.uninstall_service().await
+    }
+
+    pub async fn fetch_latest_core_versions(
+        &self,
+    ) -> Result<crate::core::updater::ManifestVersionLatest> {
+        Ok(self.inner.updater.fetch_latest().await?)
+    }
+
+    pub async fn download_core_update(
+        &self,
+        core: crate::config::nyanpasu::ClashCore,
+    ) -> Result<usize> {
+        Ok(self.inner.updater.update(core).await?)
+    }
+
+    pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
+        Ok(self.inner.updater.inspect(id).await?)
     }
 
     pub async fn shutdown_core(&self) -> ShutdownReport {
-        self.inner
-            .core_lifecycle
-            .shutdown()
-            .await
-            .unwrap_or_else(|error| ShutdownReport {
-                stop: Err(error),
-                final_status: self.core_status().snapshot,
-            })
+        // Close both admission paths immediately; lifecycle shutdown waits for
+        // already admitted installations while updater cancels preparation work.
+        let (updater, shutdown) = tokio::join!(
+            self.inner.updater.shutdown(),
+            self.inner.application_workflow.shutdown(),
+        );
+        if let Err(error) = updater {
+            tracing::warn!(%error, "failed to shut down updater workers");
+        }
+        shutdown.unwrap_or_else(|error| ShutdownReport {
+            stop: Err(error),
+            final_status: self.core_status().snapshot,
+        })
     }
 
     pub async fn flush_system_dns_cache(&self) -> Result<()> {
@@ -541,15 +602,51 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
+    pub async fn patch_app_config(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        if let Some(hotkeys) = patch.hotkeys.as_deref() {
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
+        }
         let client = self.inner.application.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_app_config(&self, state: NyanpasuAppConfig) -> Result<()> {
+    pub async fn replace_app_config(
+        &self,
+        state: NyanpasuAppConfig,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.application.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            // A replacement that repeats the stored list is carrying state
+            // forward, not submitting it. Rejecting that would let one binding
+            // already on disk — migrated, hand-edited, or accepted by an older
+            // build — block every unrelated write from then on.
+            let committed = client.get().await?.state;
+            if state.hotkeys != committed.hotkeys {
+                hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
+            }
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only writer that bypasses the mutation gate, standing in for a
+    /// committer that does not enter through the facade. Needed to reproduce
+    /// the saga's CAS-conflict paths, which the gate makes unreachable from
+    /// the facade itself.
+    #[cfg(test)]
+    pub(crate) async fn patch_app_config_ungated(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+    ) -> Result<()> {
+        self.inner.application.patch(patch).await?;
         Ok(())
     }
 
@@ -558,15 +655,37 @@ impl NyanpasuClient {
         Ok(client.get().await?.state)
     }
 
-    pub async fn patch_session_state(&self, patch: PersistentStatePatch) -> Result<()> {
+    pub async fn patch_session_state(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.session_state.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_session_state(&self, state: PersistentState) -> Result<()> {
+    pub async fn replace_session_state(
+        &self,
+        state: PersistentState,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.session_state.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// See [`Self::patch_app_config_ungated`].
+    #[cfg(test)]
+    pub(crate) async fn patch_session_state_ungated(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<()> {
+        self.inner.session_state.patch(patch).await?;
         Ok(())
     }
 
@@ -581,7 +700,7 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let outcome = self
             .inner
-            .core_lifecycle
+            .application_workflow
             .patch_runtime_overrides(patch)
             .await
             .map_err(client_error_from_core)?;
@@ -589,15 +708,34 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
-    pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
+    pub async fn patch_clash_config(
+        &self,
+        patch: ClashConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_clash_config(&self, state: ClashConfig) -> Result<()> {
+    pub async fn replace_clash_config(
+        &self,
+        state: ClashConfig,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// See [`Self::patch_app_config_ungated`].
+    #[cfg(test)]
+    pub(crate) async fn patch_clash_config_ungated(&self, patch: ClashConfigPatch) -> Result<()> {
+        self.inner.clash_config.patch(patch).await?;
         Ok(())
     }
 
@@ -609,52 +747,89 @@ impl NyanpasuClient {
         })
     }
 
+    // TODO(actor-migration): the three-domain legacy saga is the commit point for
+    // patch_verge_config, so the effect reconcile is mounted here as well as on the
+    // typed client patches.
+    // Reason: legacy IVerge wire is still the frontend's only app-config patch entry.
+    // Remove when: PR-7a deletes run_legacy_verge_mutation / route_verge_patch.
     pub(crate) async fn apply_legacy_verge_patch_saga<F>(
         &self,
         plan: TypedConfigPatchPlan,
         finalize: F,
-    ) -> Result<()>
+    ) -> Result<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
-        let snapshots = self.typed_config_snapshots().await?;
-        let application = plan.application.map(|patch| {
-            let mut state = snapshots.application.state.clone();
-            state.apply(patch);
-            state
-        });
-        let session = plan.session_state.map(|patch| {
-            let mut state = snapshots.session.state.clone();
-            state.apply(patch);
-            state
-        });
-        let clash = plan.clash_config.map(|patch| {
-            let mut state = snapshots.clash.state.clone();
-            state.apply(patch);
-            state
-        });
-        self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
-            .await
+        self.commit_and_reconcile(move || async move {
+            let snapshots = self.typed_config_snapshots().await?;
+            let submits_hotkeys = plan
+                .application
+                .as_ref()
+                .is_some_and(|patch| patch.hotkeys.is_some());
+            let application = plan.application.map(|patch| {
+                let mut state = snapshots.application.state.clone();
+                state.apply(patch);
+                state
+            });
+            let session = plan.session_state.map(|patch| {
+                let mut state = snapshots.session.state.clone();
+                state.apply(patch);
+                state
+            });
+            let clash = plan.clash_config.map(|patch| {
+                let mut state = snapshots.clash.state.clone();
+                state.apply(patch);
+                state
+            });
+            // The legacy wire carries hotkeys too, so it needs the same
+            // pre-commit check as `patch_app_config`. Without it a typo reaches
+            // the store and comes back as a degraded effect forever, because
+            // the persisted binding can never register. Only when the patch
+            // actually carries the list, though: every other field is patched
+            // on top of the stored hotkeys, and validating those would let one
+            // bad binding block the whole settings screen.
+            if submits_hotkeys && let Some(application) = application.as_ref() {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
+            self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
+                .await
+        })
+        .await
     }
 
+    // TODO(actor-migration): the three-domain legacy saga is the commit point for
+    // patch_verge_config, so the effect reconcile is mounted here as well as on the
+    // typed client patches.
+    // Reason: legacy IVerge wire is still the frontend's only app-config patch entry.
+    // Remove when: PR-7a deletes run_legacy_verge_mutation / route_verge_patch.
     pub(crate) async fn apply_legacy_verge_replacement_saga<F>(
         &self,
         application: NyanpasuAppConfig,
         session: PersistentState,
         clash: ClashConfig,
         finalize: F,
-    ) -> Result<()>
+    ) -> Result<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
-        let snapshots = self.typed_config_snapshots().await?;
-        self.apply_legacy_verge_states_saga(
-            snapshots,
-            Some(application),
-            Some(session),
-            Some(clash),
-            finalize,
-        )
+        self.commit_and_reconcile(move || async move {
+            let snapshots = self.typed_config_snapshots().await?;
+            // See the patch saga. A replacement always carries the whole list,
+            // so only a *changed* one is something the user submitted; the
+            // startup resync replays what is already on disk, and rejecting
+            // that would abort setup over a binding the app itself stored.
+            if application.hotkeys != snapshots.application.state.hotkeys {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
+            self.apply_legacy_verge_states_saga(
+                snapshots,
+                Some(application),
+                Some(session),
+                Some(clash),
+                finalize,
+            )
+            .await
+        })
         .await
     }
 
@@ -925,38 +1100,6 @@ impl NyanpasuClient {
         Ok(self.inner.profiles.get().await?)
     }
 
-    /// Map crate-internal profile materialization degradations onto the public
-    /// wire. Actor-internal Cleanup/Reconcile phases collapse to
-    /// `ProfileMaterialization`; retryability stays code-derived.
-    fn map_profile_degradation(
-        degradation: &crate::state::profiles::ports::ProfileDegradation,
-    ) -> runtime::Degradation {
-        use crate::state::profiles::ports::ProfileDegradationCode;
-
-        let code = match degradation.code {
-            ProfileDegradationCode::JournalInvalid => "journal_invalid",
-            ProfileDegradationCode::MaterializationDeferred => "materialization_deferred",
-            ProfileDegradationCode::CleanupDeferred => "cleanup_deferred",
-        };
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::ProfileMaterialization,
-            code: code.into(),
-            message: degradation.message.clone(),
-            retryable: degradation.code.retryable(),
-        }
-    }
-
-    /// Post-commit rebuild has a single opaque `Result` today; do not invent
-    /// RuntimeCheck/Promote/Apply precision the error surface cannot support.
-    fn map_runtime_rebuild_degradation(error: &ClientError) -> runtime::Degradation {
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::RuntimeBuild,
-            code: "runtime_rebuild_failed".into(),
-            message: error.to_string(),
-            retryable: true,
-        }
-    }
-
     async fn collect_post_commit_degradations(
         &self,
         report: &CommitReport,
@@ -974,7 +1117,7 @@ impl NyanpasuClient {
                     message = %degradation.message,
                     "profile commit completed with a degraded side effect",
                 );
-                Self::map_profile_degradation(degradation)
+                application_workflow::profiles::map_profile_degradation(degradation)
             })
             .collect();
 
@@ -982,7 +1125,8 @@ impl NyanpasuClient {
             && let Err(error) = self.rebuild_running_config().await
         {
             tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
-            degradations.push(Self::map_runtime_rebuild_degradation(&error));
+            degradations
+                .push(application_workflow::profiles::map_runtime_rebuild_degradation(&error));
         }
         degradations
     }
@@ -997,7 +1141,7 @@ impl NyanpasuClient {
     /// Public wire for a post-commit auto-activation hard failure. Create/import
     /// already committed the profile, so this must never become `Err` that erases
     /// the `ProfileId`. VersionConflict is not special-cased as success.
-    fn auto_activation_failure_degradation(error: &ProfilesError) -> runtime::Degradation {
+    fn auto_activation_failure_degradation(error: &impl std::fmt::Display) -> runtime::Degradation {
         tracing::warn!(
             %error,
             "profile auto-activation failed after commit; retaining committed profile id",
@@ -1017,9 +1161,13 @@ impl NyanpasuClient {
     /// - `Ok(None)` → existing current won; no degradation
     /// - `Err(_)` → committed degradation, profile id retained by the caller
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
-        match self.inner.profiles.set_current_if_none(uid).await {
-            Ok(Some(report)) => self.collect_post_commit_degradations(&report).await,
-            Ok(None) => Vec::new(),
+        match self
+            .inner
+            .application_workflow
+            .auto_activate_profile(uid)
+            .await
+        {
+            Ok(outcome) => outcome.into_parts().1,
             Err(error) => vec![Self::auto_activation_failure_degradation(&error)],
         }
     }
@@ -1201,8 +1349,11 @@ impl NyanpasuClient {
         &self,
         uid: Option<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let report = self.inner.profiles.set_current(uid).await?;
-        Ok(self.after_commit(&report).await)
+        self.inner
+            .application_workflow
+            .activate_profile(uid)
+            .await
+            .map_err(client_error_from_core)
     }
 
     pub async fn set_global_transforms(
@@ -1302,11 +1453,11 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.core_lifecycle.runtime().promoted
+        self.inner.application_workflow.runtime().promoted
     }
 
     pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
-        self.inner.core_lifecycle.runtime()
+        self.inner.application_workflow.runtime()
     }
 
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
@@ -1333,7 +1484,7 @@ impl NyanpasuClient {
 
     pub async fn apply_control_channel(&self) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .apply_control_channel()
             .await
             .map_err(client_error_from_core)?;
@@ -1360,6 +1511,34 @@ impl NyanpasuClient {
 fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
     Utf8PathBuf::from_path_buf(path)
         .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
+}
+
+#[async_trait::async_trait]
+impl crate::core::updater::ports::CoreUpdateInstaller
+    for application_workflow::ApplicationWorkflowClient
+{
+    async fn install(
+        &self,
+        artifact: core_lifecycle::ports::PreparedCoreBinary,
+    ) -> anyhow::Result<()> {
+        self.replace_binary(artifact).await.map_err(|error| {
+            if error.operation_id.is_some()
+                && matches!(
+                    error.kind,
+                    Some(
+                        nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
+                            | nyanpasu_core_manager::CoreErrorKind::Internal
+                    )
+                )
+            {
+                anyhow::Error::new(crate::core::updater::ports::InstallPending(
+                    error.to_string(),
+                ))
+            } else {
+                anyhow::Error::from(error)
+            }
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1959,7 +2138,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn successful_reconcile(
+    pub(crate) fn successful_reconcile(
         id: nyanpasu_core_manager::OperationId,
     ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
         nyanpasu_ipc::api::core::v2::OperationInfo {
@@ -2025,7 +2204,13 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
-        test_v2_clients_with_endpoint(Arc::new(IdleEndpoint))
+        test_v2_clients_with_endpoint(test_idle_endpoint())
+    }
+
+    /// A core that answers nothing, for tests whose subject is the facade
+    /// rather than the running core.
+    pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+        Arc::new(IdleEndpoint)
     }
 
     pub(crate) fn test_v2_clients_with_endpoint(
@@ -2310,8 +2495,11 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
-            core_lifecycle::DirtyNotifier::channel().1,
+            application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap()
@@ -2365,6 +2553,13 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         }
     }
 
@@ -2502,7 +2697,7 @@ pub(crate) mod tests {
         );
     }
 
-    fn minimal_file_profile_request() -> NewProfileRequest {
+    pub(crate) fn minimal_file_profile_request() -> NewProfileRequest {
         NewProfileRequest {
             metadata: ProfileMetadata {
                 name: "t".into(),
@@ -2544,7 +2739,7 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
+        let (notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -2574,6 +2769,9 @@ pub(crate) mod tests {
             Arc::new(NoopSystemDnsCache),
             dirty_rx,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap();
@@ -2730,6 +2928,13 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
 
@@ -3061,7 +3266,7 @@ pub(crate) mod tests {
             client.activate_profile(Some(uid)).await.unwrap();
             endpoint.effective_enabled.store(true, Ordering::SeqCst);
             client.rebuild_running_config().await.unwrap();
-            let state = client.inner.core_lifecycle.runtime();
+            let state = client.inner.application_workflow.runtime();
             assert!(state.pending.is_some());
             assert!(state.promoted.as_ref().unwrap().effective.is_none());
             let submitted = endpoint.submissions();
@@ -3076,7 +3281,14 @@ pub(crate) mod tests {
                 }
             )));
             assert_eq!(endpoint.submissions(), submitted);
-            assert!(client.inner.core_lifecycle.runtime().pending.is_none());
+            assert!(
+                client
+                    .inner
+                    .application_workflow
+                    .runtime()
+                    .pending
+                    .is_none()
+            );
             assert!(client.inspect_applied_runtime().await.unwrap().applied);
         });
     }
@@ -3561,8 +3773,11 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                core_lifecycle::DirtyNotifier::channel().1,
+                application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+                Arc::new(effects::ports::NoopApplicationEffects),
+                Arc::new(hotkey::ports::MockWindowControl::new()),
+                Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             )
             .await
             .unwrap();

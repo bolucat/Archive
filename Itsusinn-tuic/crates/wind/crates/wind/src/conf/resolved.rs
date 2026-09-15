@@ -28,7 +28,9 @@ use wind_base::load_balance::LoadBalanceStrategy;
 use wind_core::{QuicCongestionControl, parse_congestion_control};
 use wind_naive::NaiveOutboundOpts;
 use wind_socks::inbound::{AuthMode, SocksInboundOpt};
-use wind_tuic::quinn::outbound::TuicOutboundOpts;
+use wind_tuic::quinn::{
+	CongestionControl as TuicCongestionControl, UdpRelayMode as TuicUdpRelayMode, outbound::TuicOutboundOpts,
+};
 
 use crate::conf::persistent::{AuthConfig, InboundConfig, OutboundConfig, PersistentConfig};
 
@@ -271,6 +273,16 @@ fn resolve_outbound(oc: OutboundConfig) -> eyre::Result<ResolvedOutbound> {
 					skip_cert_verify: t.skip_cert_verify,
 					alpn: t.alpn,
 					reconnect: Default::default(),
+					// Transport/TLS tuning is opt-in; `None` keeps quinn's
+					// defaults and the built-in TLS config.
+					client_config: None,
+					congestion_control: TuicCongestionControl::Bbr,
+					max_concurrent_bi_streams: None,
+					max_concurrent_uni_streams: None,
+					send_window: None,
+					stream_receive_window: None,
+					max_idle_time: None,
+					udp_relay_mode: TuicUdpRelayMode::Native,
 				},
 			})
 		}

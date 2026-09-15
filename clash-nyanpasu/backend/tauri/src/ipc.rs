@@ -486,14 +486,19 @@ pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IV
 #[tauri::command]
 #[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
-    crate::core::hotkey::Hotkey::get_supported_hotkey_functions()
+    crate::client::hotkey::ports::HotkeyAction::all()
+        .iter()
+        .map(|action| action.as_str())
+        .collect()
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: IVerge) -> Result {
-    legacy.patch_verge_config(payload).await?;
-    Ok(())
+pub async fn patch_verge_config(
+    legacy: State<'_, LegacyVergeBridge>,
+    payload: IVerge,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(legacy.patch_verge_config(payload).await?)
 }
 
 #[tauri::command]
@@ -610,11 +615,10 @@ pub fn open_web_url(url: String) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
-    let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
-    (updater.fetch_latest().await)?;
-    // TODO: result key should be kebab-case
-    Ok(updater.get_latest_versions())
+pub async fn fetch_latest_core_versions(
+    client: State<'_, NyanpasuClient>,
+) -> Result<ManifestVersionLatest> {
+    Ok(client.fetch_latest_core_versions().await?)
 }
 
 #[tauri::command]
@@ -660,23 +664,16 @@ pub async fn update_core(
     client: State<'_, NyanpasuClient>,
     core_type: nyanpasu::ClashCore,
 ) -> Result<usize> {
-    let event_id = (updater::UpdaterManager::global()
-        .write()
-        .await
-        .update_core(&core_type, client.inner().clone())
-        .await)?;
-    Ok(event_id)
+    Ok(client.download_core_update(core_type).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummary> {
-    let updater = (updater::UpdaterManager::global()
-        .read()
-        .await
-        .inspect_updater(updater_id)
-        .ok_or(anyhow::anyhow!("updater is not exist")))?;
-    Ok(updater)
+pub async fn inspect_updater(
+    client: State<'_, NyanpasuClient>,
+    updater_id: usize,
+) -> Result<updater::UpdaterSummary> {
+    Ok(client.inspect_updater(updater_id).await?)
 }
 
 #[tauri::command]
@@ -780,7 +777,7 @@ pub async fn select_proxy(
     client: State<'_, NyanpasuClient>,
     group: String,
     name: String,
-) -> Result<()> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.select_proxy(group, name).await?)
 }
 
@@ -1055,25 +1052,26 @@ pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
     Ok(())
 }
 
-const HOTKEYS_KEY: &str = "hotkeys";
-
 #[tauri::command]
 #[specta::specta]
-pub fn get_hotkeys(app_handle: AppHandle) -> Result<Option<Vec<String>>> {
-    let storage = app_handle.state::<Storage>();
-    let value = storage.get_item::<Vec<String>>(HOTKEYS_KEY)?;
-    Ok(value)
+pub async fn get_hotkeys(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
+    Ok(client.get_app_config().await?.hotkeys)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_hotkeys(app_handle: AppHandle, hotkeys: Vec<String>) -> Result {
-    // Validate and register hotkeys first (may fail with error)
-    (hotkey::Hotkey::global().update(hotkeys.clone()))?;
-    // Only save to storage after validation succeeds
-    let storage = app_handle.state::<Storage>();
-    storage.set_item(HOTKEYS_KEY, &hotkeys)?;
-    Ok(())
+pub async fn set_hotkeys(
+    client: State<'_, NyanpasuClient>,
+    hotkeys: Vec<String>,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    // An unparsable list is rejected before anything is written; a shortcut the
+    // OS refuses lands as a degradation on a committed config.
+    Ok(client
+        .patch_app_config(nyanpasu_config::application::NyanpasuAppConfigPatch {
+            hotkeys: Some(hotkeys),
+            ..Default::default()
+        })
+        .await?)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]

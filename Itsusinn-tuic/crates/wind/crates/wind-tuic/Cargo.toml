@@ -40,12 +40,14 @@ quinn = [
     "dep:rustls-platform-verifier",
 ]
 aws-lc-rs = [
+    "wind-quic/aws-lc-rs",
     "rustls/aws-lc-rs",
     "quinn/rustls-aws-lc-rs",
     "dep:aws-lc-rs",
     "aws-lc-rs?/prebuilt-nasm"
 ]
 ring = [
+    "wind-quic/ring",
     "rustls/ring",
     "quinn/rustls-ring"
 ]
@@ -88,6 +90,10 @@ enum_dispatch = "0.3"
 secrecy = "0.10"
 pin-project = "1"
 portable-atomic = { version = "1" }
+# Listener socket options: std exposes neither `only_v6` nor `set_only_v6` yet,
+# and a wildcard IPv6 listener needs dual-stack mode on platforms that default
+# to v6-only (Windows).
+socket2 = "0.6"
 thiserror = "2"
 tracing = "0.1"
 

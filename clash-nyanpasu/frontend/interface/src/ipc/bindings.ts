@@ -148,8 +148,7 @@ export const commands = {
    */
   getAllStorageItems: () =>
     typedError<StorageEntry[], string>(__TAURI_INVOKE('get_all_storage_items')),
-  getHotkeys: () =>
-    typedError<string[] | null, string>(__TAURI_INVOKE('get_hotkeys')),
+  getHotkeys: () => typedError<string[], string>(__TAURI_INVOKE('get_hotkeys')),
   getCoreDir: () => typedError<string, string>(__TAURI_INVOKE('get_core_dir')),
   getClashWsConnectionsState: () =>
     typedError<ClashConnectionsConnectorState, string>(
@@ -235,7 +234,9 @@ export const commands = {
     typedError<number, string>(__TAURI_INVOKE('update_core', { coreType })),
   collectLogs: () => typedError<null, string>(__TAURI_INVOKE('collect_logs')),
   patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_verge_config', { payload })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_verge_config', { payload }),
+    ),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -343,7 +344,9 @@ export const commands = {
   restartService: () =>
     typedError<null, string>(__TAURI_INVOKE('restart_service')),
   selectProxy: (group: string, name: string) =>
-    typedError<null, string>(__TAURI_INVOKE('select_proxy', { group, name })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('select_proxy', { group, name }),
+    ),
   updateProxyProvider: (name: string) =>
     typedError<null, string>(__TAURI_INVOKE('update_proxy_provider', { name })),
   restartApplication: () =>
@@ -366,7 +369,9 @@ export const commands = {
    */
   clearStorage: () => typedError<null, string>(__TAURI_INVOKE('clear_storage')),
   setHotkeys: (hotkeys: string[]) =>
-    typedError<null, string>(__TAURI_INVOKE('set_hotkeys', { hotkeys })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('set_hotkeys', { hotkeys }),
+    ),
   mutateProxies: () =>
     typedError<Proxies_Serialize, string>(__TAURI_INVOKE('mutate_proxies')),
   setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
@@ -2597,7 +2602,8 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | { failed: string }
+  | ({ pending: string } & { failed?: never })
+  | ({ failed: string } & { pending?: never })
 
 export type UpdaterSummary = {
   id: number

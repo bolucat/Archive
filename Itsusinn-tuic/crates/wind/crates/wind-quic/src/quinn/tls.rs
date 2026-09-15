@@ -12,11 +12,16 @@ use crate::{
 /// Install the process-wide rustls crypto provider exactly once.
 ///
 /// `install_default` returns `Err` after the first call (the global is already
-/// set), so a `OnceLock` is the race-free single-init primitive.
+/// set), so a `OnceLock` is the race-free single-init primitive. The provider
+/// is selected by the `aws-lc-rs` / `ring` feature; if neither is enabled no
+/// provider is installed and callers fall back to whatever is already global.
 pub(super) fn ensure_provider() {
 	static INSTALLED: OnceLock<()> = OnceLock::new();
 	INSTALLED.get_or_init(|| {
+		#[cfg(feature = "aws-lc-rs")]
 		let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+		#[cfg(feature = "ring")]
+		let _ = rustls::crypto::ring::default_provider().install_default();
 	});
 }
 

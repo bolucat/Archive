@@ -8,22 +8,32 @@ license = "MIT OR Apache-2.0"
 
 [features]
 # No backend is selected by default; consumers opt into one (or both). The
-# crate's own tests run with `--features quinn,quiche`.
+# crate's own tests run with `--features quinn,quiche,aws-lc-rs` (or `ring`
+# instead of `aws-lc-rs` for the ring crypto provider).
 default = []
 
-# quinn backend. Bundles the rustls + aws-lc-rs crypto stack so `--features
-# quinn` is self-sufficient (a default crypto provider is available), mirroring
-# wind-tuic's `default = [..., "quinn", "aws-lc-rs"]`.
+# quinn backend. The rustls crypto provider is selected separately via the
+# `aws-lc-rs` or `ring` feature, mirroring wind-tuic. Keeping the provider out
+# of this feature lets consumers on targets aws-lc-rs does not support build a
+# pure-ring stack instead of having it forced in.
 quinn = [
     "dep:quinn",
     "dep:quinn-congestions",
     "dep:rustls",
     "dep:rustls-pemfile",
     "dep:rustls-platform-verifier",
+]
+
+# rustls crypto provider selection for the quinn backend (pick one).
+aws-lc-rs = [
     "dep:aws-lc-rs",
     "rustls/aws-lc-rs",
     "quinn/rustls-aws-lc-rs",
     "aws-lc-rs/prebuilt-nasm",
+]
+ring = [
+    "rustls/ring",
+    "quinn/rustls-ring",
 ]
 
 # quiche / tokio-quiche backend.

@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::{
+	sync::atomic::{AtomicU16, Ordering},
+	time::Duration,
+};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use crossfire::{MAsyncTx, mpmc};
@@ -10,8 +13,8 @@ type UdpPacketTx = MAsyncTx<mpmc::Array<UdpPacket>>;
 use wind_quic::QuicConnection;
 
 use crate::{
-	proto::{Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec},
-	udp::{FragmentInfo, FragmentReassemblyBuffer, MAX_FRAGMENTS},
+	proto::{Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec, UdpRelayMode},
+	udp::{DEFAULT_FRAGMENT_TIMEOUT, FragmentInfo, FragmentReassemblyBuffer, MAX_FRAGMENTS},
 };
 
 /// A TUIC UDP association over any [`QuicConnection`].
@@ -27,6 +30,10 @@ pub struct UdpStream<C: QuicConnection> {
 	next_pkt_id: AtomicU16,
 	// Fragment reassembly state machine (backend-agnostic).
 	fragment_buffer: FragmentReassemblyBuffer,
+	/// How outgoing `Packet` commands are carried (datagrams or uni streams).
+	relay_mode: UdpRelayMode,
+	/// Lifetime after which incomplete fragment groups are evicted.
+	gc_lifetime: Duration,
 }
 
 impl<C: QuicConnection> UdpStream<C> {
@@ -37,11 +44,44 @@ impl<C: QuicConnection> UdpStream<C> {
 			receive_tx,
 			next_pkt_id: AtomicU16::new(0),
 			fragment_buffer: FragmentReassemblyBuffer::new(),
+			relay_mode: UdpRelayMode::Native,
+			gc_lifetime: DEFAULT_FRAGMENT_TIMEOUT,
 		}
+	}
+
+	/// Select how outgoing packets are relayed: `Native` (the default) sends
+	/// QUIC datagrams, `Quic` opens one unidirectional stream per packet.
+	pub fn with_relay_mode(mut self, mode: UdpRelayMode) -> Self {
+		self.relay_mode = mode;
+		self
+	}
+
+	/// Configure how long incomplete fragment groups are retained before
+	/// [`collect_garbage`](Self::collect_garbage) evicts them.
+	pub fn with_gc_lifetime(mut self, lifetime: Duration) -> Self {
+		self.gc_lifetime = lifetime;
+		self
 	}
 
 	pub async fn send_packet(&self, packet: UdpPacket) -> eyre::Result<()> {
 		let payload_len = packet.payload.len();
+
+		// The `size` field of a `Packet` command is a `u16`; refuse to send
+		// anything that would silently truncate (reachable in QUIC relay mode,
+		// where a stream carries an arbitrary-length payload).
+		if payload_len > u16::MAX as usize {
+			return Err(eyre::eyre!("TUIC packet exceeds UDP size limit"));
+		}
+
+		// QUIC relay mode: one unidirectional stream per packet, no
+		// fragmentation (streams are flow-controlled, not MTU-bounded).
+		if self.relay_mode == UdpRelayMode::Quic {
+			let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::Relaxed);
+			self.connection
+				.send_udp(self.assoc_id, pkt_id, &packet.target, packet.payload, false)
+				.await?;
+			return Ok(());
+		}
 
 		let addr_size = match packet.target {
 			TargetAddr::IPv4(..) => 1 + 4 + 2,  // Type (1) + IPv4 (4) + Port (2)
@@ -259,7 +299,7 @@ impl<C: QuicConnection> UdpStream<C> {
 	}
 
 	pub async fn collect_garbage(&self) {
-		self.fragment_buffer.cleanup_expired().await;
+		self.fragment_buffer.cleanup_expired(self.gc_lifetime).await;
 	}
 
 	pub async fn close(&mut self) -> Result<(), crate::Error> {

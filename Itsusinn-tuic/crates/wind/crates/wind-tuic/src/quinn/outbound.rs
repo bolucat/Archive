@@ -6,21 +6,29 @@ use std::{
 
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
+use bytes::Buf;
 use moka::future::Cache;
 use quinn::TokioRuntime;
-use quinn_congestions::bbr::BbrConfig;
-use tokio::net::UdpSocket;
+use tokio::{io::AsyncReadExt as _, net::UdpSocket};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, info, warn};
 use uuid::Uuid;
 use wind_core::{AppContext, FlowContext, Outbound, tcp::AbstractTcpStream, types::TargetAddr};
-use wind_quic::{QuicConnection as _, quinn::QuinnConnection};
+use wind_quic::{
+	QuicConnection as _,
+	quinn::{QuinnConnection, QuinnRecv, QuinnSend},
+};
 
 use crate::{
 	Error,
 	client::ClientTaskExt,
-	proto::{ClientProtoExt, UdpStream as TuicUdpStream},
+	proto::{ClientProtoExt, UdpRelayMode, UdpStream as TuicUdpStream, open_connect_stream},
+	quinn::utils::{CongestionControl, congestion_controller_factory},
 };
+
+/// Upper bound on a single TUIC UDP command frame read from a uni stream:
+/// header (2) + command (8) + longest address (259) + max payload (`u16`).
+const MAX_PACKET_FRAME: usize = 10 + 259 + u16::MAX as usize;
 
 #[derive(Clone)]
 pub struct TuicOutboundOpts {
@@ -35,6 +43,27 @@ pub struct TuicOutboundOpts {
 	pub alpn: Vec<String>,
 	/// Automatic reconnect behaviour for the outbound connection.
 	pub reconnect: ReconnectConfig,
+	/// Prebuilt rustls client configuration. When `Some` it is used verbatim
+	/// instead of the built-in [`super::tls::tls_config`], so a consumer can
+	/// keep its own certificate verifier, mTLS client certificate, ALPN list,
+	/// and SNI policy.
+	pub client_config: Option<Arc<rustls::ClientConfig>>,
+	/// QUIC congestion controller.
+	pub congestion_control: CongestionControl,
+	/// Maximum concurrent bidirectional streams; `None` keeps quinn's default.
+	pub max_concurrent_bi_streams: Option<u32>,
+	/// Maximum concurrent unidirectional streams; `None` keeps quinn's
+	/// default.
+	pub max_concurrent_uni_streams: Option<u32>,
+	/// Transport send window (bytes); `None` keeps quinn's default.
+	pub send_window: Option<u64>,
+	/// Per-stream receive window (bytes); `None` keeps quinn's default.
+	pub stream_receive_window: Option<u64>,
+	/// Maximum idle time before the connection is closed; `None` keeps quinn's
+	/// default.
+	pub max_idle_time: Option<Duration>,
+	/// How outgoing `Packet` commands are relayed (datagram vs uni stream).
+	pub udp_relay_mode: UdpRelayMode,
 }
 
 /// Controls how the outbound supervisor re-establishes the QUIC connection
@@ -96,15 +125,42 @@ impl TuicOutbound {
 		});
 		info!(target: "tuic_out", "Creating a new outbound");
 		let client_config = {
-			let tls_config = super::tls::tls_config(&server_name, &opts)?;
+			// A caller-supplied config wins: it may carry a custom verifier,
+			// mTLS material, ALPN list, or SNI policy the built-in config
+			// cannot express.
+			let tls_config = match &opts.client_config {
+				Some(cfg) => (**cfg).clone(),
+				None => super::tls::tls_config(&server_name, &opts)?,
+			};
 
 			let mut client_config = quinn::ClientConfig::new(Arc::new(
-				quinn::crypto::rustls::QuicClientConfig::try_from(tls_config).unwrap(),
+				quinn::crypto::rustls::QuicClientConfig::try_from(tls_config)
+					.map_err(|e| eyre::eyre!("Failed to build QUIC client config: {e}"))?,
 			));
 			let mut transport_config = quinn::TransportConfig::default();
 			transport_config
-				.congestion_controller_factory(Arc::new(BbrConfig::default()))
+				.congestion_controller_factory(congestion_controller_factory(opts.congestion_control))
 				.keep_alive_interval(None);
+			if let Some(v) = opts.max_concurrent_bi_streams {
+				transport_config.max_concurrent_bidi_streams(v.into());
+			}
+			if let Some(v) = opts.max_concurrent_uni_streams {
+				transport_config.max_concurrent_uni_streams(v.into());
+			}
+			if let Some(v) = opts.send_window {
+				transport_config.send_window(v);
+			}
+			if let Some(v) = opts.stream_receive_window {
+				transport_config.stream_receive_window(
+					quinn::VarInt::from_u64(v)
+						.map_err(|_| eyre::eyre!("stream_receive_window {v} exceeds the QUIC VarInt range"))?,
+				);
+			}
+			if let Some(v) = opts.max_idle_time {
+				transport_config.max_idle_timeout(Some(
+					quinn::IdleTimeout::try_from(v).map_err(|_| eyre::eyre!("invalid max_idle_time {v:?}"))?,
+				));
+			}
 
 			client_config.transport_config(Arc::new(transport_config));
 			client_config
@@ -219,6 +275,19 @@ impl TuicOutbound {
 
 		Ok(())
 	}
+
+	/// Open a TUIC TCP stream to `target`.
+	///
+	/// Opens a bidirectional QUIC stream, writes the `Connect` command header,
+	/// and returns the joined stream for the caller to relay. This is the raw
+	/// half of [`Outbound::handle_tcp`], exposed so a consumer that owns its
+	/// own dispatcher (e.g. clash-rs) can reuse the connection supervisor
+	/// without adopting wind's `Outbound` control flow.
+	pub async fn connect_tcp(&self, target: &TargetAddr) -> Result<tokio::io::Join<QuinnRecv, QuinnSend>, Error> {
+		let connection = self.connection.load_full();
+		let (send, recv) = open_connect_stream(connection.as_ref(), target).await?;
+		Ok(tokio::io::join(recv, send))
+	}
 }
 
 /// Outcome of a single connection session.
@@ -298,7 +367,7 @@ async fn run_session(
 	session_cancel: CancellationToken,
 	shutdown: CancellationToken,
 ) -> eyre::Result<SessionEnd> {
-	let (datagram_rx, bi_rx, uni_rx) = conn.handle_incoming(ctx.clone(), session_cancel).await?;
+	let (datagram_rx, bi_rx, uni_rx) = conn.handle_incoming(ctx.clone(), session_cancel.clone()).await?;
 
 	let mut hb_interval = tokio::time::interval(heartbeat);
 	const HEARTBEAT_MAX_FAILURES: usize = 3;
@@ -331,98 +400,124 @@ async fn run_session(
 			Ok(_) = bi_rx.recv() => {
 				warn!(target: "tuic_out", "Received bi-directional stream on Outbound");
 			}
-			Ok(mut buf) = datagram_rx.recv() => {
+			Ok(buf) = datagram_rx.recv() => {
 				info!(target: "tuic_out", "Received datagram: {} bytes", buf.len());
-				use bytes::Buf;
-
-				let header = match crate::proto::decode_header(&mut buf, "datagram") {
-					Ok(h) => h,
-					Err(e) => {
-						warn!(target: "tuic_out", "Failed to decode header: {}", e);
-						continue;
-					}
-				};
-
-				let cmd = match crate::proto::decode_command(header.command, &mut buf, "datagram") {
-					Ok(c) => c,
-					Err(e) => {
-						warn!(target: "tuic_out", "Failed to decode command: {}", e);
-						continue;
-					}
-				};
-
-				if let crate::proto::Command::Packet {
-					assoc_id,
-					pkt_id,
-					frag_total,
-					frag_id,
-					size,
-				} = cmd {
-					let addr = match crate::proto::decode_address(&mut buf, "UDP packet") {
-						Ok(a) => a,
-						Err(e) => {
-							warn!(target: "tuic_out", "Failed to decode address: {}", e);
-							continue;
-						}
-					};
-
-					// Extract payload. `size` is attacker-controlled (it comes straight
-					// from the wire); `copy_to_bytes` panics when `size > buf.remaining()`,
-					// so a malicious peer could crash the outbound poll task by
-					// over-declaring it. Validate first and bail out cleanly instead.
-					let size = size as usize;
-					if buf.remaining() < size {
-						warn!(
-							target: "tuic_out",
-							"Packet command claims {} bytes of payload but only {} remain — dropping",
-							size, buf.remaining()
-						);
-						continue;
-					}
-					let payload = buf.copy_to_bytes(size);
-
-					let (target, has_address) = match crate::proto::address_to_target(addr) {
-						Ok(t) => (t, true),
-						Err(_) => {
-							(TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0), false)
-						}
-					};
-
-					if has_address {
-						info!(target: "tuic_out", "Received UDP packet: assoc={:#06x}, pkt={}, frag={}/{}, size={}, target={}",
-							assoc_id, pkt_id, frag_id + 1, frag_total, size, target);
-					} else {
-						info!(target: "tuic_out", "Received UDP fragment: assoc={:#06x}, pkt={}, frag={}/{}, size={} (no address - non-first fragment)",
-							assoc_id, pkt_id, frag_id + 1, frag_total, size);
-					}
-
-					if let Some(tuic_udp_stream) = udp_session.get(&assoc_id).await {
-						let complete_packet = if frag_total > 1 {
-							tuic_udp_stream.process_fragment(assoc_id, pkt_id, frag_total, frag_id, payload, None, target).await
-						} else {
-							Some(wind_core::udp::UdpPacket {
-								source: None,
-								target,
-								payload,
-							})
-						};
-
-					if let Some(packet) = complete_packet
-						&& let Err(e) = tuic_udp_stream.receive_packet(packet).await {
-							warn!(target: "tuic_out", "Failed to send packet to UDP session {:#06x}: {}", assoc_id, e);
-						}
-				} else {
-						warn!(target: "tuic_out", "Received UDP packet for unknown association {:#06x}", assoc_id);
-					}
-				} else {
-					warn!(target: "tuic_out", "Received non-Packet command in datagram: {:?}", cmd);
-				}
+				dispatch_incoming_udp(udp_session, buf).await;
 			}
 
-			Ok(_recv) = uni_rx.recv() => {
-				info!(target: "tuic_out", "Received uni-directional stream");
+			Ok(mut recv) = uni_rx.recv() => {
+				// QUIC relay mode delivers UDP responses on uni streams; read
+				// (bounded) and feed the matching association, mirroring the
+				// datagram path above.
+				let udp_session = udp_session.clone();
+				let read_cancel = session_cancel.clone();
+				ctx.tasks.spawn(
+					async move {
+						let mut data = Vec::new();
+						let mut limited = (&mut recv).take(MAX_PACKET_FRAME as u64);
+						tokio::select! {
+							_ = read_cancel.cancelled() => {}
+							result = limited.read_to_end(&mut data) => match result {
+								Ok(_) => dispatch_incoming_udp(&udp_session, bytes::Bytes::from(data)).await,
+								Err(e) => warn!(target: "tuic_out", "Failed to read UDP stream: {e}"),
+							}
+						}
+					}
+					.in_current_span(),
+				);
 			}
 		}
+	}
+}
+
+/// Decode one incoming `Packet` command (from a datagram or a uni stream) and
+/// deliver the reassembled packet to the matching UDP association.
+async fn dispatch_incoming_udp(udp_session: &Cache<u16, Arc<TuicUdpStream<QuinnConnection>>>, mut buf: bytes::Bytes) {
+	let header = match crate::proto::decode_header(&mut buf, "datagram") {
+		Ok(h) => h,
+		Err(e) => {
+			warn!(target: "tuic_out", "Failed to decode header: {}", e);
+			return;
+		}
+	};
+
+	let cmd = match crate::proto::decode_command(header.command, &mut buf, "datagram") {
+		Ok(c) => c,
+		Err(e) => {
+			warn!(target: "tuic_out", "Failed to decode command: {}", e);
+			return;
+		}
+	};
+
+	let crate::proto::Command::Packet {
+		assoc_id,
+		pkt_id,
+		frag_total,
+		frag_id,
+		size,
+	} = cmd
+	else {
+		warn!(target: "tuic_out", "Received non-Packet command in datagram: {:?}", cmd);
+		return;
+	};
+
+	let addr = match crate::proto::decode_address(&mut buf, "UDP packet") {
+		Ok(a) => a,
+		Err(e) => {
+			warn!(target: "tuic_out", "Failed to decode address: {}", e);
+			return;
+		}
+	};
+
+	// Extract payload. `size` is attacker-controlled (it comes straight
+	// from the wire); `copy_to_bytes` panics when `size > buf.remaining()`,
+	// so a malicious peer could crash the outbound poll task by
+	// over-declaring it. Validate first and bail out cleanly instead.
+	let size = size as usize;
+	if buf.remaining() < size {
+		warn!(
+			target: "tuic_out",
+			"Packet command claims {} bytes of payload but only {} remain — dropping",
+			size,
+			buf.remaining()
+		);
+		return;
+	}
+	let payload = buf.copy_to_bytes(size);
+
+	let (target, has_address) = match crate::proto::address_to_target(addr) {
+		Ok(t) => (t, true),
+		Err(_) => (TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0), false),
+	};
+
+	if has_address {
+		info!(target: "tuic_out", "Received UDP packet: assoc={:#06x}, pkt={}, frag={}/{}, size={}, target={}",
+			assoc_id, pkt_id, frag_id + 1, frag_total, size, target);
+	} else {
+		info!(target: "tuic_out", "Received UDP fragment: assoc={:#06x}, pkt={}, frag={}/{}, size={} (no address - non-first fragment)",
+			assoc_id, pkt_id, frag_id + 1, frag_total, size);
+	}
+
+	if let Some(tuic_udp_stream) = udp_session.get(&assoc_id).await {
+		let complete_packet = if frag_total > 1 {
+			tuic_udp_stream
+				.process_fragment(assoc_id, pkt_id, frag_total, frag_id, payload, None, target)
+				.await
+		} else {
+			Some(wind_core::udp::UdpPacket {
+				source: None,
+				target,
+				payload,
+			})
+		};
+
+		if let Some(packet) = complete_packet
+			&& let Err(e) = tuic_udp_stream.receive_packet(packet).await
+		{
+			warn!(target: "tuic_out", "Failed to send packet to UDP session {:#06x}: {}", assoc_id, e);
+		}
+	} else {
+		warn!(target: "tuic_out", "Received UDP packet for unknown association {:#06x}", assoc_id);
 	}
 }
 
@@ -430,9 +525,12 @@ pub struct TuicTcpStream;
 
 #[async_trait]
 impl Outbound for TuicOutbound {
-	async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
-		let connection = self.connection.load_full();
-		connection.open_tcp(&ctx.target, stream).await?;
+	async fn handle_tcp(&self, ctx: FlowContext, mut stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+		let mut tcp = self.connect_tcp(&ctx.target).await?;
+		let (_, _, err) = wind_core::io::copy_io(&mut stream, &mut tcp).await;
+		if let Some(e) = err {
+			return Err(e.into());
+		}
 		Ok(())
 	}
 
@@ -469,7 +567,11 @@ impl Outbound for TuicOutbound {
 		// caller retries.
 		let connection = self.connection.load_full().as_ref().clone();
 		let (receive_tx, receive_rx) = crossfire::mpmc::bounded_async(256);
-		let tuic_stream = Arc::new(crate::proto::UdpStream::new(connection.clone(), assoc_id, receive_tx));
+		let tuic_stream = Arc::new(
+			crate::proto::UdpStream::new(connection.clone(), assoc_id, receive_tx)
+				.with_relay_mode(self.opts.udp_relay_mode)
+				.with_gc_lifetime(self.opts.gc_lifetime),
+		);
 		self.udp_session.insert(assoc_id, tuic_stream.clone()).await;
 		let cancel_stream = cancel.clone();
 

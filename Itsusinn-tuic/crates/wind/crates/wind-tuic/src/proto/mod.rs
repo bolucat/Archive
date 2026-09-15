@@ -192,6 +192,45 @@ pub fn address_to_target(addr: Address) -> Result<TargetAddr, Error> {
 	}
 }
 
+/// How outgoing `Packet` commands travel on the wire.
+///
+/// * `Native` — QUIC DATAGRAM frames (RFC 9221), fragmented to fit
+///   `max_datagram_size`.
+/// * `Quic` — one unidirectional QUIC stream per packet.
+///
+/// Defined in the backend-neutral `proto` module so both the quinn and quiche
+/// front-ends can share it (the quinn module re-exports it at its historical
+/// `quinn::UdpRelayMode` path).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UdpRelayMode {
+	Native,
+	Quic,
+}
+
+impl std::fmt::Display for UdpRelayMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Native => write!(f, "native"),
+			Self::Quic => write!(f, "quic"),
+		}
+	}
+}
+
+impl std::str::FromStr for UdpRelayMode {
+	type Err = &'static str;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s.eq_ignore_ascii_case("native") {
+			Ok(Self::Native)
+		} else if s.eq_ignore_ascii_case("quic") {
+			Ok(Self::Quic)
+		} else {
+			Err("invalid UDP relay mode")
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Connection-coupled glue (gated on `encode`).
 // ---------------------------------------------------------------------------

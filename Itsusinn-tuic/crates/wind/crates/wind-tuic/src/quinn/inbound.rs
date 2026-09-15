@@ -16,6 +16,7 @@ use rustls::{
 	ServerConfig as RustlsServerConfig,
 	pki_types::{CertificateDer, PrivateKeyDer},
 };
+use socket2::{Domain, Socket, Type};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, error, info, warn};
@@ -301,7 +302,7 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 	async fn listen(&self, cb: &Dispatcher<R>) -> eyre::Result<()> {
 		let config = self.create_server_config()?;
 
-		let socket = std::net::UdpSocket::bind(self.opts.listen_addr)
+		let socket = bind_listener_socket(self.opts.listen_addr)
 			.with_context(|| format!("Failed to bind socket on {}", self.opts.listen_addr))?;
 
 		let socket = wrap_server_socket(socket).wrap_err("Failed to wrap QUIC server socket")?;
@@ -367,6 +368,24 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 		endpoint.wait_idle().await;
 
 		Ok(())
+	}
+}
+
+/// Bind the listener's UDP socket.
+///
+/// A wildcard IPv6 address is bound in dual-stack mode (`IPV6_V6ONLY=false`):
+/// Windows defaults that option to 1, so a plain `[::]` bind silently refuses
+/// IPv4-mapped peers there while Linux and macOS accept them — a client that
+/// resolved this server to an IPv4 address would then handshake into the void
+/// until it gave up. Any other address names a family explicitly and is bound
+/// as given.
+fn bind_listener_socket(addr: SocketAddr) -> std::io::Result<std::net::UdpSocket> {
+	match addr {
+		SocketAddr::V6(v6) if v6.ip().is_unspecified() => Socket::new(Domain::IPV6, Type::DGRAM, None)
+			.and_then(|socket| socket.set_only_v6(false).map(|_| socket))
+			.and_then(|socket| socket.bind(&addr.into()).map(|_| socket))
+			.map(std::net::UdpSocket::from),
+		other => std::net::UdpSocket::bind(other),
 	}
 }
 
@@ -457,6 +476,33 @@ async fn handle_connection<C: InboundCallback + Clone>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// Windows defaults `IPV6_V6ONLY` to 1: without dual-stack mode a wildcard
+	/// IPv6 listener never sees the IPv4 peers of a host that resolved this
+	/// server to an IPv4 address.
+	#[tokio::test]
+	async fn wildcard_v6_listener_accepts_ipv4_peers() {
+		let listener = match bind_listener_socket("[::]:0".parse().unwrap()) {
+			Ok(listener) => listener,
+			Err(err) => {
+				eprintln!("skipping: no IPv6 wildcard bind ({err})");
+				return;
+			}
+		};
+		let port = listener.local_addr().unwrap().port();
+		listener.set_nonblocking(true).unwrap();
+		let listener = tokio::net::UdpSocket::from_std(listener).unwrap();
+
+		let peer = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+		peer.send_to(b"ping", ("127.0.0.1", port)).unwrap();
+
+		let mut buf = [0u8; 8];
+		let (len, _) = tokio::time::timeout(Duration::from_secs(5), listener.recv_from(&mut buf))
+			.await
+			.expect("IPv4 peer must reach a dual-stack listener")
+			.expect("recv_from failed");
+		assert_eq!(&buf[..len], b"ping");
+	}
 
 	#[tokio::test]
 	async fn closed_endpoint_does_not_wait_for_cancellation() {

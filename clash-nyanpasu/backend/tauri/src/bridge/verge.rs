@@ -3,7 +3,7 @@ use std::{future::Future, sync::Arc};
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::{
-    client::{ClientError, NyanpasuClient, PartialCommit, Result as ClientResult},
+    client::{ClientError, NyanpasuClient, PartialCommit, Result as ClientResult, runtime},
     config::{Config, Draft, IVerge, nyanpasu as legacy_app},
     state::mirror::{PreparedLegacyMirror, VergeLegacyBridge},
 };
@@ -216,7 +216,10 @@ impl LegacyVergeBridge {
         self.get_verge_config_unlocked().await
     }
 
-    pub async fn patch_verge_config(&self, payload: IVerge) -> ClientResult<()> {
+    pub async fn patch_verge_config(
+        &self,
+        payload: IVerge,
+    ) -> ClientResult<runtime::MutationOutcome<()>> {
         match Self::route_patch(&payload) {
             LegacyVergePatchRoute::PureConfig => {
                 let managed = self.managed()?;
@@ -226,50 +229,42 @@ impl LegacyVergeBridge {
                 let clash = managed.client.get_clash_config().await?;
                 let legacy_clash = super::yaml_convert(&clash.overrides)?;
                 let plan = Self::typed_patch_plan(base.clone(), &payload, &legacy_clash)?;
-                let channel_changed = payload
-                    .clash_control_channel
-                    .is_some_and(|v| Some(v) != base.clash_control_channel)
-                    || payload
-                        .clash_ipc_disable_http_controller
-                        .is_some_and(|v| Some(v) != base.clash_ipc_disable_http_controller);
                 let mut desired = base;
                 desired.patch_config(payload.clone());
                 let prepared = self
                     .legacy_store
                     .prepare_commit(&managed.legacy_verge_path, desired)?;
+                // The control-channel reconcile that used to live here is now
+                // decided by `runtime_apply_kind` inside the saga, from the
+                // committed typed state rather than from this patch.
                 self.apply_typed_config_patch_plan(plan, move || prepared.commit())
-                    .await?;
-                if channel_changed {
-                    managed
-                        .client
-                        .apply_control_channel()
-                        .await
-                        .map_err(|error| {
-                            Self::legacy_mutation_partial(anyhow::anyhow!("{error:#}"), Some(error))
-                        })?;
-                }
+                    .await
             }
             LegacyVergePatchRoute::LegacySideEffects => {
                 let client = self.managed()?.client.clone();
                 self.run_legacy_verge_mutation(move || crate::feat::patch_verge(client, payload))
-                    .await?;
+                    .await
             }
         }
-        Ok(())
     }
 
-    pub async fn replace_verge_config(&self, state: IVerge) -> ClientResult<()> {
+    pub async fn replace_verge_config(
+        &self,
+        state: IVerge,
+    ) -> ClientResult<runtime::MutationOutcome<()>> {
         let managed = self.managed()?;
         let _guard = managed.verge_update_lock.lock().await;
         let prepared = self
             .legacy_store
             .prepare_commit(&managed.legacy_verge_path, state.clone())?;
         self.replace_typed_config_from_legacy(state, move || prepared.commit())
-            .await?;
-        Ok(())
+            .await
     }
 
-    pub async fn run_legacy_verge_mutation<F, Fut>(&self, mutate: F) -> ClientResult<()>
+    pub async fn run_legacy_verge_mutation<F, Fut>(
+        &self,
+        mutate: F,
+    ) -> ClientResult<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = anyhow::Result<()>>,
@@ -288,13 +283,6 @@ impl LegacyVergeBridge {
         // Remove when: side effects are prepared and committed by typed domain services.
         let desired = self.legacy_store.snapshot()?;
         let patch = legacy_patch_between(&previous, &desired)?;
-        // Captured before `patch` is moved into `desired.patch_config(patch)`
-        // below: the post-commit reconcile must build the runtime config from
-        // the just-committed typed state, never from the pre-commit draft
-        // (AGENTS.md section 10: commit first, then side effects).
-        let channel_changed = patch.clash_control_channel.is_some()
-            || patch.clash_ipc_disable_http_controller.is_some();
-        let reconcile_tun = patch.enable_tun_mode.is_some() || channel_changed;
         let restore = self
             .legacy_store
             .prepare_restore(&managed.legacy_verge_path, previous)
@@ -320,38 +308,15 @@ impl LegacyVergeBridge {
             .prepare_commit(&managed.legacy_verge_path, desired)
             .map_err(|error| Self::legacy_mutation_partial(error, None))?;
 
-        match self
-            .apply_typed_config_patch_plan(plan, move || finalize.commit())
+        // The runtime reconcile that used to follow this commit is now decided
+        // by `runtime_apply_kind` inside the saga: it reads the committed typed
+        // state, so it covers every clash field that needs a rebuild rather than
+        // only `tun.enable`, and a failure degrades instead of erasing a commit.
+        self.apply_typed_config_patch_plan(plan, move || finalize.commit())
             .await
-        {
-            Ok(()) => {
-                if reconcile_tun {
-                    // Reconcile now that the typed commit landed, so the
-                    // runtime config is built from the newly committed
-                    // `tun.enable` rather than the stale value `mutate()`
-                    // (feat::patch_verge) would have reconciled against
-                    // before this commit ran. A reconcile failure here must
-                    // not undo the successful commit: report it the same way
-                    // the commit-phase failures above already do.
-                    let result = if channel_changed {
-                        managed.client.apply_control_channel().await
-                    } else {
-                        managed.client.rebuild_running_config().await
-                    };
-                    result.map_err(|error| {
-                        Self::legacy_mutation_partial(
-                            anyhow::anyhow!(format!("{error:#}")),
-                            Some(error),
-                        )
-                    })?;
-                }
-                Ok(())
-            }
-            Err(error) => Err(Self::legacy_mutation_partial(
-                anyhow::anyhow!(format!("{error:#}")),
-                Some(error),
-            )),
-        }
+            .map_err(|error| {
+                Self::legacy_mutation_partial(anyhow::anyhow!(format!("{error:#}")), Some(error))
+            })
     }
 
     fn legacy_mutation_partial(error: anyhow::Error, source: Option<ClientError>) -> ClientError {
@@ -415,7 +380,7 @@ impl LegacyVergeBridge {
         &self,
         plan: crate::state::TypedConfigPatchPlan,
         finalize: F,
-    ) -> ClientResult<()>
+    ) -> ClientResult<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
@@ -429,7 +394,7 @@ impl LegacyVergeBridge {
         &self,
         legacy: IVerge,
         finalize: F,
-    ) -> ClientResult<()>
+    ) -> ClientResult<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
@@ -487,23 +452,8 @@ fn legacy_patch_between(previous: &IVerge, desired: &IVerge) -> anyhow::Result<I
 
 /// Pure classifier (infallible). Validation is delegated to `validate_verge_patch`
 /// or to `feat::patch_verge`. The side-effect field set mirrors `feat::patch_verge`.
-#[allow(deprecated)]
 fn route_verge_patch(patch: &IVerge) -> LegacyVergePatchRoute {
-    let legacy = patch.enable_service_mode.is_some()
-        || patch.enable_tun_mode.is_some()
-        || patch.enable_auto_launch.is_some()
-        || patch.enable_system_proxy.is_some()
-        || patch.system_proxy_bypass.is_some()
-        || patch.enable_proxy_guard.is_some()
-        || patch.hotkeys.is_some()
-        || patch.language.is_some()
-        || patch.app_log_level.is_some()
-        || patch.max_log_files.is_some()
-        || patch.auto_log_clean.is_some()
-        || patch.clash_tray_selector.is_some()
-        || patch.enable_tray_text.is_some()
-        || patch.tray_menu_mode.is_some()
-        || patch.network_statistic_widget.is_some();
+    let legacy = patch.enable_service_mode.is_some() || patch.enable_tun_mode.is_some();
 
     if legacy {
         LegacyVergePatchRoute::LegacySideEffects
@@ -777,6 +727,11 @@ mod tests {
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
             NoopUiEventSink, NyanpasuClient,
+            effects::{
+                plan::EffectKind,
+                ports::MockApplicationEffectsPort,
+                status::{EffectHealth, EffectStatus},
+            },
         },
         config::{
             IClashTemp,
@@ -1126,6 +1081,9 @@ mod tests {
             service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            effects: Arc::new(crate::client::effects::ports::NoopApplicationEffects),
+            window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
+            accelerators: Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path, legacy_store);
@@ -1255,6 +1213,187 @@ mod tests {
     }
 
     #[test]
+    fn legacy_patch_with_invalid_hotkeys_is_rejected_before_commit() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#334455".into()),
+                    hotkeys: Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("an accelerator the platform cannot parse must not be persisted");
+            assert!(
+                error.to_string().contains("DefinitelyNotAKey"),
+                "unexpected error: {error}"
+            );
+
+            let app = client
+                .get_app_config()
+                .await
+                .expect("typed config should read back");
+            assert!(
+                app.hotkeys.is_empty(),
+                "nothing may be written when validation fails: {:?}",
+                app.hotkeys
+            );
+            assert_eq!(
+                app.theme_color.to_string(),
+                NyanpasuAppConfig::default().theme_color.to_string(),
+                "the rest of the patch must not be committed either"
+            );
+            let projected = bridge
+                .get_verge_config()
+                .await
+                .expect("legacy projection should read back")
+                .hotkeys;
+            assert!(
+                projected.is_none_or(|hotkeys| hotkeys.is_empty()),
+                "the legacy projection must not hold the rejected bindings"
+            );
+        });
+    }
+
+    /// Seeds the application actor behind the facade, the way a config file
+    /// written by another build reaches it: the validating entry points would
+    /// refuse this list, which is exactly the state under test.
+    async fn seed_stored_hotkeys(client: &NyanpasuClient, hotkeys: &[String]) {
+        let mut seed = <NyanpasuAppConfig as Patch<_>>::new_empty_patch();
+        seed.hotkeys = Some(hotkeys.to_vec());
+        client
+            .patch_app_config_ungated(seed)
+            .await
+            .expect("the test store should accept the seed");
+    }
+
+    #[test]
+    fn startup_replacement_carrying_existing_invalid_hotkeys_still_commits() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        // Whatever the effect owner would say about the stored binding: the
+        // point is that the saga reports it instead of refusing to commit.
+        let mut effects = MockApplicationEffectsPort::new();
+        effects.expect_apply().returning(|revision, _plan| {
+            vec![EffectStatus {
+                kind: EffectKind::Hotkeys,
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Degraded {
+                    code: "hotkey_invalid_bindings",
+                    message: "the platform refused 1: Control+DefinitelyNotAKey".to_owned(),
+                    retryable: false,
+                },
+            }]
+        });
+        effects.expect_shutdown().returning(Vec::new);
+        let (client, bridge, _endpoint) =
+            test_bridge_with_recording_endpoint_and_effects(&dir, Arc::new(effects));
+        let stored = vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()];
+
+        tauri::async_runtime::block_on(async {
+            seed_stored_hotkeys(&client, &stored).await;
+
+            // What startup does: replay the state on disk through the same
+            // replacement saga, carrying the stored hotkeys unchanged.
+            let outcome = bridge
+                .replace_verge_config(IVerge {
+                    hotkeys: Some(stored.clone()),
+                    enable_system_proxy: Some(true),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("carrying the stored hotkeys forward must not abort startup");
+
+            assert_eq!(
+                client
+                    .get_app_config()
+                    .await
+                    .expect("typed config should read back")
+                    .hotkeys,
+                stored,
+                "the replacement commits with the list it carried"
+            );
+            let degradation = outcome
+                .degradations()
+                .iter()
+                .find(|degradation| degradation.code == "hotkey_invalid_bindings")
+                .expect("the binding is reported by the effect owner, not by the commit");
+            assert!(
+                !degradation.retryable,
+                "a list the platform refuses cannot heal without a new list"
+            );
+        });
+    }
+
+    #[test]
+    fn replacement_changing_to_invalid_hotkeys_is_rejected() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .replace_verge_config(IVerge {
+                    hotkeys: Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("a list this replacement introduces is still submitted state");
+            assert!(
+                error.to_string().contains("DefinitelyNotAKey"),
+                "unexpected error: {error}"
+            );
+            assert!(
+                client
+                    .get_app_config()
+                    .await
+                    .expect("typed config should read back")
+                    .hotkeys
+                    .is_empty(),
+                "nothing may be written when validation fails"
+            );
+        });
+    }
+
+    #[test]
+    fn unrelated_patch_is_not_blocked_by_existing_invalid_hotkeys() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+        let stored = vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()];
+
+        tauri::async_runtime::block_on(async {
+            seed_stored_hotkeys(&client, &stored).await;
+
+            bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#334455".into()),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("a patch that carries no hotkeys must not be judged on the stored ones");
+
+            let app = client
+                .get_app_config()
+                .await
+                .expect("typed config should read back");
+            assert_eq!(
+                app.theme_color.to_string(),
+                "#334455",
+                "the unrelated field is committed"
+            );
+            assert_eq!(
+                app.hotkeys, stored,
+                "the stored list is carried forward untouched"
+            );
+        });
+    }
+
+    #[test]
     fn pure_verge_patch_persists_legacy_snapshot_to_injected_path() {
         let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
@@ -1370,7 +1509,7 @@ mod tests {
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
             app_patch.language = Some(I18nLanguage::Korean);
             client
-                .patch_app_config(app_patch)
+                .patch_app_config_ungated(app_patch)
                 .await
                 .expect("concurrent typed update should succeed");
             release_tx
@@ -1442,7 +1581,7 @@ mod tests {
                 concurrent_window.clone(),
             )]));
             client
-                .patch_session_state(session_patch)
+                .patch_session_state_ungated(session_patch)
                 .await
                 .expect("concurrent typed session update should succeed");
             release_tx.send(()).expect("legacy restore should release");
@@ -1583,7 +1722,7 @@ mod tests {
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
             app_patch.language = Some(I18nLanguage::Korean);
             client
-                .patch_app_config(app_patch)
+                .patch_app_config_ungated(app_patch)
                 .await
                 .expect("concurrent typed update should succeed");
             release_tx.send(()).expect("legacy mutation should release");
@@ -1786,6 +1925,29 @@ mod tests {
         assert_pure!(theme_color: "#112233".to_string());
         assert_pure!(traffic_graph: true);
         assert_pure!(theme_mode: "dark".to_string());
+        // Owned by the system proxy actor now: a patch that only carries one
+        // of these commits typed config and reconciles, with no legacy detour.
+        assert_pure!(enable_auto_launch: true);
+        assert_pure!(enable_system_proxy: true);
+        assert_pure!(system_proxy_bypass: "localhost".to_string());
+        assert_pure!(enable_proxy_guard: true);
+        // Owned by the hotkey actor now.
+        assert_pure!(hotkeys: Vec::<String>::new());
+        // Owned by the UI-effect adapters now.
+        assert_pure!(language: "en".to_string());
+        assert_pure!(app_log_level: LoggingLevel::default());
+        assert_pure!(max_log_files: 7usize);
+        assert_pure!(clash_tray_selector: ProxiesSelectorMode::default());
+        assert_pure!(enable_tray_text: true);
+        assert_pure!(tray_menu_mode: TrayMenuMode::default());
+        assert_pure!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
+        // Never had a side effect at patch time: the log-cleaning job reads it
+        // from the legacy store when it next runs, and the pure route writes
+        // that store just the same.
+        #[allow(deprecated)]
+        {
+            assert_pure!(auto_log_clean: 7i64);
+        }
     }
 
     #[test]
@@ -1804,22 +1966,6 @@ mod tests {
 
         assert_legacy!(enable_service_mode: true);
         assert_legacy!(enable_tun_mode: true);
-        assert_legacy!(enable_auto_launch: true);
-        assert_legacy!(enable_system_proxy: true);
-        assert_legacy!(system_proxy_bypass: "localhost".to_string());
-        assert_legacy!(enable_proxy_guard: true);
-        assert_legacy!(hotkeys: Vec::<String>::new());
-        assert_legacy!(language: "en".to_string());
-        assert_legacy!(app_log_level: LoggingLevel::default());
-        assert_legacy!(max_log_files: 7usize);
-        #[allow(deprecated)]
-        {
-            assert_legacy!(auto_log_clean: 7i64);
-        }
-        assert_legacy!(clash_tray_selector: ProxiesSelectorMode::default());
-        assert_legacy!(enable_tray_text: true);
-        assert_legacy!(tray_menu_mode: TrayMenuMode::default());
-        assert_legacy!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
     }
 
     #[test]
@@ -1969,7 +2115,7 @@ mod tests {
                 },
             )]));
             client
-                .patch_session_state(session_patch)
+                .patch_session_state_ungated(session_patch)
                 .await
                 .expect("concurrent session update should succeed");
             release_tx
@@ -2059,7 +2205,7 @@ mod tests {
                 },
             )]));
             client
-                .patch_session_state(session_patch)
+                .patch_session_state_ungated(session_patch)
                 .await
                 .expect("concurrent session update should succeed");
             release_tx
@@ -2141,7 +2287,7 @@ mod tests {
             let mut clash_patch = ClashConfig::new_empty_patch();
             clash_patch.web_ui_list = Some(vec!["https://concurrent.invalid/ui".into()]);
             client
-                .patch_clash_config(clash_patch)
+                .patch_clash_config_ungated(clash_patch)
                 .await
                 .expect("concurrent clash update should succeed");
             release_tx.send(()).expect("session apply should release");
@@ -2224,13 +2370,13 @@ mod tests {
             let mut clash_patch = ClashConfig::new_empty_patch();
             clash_patch.web_ui_list = Some(vec!["https://concurrent.invalid/ui".into()]);
             client
-                .patch_clash_config(clash_patch)
+                .patch_clash_config_ungated(clash_patch)
                 .await
                 .expect("concurrent clash update should succeed");
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
             app_patch.language = Some(I18nLanguage::Korean);
             client
-                .patch_app_config(app_patch)
+                .patch_app_config_ungated(app_patch)
                 .await
                 .expect("concurrent application update should succeed");
             release_tx.send(()).expect("session apply should release");
@@ -2394,6 +2540,20 @@ mod tests {
         LegacyVergeBridge,
         Arc<RecordingReconcileEndpoint>,
     ) {
+        test_bridge_with_recording_endpoint_and_effects(
+            dir,
+            Arc::new(crate::client::effects::ports::NoopApplicationEffects),
+        )
+    }
+
+    fn test_bridge_with_recording_endpoint_and_effects(
+        dir: &TempDir,
+        effects: Arc<dyn crate::client::effects::ports::ApplicationEffectsPort>,
+    ) -> (
+        NyanpasuClient,
+        LegacyVergeBridge,
+        Arc<RecordingReconcileEndpoint>,
+    ) {
         let clash_store = Config::clash();
         *clash_store.draft() = IClashTemp::template();
         clash_store.apply();
@@ -2428,6 +2588,9 @@ mod tests {
             service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            effects,
+            window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
+            accelerators: Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(
@@ -2441,9 +2604,9 @@ mod tests {
     /// Finding 1 acceptance test: `feat::patch_verge` writes the legacy
     /// draft only (no reconcile); `run_legacy_verge_mutation` must reconcile
     /// once, after the typed commit, with the newly committed `tun.enable`
-    /// value. Deleting the post-commit `rebuild_running_config()` call added
-    /// for this fix (`bridge/verge.rs`, `run_legacy_verge_mutation`) turns
-    /// this test red: no reconcile is ever submitted and `reconcile_count()`
+    /// value. That reconcile is now decided by `runtime_apply_kind` inside
+    /// the saga the mutation commits through; dropping it turns this test
+    /// red, because no reconcile is ever submitted and `reconcile_count()`
     /// stays 0 for both toggles.
     ///
     /// Drives `run_legacy_verge_mutation` itself — the function this fix
@@ -2512,6 +2675,81 @@ mod tests {
             assert!(
                 !endpoint.last_tun_enable(),
                 "the reconcile must carry the newly committed tun.enable = false"
+            );
+        });
+    }
+
+    /// Counts what the facade dispatched, so the legacy route can be shown to
+    /// commit and reconcile exactly once instead of once per entry point.
+    #[derive(Default)]
+    struct CountingEffectsPort {
+        dispatches: StdMutex<Vec<u64>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::client::effects::ports::ApplicationEffectsPort for CountingEffectsPort {
+        async fn apply(
+            &self,
+            revision: crate::client::effects::status::EffectRevision,
+            plan: crate::client::effects::plan::ApplicationEffectPlan,
+        ) -> Vec<crate::client::effects::status::EffectStatus> {
+            self.dispatches.lock().unwrap().push(revision.get());
+            plan.effects()
+                .iter()
+                .map(|effect| crate::client::effects::status::EffectStatus {
+                    kind: effect.kind(),
+                    desired_revision: revision,
+                    applied_revision: revision,
+                    health: crate::client::effects::status::EffectHealth::Healthy,
+                })
+                .collect()
+        }
+
+        async fn shutdown(&self) -> Vec<crate::client::effects::status::EffectStatus> {
+            Vec::new()
+        }
+    }
+
+    /// The legacy verge wire and the typed clients share one commit point, so a
+    /// patch that arrives through the bridge must produce exactly one typed
+    /// commit and exactly one effect dispatch.
+    #[test]
+    fn legacy_route_commits_once_and_reconciles_once() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let effects = Arc::new(CountingEffectsPort::default());
+        let (client, bridge, _endpoint) =
+            test_bridge_with_recording_endpoint_and_effects(&dir, effects.clone());
+
+        tauri::async_runtime::block_on(async {
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let interval = before.application.state.proxy_guard_interval + 7;
+
+            bridge
+                .patch_verge_config(IVerge {
+                    proxy_guard_interval: Some(interval),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("pure verge patch should commit");
+
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(
+                after.application.version,
+                before.application.version + 1,
+                "the legacy route must commit the application domain once"
+            );
+            assert_eq!(after.application.state.proxy_guard_interval, interval);
+            assert_eq!(
+                effects.dispatches.lock().unwrap().len(),
+                1,
+                "one commit reconciles once, not once per entry point"
             );
         });
     }

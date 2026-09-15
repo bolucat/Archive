@@ -1,40 +1,17 @@
 use std::{
 	fmt::{Display, Formatter, Result as FmtResult},
 	str::FromStr,
+	sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
 
-/// UDP relay mode for TUIC protocol
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UdpRelayMode {
-	Native,
-	Quic,
-}
-
-impl Display for UdpRelayMode {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-		match self {
-			Self::Native => write!(f, "native"),
-			Self::Quic => write!(f, "quic"),
-		}
-	}
-}
-
-impl FromStr for UdpRelayMode {
-	type Err = &'static str;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if s.eq_ignore_ascii_case("native") {
-			Ok(Self::Native)
-		} else if s.eq_ignore_ascii_case("quic") {
-			Ok(Self::Quic)
-		} else {
-			Err("invalid UDP relay mode")
-		}
-	}
-}
+/// UDP relay mode for TUIC protocol.
+///
+/// The enum itself lives in the backend-neutral [`crate::proto`] module so the
+/// shared client `UdpStream` can use it; re-exported here to preserve the
+/// historical `quinn::utils::UdpRelayMode` path.
+pub use crate::proto::UdpRelayMode;
 
 /// Congestion control algorithm for QUIC
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -86,5 +63,19 @@ impl FromStr for CongestionControl {
 		} else {
 			Err("invalid congestion control")
 		}
+	}
+}
+
+/// Build the quinn congestion-controller factory for `cc`.
+///
+/// `quinn-congestions` provides a single BBR implementation; both the `bbr`
+/// and `bbr3` config aliases map to it.
+pub fn congestion_controller_factory(
+	cc: CongestionControl,
+) -> Arc<dyn quinn::congestion::ControllerFactory + Send + Sync + 'static> {
+	match cc {
+		CongestionControl::Bbr | CongestionControl::Bbr3 => Arc::new(quinn_congestions::bbr::BbrConfig::default()),
+		CongestionControl::Cubic => Arc::new(quinn::congestion::CubicConfig::default()),
+		CongestionControl::NewReno => Arc::new(quinn::congestion::NewRenoConfig::default()),
 	}
 }

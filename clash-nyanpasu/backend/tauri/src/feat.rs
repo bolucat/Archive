@@ -4,12 +4,7 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::{
-    config::*,
-    core::*,
-    log_err,
-    utils::{self, help::get_clash_external_port, resolve},
-};
+use crate::{config::*, core::*, log_err, utils::help::get_clash_external_port};
 use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -19,38 +14,6 @@ use std::future::Future;
 use strum::EnumString;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-
-// 打开面板
-#[allow(unused)]
-pub fn open_dashboard() {
-    let handle = handle::Handle::global();
-    let app_handle = handle.app_handle.lock();
-    if let Some(app_handle) = app_handle.as_ref() {
-        resolve::create_window(app_handle);
-    }
-}
-
-// 关闭面板
-#[allow(unused)]
-pub fn close_dashboard() {
-    let handle = handle::Handle::global();
-    let app_handle = handle.app_handle.lock();
-    if let Some(app_handle) = app_handle.as_ref() {
-        resolve::close_window(app_handle);
-    }
-}
-
-// 开关面板
-pub fn toggle_dashboard() {
-    let handle = handle::Handle::global();
-    let app_handle = handle.app_handle.lock();
-    if let Some(app_handle) = app_handle.as_ref() {
-        match resolve::is_window_open(app_handle) {
-            true => resolve::close_window(app_handle),
-            false => resolve::create_window(app_handle),
-        }
-    }
-}
 
 // 重启clash
 pub fn restart_clash_core(app_handle: &AppHandle) {
@@ -75,153 +38,6 @@ pub fn restart_clash_core(app_handle: &AppHandle) {
                 handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
                 log::error!(target:"app", "{err:?}");
             }
-        }
-    });
-}
-
-// 切换模式 rule/global/direct/script mode
-pub fn change_clash_mode(app_handle: &AppHandle, mode: String) {
-    let client = app_handle
-        .state::<crate::client::NyanpasuClient>()
-        .inner()
-        .clone();
-    tauri::async_runtime::spawn(async move {
-        let mode = match mode.parse::<nyanpasu_config::clash::config::overrides::Mode>() {
-            Ok(mode) => mode,
-            Err(error) => {
-                log::error!("invalid clash mode: {error}");
-                return;
-            }
-        };
-        let patch = nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
-            mode: Some(mode),
-            ..Default::default()
-        };
-        match client.patch_runtime_overrides(patch).await {
-            Ok(outcome) => {
-                for degradation in outcome.degradations() {
-                    log::warn!("{}: {}", degradation.code, degradation.message);
-                }
-            }
-            Err(error) => log::error!("mode change failed: {error:#}"),
-        }
-    });
-}
-
-/// Route a verge patch through the managed `LegacyVergeBridge` when it is available, so
-/// typed actors are reseeded after a legacy side-effect write. Falls back to a direct
-/// `patch_verge` with the managed `NyanpasuClient` during early startup when the bridge
-/// is not yet managed.
-async fn patch_verge_entrypoint(patch: IVerge) -> Result<()> {
-    // TODO(actor-migration): compatibility bridge for legacy feature toggles.
-    // Reason: feature paths still enter through Handle::global() and legacy Config::verge().
-    // Remove when: feature toggles call typed actor clients through injected command adapters.
-    let app_handle = handle::Handle::global().app_handle.lock().clone();
-    if let Some(app_handle) = app_handle {
-        if let Some(legacy) = app_handle.try_state::<crate::bridge::verge::LegacyVergeBridge>() {
-            let legacy = legacy.inner().clone();
-            legacy.patch_verge_config(patch).await?;
-            return Ok(());
-        }
-        if let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>() {
-            return patch_verge(client.inner().clone(), patch).await;
-        }
-    }
-    bail!("NyanpasuClient is not available for verge patch")
-}
-
-// 切换系统代理
-pub fn toggle_system_proxy() {
-    let enable = Config::verge().draft().enable_system_proxy;
-    let enable = enable.unwrap_or(false);
-
-    tauri::async_runtime::spawn(async move {
-        match patch_verge_entrypoint(IVerge {
-            enable_system_proxy: Some(!enable),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
-        }
-    });
-}
-
-// 打开系统代理
-pub fn enable_system_proxy() {
-    tauri::async_runtime::spawn(async {
-        match patch_verge_entrypoint(IVerge {
-            enable_system_proxy: Some(true),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
-        }
-    });
-}
-
-// 关闭系统代理
-pub fn disable_system_proxy() {
-    tauri::async_runtime::spawn(async {
-        match patch_verge_entrypoint(IVerge {
-            enable_system_proxy: Some(false),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
-        }
-    });
-}
-
-// 切换tun模式
-pub fn toggle_tun_mode() {
-    let enable = Config::verge().data().enable_tun_mode;
-    let enable = enable.unwrap_or(false);
-
-    tauri::async_runtime::spawn(async move {
-        match patch_verge_entrypoint(IVerge {
-            enable_tun_mode: Some(!enable),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
-        }
-    });
-}
-
-// 打开tun模式
-pub fn enable_tun_mode() {
-    tauri::async_runtime::spawn(async {
-        match patch_verge_entrypoint(IVerge {
-            enable_tun_mode: Some(true),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
-        }
-    });
-}
-
-// 关闭tun模式
-pub fn disable_tun_mode() {
-    tauri::async_runtime::spawn(async {
-        match patch_verge_entrypoint(IVerge {
-            enable_tun_mode: Some(false),
-            ..IVerge::default()
-        })
-        .await
-        {
-            Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -317,11 +133,6 @@ where
             handle::Handle::refresh_clash();
         }
 
-        // 更新系统代理
-        if mixed_port.is_some() {
-            log_err!(sysopt::Sysopt::global().init_sysproxy());
-        }
-
         if patch.get("mode").is_some() {
             log_err!(handle::Handle::update_systray_part());
         }
@@ -342,7 +153,16 @@ where
 }
 
 /// 修改verge的配置
-/// 一般都是一个个的修改
+//
+// FIXME(actor-migration): legacy verge side-effect shim.
+// The peripheral effects — system proxy, PAC, auto-launch, hotkeys, locale,
+// tray, logger and widget — are all owned by `ApplicationEffectPlan` and
+// dispatched through `ApplicationEffectsPort`. What is left here is the
+// `enable_service_mode` execution-host switch and the TUN core permission
+// precheck, plus the legacy `Config::verge()` write the three-domain saga
+// still diffs against.
+// New code must use `NyanpasuClient::{patch_app_config, patch_clash_config}`.
+// Remove after: PR-7b deletes feat.rs as an orchestration centre.
 pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -> Result<()> {
     // Validate theme_color if it's being updated
     if let Some(ref theme_color) = patch.theme_color
@@ -354,16 +174,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
 
     Config::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
-    let auto_launch = patch.enable_auto_launch;
-    let system_proxy = patch.enable_system_proxy;
-    let proxy_bypass = patch.system_proxy_bypass;
-    let language = patch.language;
-    let log_level = patch.app_log_level;
-    let log_max_files = patch.max_log_files;
-    let enable_tray_selector = patch.clash_tray_selector;
-    let enable_tray_text = patch.enable_tray_text;
-    let tray_menu_mode = patch.tray_menu_mode;
-    let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
         if let Some(service_mode) = service_mode {
@@ -398,54 +208,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
             // happens in `LegacyVergeBridge::run_legacy_verge_mutation`,
             // after the typed commit this function's caller performs
             // (AGENTS.md section 10: commit first, then side effects).
-        }
-
-        if auto_launch.is_some() {
-            sysopt::Sysopt::global().update_launch()?;
-        }
-        if system_proxy.is_some() || proxy_bypass.is_some() {
-            sysopt::Sysopt::global().update_sysproxy()?;
-            sysopt::Sysopt::global().guard_proxy();
-        }
-
-        if let Some(true) = patch.enable_proxy_guard {
-            sysopt::Sysopt::global().guard_proxy();
-        }
-
-        if let Some(hotkeys) = patch.hotkeys {
-            hotkey::Hotkey::global().update(hotkeys)?;
-        }
-
-        let language_changed = language.is_some();
-        if let Some(language) = language {
-            rust_i18n::set_locale(language.as_str());
-        }
-
-        if language_changed || tray_menu_mode.is_some() || enable_tray_selector.is_some() {
-            handle::Handle::update_systray()?;
-        } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
-            handle::Handle::update_systray_part()?;
-        }
-
-        if log_level.is_some() || log_max_files.is_some() {
-            utils::init::refresh_logger((log_level, log_max_files))?;
-        }
-
-        // TODO: refactor config with changed notify
-        if let Some(network_statistic_widget) = network_statistic_widget {
-            let widget_manager =
-                crate::consts::app_handle().state::<crate::widget::WidgetManager>();
-            let is_running = widget_manager.is_running().await;
-            match network_statistic_widget.to_variant() {
-                None => {
-                    if is_running {
-                        widget_manager.stop().await?;
-                    }
-                }
-                Some(variant) => {
-                    widget_manager.start(variant).await?;
-                }
-            }
         }
 
         <Result<()>>::Ok(())

@@ -25,6 +25,9 @@ use wind_core::{types::TargetAddr, udp::UdpPacket};
 pub const MAX_FRAGMENTS: u8 = 255;
 /// Timeout (ms) after which incomplete fragment groups are evicted.
 const FRAGMENT_TIMEOUT_MS: u64 = 30000;
+/// Default lifetime for incomplete fragment groups, exposed so callers can
+/// reuse it when constructing a [`UdpStream`](crate::proto::UdpStream).
+pub const DEFAULT_FRAGMENT_TIMEOUT: Duration = Duration::from_millis(FRAGMENT_TIMEOUT_MS);
 
 static INIT_TIME: OnceLock<Instant> = OnceLock::new();
 
@@ -186,10 +189,9 @@ impl FragmentReassemblyBuffer {
 	/// `invalidate_entries_if` only registers a predicate; the actual eviction
 	/// happens during housekeeping. We drive it via `run_pending_tasks` so the
 	/// cleanup is observable before this call returns.
-	pub async fn cleanup_expired(&self) {
+	pub async fn cleanup_expired(&self, timeout: Duration) {
 		if let Err(e) = self.fragments.invalidate_entries_if(move |_, meta| {
-			init_time().elapsed() - Duration::from_secs(meta.last_updated.load(Ordering::Relaxed))
-				>= Duration::from_millis(FRAGMENT_TIMEOUT_MS)
+			init_time().elapsed() - Duration::from_secs(meta.last_updated.load(Ordering::Relaxed)) >= timeout
 		}) {
 			tracing::warn!(target: "udp", "Failed to register fragment cleanup predicate: {:?}", e);
 			return;

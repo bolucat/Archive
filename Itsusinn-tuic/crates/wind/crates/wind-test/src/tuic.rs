@@ -158,6 +158,7 @@ mod tests {
 	use uuid::Uuid;
 	use wind_core::{AbstractInbound, Outbound, hooks::Protocol, rule::NetworkType};
 	use wind_tuic::quinn::{
+		CongestionControl, UdpRelayMode,
 		inbound::{TuicInbound, TuicInboundOpts},
 		outbound::{ReconnectConfig, TuicOutbound, TuicOutboundOpts},
 	};
@@ -278,6 +279,14 @@ mod tests {
 			skip_cert_verify: true,
 			alpn: vec!["h3".to_string()],
 			reconnect,
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
 		};
 		let client = Arc::new(TuicOutbound::new(ctx, opts).await?);
 		let poll_client = client.clone();
@@ -304,6 +313,14 @@ mod tests {
 			skip_cert_verify: true,
 			alpn: vec!["h3".to_string()],
 			reconnect: ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
 		};
 		let client: std::sync::Arc<TuicOutbound> = std::sync::Arc::new(TuicOutbound::new(ctx.clone(), opts).await?);
 		let poll_client = client.clone();
@@ -393,6 +410,14 @@ mod tests {
 			skip_cert_verify: true,
 			alpn: vec!["h3".to_string()],
 			reconnect: ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
 		};
 		let result: eyre::Result<TuicOutbound> = TuicOutbound::new(ctx, opts).await;
 		assert!(
@@ -420,6 +445,14 @@ mod tests {
 			skip_cert_verify: true,
 			alpn: vec!["h3".to_string()],
 			reconnect: ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
 		};
 		let result: eyre::Result<TuicOutbound> = TuicOutbound::new(ctx, opts).await;
 		assert!(
@@ -644,6 +677,93 @@ mod tests {
 			}
 			Ok(())
 		});
+	}
+
+	/// QUIC relay mode: outgoing `Packet` commands travel on their own
+	/// unidirectional streams instead of QUIC datagrams. The server parses the
+	/// uni-stream command and answers on its datagram path, which the client
+	/// must still deliver to the local session.
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn test_udp_relay_mode_quic_roundtrip() {
+		// (1) UDP echo server.
+		let echo = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+		let echo_addr = echo.local_addr().unwrap();
+		tokio::spawn(
+			async move {
+				let mut buf = vec![0u8; 65536];
+				while let Ok((n, from)) = echo.recv_from(&mut buf).await {
+					let _ = echo.send_to(&buf[..n], from).await;
+				}
+			}
+			.in_current_span(),
+		);
+
+		// (2) TUIC server + a client configured for QUIC relay mode.
+		let setup = setup_tuic_server().await.expect("setup tuic server");
+		let ctx = Arc::new(AppContext::default());
+		let opts = TuicOutboundOpts {
+			peer_addr: setup.server_addr,
+			sni: "localhost".to_string(),
+			auth: (setup.uuid, Arc::from(TEST_PASSWORD)),
+			zero_rtt_handshake: false,
+			heartbeat: Duration::from_secs(5),
+			gc_interval: Duration::from_secs(5),
+			gc_lifetime: Duration::from_secs(30),
+			skip_cert_verify: true,
+			alpn: vec!["h3".to_string()],
+			reconnect: ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Quic,
+		};
+		let client = Arc::new(TuicOutbound::new(ctx, opts).await.expect("connect tuic client"));
+		let poll_client = client.clone();
+		tokio::spawn(
+			async move {
+				let _ = poll_client.start_poll().await;
+			}
+			.in_current_span(),
+		);
+		tokio::time::sleep(Duration::from_millis(150)).await;
+
+		// (3) Bridge the local session to the outbound.
+		let (tx_to_client, rx_at_client) = tokio::sync::mpsc::channel::<UdpPacket>(32);
+		let (tx_to_test, mut rx_at_test) = tokio::sync::mpsc::channel::<UdpPacket>(32);
+		let stream_for_client = UdpStream {
+			tx: tx_to_test,
+			rx: rx_at_client,
+		};
+		let client_for_udp = client.clone();
+		tokio::spawn(
+			async move {
+				let _ = client_for_udp.handle_udp(test_udp_ctx(), stream_for_client).await;
+			}
+			.in_current_span(),
+		);
+
+		// (4) Round-trip a payload. Keep it single-datagram-sized so this test
+		// exercises the relay mode, not fragmentation.
+		let payload: Bytes = b"quic-relay-mode-roundtrip".to_vec().into();
+		let target = TargetAddr::IPv4(std::net::Ipv4Addr::LOCALHOST, echo_addr.port());
+		tx_to_client
+			.send(UdpPacket {
+				source: None,
+				target,
+				payload: payload.clone(),
+			})
+			.await
+			.expect("send UDP packet into TUIC outbound");
+
+		let echoed = tokio::time::timeout(Duration::from_secs(10), rx_at_test.recv())
+			.await
+			.expect("echo timed out — QUIC relay mode roundtrip did not complete")
+			.expect("upstream channel closed before echo arrived");
+		assert_eq!(echoed.payload, payload, "echoed payload mismatch");
 	}
 
 	/// Graceful shutdown — idle server. Cancelling the context token must make
@@ -996,6 +1116,14 @@ mod tests {
 				skip_cert_verify: true,
 				alpn: vec!["h3".to_string()],
 				reconnect,
+				client_config: None,
+				congestion_control: CongestionControl::Bbr,
+				max_concurrent_bi_streams: None,
+				max_concurrent_uni_streams: None,
+				send_window: None,
+				stream_receive_window: None,
+				max_idle_time: None,
+				udp_relay_mode: UdpRelayMode::Native,
 			};
 			let c = Arc::new(TuicOutbound::new(cctx, opts).await.unwrap());
 			let pc = c.clone();

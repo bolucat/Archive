@@ -43,6 +43,25 @@ pub async fn encode_and_send_uni<C: QuicConnection>(
 	Ok(())
 }
 
+/// Open a bidirectional stream and write the TUIC `Connect` command header
+/// for `addr`.
+///
+/// Shared by the generic [`ClientProtoExt::open_tcp`] relay and the
+/// quinn-specific `TuicOutbound::connect_tcp`, which hands the raw stream to
+/// its caller instead of relaying it internally.
+pub async fn open_connect_stream<C: QuicConnection>(
+	conn: &C,
+	addr: &TargetAddr,
+) -> Result<(C::SendStream, C::RecvStream), Error> {
+	let (mut send, recv) = conn.open_bi().await?;
+	let mut buf = BytesMut::with_capacity(9);
+	HeaderCodec.encode(Header::new(CmdType::Connect), &mut buf)?;
+	CmdCodec(CmdType::Connect).encode(Command::Connect, &mut buf)?;
+	AddressCodec.encode(addr.to_owned().into(), &mut buf)?;
+	send.write_all(&buf).await?;
+	Ok((send, recv))
+}
+
 /// Client-side TUIC senders, available on any [`QuicConnection`]. Despite the
 /// name the server's UDP response path uses
 /// [`send_udp`](ClientProtoExt::send_udp)
@@ -90,12 +109,7 @@ impl<C: QuicConnection> ClientProtoExt for C {
 	}
 
 	async fn open_tcp(&self, addr: &TargetAddr, mut stream: impl AbstractTcpStream) -> Result<(usize, usize), Error> {
-		let (mut send, recv) = self.open_bi().await?;
-		let mut buf = BytesMut::with_capacity(9);
-		HeaderCodec.encode(Header::new(CmdType::Connect), &mut buf)?;
-		CmdCodec(CmdType::Connect).encode(Command::Connect, &mut buf)?;
-		AddressCodec.encode(addr.to_owned().into(), &mut buf)?;
-		send.write_all(&buf).await?;
+		let (send, recv) = open_connect_stream(self, addr).await?;
 		// Join the recv/send halves into one duplex stream for the
 		// bidirectional relay (replaces the quinn-specific `QuinnCompat`).
 		let mut duplex = tokio::io::join(recv, send);
