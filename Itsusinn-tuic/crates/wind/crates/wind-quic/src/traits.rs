@@ -95,6 +95,19 @@ pub trait QuicConnection: Clone + Send + Sync + 'static {
 	/// Resolve once the connection has closed (for any reason).
 	fn closed(&self) -> impl Future<Output = ()> + Send;
 
+	/// Resolve once the TLS/QUIC handshake has completed.
+	///
+	/// Needed by protocols whose application-layer authentication is bound to
+	/// the TLS keying-material exporter (RFC 5705), which backends may only
+	/// expose after the handshake finishes — e.g. a server that accepted a
+	/// connection at 0.5-RTT (`into_0rtt`) must wait before exporting.
+	///
+	/// Backends that yield connections only after the handshake (or that do not
+	/// support 0-RTT) may keep the default, which resolves immediately.
+	fn authenticated(&self) -> impl Future<Output = Result<(), QuicError>> + Send {
+		async { Ok(()) }
+	}
+
 	/// The peer's socket address, if known.
 	fn peer_addr(&self) -> Option<SocketAddr> {
 		None

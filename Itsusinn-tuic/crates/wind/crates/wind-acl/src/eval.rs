@@ -1,6 +1,6 @@
 //! Evaluation of a [`Ruleset`] against a `wind_rule::MatchContext`.
 //!
-//! Semantics follow `specs/acl-ir.md` §4: scan the entry chain top-to-bottom;
+//! Semantics follow <https://rust-proxy.github.io/wind/acl-ir/> §4: scan the entry chain top-to-bottom;
 //! on a match run the statements then apply the verdict; `Jump` pushes a return
 //! frame, `Goto` does not, `Return` / chain-exhaustion falls through; a base
 //! chain that falls through applies its `policy`.

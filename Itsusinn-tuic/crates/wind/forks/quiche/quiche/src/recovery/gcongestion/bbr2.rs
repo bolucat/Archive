@@ -33,6 +33,7 @@ mod mode;
 mod network_model;
 mod probe_bw;
 mod probe_rtt;
+mod rtt_jump_detector;
 mod startup;
 
 use std::time::Duration;
@@ -50,6 +51,7 @@ use super::bbr::SendTimeState;
 use super::Acked;
 use super::BbrBwLoReductionStrategy;
 use super::BbrParams;
+use super::BbrRttJumpDetector;
 use super::CongestionControl;
 use super::Lost;
 use super::RttStats;
@@ -190,6 +192,10 @@ struct Params {
     /// initial cwnd by the first RTT estimate.
     initial_pacing_rate_bytes_per_second: Option<u64>,
 
+    /// Lower bound on the congestion window in packets.  If not set,
+    /// the initial congestion window is used as the lower bound.
+    min_cwnd_packets: Option<usize>,
+
     /// If true, scale the pacing rate when updating mss when doing pmtud.
     scale_pacing_rate_by_mss: bool,
 
@@ -207,6 +213,9 @@ struct Params {
     /// 1/8th of an RTT into the future, so the error introduced by
     /// setting `time_sent` to `now` is bounded.
     time_sent_set_to_now: bool,
+
+    /// Selects the RTT jump detector implementation.
+    rtt_jump_detector: BbrRttJumpDetector,
 }
 
 impl Params {
@@ -252,6 +261,14 @@ impl Params {
         apply_override!(disable_probe_down_early_exit);
         apply_override!(time_sent_set_to_now);
         apply_optional_override!(initial_pacing_rate_bytes_per_second);
+        apply_optional_override!(min_cwnd_packets);
+
+        #[cfg(feature = "internal")]
+        {
+            if let Some(custom_value) = custom_bbr_settings.rtt_jump_detector {
+                self.rtt_jump_detector = custom_value;
+            }
+        }
 
         if let Some(custom_value) = custom_bbr_settings.bw_lo_reduction_strategy {
             self.bw_lo_mode = custom_value.into();
@@ -342,11 +359,15 @@ const DEFAULT_PARAMS: Params = Params {
 
     initial_pacing_rate_bytes_per_second: None,
 
+    min_cwnd_packets: None,
+
     scale_pacing_rate_by_mss: false,
 
     disable_probe_down_early_exit: false,
 
     time_sent_set_to_now: true,
+
+    rtt_jump_detector: BbrRttJumpDetector::Disabled,
 };
 
 #[derive(Debug, PartialEq)]
@@ -510,12 +531,16 @@ impl BBRv2 {
             DEFAULT_PARAMS
         };
 
+        let min_cwnd =
+            params.min_cwnd_packets.unwrap_or(initial_congestion_window) *
+                max_segment_size;
+
         BBRv2 {
             mode: Mode::startup(BBRv2NetworkModel::new(&params, smoothed_rtt)),
             cwnd,
             pacing_rate: initial_pacing_rate(cwnd, smoothed_rtt, &params),
             cwnd_limits: Limits {
-                lo: initial_congestion_window * max_segment_size,
+                lo: min_cwnd,
                 hi: max_congestion_window * max_segment_size,
             },
             initial_cwnd: initial_congestion_window * max_segment_size,
@@ -638,6 +663,10 @@ impl BBRv2 {
     #[cfg(feature = "qlog")]
     pub(crate) fn ack_rate(&self) -> Option<Bandwidth> {
         self.mode.network_model().ack_rate()
+    }
+
+    pub(crate) fn rtt_persistent_jump_count(&self) -> u64 {
+        self.mode.network_model().rtt_persistent_jump_count()
     }
 }
 
@@ -851,5 +880,35 @@ mod tests {
             bbr2.pacing_rate.to_bytes_per_period(initial_rtt),
             (2.88499 * pacing_cwnd as f64) as u64
         );
+    }
+
+    #[rstest]
+    fn min_cwnd_packets_override(
+        #[values(None, Some(4), Some(40))] min_cwnd_packets: Option<usize>,
+    ) {
+        const INIT_PACKET_SIZE: usize = 1200;
+        const INIT_WINDOW_PACKETS: usize = 10;
+        const MAX_WINDOW_PACKETS: usize = 10000;
+        let initial_rtt = Duration::from_millis(333);
+        let bbr_params = &BbrParams {
+            min_cwnd_packets,
+            ..Default::default()
+        };
+
+        let bbr2 = BBRv2::new(
+            INIT_WINDOW_PACKETS,
+            MAX_WINDOW_PACKETS,
+            INIT_PACKET_SIZE,
+            initial_rtt,
+            Some(bbr_params),
+        );
+
+        // If not set, the initial congestion window is the lower bound.
+        let expected_lo =
+            min_cwnd_packets.unwrap_or(INIT_WINDOW_PACKETS) * INIT_PACKET_SIZE;
+        assert_eq!(bbr2.cwnd_limits.lo, expected_lo);
+        assert_eq!(bbr2.cwnd_limits.hi, MAX_WINDOW_PACKETS * INIT_PACKET_SIZE);
+        // The initial cwnd itself is not affected.
+        assert_eq!(bbr2.cwnd, INIT_WINDOW_PACKETS * INIT_PACKET_SIZE);
     }
 }

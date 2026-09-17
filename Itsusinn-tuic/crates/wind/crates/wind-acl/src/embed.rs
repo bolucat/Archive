@@ -1,6 +1,6 @@
 //! The degenerate embedding: `Vec<wind_rule::Rule>` → [`Ruleset`].
 //!
-//! Per `specs/acl-ir.md` §5 this is normative: the produced ruleset MUST route
+//! Per <https://rust-proxy.github.io/wind/acl-ir/> §5 this is normative: the produced ruleset MUST route
 //! identically to the legacy first-match-wins engine. It builds a single base
 //! chain whose policy is `Forward(default_outbound)` and whose rules carry one
 //! match plus a `Forward`/`Reject` verdict — no sets, maps, or extra chains.

@@ -637,7 +637,7 @@ impl Config {
     pub fn with_boring_ssl_ctx_builder(
         version: u32, tls_ctx_builder: boring::ssl::SslContextBuilder,
     ) -> Result<Config> {
-        Self::with_tls_ctx(version, tls::Context::from_boring(tls_ctx_builder))
+        Self::with_tls_ctx(version, tls::Context::from_boring(tls_ctx_builder)?)
     }
 
     fn with_tls_ctx(version: u32, tls_ctx: tls::Context) -> Result<Config> {
@@ -751,6 +751,16 @@ impl Config {
         self.tls_ctx.load_verify_locations_from_directory(dir)
     }
 
+    /// Configures the TLS curve preference list.
+    ///
+    /// `curves` is a colon-separated list of curve (a.k.a. group) names, in
+    /// order of preference, e.g. `"X25519MLKEM768:X25519:P-256:P-384"`.
+    /// Corresponds to `SSL_CTX_set1_curves_list` (a.k.a.
+    /// `SSL_CTX_set1_groups_list`).
+    pub fn set_curves_list(&mut self, curves: &str) -> Result<()> {
+        self.tls_ctx.set_curves_list(curves)
+    }
+
     /// Configures whether to verify the peer's certificate.
     ///
     /// This should usually be `true` for client-side connections and `false`
@@ -771,6 +781,9 @@ impl Config {
     }
 
     /// Configures whether to do path MTU discovery.
+    ///
+    /// PMTUD-driven packet limit updates are reported to the application
+    /// through [`PathEvent::PmtuUpdated`].
     ///
     /// The default value is `false`.
     pub fn discover_pmtu(&mut self, discover: bool) {
@@ -1619,18 +1632,17 @@ pub fn accept(
     accept_with_buf_factory(scid, odcid, local, peer, config)
 }
 
-/// Creates a new server-side connection, with a custom buffer generation
-/// method.
+/// Creates a server-side connection with custom buffer generation.
 ///
-/// The buffers generated can be anything that can be drereferenced as a byte
-/// slice. See [`accept`] and [`BufFactory`] for more info.
+/// The buffers generated can be anything that can be dereferenced as a byte
+/// slice. See [`accept`] and [`BufFactory`] for more information.
 #[inline]
 pub fn accept_with_buf_factory<F: BufFactory>(
     scid: &ConnectionId, odcid: Option<&ConnectionId>, local: SocketAddr,
     peer: SocketAddr, config: &mut Config,
 ) -> Result<Connection<F>> {
-    // For connections with `odcid` set, we historically used `retry_source_cid =
-    // scid`. Keep this behavior to preserve backwards compatibility.
+    // Connections with `odcid` historically used `scid` as the retry source
+    // CID. Preserve this behavior for backwards compatibility.
     // `accept_with_retry` allows the SCIDs to be specified separately.
     let retry_cids = odcid.map(|odcid| RetryConnectionIds {
         original_destination_cid: odcid,
@@ -2755,7 +2767,7 @@ impl<F: BufFactory> Connection<F> {
         // a borrowed view of `ssl`. The caller retains ownership of the
         // underlying BoringSSL object.
         let mut handshake = ManuallyDrop::new(unsafe {
-            tls::Handshake::from_ptr(ssl.as_ptr() as _)
+            tls::Handshake::from_ptr(ssl.as_ptr() as _)?
         });
 
         handshake.set_quic_transport_params(&params, is_server)
@@ -3303,8 +3315,8 @@ impl<F: BufFactory> Connection<F> {
                         .derive_next_packet_key()?,
                 ));
 
-                // `aead_next` is always `Some()` at this point, so the `unwrap()`
-                // will never fail.
+                // `aead_next` is always `Some` at this point, so the
+                // `unwrap()` will never fail.
                 aead = &aead_next.as_ref().unwrap().0;
             }
         }
@@ -3522,24 +3534,29 @@ impl<F: BufFactory> Connection<F> {
 
         // Process acked frames. Note that several packets from several paths
         // might have been acked by the received packet.
-        for (_, p) in self.paths.iter_mut() {
+        let (paths, path_events) = self.paths.iter_mut_and_events();
+        for (_, p) in paths {
             while let Some(acked) = p.recovery.next_acked_frame(epoch) {
                 match acked {
                     frame::Frame::Ping {
                         mtu_probe: Some(mtu_probe),
                     } => {
-                        if let Some(pmtud) = p.pmtud.as_mut() {
-                            trace!(
-                                "{} pmtud probe acked; probe size {:?}",
-                                self.trace_id,
-                                mtu_probe
-                            );
+                        trace!(
+                            "{} pmtud probe acked; probe size {:?}",
+                            self.trace_id,
+                            mtu_probe
+                        );
 
-                            // Ensure the probe is within the supported MTU range
-                            // before updating the max datagram size
-                            if let Some(current_mtu) =
-                                pmtud.successful_probe(mtu_probe)
-                            {
+                        let local = p.local_addr();
+                        let peer = p.peer_addr();
+                        if let Some(pmtud) = p.pmtud.as_mut() {
+                            let old_pmtu = pmtud.get_current_mtu();
+                            let current_mtu = pmtud.successful_probe(mtu_probe);
+                            let new_pmtu = pmtud.get_current_mtu();
+
+                            // Update the datagram size only after validating
+                            // the MTU.
+                            if let Some(current_mtu) = current_mtu {
                                 qlog_with_type!(
                                     EventType::QuicEventType(
                                         QuicEventType::MtuUpdated
@@ -3567,6 +3584,12 @@ impl<F: BufFactory> Connection<F> {
 
                                 p.recovery
                                     .pmtud_update_max_datagram_size(current_mtu);
+                            }
+
+                            if let Some(event) =
+                                path::pmtu_event(local, peer, old_pmtu, new_pmtu)
+                            {
+                                path_events.push_back(event);
                             }
                         }
                     },
@@ -3657,10 +3680,9 @@ impl<F: BufFactory> Connection<F> {
                             self.streams.collect(stream_id, local);
                         }
 
-                        // Update tx_bufferd to reflect any data that was dropped
-                        // from stream buffers (e.g., data
-                        // marked for retransmission but then
-                        // acked before it could be resent).
+                        // Update `tx_buffered` for data dropped from stream
+                        // buffers, such as retransmission data acknowledged
+                        // before it could be resent.
                         if dropped > 0 {
                             self.streams.sub_tx_buffered(dropped);
                         }
@@ -4004,7 +4026,7 @@ impl<F: BufFactory> Connection<F> {
 
         let send_path = self.paths.get_mut(send_pid)?;
 
-        // Update max datagram size to allow path MTU discovery probe to be sent.
+        // Increase the maximum datagram size for a PMTUD probe.
         if let Some(pmtud) = send_path.pmtud.as_mut() {
             if pmtud.should_probe() {
                 let size = if self.handshake_confirmed || self.handshake_completed
@@ -4129,7 +4151,8 @@ impl<F: BufFactory> Connection<F> {
         let crypto_ctx = &mut self.crypto_ctx[epoch];
 
         // Process lost frames. There might be several paths having lost frames.
-        for (_, p) in self.paths.iter_mut() {
+        let (paths, path_events) = self.paths.iter_mut_and_events();
+        for (_, p) in paths {
             while let Some(lost) = p.recovery.next_lost_frame(epoch) {
                 match lost {
                     frame::Frame::CryptoHeader { offset, length } => {
@@ -4293,9 +4316,22 @@ impl<F: BufFactory> Connection<F> {
                     frame::Frame::Ping { mtu_probe } => {
                         // Ping frames are not retransmitted.
                         if let Some(failed_probe) = mtu_probe {
+                            trace!("pmtud probe dropped: {failed_probe}");
+
+                            let local = p.local_addr();
+                            let peer = p.peer_addr();
                             if let Some(pmtud) = p.pmtud.as_mut() {
-                                trace!("pmtud probe dropped: {failed_probe}");
+                                let old_pmtu = pmtud.get_current_mtu();
                                 pmtud.failed_probe(failed_probe);
+                                let new_pmtu = pmtud.get_current_mtu();
+
+                                if let Some(event) = path::pmtu_event(
+                                    local, peer, old_pmtu, new_pmtu,
+                                ) {
+                                    p.recovery
+                                        .pmtud_update_max_datagram_size(new_pmtu);
+                                    path_events.push_back(event);
+                                }
                             }
                         }
                     },
@@ -4495,9 +4531,10 @@ impl<F: BufFactory> Connection<F> {
         let mut in_flight = false;
         let mut is_pmtud_probe = false;
         let mut has_data = false;
+        let mut stream_data_skipped = false;
 
-        // Whether or not we should explicitly elicit an ACK via PING frame if we
-        // implicitly elicit one otherwise.
+        // Whether a PING frame must explicitly elicit an ACK when no other
+        // frame does so implicitly.
         let ack_elicit_required = path.recovery.should_elicit_ack(epoch);
 
         let header_offset = b.off();
@@ -4578,15 +4615,12 @@ impl<F: BufFactory> Connection<F> {
         if pkt_type == Type::Short {
             // Create PMTUD probe.
             //
-            // In order to send a PMTUD probe the current `left` value, which was
-            // already limited by the current PMTU measure, needs to be ignored,
-            // but the outgoing packet still needs to be limited by
-            // the output buffer size, as well as the congestion
-            // window.
+            // A PMTUD probe must ignore `left`, which is already limited by the
+            // current PMTU. The probe remains limited by the output buffer and
+            // congestion window.
             //
-            // In addition, the PMTUD probe is only generated when the handshake
-            // is confirmed, to avoid interfering with the handshake
-            // (e.g. due to the anti-amplification limits).
+            // Generate PMTUD probes only after handshake confirmation to avoid
+            // interference from anti-amplification limits.
             if let Ok(active_path) = self.paths.get_active_mut() {
                 let should_probe_pmtu = active_path.should_send_pmtu_probe(
                     self.handshake_confirmed,
@@ -4615,11 +4649,11 @@ impl<F: BufFactory> Connection<F> {
                                 // We can't send more because there isn't enough
                                 // space available in the output buffer.
                                 //
-                                // This usually happens when we try to send a new
-                                // packet but failed because cwnd is almost full.
+                                // The congestion window is nearly full. A new
+                                // packet does not fit.
                                 //
-                                // In such case app_limited is set to false here
-                                // to make cwnd grow when ACK is received.
+                                // Clear the app-limited state so ACKs can grow
+                                // the congestion window.
                                 active_path.recovery.update_app_limited(false);
                                 return Err(Error::Done);
                             },
@@ -5229,6 +5263,23 @@ impl<F: BufFactory> Connection<F> {
                 let (len, fin) =
                     stream.send.emit(&mut stream_payload.as_mut()[..max_len])?;
 
+                // Don't emit an empty non-fin STREAM frame when only its
+                // header fits: it would carry no data but still advance the
+                // peer's largest received offset.
+                if len == 0 && !fin {
+                    stream_data_skipped = true;
+
+                    // Rotate incremental streams so a stream whose header
+                    // doesn't leave room for data doesn't block the others.
+                    if stream.incremental {
+                        let priority_key = Arc::clone(&stream.priority_key);
+                        self.streams.remove_flushable(&priority_key);
+                        self.streams.insert_flushable(&priority_key);
+                    }
+
+                    break;
+                }
+
                 // Encode the frame's header.
                 //
                 // Due to how `OctetsMut::split_at()` works, `stream_hdr` starts
@@ -5262,7 +5313,7 @@ impl<F: BufFactory> Connection<F> {
                 }
 
                 let priority_key = Arc::clone(&stream.priority_key);
-                // If the stream is no longer flushable, remove it from the queue
+                // Remove the stream when it is no longer flushable.
                 if !stream.is_flushable() {
                     self.streams.remove_flushable(&priority_key);
                 } else if stream.incremental {
@@ -5311,7 +5362,9 @@ impl<F: BufFactory> Connection<F> {
             path.recovery.ping_sent(epoch);
         }
 
+        // Pending stream data means the sender is size-, not app-limited.
         if !has_data &&
+            !stream_data_skipped &&
             !dgram_emitted &&
             cwnd_available > frame::MAX_STREAM_OVERHEAD
         {
@@ -5531,7 +5584,7 @@ impl<F: BufFactory> Connection<F> {
     ) -> Result<()> {
         let path = self.paths.get_mut(send_pid)?;
 
-        // It's fine to set the skip counter based on a non-active path's values.
+        // The skip counter may use values from an inactive path.
         let cwnd = path.recovery.cwnd();
         let max_datagram_size = path.recovery.max_datagram_size();
         self.pkt_num_spaces[epoch].on_packet_sent(&sent_pkt);
@@ -6271,12 +6324,9 @@ impl<F: BufFactory> Connection<F> {
                 // inflight data.
                 self.streams.sub_tx_buffered(buffered_len);
 
-                // These drops in qlog are a bit weird, but the only way to ensure
-                // that all bytes that are moved from App to Transport in
-                // stream_do_send are eventually moved from Transport to Dropped.
-                // Ideally we would add a Transport to Network transition also as
-                // a way to indicate when bytes were transmitted vs dropped
-                // without ever being sent.
+                // Match App-to-Transport moves with Transport-to-Dropped moves.
+                // A Network transition would distinguish sent bytes from drops
+                // before transmission.
                 qlog_with_type!(QLOG_DATA_MV, self.qlog, q, {
                     let ev_data = EventData::QuicStreamDataMoved(
                         qlog::events::quic::StreamDataMoved {
@@ -6383,6 +6433,33 @@ impl<F: BufFactory> Connection<F> {
         };
 
         stream.is_readable()
+    }
+
+    /// Returns the number of contiguous bytes buffered for a stream, up to
+    /// `max_len`.
+    ///
+    /// This is the length of the contiguous, in-order data buffered at the
+    /// stream's current read offset, i.e. the bytes a call to [`stream_recv`]
+    /// would return right now. Data received out of order that sits behind a
+    /// gap is not counted, so this never reports bytes that are not yet
+    /// readable.
+    ///
+    /// This is a companion to [`stream_readable`], which only reports *whether*
+    /// data is available; this reports *how much*. It is intended for sizing a
+    /// receive buffer. The cost is proportional to the number of contiguous
+    /// buffered chunks at the front of the stream, up to `max_len`, and no data
+    /// is copied.
+    ///
+    /// Returns 0 if the stream does not exist.
+    ///
+    /// [`stream_recv`]: struct.Connection.html#method.stream_recv
+    /// [`stream_readable`]: struct.Connection.html#method.stream_readable
+    pub fn stream_readable_len(&self, stream_id: u64, max_len: usize) -> usize {
+        match self.streams.get(stream_id) {
+            Some(s) => s.recv.readable_len(max_len),
+
+            None => 0,
+        }
     }
 
     /// Returns the next stream that can be written to.
@@ -6672,8 +6749,8 @@ impl<F: BufFactory> Connection<F> {
 
         if let Some(max_datagram_size) = max_datagram_size {
             if self.is_established() {
-                // We cap the maximum packet size to 16KB or so, so that it can be
-                // always encoded with a 2-byte varint.
+                // Cap the packet size at 16,383 bytes so a two-byte varint can
+                // always encode it.
                 return cmp::min(16383, max_datagram_size);
             }
         }
@@ -7550,7 +7627,7 @@ impl<F: BufFactory> Connection<F> {
             });
         }
 
-        // When no packet was successfully processed close connection immediately.
+        // Close immediately if no packet was processed successfully.
         if self.recv_count == 0 {
             self.mark_closed();
         }
@@ -7673,13 +7750,32 @@ impl<F: BufFactory> Connection<F> {
     /// Revalidates the PMTU for the active path by sending a new probe packet
     /// of PMTU size. If the probe is dropped PMTUD will restart and find a new
     /// valid PMTU.
+    ///
+    /// If revalidation invalidates a previously discovered larger size, a
+    /// [`PathEvent::PmtuUpdated`] event is queued with QUIC's minimum packet
+    /// size. Further events report larger sizes as probes validate them.
     #[inline]
     pub fn revalidate_pmtu(&mut self) {
-        if let Ok(active_path) = self.paths.get_active_mut() {
-            if let Some(pmtud) = active_path.pmtud.as_mut() {
-                pmtud.revalidate_pmtu();
-            }
-        }
+        let Ok(active_path) = self.paths.get_active_mut() else {
+            return;
+        };
+
+        let local = active_path.local_addr();
+        let peer = active_path.peer_addr();
+        let Some(pmtud) = active_path.pmtud.as_mut() else {
+            return;
+        };
+
+        let old_pmtu = pmtud.get_current_mtu();
+        pmtud.revalidate_pmtu();
+
+        let Some(event) =
+            path::pmtu_event(local, peer, old_pmtu, pmtud.get_current_mtu())
+        else {
+            return;
+        };
+
+        self.paths.notify_event(event);
     }
 
     /// Returns true if the connection handshake is complete.
@@ -8011,74 +8107,71 @@ impl<F: BufFactory> Connection<F> {
             return self.handshake.process_post_handshake(&mut ex_data);
         }
 
-        match self.handshake.do_handshake(&mut ex_data) {
-            Ok(_) => (),
+        let handshake_needs_retry =
+            match self.handshake.do_handshake(&mut ex_data) {
+                Ok(_) => false,
+                Err(Error::Done) => true,
+                Err(e) => return Err(e),
+            };
 
-            Err(Error::Done) => {
-                // Apply in-handshake configuration from callbacks if the path's
-                // Recovery module can still be reinitilized.
-                if self
-                    .paths
-                    .get_active()
-                    .map(|p| p.can_reinit_recovery())
-                    .unwrap_or(false)
-                {
-                    if ex_data.recovery_config != self.recovery_config {
-                        if let Ok(path) = self.paths.get_active_mut() {
-                            self.recovery_config = ex_data.recovery_config;
-                            path.reinit_recovery(&self.recovery_config);
-                        }
-                    }
-
-                    if ex_data.tx_cap_factor != self.tx_cap_factor {
-                        self.tx_cap_factor = ex_data.tx_cap_factor;
-                    }
-
-                    if let Some((discover, max_probes)) = ex_data.pmtud {
-                        self.paths.set_discover_pmtu_on_existing_paths(
-                            discover,
-                            self.recovery_config.max_send_udp_payload_size,
-                            max_probes,
-                        );
-                    }
-
-                    if ex_data.local_transport_params !=
-                        self.local_transport_params
-                    {
-                        self.streams.set_max_streams_bidi(
-                            ex_data
-                                .local_transport_params
-                                .initial_max_streams_bidi,
-                        );
-
-                        self.local_transport_params =
-                            ex_data.local_transport_params;
-                    }
+        // BoringSSL reports success when entering early data before the
+        // handshake completes. Apply callback configuration after either
+        // non-fatal outcome so it is not lost on that path.
+        if self
+            .paths
+            .get_active()
+            .map(|p| p.can_reinit_recovery())
+            .unwrap_or(false)
+        {
+            if ex_data.recovery_config != self.recovery_config {
+                if let Ok(path) = self.paths.get_active_mut() {
+                    self.recovery_config = ex_data.recovery_config;
+                    path.reinit_recovery(&self.recovery_config);
                 }
+            }
 
-                // Try to parse transport parameters as soon as the first flight
-                // of handshake data is processed.
-                //
-                // This is potentially dangerous as the handshake hasn't been
-                // completed yet, though it's required to be able to send data
-                // in 0.5 RTT.
-                let raw_params = self.handshake.quic_transport_params();
+            if ex_data.tx_cap_factor != self.tx_cap_factor {
+                self.tx_cap_factor = ex_data.tx_cap_factor;
+            }
 
-                if !self.parsed_peer_transport_params && !raw_params.is_empty() {
-                    let peer_params = TransportParams::decode(
-                        raw_params,
-                        self.is_server,
-                        self.peer_transport_params_track_unknown,
-                    )?;
+            if let Some((discover, max_probes)) = ex_data.pmtud {
+                self.paths.set_discover_pmtu_on_existing_paths(
+                    discover,
+                    self.recovery_config.max_send_udp_payload_size,
+                    max_probes,
+                );
+            }
 
-                    self.parse_peer_transport_params(peer_params)?;
-                }
+            if ex_data.local_transport_params != self.local_transport_params {
+                self.streams.set_max_streams_bidi(
+                    ex_data.local_transport_params.initial_max_streams_bidi,
+                );
 
-                return Ok(());
-            },
+                self.local_transport_params = ex_data.local_transport_params;
+            }
+        }
 
-            Err(e) => return Err(e),
-        };
+        if handshake_needs_retry {
+            // Try to parse transport parameters as soon as the first flight of
+            // handshake data is processed.
+            //
+            // This is potentially dangerous as the handshake hasn't been
+            // completed yet, though it's required to be able to send data in
+            // 0.5 RTT.
+            let raw_params = self.handshake.quic_transport_params();
+
+            if !self.parsed_peer_transport_params && !raw_params.is_empty() {
+                let peer_params = TransportParams::decode(
+                    raw_params,
+                    self.is_server,
+                    self.peer_transport_params_track_unknown,
+                )?;
+
+                self.parse_peer_transport_params(peer_params)?;
+            }
+
+            return Ok(());
+        }
 
         self.handshake_completed = self.handshake.is_completed();
 
@@ -8317,8 +8410,7 @@ impl<F: BufFactory> Connection<F> {
                     let largest_acked =
                         p.recovery.get_largest_acked_on_epoch(epoch);
 
-                    // Consider the skip_pn validated if the peer has sent an ack
-                    // for a larger pkt number.
+                    // A higher ACK validates `skip_pn`.
                     if let Some((largest_acked, skip_pn)) =
                         largest_acked.zip(skip_pn)
                     {
@@ -8442,12 +8534,10 @@ impl<F: BufFactory> Connection<F> {
                     // inflight data.
                     self.streams.sub_tx_buffered(buffered_len);
 
-                    // These drops in qlog are a bit weird, but the only way to
-                    // ensure that all bytes that are moved from App to Transport
-                    // in stream_do_send are eventually moved from Transport to
-                    // Dropped.  Ideally we would add a Transport to Network
-                    // transition also as a way to indicate when bytes were
-                    // transmitted vs dropped without ever being sent.
+                    // Match moves from App to Transport with moves from
+                    // Transport to Dropped.
+                    // A Network transition would distinguish sent bytes from
+                    // drops before transmission.
                     qlog_with_type!(QLOG_DATA_MV, self.qlog, q, {
                         let ev_data = EventData::QuicStreamDataMoved(
                             qlog::events::quic::StreamDataMoved {
@@ -8609,8 +8699,8 @@ impl<F: BufFactory> Connection<F> {
 
                 let priority_key = Arc::clone(&stream.priority_key);
 
-                // If the stream is now flushable push it to the flushable queue,
-                // but only if it wasn't already queued.
+                // If the stream became flushable, add it to the queue unless it
+                // is already present.
                 if stream.is_flushable() && !was_flushable {
                     let priority_key = Arc::clone(&stream.priority_key);
                     self.streams.insert_flushable(&priority_key);
@@ -8909,18 +8999,18 @@ impl<F: BufFactory> Connection<F> {
         // Enter the app-limited phase of delivery rate when these conditions
         // are met:
         //
-        // - The remaining capacity is higher than available bytes in cwnd (there
+        // - The remaining capacity exceeds the available bytes in CWND (there
         //   is more room to send).
-        // - New data since the last send() is smaller than available bytes in
-        //   cwnd (we queued less than what we can send).
-        // - There is room to send more data in cwnd.
+        // - New data since the last `send()` is smaller than available bytes in
+        //   CWND (we queued less than what we can send).
+        // - CWND has room for more data.
         //
         // In application-limited phases the transmission rate is limited by the
         // application rather than the congestion control algorithm.
         //
-        // Note that this is equivalent to CheckIfApplicationLimited() from the
-        // delivery rate draft. This is also separate from `recovery.app_limited`
-        // and only applies to delivery rate calculation.
+        // This mirrors `CheckIfApplicationLimited()` from the delivery-rate
+        // draft but affects only delivery-rate calculation, not
+        // `recovery.app_limited`.
         let cwin_available = self
             .paths
             .iter()
@@ -9003,32 +9093,17 @@ impl<F: BufFactory> Connection<F> {
             in_scid_pid = None;
         }
 
-        if let Some(in_scid_pid) = in_scid_pid {
-            // This CID has been used by another path. If we have the
-            // room to do so, create a new `Path` structure holding this
-            // new 4-tuple. Otherwise, drop the packet.
-            let old_path = self.paths.get_mut(in_scid_pid)?;
-            let old_local_addr = old_path.local_addr();
-            let old_peer_addr = old_path.peer_addr();
+        // Capture old path info before insert_path() so we can emit the
+        // ReusedSourceConnectionId event after successful insertion. This
+        // ensures the event count is bounded by path Slab capacity.
+        let reused_cid_info = match in_scid_pid {
+            Some(pid) => {
+                let old_path = self.paths.get(pid)?;
+                Some((pid, old_path.local_addr(), old_path.peer_addr()))
+            },
 
-            trace!(
-                "{} reused CID seq {} of ({},{}) (path {}) on ({},{})",
-                self.trace_id,
-                in_scid_seq,
-                old_local_addr,
-                old_peer_addr,
-                in_scid_pid,
-                info.to,
-                info.from
-            );
-
-            // Notify the application.
-            self.paths.notify_event(PathEvent::ReusedSourceConnectionId(
-                in_scid_seq,
-                (old_local_addr, old_peer_addr),
-                (info.to, info.from),
-            ));
-        }
+            None => None,
+        };
 
         // This is a new path using an unassigned CID; create it!
         let mut path = path::Path::new(
@@ -9048,9 +9123,33 @@ impl<F: BufFactory> Connection<F> {
 
         let pid = self.paths.insert_path(path, self.is_server)?;
 
-        // Do not record path reuse.
-        if in_scid_pid.is_none() {
-            ids.link_scid_to_path_id(in_scid_seq, pid)?;
+        // Notify the application of CID reuse only after the path was
+        // successfully admitted. This bounds event queue growth by path Slab
+        // capacity, preventing an attacker from growing the queue unboundedly
+        // by rotating source ports.
+        match reused_cid_info {
+            Some((old_pid, old_local_addr, old_peer_addr)) => {
+                trace!(
+                    "{} reused CID seq {} of ({},{}) (path {}) on ({},{})",
+                    self.trace_id,
+                    in_scid_seq,
+                    old_local_addr,
+                    old_peer_addr,
+                    old_pid,
+                    info.to,
+                    info.from
+                );
+
+                self.paths.notify_event(PathEvent::ReusedSourceConnectionId(
+                    in_scid_seq,
+                    (old_local_addr, old_peer_addr),
+                    (info.to, info.from),
+                ));
+            },
+
+            None => {
+                ids.link_scid_to_path_id(in_scid_seq, pid)?;
+            },
         }
 
         Ok(pid)
@@ -9468,6 +9567,8 @@ pub use crate::path::SocketAddrIter;
 
 pub use crate::recovery::BbrBwLoReductionStrategy;
 pub use crate::recovery::BbrParams;
+#[cfg(feature = "internal")]
+pub use crate::recovery::BbrRttJumpDetector;
 pub use crate::recovery::CongestionControlAlgorithm;
 pub use crate::recovery::StartupExit;
 pub use crate::recovery::StartupExitReason;

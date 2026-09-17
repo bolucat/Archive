@@ -264,6 +264,7 @@ fn resolve_outbound(oc: OutboundConfig) -> eyre::Result<ResolvedOutbound> {
 				tag: t.tag,
 				opts: TuicOutboundOpts {
 					peer_addr,
+					peer_resolver: None,
 					sni: t.sni,
 					auth: (t.uuid, t.password.as_bytes().to_vec().into()),
 					zero_rtt_handshake: t.zero_rtt_handshake,
@@ -283,6 +284,7 @@ fn resolve_outbound(oc: OutboundConfig) -> eyre::Result<ResolvedOutbound> {
 					stream_receive_window: None,
 					max_idle_time: None,
 					udp_relay_mode: TuicUdpRelayMode::Native,
+					socket_factory: None,
 				},
 			})
 		}

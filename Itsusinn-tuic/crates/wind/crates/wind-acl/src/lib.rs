@@ -1,7 +1,7 @@
 //! `wind-acl` — an nftables-shaped intermediate representation for wind ACL
 //! routing.
 //!
-//! This crate implements the design in `specs/acl-ir.md`: a [`Ruleset`] of
+//! This crate implements the design in <https://rust-proxy.github.io/wind/acl-ir/>: a [`Ruleset`] of
 //! typed [`Match`] expressions, [`NamedSet`]s, [`VerdictMap`]s, and [`Chain`]s
 //! evaluated with statement-then-verdict, chain-jump semantics. It keeps the L7
 //! match vocabulary (domain / process / inbound identity / …) that nftables

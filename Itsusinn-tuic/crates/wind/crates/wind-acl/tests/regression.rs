@@ -1,6 +1,6 @@
 //! Zero-regression and optimizer tests for `wind-acl`.
 //!
-//! The core guarantee (`specs/acl-ir.md` §5) is that the degenerate embedding
+//! The core guarantee (<https://rust-proxy.github.io/wind/acl-ir/> §5) is that the degenerate embedding
 //! routes identically to the legacy first-match-wins engine, and that the
 //! optimizer (§7) preserves that. We assert it differentially: for a large grid
 //! of `MatchContext`s, the legacy reference, the embedded ruleset, and the

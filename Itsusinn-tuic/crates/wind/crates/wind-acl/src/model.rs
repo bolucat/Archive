@@ -1,7 +1,7 @@
 //! The `acl-ir` data model: matches, statements, verdicts, sets, maps, chains,
 //! and the top-level [`Ruleset`].
 //!
-//! This mirrors the types in `specs/acl-ir.md`. Where the spec lists a typed
+//! This mirrors the types in <https://rust-proxy.github.io/wind/acl-ir/>. Where the spec lists a typed
 //! leaf for every Mihomo rule kind, this first implementation gives bespoke
 //! typed variants to the *optimizer-relevant* subset (domain / ip / port /
 //! proto) and routes everything else through [`Match::Predicate`], which wraps

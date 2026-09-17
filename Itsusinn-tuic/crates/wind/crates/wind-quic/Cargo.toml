@@ -83,7 +83,7 @@ h3 = { version = "0.0.8", optional = true }
 # QUIC with quiche / tokio-quiche. `quiche_internal` unlocks
 # `quiche::Config::set_custom_bbr_params` (gated behind quiche's `internal`
 # feature) so the quiche backend can apply per-connection BBR tuning.
-tokio-quiche = { version = "0.19", optional = true, features = ["quiche_internal"] }
+tokio-quiche = { version = "0.20", optional = true, features = ["quiche_internal"] }
 boring = { version = "4", default-features = false, optional = true }
 boring-sys = { version = "4", default-features = false, optional = true }
 foreign-types-shared = { version = "0.3", optional = true }

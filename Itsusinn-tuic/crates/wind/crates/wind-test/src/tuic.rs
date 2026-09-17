@@ -160,7 +160,7 @@ mod tests {
 	use wind_tuic::quinn::{
 		CongestionControl, UdpRelayMode,
 		inbound::{TuicInbound, TuicInboundOpts},
-		outbound::{ReconnectConfig, TuicOutbound, TuicOutboundOpts},
+		outbound::{PeerResolver, ReconnectConfig, TuicOutbound, TuicOutboundOpts, UdpSocketFactory},
 	};
 
 	use super::*;
@@ -222,6 +222,14 @@ mod tests {
 	/// `Drop` guard and can't surrender a field by move.
 	async fn spawn_tuic_server() -> eyre::Result<(Arc<AppContext>, SocketAddr, Uuid, tokio::task::JoinHandle<eyre::Result<()>>)>
 	{
+		spawn_tuic_server_with(false).await
+	}
+
+	/// As [`spawn_tuic_server`], but lets the caller enable 0-RTT early data on
+	/// the inbound (`max_early_data_size` + `into_0rtt()` accept path).
+	async fn spawn_tuic_server_with(
+		zero_rtt: bool,
+	) -> eyre::Result<(Arc<AppContext>, SocketAddr, Uuid, tokio::task::JoinHandle<eyre::Result<()>>)> {
 		let (cert, key) = generate_tuic_test_cert();
 		let uuid = Uuid::new_v4();
 		let mut users = HashMap::new();
@@ -243,7 +251,7 @@ mod tests {
 			users,
 			auth_timeout: Duration::from_secs(5),
 			max_idle_time: Duration::from_secs(30),
-			zero_rtt: false,
+			zero_rtt,
 			..Default::default()
 		};
 
@@ -261,18 +269,27 @@ mod tests {
 	/// Used by the graceful-shutdown tests, which need a client whose lifetime
 	/// is independent of the [`TuicTestSetup`] `Drop` guard.
 	async fn connect_client(addr: SocketAddr, uuid: Uuid) -> eyre::Result<Arc<TuicOutbound>> {
-		connect_client_with(addr, uuid, ReconnectConfig::default()).await
+		connect_client_with(addr, uuid, ReconnectConfig::default(), None, false).await
 	}
 
-	/// As [`connect_client`], but with an explicit reconnect policy — lets
-	/// tests disable reconnect or tune its backoff.
-	async fn connect_client_with(addr: SocketAddr, uuid: Uuid, reconnect: ReconnectConfig) -> eyre::Result<Arc<TuicOutbound>> {
+	/// As [`connect_client`], but with an explicit reconnect policy, an
+	/// optional peer resolver, and the `zero_rtt_handshake` flag — lets tests
+	/// disable reconnect, tune its backoff, verify that DNS re-resolution
+	/// drives the reconnect target, or exercise the 0-RTT resumption path.
+	async fn connect_client_with(
+		addr: SocketAddr,
+		uuid: Uuid,
+		reconnect: ReconnectConfig,
+		peer_resolver: Option<PeerResolver>,
+		zero_rtt_handshake: bool,
+	) -> eyre::Result<Arc<TuicOutbound>> {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicOutboundOpts {
 			peer_addr: addr,
+			peer_resolver,
 			sni: "localhost".to_string(),
 			auth: (uuid, Arc::from(TEST_PASSWORD)),
-			zero_rtt_handshake: false,
+			zero_rtt_handshake,
 			heartbeat: Duration::from_secs(5),
 			gc_interval: Duration::from_secs(5),
 			gc_lifetime: Duration::from_secs(30),
@@ -287,6 +304,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: None,
 		};
 		let client = Arc::new(TuicOutbound::new(ctx, opts).await?);
 		let poll_client = client.clone();
@@ -304,6 +322,7 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicOutboundOpts {
 			peer_addr: setup.server_addr,
+			peer_resolver: None,
 			sni: "localhost".to_string(),
 			auth: (setup.uuid, Arc::from(TEST_PASSWORD)),
 			zero_rtt_handshake: false,
@@ -321,6 +340,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: None,
 		};
 		let client: std::sync::Arc<TuicOutbound> = std::sync::Arc::new(TuicOutbound::new(ctx.clone(), opts).await?);
 		let poll_client = client.clone();
@@ -332,6 +352,61 @@ mod tests {
 		);
 		tokio::time::sleep(Duration::from_millis(100)).await;
 		Ok(client)
+	}
+
+	/// The caller-supplied socket factory must drive the QUIC endpoint socket:
+	/// this is how a consumer applies Linux `SO_MARK` / interface binding. A
+	/// regression here would silently fall back to Wind's own unmarked socket.
+	#[tokio::test]
+	async fn socket_factory_supplies_the_endpoint_socket() {
+		use std::sync::atomic::{AtomicBool, Ordering};
+
+		let setup = setup_tuic_server().await.expect("start TUIC server");
+		let ctx = Arc::new(AppContext::default());
+
+		let called = Arc::new(AtomicBool::new(false));
+		let factory_called = called.clone();
+		let socket_factory: UdpSocketFactory = Arc::new(move |peer: SocketAddr| {
+			factory_called.store(true, Ordering::SeqCst);
+			let bind_addr = if peer.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+			let socket = std::net::UdpSocket::bind(bind_addr)?;
+			socket.set_nonblocking(true)?;
+			Ok(socket)
+		});
+
+		let opts = TuicOutboundOpts {
+			peer_addr: setup.server_addr,
+			peer_resolver: None,
+			sni: "localhost".to_string(),
+			auth: (setup.uuid, Arc::from(TEST_PASSWORD)),
+			zero_rtt_handshake: false,
+			heartbeat: Duration::from_secs(5),
+			gc_interval: Duration::from_secs(5),
+			gc_lifetime: Duration::from_secs(30),
+			skip_cert_verify: true,
+			alpn: vec!["h3".to_string()],
+			reconnect: ReconnectConfig::default(),
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: Some(socket_factory),
+		};
+
+		let client = Arc::new(TuicOutbound::new(ctx, opts).await.expect("connect through factory socket"));
+		assert!(called.load(Ordering::SeqCst), "socket factory was not invoked");
+
+		let poll_client = client.clone();
+		tokio::spawn(
+			async move {
+				let _ = poll_client.start_poll().await;
+			}
+			.in_current_span(),
+		);
 	}
 
 	/// A UDP association must be torn down when its local stream closes:
@@ -401,6 +476,7 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicOutboundOpts {
 			peer_addr: setup.server_addr,
+			peer_resolver: None,
 			sni: "localhost".to_string(),
 			auth: (setup.uuid, Arc::from(b"wrong_password_123".as_slice())),
 			zero_rtt_handshake: false,
@@ -418,6 +494,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: None,
 		};
 		let result: eyre::Result<TuicOutbound> = TuicOutbound::new(ctx, opts).await;
 		assert!(
@@ -436,6 +513,7 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicOutboundOpts {
 			peer_addr: setup.server_addr,
+			peer_resolver: None,
 			sni: "localhost".to_string(),
 			auth: (Uuid::new_v4(), Arc::from(TEST_PASSWORD)),
 			zero_rtt_handshake: false,
@@ -453,6 +531,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: None,
 		};
 		let result: eyre::Result<TuicOutbound> = TuicOutbound::new(ctx, opts).await;
 		assert!(
@@ -703,6 +782,7 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicOutboundOpts {
 			peer_addr: setup.server_addr,
+			peer_resolver: None,
 			sni: "localhost".to_string(),
 			auth: (setup.uuid, Arc::from(TEST_PASSWORD)),
 			zero_rtt_handshake: false,
@@ -720,6 +800,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: UdpRelayMode::Quic,
+			socket_factory: None,
 		};
 		let client = Arc::new(TuicOutbound::new(ctx, opts).await.expect("connect tuic client"));
 		let poll_client = client.clone();
@@ -922,6 +1003,133 @@ mod tests {
 		ctx2.token.cancel();
 	}
 
+	/// 0-RTT resumption: once a session ticket is cached, a forced reconnect
+	/// with `zero_rtt_handshake` enabled must take the `into_0rtt()` path and
+	/// still authenticate and relay. rustls only exposes the TUIC exporter
+	/// after the handshake, so the auth command itself stays 1-RTT; the
+	/// `0-RTT resumption accepted` log proves the resumption path actually ran
+	/// (the flag is otherwise dead, which is the regression this guards).
+	#[tracing_test::traced_test]
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn test_client_reconnect_uses_zero_rtt_resumption() {
+		use tokio::net::TcpListener;
+
+		let echo = TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let echo_port = echo.local_addr().unwrap().port();
+		tokio::spawn(async move {
+			while let Ok((mut s, _)) = echo.accept().await {
+				tokio::spawn(async move {
+					let (mut r, mut w) = s.split();
+					let _ = tokio::io::copy(&mut r, &mut w).await;
+				});
+			}
+		});
+
+		// Server advertises 0-RTT early data; client attempts it on reconnect.
+		let (ctx, server_addr, uuid, _listen) = spawn_tuic_server_with(true).await.expect("start 0-RTT TUIC server");
+		let client = connect_client_with(server_addr, uuid, ReconnectConfig::default(), None, true)
+			.await
+			.expect("connect 0-RTT client");
+
+		let got = proxy_echo_once(&client, echo_port, b"before")
+			.await
+			.expect("initial proxied echo must succeed");
+		assert_eq!(got, b"before");
+
+		// Let the server's NewSessionTicket arrive and be cached by rustls
+		// before dropping the connection.
+		tokio::time::sleep(Duration::from_millis(500)).await;
+
+		// Force the supervisor to reconnect without touching the server: a
+		// restart would clear its in-memory resumption state and defeat the
+		// test.
+		client.connection.load_full().inner().close(0u32.into(), b"force reconnect");
+
+		let mut reconnected = false;
+		for _ in 0..60 {
+			if let Ok(got) = proxy_echo_once(&client, echo_port, b"after").await
+				&& got == b"after"
+			{
+				reconnected = true;
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(250)).await;
+		}
+		assert!(reconnected, "client did not reconnect and relay over the 0-RTT path");
+
+		assert!(
+			logs_contain("0-RTT resumption accepted"),
+			"reconnect did not take the into_0rtt() path; zero_rtt_handshake is not wired into the outbound"
+		);
+
+		ctx.token.cancel();
+	}
+
+	/// The supervisor must re-resolve the peer before reconnecting: the client
+	/// connects to server A, but its resolver points at server B, so once A
+	/// goes away the fresh connection lands on B. Without re-resolution the
+	/// reconnect keeps dialing the dead A and never recovers.
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn test_client_re_resolves_peer_on_reconnect() {
+		use tokio::net::TcpListener;
+
+		let echo = TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let echo_port = echo.local_addr().unwrap().port();
+		tokio::spawn(async move {
+			while let Ok((mut s, _)) = echo.accept().await {
+				tokio::spawn(async move {
+					let (mut r, mut w) = s.split();
+					let _ = tokio::io::copy(&mut r, &mut w).await;
+				});
+			}
+		});
+
+		// Distinct loopback addresses for the initial server and the failover.
+		let probe_a = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+		let addr_a = probe_a.local_addr().unwrap();
+		drop(probe_a);
+		let probe_b = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+		let addr_b = probe_b.local_addr().unwrap();
+		drop(probe_b);
+
+		let uuid = Uuid::new_v4();
+
+		let (ctx_a, handle_a) = spawn_server_on(addr_a, uuid).await;
+		let (ctx_b, _handle_b) = spawn_server_on(addr_b, uuid).await;
+
+		// The resolver only returns the failover target; the initial connection
+		// still goes to `peer_addr` (server A).
+		let resolver: PeerResolver = Arc::new(move || Box::pin(async move { Ok(addr_b) }));
+		let client = connect_client_with(addr_a, uuid, ReconnectConfig::default(), Some(resolver), false)
+			.await
+			.expect("connect client");
+
+		let got = proxy_echo_once(&client, echo_port, b"before")
+			.await
+			.expect("initial proxied echo must succeed");
+		assert_eq!(got, b"before");
+
+		// Kill A. The supervisor notices the drop, re-resolves to B, and
+		// reconnects there.
+		ctx_a.token.cancel();
+		let _ = tokio::time::timeout(Duration::from_secs(5), handle_a).await;
+		tokio::time::sleep(Duration::from_millis(300)).await;
+
+		let mut reconnected = false;
+		for _ in 0..60 {
+			if let Ok(got) = proxy_echo_once(&client, echo_port, b"after").await
+				&& got == b"after"
+			{
+				reconnected = true;
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(250)).await;
+		}
+		assert!(reconnected, "client did not re-resolve and reconnect to the failover server");
+
+		ctx_b.token.cancel();
+	}
+
 	/// Shutting the client down while its supervisor is stuck in the reconnect
 	/// backoff loop (server still down) must abandon reconnect and drain the
 	/// tracked tasks promptly, not hang.
@@ -981,6 +1189,8 @@ mod tests {
 				enabled: false,
 				..Default::default()
 			},
+			None,
+			false,
 		)
 		.await
 		.expect("connect client");
@@ -1107,6 +1317,7 @@ mod tests {
 			let cctx = Arc::new(AppContext::default());
 			let opts = TuicOutboundOpts {
 				peer_addr: server_addr,
+				peer_resolver: None,
 				sni: "localhost".to_string(),
 				auth: (uuid, Arc::from(TEST_PASSWORD)),
 				zero_rtt_handshake: false,
@@ -1124,6 +1335,7 @@ mod tests {
 				stream_receive_window: None,
 				max_idle_time: None,
 				udp_relay_mode: UdpRelayMode::Native,
+				socket_factory: None,
 			};
 			let c = Arc::new(TuicOutbound::new(cctx, opts).await.unwrap());
 			let pc = c.clone();

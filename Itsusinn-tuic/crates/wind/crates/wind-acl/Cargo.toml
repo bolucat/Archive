@@ -6,7 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
-description = "nftables-shaped intermediate representation and ACL routing engine for wind (see specs/acl-ir.md)"
+description = "nftables-shaped intermediate representation and ACL routing engine for wind (see https://rust-proxy.github.io/wind/acl-ir/)"
 
 [dependencies]
 # Wind framework

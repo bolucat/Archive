@@ -1,4 +1,4 @@
-//! The order-preserving optimizer (`specs/acl-ir.md` §7).
+//! The order-preserving optimizer (<https://rust-proxy.github.io/wind/acl-ir/> §7).
 //!
 //! The ordered rule list is ground truth; sets and verdict maps are unordered
 //! and are only introduced when provably order-invariant:

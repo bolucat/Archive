@@ -118,6 +118,7 @@ mod tests {
 	fn opts_with(alpn: Vec<String>) -> TuicOutboundOpts {
 		TuicOutboundOpts {
 			peer_addr: "127.0.0.1:9443".parse::<SocketAddr>().unwrap(),
+			peer_resolver: None,
 			sni: "localhost".into(),
 			auth: (Uuid::nil(), Arc::<[u8]>::from(&[][..])),
 			zero_rtt_handshake: false,
@@ -139,6 +140,7 @@ mod tests {
 			stream_receive_window: None,
 			max_idle_time: None,
 			udp_relay_mode: crate::quinn::UdpRelayMode::Native,
+			socket_factory: None,
 		}
 	}
 

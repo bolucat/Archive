@@ -412,8 +412,8 @@ impl<F: BufFactory> SendBuf<F> {
 
             let prev_pos = buf.pos;
 
-            // Reduce the buffer's position (expand the buffer) if the retransmit
-            // range is past the buffer's starting offset.
+            // Expand the buffer by moving its position back when the retransmit
+            // range starts after the buffer offset.
             buf.pos = if off > buf.off && off <= buf.max_off() {
                 cmp::min(buf.pos, buf.start + (off - buf.off) as usize)
             } else {
@@ -478,6 +478,14 @@ impl<F: BufFactory> SendBuf<F> {
         self.shutdown = true;
 
         Ok(self.reset())
+    }
+
+    /// Seeds send offsets without buffering the preceding data.
+    #[cfg(test)]
+    pub fn seed_offsets_for_test(&mut self, off: u64) {
+        assert!(self.data.is_empty());
+        self.off = off;
+        self.emit_off = off;
     }
 
     /// Returns the largest offset of data buffered.

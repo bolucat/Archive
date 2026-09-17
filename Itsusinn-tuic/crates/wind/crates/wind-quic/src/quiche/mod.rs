@@ -84,6 +84,8 @@ fn quiche_bbr_params(c: &crate::config::Bbr2gcConfig) -> tokio_quiche::quiche::B
 		scale_pacing_rate_by_mss: c.scale_pacing_rate_by_mss,
 		disable_probe_down_early_exit: c.disable_probe_down_early_exit,
 		time_sent_set_to_now: c.time_sent_set_to_now,
+		min_cwnd_packets: None,
+		rtt_jump_detector: None,
 	}
 }
 

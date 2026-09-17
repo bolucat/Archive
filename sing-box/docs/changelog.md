@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.15.0-alpha.6
+
+* Fixes and improvements
+
 #### 1.15.0-alpha.5
 
 * Add Tailcat support **1**

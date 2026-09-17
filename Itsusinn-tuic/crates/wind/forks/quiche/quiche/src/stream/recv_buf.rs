@@ -121,8 +121,17 @@ impl RecvBuf {
             self.fin_off = Some(buf.max_off());
         }
 
-        // No need to store empty buffer that doesn't carry the fin flag.
+        // No need to store empty buffer that doesn't carry the fin flag, but
+        // its offset still advances the largest received offset used by flow
+        // control (RFC 9000 Section 19.8).
         if !buf.fin() && buf.is_empty() {
+            self.len = cmp::max(self.len, buf.max_off());
+
+            if self.drain {
+                // we are not storing any data, off == len
+                self.off = self.len;
+            }
+
             return Ok(());
         }
 
@@ -419,6 +428,36 @@ impl RecvBuf {
         buf.off() == self.off
     }
 
+    /// Returns the number of bytes that can be read contiguously from the
+    /// current read offset, up to `max_len`.
+    ///
+    /// Data buffered behind a gap (received out of order) is not counted, so
+    /// this never reports bytes that are not yet readable. The cost is
+    /// proportional to the number of contiguous buffered chunks at the front
+    /// of the buffer, up to `max_len`; no data is copied.
+    pub fn readable_len(&self, max_len: usize) -> usize {
+        let mut contiguous = 0usize;
+        let mut next_off = self.off;
+
+        // `data` is ordered by offset, so walk from the front and stop at the
+        // first gap (a chunk that does not start where the contiguous run so
+        // far leaves off).
+        for buf in self.data.values() {
+            if buf.off() != next_off {
+                break;
+            }
+
+            contiguous = contiguous.saturating_add(buf.len()).min(max_len);
+            next_off = buf.max_off();
+
+            if contiguous == max_len {
+                break;
+            }
+        }
+
+        contiguous
+    }
+
     #[cfg(test)]
     pub(crate) fn flow_control_for_tests(&self) -> &flowcontrol::FlowControl {
         &self.flow_control
@@ -512,10 +551,10 @@ mod tests {
 
         assert_emit_discard(&mut recv, emit, 32, 5, false, None);
 
-        // Don't store non-fin empty buffer.
+        // Don't store non-fin empty buffer, but track its offset.
         let buf = RangeBuf::from(b"", 10, false);
         assert!(recv.write(buf).is_ok());
-        assert_eq!(recv.len, 5);
+        assert_eq!(recv.len, 10);
         assert_eq!(recv.off, 5);
         assert_eq!(recv.data.len(), 0);
 
@@ -523,34 +562,45 @@ mod tests {
         let buf = RangeBuf::from(b"", 16, false);
         assert_eq!(recv.write(buf), Err(Error::FlowControl));
 
-        // Store fin empty buffer.
+        // A final size below the advanced largest offset is an error
+        // (RFC 9000 Section 4.5).
         let buf = RangeBuf::from(b"", 5, true);
+        assert_eq!(recv.write(buf), Err(Error::FinalSize));
+
+        // Store fin empty buffer at the largest received offset.
+        let buf = RangeBuf::from(b"", 10, true);
         assert!(recv.write(buf).is_ok());
-        assert_eq!(recv.len, 5);
+        assert_eq!(recv.len, 10);
         assert_eq!(recv.off, 5);
         assert_eq!(recv.data.len(), 1);
 
         // Don't store additional fin empty buffers.
-        let buf = RangeBuf::from(b"", 5, true);
+        let buf = RangeBuf::from(b"", 10, true);
         assert!(recv.write(buf).is_ok());
-        assert_eq!(recv.len, 5);
+        assert_eq!(recv.len, 10);
         assert_eq!(recv.off, 5);
         assert_eq!(recv.data.len(), 1);
 
-        // Don't store additional fin non-empty buffers.
-        let buf = RangeBuf::from(b"aa", 3, true);
+        // Accept another fin buffer with the same final size.
+        let buf = RangeBuf::from(b"aa", 8, true);
         assert!(recv.write(buf).is_ok());
-        assert_eq!(recv.len, 5);
+        assert_eq!(recv.len, 10);
         assert_eq!(recv.off, 5);
         assert_eq!(recv.data.len(), 1);
+
+        // A fin buffer whose end disagrees with the known final size errors.
+        let buf = RangeBuf::from(b"aa", 3, true);
+        assert_eq!(recv.write(buf), Err(Error::FinalSize));
 
         // Validate final size with fin empty buffers.
-        let buf = RangeBuf::from(b"", 6, true);
+        let buf = RangeBuf::from(b"", 11, true);
         assert_eq!(recv.write(buf), Err(Error::FinalSize));
-        let buf = RangeBuf::from(b"", 4, true);
+        let buf = RangeBuf::from(b"", 9, true);
         assert_eq!(recv.write(buf), Err(Error::FinalSize));
 
-        assert_emit_discard(&mut recv, emit, 32, 0, true, None);
+        // The range (5..10) was never received, so the stream cannot reach
+        // its fin and nothing further is readable.
+        assert_emit_discard_done(&mut recv, emit);
     }
 
     #[rstest]
@@ -591,6 +641,26 @@ mod tests {
         assert_eq!(recv.off, 19);
 
         assert_emit_discard_done(&mut recv, emit);
+    }
+
+    #[test]
+    /// `readable_len` counts only contiguous in-order data, up to its limit.
+    fn readable_len() {
+        let mut recv =
+            RecvBuf::new(u64::MAX, DEFAULT_STREAM_WINDOW, DEFAULT_STREAM_WINDOW);
+
+        // Empty buffer: nothing readable.
+        assert_eq!(recv.readable_len(64 * 1024), 0);
+
+        // Data buffered behind a gap is not readable.
+        assert!(recv.write(RangeBuf::from(b"hello", 0, false)).is_ok());
+        assert!(recv.write(RangeBuf::from(b"something", 10, false)).is_ok());
+        assert_eq!(recv.readable_len(64 * 1024), 5);
+
+        // Filling the gap makes the full range readable, bounded by the limit.
+        assert!(recv.write(RangeBuf::from(b"world", 5, false)).is_ok());
+        assert_eq!(recv.readable_len(64 * 1024), 19);
+        assert_eq!(recv.readable_len(10), 10);
     }
 
     /// Test shutdown behavior
@@ -645,6 +715,31 @@ mod tests {
         assert_eq!(recv.data.len(), 0);
 
         assert_emit_discard_done(&mut recv, emit);
+    }
+
+    /// An empty non-fin buffer advances the largest received offset, which the
+    /// connection charges to flow control on arrival, so a draining stream must
+    /// consume it too and a later reset must not credit it again.
+    #[test]
+    fn shutdown_empty_stream_frame() {
+        let mut recv =
+            RecvBuf::new(u64::MAX, DEFAULT_STREAM_WINDOW, DEFAULT_STREAM_WINDOW);
+
+        assert!(recv.write(RangeBuf::from(b"hello", 0, false)).is_ok());
+        assert_eq!(recv.shutdown(), Ok(5));
+
+        assert!(recv.write(RangeBuf::from(b"", 10, false)).is_ok());
+        assert_eq!(recv.len, 10);
+        assert_eq!(recv.off, 10);
+        assert_eq!(recv.data.len(), 0);
+
+        assert_eq!(
+            recv.reset(42, 10),
+            Ok(RecvBufResetReturn {
+                max_data_delta: 0,
+                consumed_flowcontrol: 0,
+            })
+        );
     }
 
     #[rstest]

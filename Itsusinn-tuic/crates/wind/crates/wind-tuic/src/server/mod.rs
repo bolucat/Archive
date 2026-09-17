@@ -880,6 +880,16 @@ async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, 
 		None => (None, Arc::from(DUMMY_PASSWORD), false),
 	};
 
+	// The exporter is bound to the completed TLS session. A connection the
+	// server accepted at 0.5-RTT (`into_0rtt`) reaches this handler before the
+	// handshake finishes, where backends such as rustls refuse to export. Wait
+	// for the handshake first; for an already-established connection this
+	// resolves immediately. A failed handshake is reported as a generic auth
+	// failure so it does not leak whether the UUID exists.
+	if connection.conn.authenticated().await.is_err() {
+		return Err(eyre::eyre!("Invalid authentication"));
+	}
+
 	let mut expected_token = [0u8; 32];
 	let export_ok = connection
 		.conn

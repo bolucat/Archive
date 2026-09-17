@@ -161,6 +161,10 @@ impl QuicConnection for QuinnConnection {
 		self.conn.closed().await;
 	}
 
+	async fn authenticated(&self) -> Result<(), QuicError> {
+		self.conn.authenticated().await.map_err(Into::into)
+	}
+
 	fn peer_addr(&self) -> Option<SocketAddr> {
 		Some(self.conn.remote_address())
 	}

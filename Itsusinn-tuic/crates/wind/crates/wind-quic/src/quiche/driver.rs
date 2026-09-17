@@ -640,10 +640,6 @@ impl ApplicationOverQuic for BridgeDriver {
 		self.established
 	}
 
-	fn buffer(&mut self) -> &mut [u8] {
-		&mut self.buffer
-	}
-
 	async fn wait_for_data(&mut self, _qconn: &mut QuicheConnection) -> QuicResult<()> {
 		enum Ev {
 			Out((u64, Option<Bytes>, mpsc::Receiver<Bytes>)),

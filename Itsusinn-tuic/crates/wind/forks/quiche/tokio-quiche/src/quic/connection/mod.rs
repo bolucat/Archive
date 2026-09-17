@@ -57,6 +57,7 @@ use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
 
 use self::error::make_handshake_result;
+use super::hooks::ConnectionHook;
 use super::io::connection_stage::Close;
 use super::io::connection_stage::ConnectionStageContext;
 use super::io::connection_stage::Handshake;
@@ -88,7 +89,7 @@ impl QuicConnectionStats {
     pub(crate) fn from_conn(qconn: &QuicheConnection) -> Self {
         Self {
             stats: qconn.stats(),
-            path_stats: qconn.path_stats().next(),
+            path_stats: qconn.path_stats().find(|stats| stats.active),
         }
     }
 
@@ -327,6 +328,7 @@ where
             incoming_pkt_receiver: self.incoming_ev_receiver,
             application: app,
             stats: Arc::clone(&self.stats),
+            connection_hook: self.params.connection_hook,
         };
         let conn_stage = Handshake {
             handshake_info: self.params.handshake_info,
@@ -390,8 +392,8 @@ where
             handshake_fut,
         );
 
-        // `AbortOnDropHandle` simulates task-killswitch behavior without needing
-        // to give up ownership of the `JoinHandle`.
+        // `AbortOnDropHandle` simulates task-killswitch behavior without
+        // needing to give up ownership of the `JoinHandle`.
         let handshake_abort_handle = AbortOnDropHandle::new(handshake_handle);
 
         let worker = handshake_abort_handle.await??;
@@ -445,7 +447,7 @@ where
             match handshake_fut.await {
                 Ok(running) => Self::resume(running),
                 Err(e) => {
-                    log::error!("QUIC handshake failed in IQC::start"; "error" => e)
+                    log::error!("QUIC handshake failed in IQC::start"; "error" => e);
                 },
             }
         };
@@ -472,6 +474,7 @@ where
     pub scid: ConnectionId<'static>,
     pub cid_generator: Option<SharedConnectionIdGenerator>,
     pub metrics: M,
+    pub connection_hook: Option<Arc<dyn ConnectionHook + Send + Sync + 'static>>,
     #[cfg(feature = "perf-quic-listener-metrics")]
     pub init_rx_time: Option<SystemTime>,
     pub handshake_info: HandshakeInfo,
@@ -680,19 +683,8 @@ pub trait ApplicationOverQuic: Send + 'static {
     /// worker.
     ///
     /// The function is checked in each iteration of the worker loop. Only
-    /// `on_conn_established()` and `buffer()` bypass this check.
+    /// `on_conn_established()` bypasses this check.
     fn should_act(&self) -> bool;
-
-    /// A borrowed buffer for the worker to write outbound packets into.
-    ///
-    /// This method allows sharing a buffer between the worker and the
-    /// application, efficiently using the allocated memory while the
-    /// application is inactive. It can also be used to artificially
-    /// restrict the size of outbound network packets.
-    ///
-    /// Any data in the buffer may be overwritten by the worker. If necessary,
-    /// the application should save the contents when this method is called.
-    fn buffer(&mut self) -> &mut [u8];
 
     /// Waits for an event to trigger the next iteration of the worker loop.
     ///

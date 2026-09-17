@@ -5,6 +5,7 @@
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
 mod bridge;
+mod bundle;
 mod client;
 mod cmds;
 mod config;
@@ -231,6 +232,16 @@ pub fn run() -> std::io::Result<()> {
         _ => None,
     };
 
+    let mut context = tauri::generate_context!();
+    let executable_dir =
+        utils::dirs::app_install_dir().expect("failed to locate the application directory");
+    let metadata =
+        bundle::BundleMetadata::resolve(cfg!(windows), context.config(), &executable_dir)
+            .expect("failed to resolve bundle metadata");
+    let updater = metadata
+        .setup(context.config_mut(), &executable_dir)
+        .expect("failed to configure bundle startup");
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .invoke_handler(specta_builder.invoke_handler())
@@ -241,11 +252,11 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(updater.build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(move |app| {
             specta_builder.mount_events(app);
-            setup::setup(app)
+            setup::setup(app, metadata)
                 .context("Failed to setup the app")
                 .inspect_err(|e| {
                     tracing::error!("Failed to setup the app: {:#?}", e);
@@ -348,7 +359,7 @@ pub fn run() -> std::io::Result<()> {
         });
 
     let app = builder
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running tauri application");
     app.run(|app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {

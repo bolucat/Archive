@@ -64,7 +64,6 @@ use crate::recovery::INITIAL_PACKET_THRESHOLD;
 use crate::recovery::INITIAL_TIME_THRESHOLD;
 use crate::recovery::MAX_OUTSTANDING_NON_ACK_ELICITING;
 use crate::recovery::MAX_PACKET_THRESHOLD;
-use crate::recovery::MAX_PTO_EXPONENT;
 use crate::recovery::MAX_PTO_PROBES_COUNT;
 use crate::recovery::PACKET_REORDER_TIME_THRESHOLD;
 
@@ -457,8 +456,7 @@ impl LegacyRecovery {
     fn pto_time_and_space(
         &self, handshake_status: HandshakeStatus, now: Instant,
     ) -> (Option<Instant>, Epoch) {
-        let mut duration =
-            self.pto() * 2_u32.pow(self.pto_count.min(MAX_PTO_EXPONENT));
+        let mut duration = self.pto() * 2_u32.saturating_pow(self.pto_count);
 
         // Arm PTO from now when there are no inflight packets.
         if self.bytes_in_flight.is_zero() {
@@ -487,7 +485,7 @@ impl LegacyRecovery {
 
                 // Include max_ack_delay and backoff for Application Data.
                 duration += self.rtt_stats.max_ack_delay *
-                    2_u32.pow(self.pto_count.min(MAX_PTO_EXPONENT));
+                    2_u32.saturating_pow(self.pto_count);
             }
 
             let new_time = epoch
@@ -926,6 +924,16 @@ impl RecoveryOps for LegacyRecovery {
         None
     }
 
+    fn rtt_persistent_jump_count(&self) -> u64 {
+        // Persistent RTT jump counts are produced by the BBR2 RTT jump
+        // detector. Legacy Reno/CUBIC recovery does not own a BBR2 network
+        // model or run that detector, but it still implements
+        // RecoveryOps so PathStats can be populated through one shared
+        // interface. Report zero to indicate that no detector is active on
+        // this path.
+        0
+    }
+
     /// Statistics from when a CCA first exited the startup phase.
     fn startup_exit(&self) -> Option<StartupExit> {
         self.congestion.ssthresh.startup_exit()
@@ -1016,7 +1024,7 @@ impl RecoveryOps for LegacyRecovery {
         self.epochs[epoch].test_largest_sent_pkt_num_on_path
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "qlog"))]
     fn app_limited(&self) -> bool {
         self.congestion.app_limited
     }
@@ -1053,6 +1061,7 @@ impl RecoveryOps for LegacyRecovery {
             lost_packets: Some(self.congestion.lost_count as u64),
             lost_bytes: Some(self.bytes_lost),
             pto_count: Some(self.pto_count),
+            app_limited: Some(self.app_limited()),
             ..Default::default()
         };
 
