@@ -2,9 +2,11 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue2";
 import vueJsx from "@vitejs/plugin-vue2-jsx";
 import path from "path";
+import lucideSubset from "./build/lucide-subset.mjs";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
+    lucideSubset(),
     vue(),
     vueJsx({
       include: [/\.[jt]sx$/, /\.js$/],
@@ -16,9 +18,6 @@ export default defineConfig(({ mode }) => ({
       vue$: "vue/dist/vue.esm.js",
     },
     extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".vue"],
-  },
-  define: {
-    apiRoot: '`${localStorage["backendAddress"]}/api`',
   },
   server: {
     port: 8081,

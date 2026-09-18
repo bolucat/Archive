@@ -7,7 +7,7 @@
     </header>
     <section class="modal-card-body">
       <p style="text-align: center">
-        <img src="@/assets/img/logo2.png" alt="v2rayA" />
+        <img src="@/assets/img/v2raya-icon.svg" alt="v2rayA" class="login-logo" />
       </p>
       <b-field :label="$t('login.username')" type="is-success">
         <b-input
@@ -84,7 +84,7 @@ export default {
             localStorage["token"] = res.data.data.token;
             this.$emit("close");
             this.$remount();
-          });
+          }, null, "register.failed");
         }).finally(() => {
           this.isSubmitting = false;
         });
@@ -102,7 +102,7 @@ export default {
             localStorage["token"] = res.data.data.token;
             this.$emit("close");
             this.$remount();
-          });
+          }, null, "login.failed");
         }).finally(() => {
           this.isSubmitting = false;
         });
@@ -118,10 +118,6 @@ export default {
 </script>
 
 <style lang="scss">
-.modal-login .modal-background {
-  background-color: rgba(10, 10, 10, 0.7) !important;
-}
-
 .modal-login .modal-background,
 .modal-login-app .modal-background,
 .modal-login-programmatic .modal-background {
@@ -141,6 +137,12 @@ export default {
 }
 </style>
 <style lang="scss" scoped>
+.login-logo {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 0.5rem;
+}
+
 .after-line-dot5 {
   font-size: 14px;
   p {

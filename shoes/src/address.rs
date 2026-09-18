@@ -120,6 +120,57 @@ impl NetLocation {
         Ok(Self { address, port })
     }
 
+    /// Parses an HTTP authority, including bracketed IPv6 literals.
+    pub fn from_authority(s: &str, default_port: Option<u16>) -> std::io::Result<Self> {
+        let invalid =
+            || std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid HTTP authority");
+
+        let (address_str, port_str) = if let Some(bracketed) = s.strip_prefix('[') {
+            let close = bracketed.find(']').ok_or_else(invalid)?;
+            let address = &bracketed[..close];
+            let suffix = &bracketed[close + 1..];
+            let port = if suffix.is_empty() {
+                None
+            } else {
+                Some(suffix.strip_prefix(':').ok_or_else(invalid)?)
+            };
+
+            if address.is_empty() || port.is_some_and(str::is_empty) {
+                return Err(invalid());
+            }
+            (address, port)
+        } else {
+            if s.contains(['[', ']']) {
+                return Err(invalid());
+            }
+
+            match s.rsplit_once(':') {
+                Some((address, port)) => {
+                    if address.is_empty() || address.contains(':') || port.is_empty() {
+                        return Err(invalid());
+                    }
+                    (address, Some(port))
+                }
+                None if !s.is_empty() => (s, None),
+                None => return Err(invalid()),
+            }
+        };
+
+        let address = Address::from(address_str)?;
+        if s.starts_with('[') && !address.is_ipv6() {
+            return Err(invalid());
+        }
+
+        let port = match port_str {
+            Some(port) => port.parse::<u16>().map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid port")
+            })?,
+            None => default_port.ok_or_else(invalid)?,
+        };
+
+        Ok(Self { address, port })
+    }
+
     #[cfg(test)]
     pub fn from_ip_addr(ip: IpAddr, port: u16) -> Self {
         let address = match ip {
@@ -656,6 +707,46 @@ mod tests {
         let deserialized: NetLocation =
             serde_yaml::from_str(&yaml_str).expect("Failed to deserialize NetLocation");
         assert_eq!(deserialized.port(), 8080);
+    }
+
+    #[test]
+    fn test_http_authority_parsing() {
+        assert_eq!(
+            NetLocation::from_authority("example.com:8080", None).unwrap(),
+            NetLocation::new(Address::Hostname("example.com".to_string()), 8080)
+        );
+        assert_eq!(
+            NetLocation::from_authority("127.0.0.1", Some(80)).unwrap(),
+            NetLocation::new(Address::Ipv4(Ipv4Addr::LOCALHOST), 80)
+        );
+        assert_eq!(
+            NetLocation::from_authority("[::1]:443", None).unwrap(),
+            NetLocation::new(Address::Ipv6(Ipv6Addr::LOCALHOST), 443)
+        );
+        assert_eq!(
+            NetLocation::from_authority("[::1]", Some(80)).unwrap(),
+            NetLocation::new(Address::Ipv6(Ipv6Addr::LOCALHOST), 80)
+        );
+    }
+
+    #[test]
+    fn test_http_authority_rejects_malformed_inputs() {
+        for authority in [
+            "",
+            "example.com",
+            "example.com:",
+            ":443",
+            "[::1",
+            "::1:443",
+            "[127.0.0.1]:443",
+            "[::1]443",
+            "[::1]:70000",
+        ] {
+            assert!(
+                NetLocation::from_authority(authority, None).is_err(),
+                "accepted malformed authority {authority:?}"
+            );
+        }
     }
 
     #[test]

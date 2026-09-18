@@ -8,7 +8,7 @@
       @mouseenter.native="showSidebar = true"
       @click.native="showSidebar = true"
     >
-      <img src="@/assets/img/switch-menu.svg" width="36px" />
+      <i class="lucide icon-panel-left sidebar-handle" :title="$t('common.expand')" />
     </b-sidebar>
     <b-sidebar
       :open="showSidebar"
@@ -40,20 +40,18 @@
       >
         <template #header>
           <div class="node-status-card__header">
-            <span class="node-status-card__title">
-              {{ formatServerName(v.info) }}
-              <span
-                v-if="v.info.subscription_name"
-                class="node-status-card__subscription"
-              >
-                [{{ v.info.subscription_name }}]
-              </span>
-            </span>
+            <span class="node-status-card__title">{{ formatServerName(v.info) }}</span>
             <span
               v-if="formatOutboundLabel(v.which)"
               class="node-status-card__group"
             >
               {{ formatOutboundLabel(v.which) }}
+            </span>
+            <span
+              v-if="v.info.subscription_name"
+              class="node-status-card__subscription"
+            >
+              {{ v.info.subscription_name }}
             </span>
           </div>
         </template>
@@ -73,29 +71,25 @@
         </div>
       </b-message>
     </b-sidebar>
-    <b-message
+    <b-notification
       v-if="ready && coreVersionValid === false"
       type="is-danger"
-      size="is-small"
+      role="alert"
       :closable="false"
       class="core-version-error"
     >
-      <i class="iconfont icon-alert" />
-      {{ $t("version.coreVersionMismatch", { err: coreVersionErr || "" }) }}
-    </b-message>
+      <span class="core-version-error__icon"><i class="lucide icon-triangle-alert" /></span>
+      <span>{{ $t("version.coreVersionMismatch", { err: coreVersionErr || "" }) }}</span>
+    </b-notification>
     <div v-if="ready" class="hero-body">
       <b-field
         id="toolbar"
         grouped
         group-multiline
-        :style="{
-          background: overHeight
-            ? isCheckedRowsPingable() || isCheckedRowsDeletable()
-              ? 'rgba(0, 0, 0, 0.1)'
-              : 'rgba(0, 0, 0, 0.05)'
-            : 'transparent',
+        :class="{
+          'float-toolbar': overHeight,
+          'float-toolbar-active': overHeight && (isCheckedRowsPingable() || isCheckedRowsDeletable()),
         }"
-        :class="{ 'float-toolbar': overHeight }"
       >
         <div style="max-width: 60%">
           <button
@@ -109,8 +103,8 @@
             :disabled="!isCheckedRowsPingable()"
             @click="handleClickLatency(true)"
           >
-            <i class="iconfont icon-wave" />
-            <span>PING</span>
+            <i class="lucide icon-activity" />
+            <span>{{ $t("operations.ping") }}</span>
           </button>
           <button
             :class="{
@@ -123,7 +117,7 @@
             :disabled="!isCheckedRowsPingable()"
             @click="handleClickLatency(false)"
           >
-            <i class="iconfont icon-wave" />
+            <i class="lucide icon-activity" />
             <span>HTTP</span>
           </button>
           <button
@@ -137,7 +131,7 @@
             :disabled="!isCheckedRowsDeletable()"
             @click="handleClickDelete"
           >
-            <i class="iconfont icon-delete" />
+            <i class="lucide icon-trash-2" />
             <span>{{ $t("operations.delete") }}</span>
           </button>
           <b-dropdown
@@ -151,7 +145,7 @@
           >
             <template #trigger>
               <button class="button is-info mobile-small" :disabled="!isCheckedRowsExportable()">
-                <i class="iconfont icon-share" />
+                <i class="lucide icon-share-2" />
                 <span>{{ $t("operations.export") }}</span>
               </button>
             </template>
@@ -169,7 +163,7 @@
             type="is-primary"
             @click="handleClickCreate"
           >
-            <i class="iconfont icon-chuangjiangongdan1" />
+            <i class="lucide icon-square-plus" />
             <span>{{ $t("operations.create") }}</span>
           </b-button>
           <b-button
@@ -177,7 +171,7 @@
             type="is-primary"
             @click="handleClickImport"
           >
-            <i class="iconfont icon-daoruzupu-xianxing" />
+            <i class="lucide icon-download" />
             <span>{{ $t("operations.import") }}</span>
           </b-button>
         </div>
@@ -199,7 +193,7 @@
             {{ $t("welcome.title") }}
           </p>
           <a class="card-header-icon">
-            <b-icon :icon="props.open ? 'menu-down' : 'menu-up'"></b-icon>
+            <b-icon :icon="props.open ? 'chevron-down' : 'chevron-up'"></b-icon>
           </a>
         </div>
         <div class="card-content">
@@ -225,8 +219,8 @@
         class="main-tabs"
         @input="handleTabsChange"
       >
-        <b-tab-item label="SUBSCRIPTION">
-          <b-field :label="`SUBSCRIPTION(${tableData.subscriptions.length})`">
+        <b-tab-item :label="$t('subscription.subscription')">
+          <b-field :label="`${$t('subscription.subscription')}(${tableData.subscriptions.length})`">
             <b-table
               :data="tableData.subscriptions"
               :checked-rows.sync="checkedRows"
@@ -285,7 +279,7 @@
                 <div class="operate-box">
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-sync"
+                    icon-left="refresh-cw"
                     outlined
                     type="is-warning"
                     @click="handleClickUpdateSubscription(props.row)"
@@ -294,7 +288,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-wendangxiugai"
+                    icon-left="pencil"
                     outlined
                     type="is-info"
                     @click="handleClickModifySubscription(props.row)"
@@ -303,7 +297,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-share"
+                    icon-left="share-2"
                     outlined
                     type="is-success"
                     @click="handleClickShare(props.row)"
@@ -316,12 +310,10 @@
           </b-field>
         </b-tab-item>
         <b-tab-item
-          label="SERVER"
-          :icon="`${
-            connectedServerInTab['server'] ? ' iconfont icon-dian' : ''
-          }`"
+          :label="$t('server.server')"
+          :header-class="connectedServerInTab['server'] ? 'tab-connected' : ''"
         >
-          <b-field :label="`SERVER(${tableData.servers.length})`">
+          <b-field :label="`${$t('server.server')}(${tableData.servers.length})`">
             <b-table
               per-page="100"
               :current-page.sync="currentPage.servers"
@@ -399,7 +391,7 @@
                       slot="trigger"
                       size="is-small"
                       type="is-primary"
-                      icon-right="menu-down"
+                      icon-right="chevron-down"
                     >
                       {{ $t("operations.addTo") }}
                     </b-button>
@@ -419,11 +411,7 @@
                   <b-button
                     v-else
                     size="is-small"
-                    :icon-left="` github-circle iconfont ${
-                      props.row.connected
-                        ? 'icon-Link_disconnect'
-                        : 'icon-lianjie'
-                    }`"
+                    :icon-left="props.row.connected ? 'unlink' : 'link'"
                     :outlined="!props.row.connected"
                     :type="props.row.connected ? 'is-warning' : 'is-primary'"
                     @click="handleClickAboutConnection(props.row)"
@@ -436,7 +424,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-wendangxiugai"
+                    icon-left="pencil"
                     :outlined="!props.row.connected"
                     type="is-info"
                     @click="handleClickModifyServer(props.row)"
@@ -445,7 +433,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-share"
+                    icon-left="share-2"
                     :outlined="!props.row.connected"
                     type="is-success"
                     @click="handleClickShare(props.row)"
@@ -463,17 +451,11 @@
           :label="
             (sub.remarks && sub.remarks.toUpperCase()) || sub.host.toUpperCase()
           "
-          :icon="`${
-            connectedServerInTab['subscriptionServer'][subi]
-              ? ' iconfont icon-dian'
-              : ''
-          }`"
+          :header-class="connectedServerInTab['subscriptionServer'][subi] ? 'tab-connected' : ''"
         >
           <b-field
             v-if="tab === subi + 2"
-            :label="`${sub.host.toUpperCase()}(${sub.servers.length}${
-              sub.info ? ') (' : ''
-            }${sub.info})`"
+            :label="`${sub.host.toUpperCase()} (${sub.servers.length})${sub.info ? ' · ' + sub.info : ''}`"
           >
             <b-table
               :current-page.sync="currentPage[sub.id]"
@@ -553,7 +535,7 @@
                       slot="trigger"
                       size="is-small"
                       type="is-primary"
-                      icon-right="menu-down"
+                      icon-right="chevron-down"
                     >
                       {{ $t("operations.addTo") }}
                     </b-button>
@@ -573,11 +555,7 @@
                   <b-button
                     v-else
                     size="is-small"
-                    :icon-left="` github-circle iconfont ${
-                      props.row.connected
-                        ? 'icon-Link_disconnect'
-                        : 'icon-lianjie'
-                    }`"
+                    :icon-left="props.row.connected ? 'unlink' : 'link'"
                     :outlined="!props.row.connected"
                     :type="props.row.connected ? 'is-warning' : 'is-primary'"
                     @click="handleClickAboutConnection(props.row, subi)"
@@ -590,7 +568,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-winfo-icon-chakanbaogao"
+                    icon-left="file-text"
                     :outlined="!props.row.connected"
                     type="is-info"
                     @click="handleClickViewServer(props.row, subi)"
@@ -599,7 +577,7 @@
                   </b-button>
                   <b-button
                     size="is-small"
-                    icon-left=" github-circle iconfont icon-share"
+                    icon-left="share-2"
                     :outlined="!props.row.connected"
                     type="is-success"
                     @click="handleClickShare(props.row, subi)"
@@ -614,7 +592,7 @@
       </b-tabs>
     </div>
     <b-loading v-else :is-full-page="true" :active="true">
-      <i class="iconfont icon-loading_ico-copy" />
+      <i class="lucide icon-loader-circle" />
     </b-loading>
     <b-modal
       :active.sync="showModalServer"
@@ -660,11 +638,33 @@
           <p class="modal-card-title">{{ $t("operations.import") }}</p>
         </header>
         <section class="modal-card-body">
-          {{ $t("import.message") }}
+          <b-field>
+            <b-radio-button
+              v-model="importKind"
+              native-value="server"
+              type="is-primary is-light"
+              size="is-small"
+            >
+              {{ $t("import.server") }}
+            </b-radio-button>
+            <b-radio-button
+              v-model="importKind"
+              native-value="subscription"
+              type="is-primary is-light"
+              size="is-small"
+            >
+              {{ $t("import.subscription") }}
+            </b-radio-button>
+          </b-field>
+          {{
+            importKind === "subscription"
+              ? $t("import.subscriptionMessage")
+              : $t("import.serverMessage")
+          }}
           <b-input
             ref="importInput"
             v-model="importWhat"
-            icon-right=" iconfont icon-camera"
+            icon-right="camera"
             icon-right-clickable
             @icon-right-click="handleClickImportQRCode"
             @keyup.native="handleImportEnter"
@@ -672,6 +672,7 @@
         </section>
         <footer class="modal-card-foot">
           <button
+            v-if="importKind === 'server'"
             class="button is-link is-light"
             type="button"
             @click="handleClickImportInBatch"
@@ -694,6 +695,7 @@
             </button>
             <button
               class="button is-primary"
+              :class="{ 'is-loading': importing }"
               type="button"
               @click="handleClickImportConfirm"
             >
@@ -746,6 +748,7 @@
             </button>
             <button
               class="button is-primary"
+              :class="{ 'is-loading': importing }"
               type="button"
               @click="handleClickImportConfirm"
             >
@@ -759,7 +762,11 @@
 </template>
 
 <script>
-import { locateServer, handleResponse } from "@/assets/js/utils";
+import {
+  backendMessage,
+  handleResponse,
+  locateServer,
+} from "@/assets/js/utils";
 import CONST from "@/assets/js/const";
 import QRCode from "qrcode";
 import { Decoder } from "@nuintun/qrcode";
@@ -772,6 +779,10 @@ import ModalPickProxyGroup from "@/components/modalPickProxyGroup";
 import { waitingConnected } from "@/assets/js/networkInspect";
 import axios from "@/plugins/axios";
 import dayjs from "dayjs";
+import i18n from "@/plugins/i18n";
+
+// vue-i18n locale -> dayjs locale (all loaded in plugins/dayjs.js)
+const DAYJS_LOCALES = { zh: "zh-cn", en: "en", fa: "fa", ru: "ru", pt: "pt-br", ko: "ko" };
 
 export default {
   name: "Node",
@@ -779,13 +790,7 @@ export default {
   filters: {
     unix2datetime(x) {
       x = dayjs.unix(x);
-      let now = dayjs();
-      if (localStorage["_lang"] === "zh") {
-        now = now.locale("zh-cn");
-      } else if (localStorage["_lang"] === "en") {
-        now = now.locale("en");
-      }
-      return now.to(x);
+      return dayjs().locale(DAYJS_LOCALES[i18n.locale] || "en").to(x);
     },
   },
   props: {
@@ -799,6 +804,21 @@ export default {
         return ["proxy"];
       },
     },
+    // The /version response arrives after this component is created, so the
+    // core-version banner used to render the previous page load's state until
+    // the next reload. The parent owns it now.
+    coreVersionValid: {
+      type: Boolean,
+      default: true,
+    },
+    coreVersionErr: {
+      type: String,
+      default: "",
+    },
+    loadBalanceValid: {
+      type: Boolean,
+      default: false,
+    },
     observatory: {
       type: Object,
       default() {
@@ -811,6 +831,8 @@ export default {
       enterReducedSidebar: false,
       showSidebar: false,
       importWhat: "",
+      importing: false,
+      importKind: "server",
       showModalImport: false,
       showModalImportInBatch: false,
       currentPage: { servers: 1, subscriptions: 1 },
@@ -839,14 +861,8 @@ export default {
       connectedServerInfo: [],
       overHeight: false,
       clipboard: null,
-      coreVersionValid: true,
-      coreVersionErr: "",
+      scrollTimer: null,
     };
-  },
-  computed: {
-    loadBalanceValid() {
-      return localStorage["loadBalanceValid"] === "true";
-    },
   },
   watch: {
     "runningState.running"() {
@@ -896,8 +912,6 @@ export default {
     },
   },
   created() {
-    this.coreVersionValid = localStorage["coreVersionValid"] !== "false";
-    this.coreVersionErr = localStorage["coreVersionErr"] || "";
     if (!localStorage["token"]) return; // Not authenticated yet — skip to avoid spurious 401 modals
     const loadTouch = (retries = 3) => {
       this.$axios({
@@ -928,6 +942,8 @@ export default {
   },
   beforeDestroy() {
     this.clipboard.destroy();
+    window.removeEventListener("scroll", this.handleWindowScroll);
+    clearTimeout(this.scrollTimer);
   },
   mounted() {
     document
@@ -936,30 +952,20 @@ export default {
     this.clipboard = new ClipboardJS(".sharingAddressTag");
     this.clipboard.on("success", (e) => {
       this.$buefy.toast.open({
-        message: this.$t("common.success"),
+        message: this.$t("sharing.copied"),
         type: "is-primary",
         position: "is-top",
-        queue: false,
       });
       e.clearSelection();
     });
     this.clipboard.on("error", (e) => {
       this.$buefy.toast.open({
-        message: this.$t("common.fail") + ", error:" + e.toLocaleString(),
+        message: this.$t("sharing.copyFailed"),
         type: "is-warning",
         position: "is-top",
-        queue: false,
       });
     });
-    const that = this;
-    let scrollTimer = null;
-    window.addEventListener("scroll", (e) => {
-      clearTimeout(scrollTimer);
-      setTimeout(() => {
-        scrollTimer = null;
-        that.overHeight = e.target.scrollingElement.scrollTop > 50;
-      }, 100);
-    });
+    window.addEventListener("scroll", this.handleWindowScroll);
 
     // if lastNodeTab in the local storage, set it as the current tab.
     const { lastNodeTab } = localStorage;
@@ -968,6 +974,12 @@ export default {
     }
   },
   methods: {
+    handleWindowScroll(e) {
+      clearTimeout(this.scrollTimer);
+      this.scrollTimer = setTimeout(() => {
+        this.overHeight = e.target.scrollingElement.scrollTop > 50;
+      }, 100);
+    },
     getRunningLabel(running, networkPaused = false) {
       if (networkPaused) {
         return this.$t("common.waitingNetwork");
@@ -1014,7 +1026,26 @@ export default {
           v.connected = false;
         });
       });
+      // re-point the selection at the replacement row objects so a refresh
+      // neither drops the user's selection nor leaves stale rows behind
+      // identify a row by what it points at, not by its position: a
+      // subscription update reorders nodes and reuses the ids, so an
+      // id-based key would move the selection onto a different server
+      const keyOf = (data, row) => {
+        const sub = data.subscriptions.findIndex((s) => s.servers.includes(row));
+        return `${row._type}|${sub}|${row.address}|${row.name}|${row.net}`;
+      };
+      const selected = this.checkedRows.map((x) => keyOf(this.tableData, x));
       this.tableData = touch;
+      const byKey = new Map();
+      const remember = (v) => {
+        const k = keyOf(touch, v);
+        // two identical rows: keep the first, so the selection cannot jump
+        if (!byKey.has(k)) byKey.set(k, v);
+      };
+      touch.servers.forEach(remember);
+      touch.subscriptions.forEach((s) => s.servers.forEach(remember));
+      this.checkedRows = selected.map((k) => byKey.get(k)).filter(Boolean);
       if (running !== undefined) {
         Object.assign(this.runningState, {
           running: this.getRunningLabel(running, networkPaused),
@@ -1035,21 +1066,23 @@ export default {
         }
         if (showError) {
           this.$buefy.toast.open({
-            message: res.data.message || this.$t("common.fail"),
+            message: this.$t("server.refreshFailed", {
+              message: backendMessage(this, res) || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }
       } catch (err) {
         if (showError) {
           this.$buefy.toast.open({
-            message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            message: this.$t("server.refreshFailed", {
+              message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }
       }
@@ -1147,10 +1180,9 @@ export default {
       // console.log(file);
       if (!file.type.match(/image\/.*/)) {
         this.$buefy.toast.open({
-          message: this.$t("import.qrcodeError"),
+          message: this.$t("import.notImage"),
           type: "is-warning",
           position: "is-top",
-          queue: false,
         });
         return;
       }
@@ -1172,7 +1204,6 @@ export default {
               message: that.$t("import.qrcodeError"),
               type: "is-warning",
               position: "is-top",
-              queue: false,
             });
           });
       };
@@ -1398,32 +1429,55 @@ export default {
       if (typeof value != "string") {
         value = null;
       }
+      if (this.importing) {
+        // A second Confirm or Enter while a subscription is still being
+        // fetched would import it twice.
+        return;
+      }
+      this.importing = true;
       return this.$axios({
         url: apiRoot + "/import",
         method: "post",
+        // the backend allows a subscription fetch 90 s; the 60 s default
+        // aborted the request client-side while the import still went through
+        timeout: 120000,
         data: {
           url: value || this.importWhat,
+          // the batch dialog only takes server links
+          kind: this.showModalImportInBatch ? "server" : this.importKind,
         },
       }).then((res) => {
         if (res.data.code === "SUCCESS") {
           this.syncLatestNodeOverview();
           this.$buefy.toast.open({
-            message: this.$t("common.success"),
+            message: this.$t("import.success"),
             type: "is-primary",
             position: "is-top",
-            queue: false,
           });
           this.showModalImport = false;
           this.showModalImportInBatch = false;
           this.importWhat = "";
         } else {
           this.$buefy.toast.open({
-            message: res.data.message,
+            message: this.$t("import.failed", {
+              message: backendMessage(this, res) || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
-            queue: false,
           });
         }
+      }).catch((err) => {
+        // the interceptor reports every other error itself but re-throws
+        // client-side timeouts silently
+        if (err && err.code === "ECONNABORTED") {
+          this.$buefy.toast.open({
+            message: this.$t("import.timeout"),
+            type: "is-warning",
+            position: "is-top",
+          });
+        }
+      }).finally(() => {
+        this.importing = false;
       });
     },
     deleteSelectedServers() {
@@ -1444,11 +1498,12 @@ export default {
           this.syncLatestNodeOverview();
         } else {
           this.$buefy.toast.open({
-            message: res.data.message,
+            message: this.$t("delete.failed", {
+              message: backendMessage(this, res) || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }
       });
@@ -1456,12 +1511,12 @@ export default {
     handleClickDelete() {
       this.$buefy.dialog.confirm({
         title: this.$t("delete.title"),
-        message: this.$t("delete.message"),
+        message: this.$t("delete.message", { n: this.checkedRows.length }),
         confirmText: this.$t("operations.delete"),
         cancelText: this.$t("operations.cancel"),
         type: "is-danger",
         hasIcon: true,
-        icon: " iconfont icon-alert",
+        icon: "triangle-alert",
         onConfirm: () => this.deleteSelectedServers(),
       });
     },
@@ -1495,11 +1550,12 @@ export default {
           this.syncLatestNodeOverview();
         } else {
           this.$buefy.toast.open({
-            message: res.data.message,
+            message: this.$t("connection.disconnectFailed", {
+              message: backendMessage(this, res) || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }
       });
@@ -1525,22 +1581,26 @@ export default {
       }
       return normalized;
     },
+    getConnectedServersInOutbound(outbound) {
+      const connectedServers = this.runningState.connectedServer;
+      if (!(connectedServers instanceof Array)) {
+        return [];
+      }
+      return connectedServers.filter(
+        (which) => (which.outbound || "proxy") === (outbound || "proxy")
+      );
+    },
     // 判断某节点是否已连接到指定分组，用于下拉菜单黄色高亮
     isNodeInOutbound(row, sub, outboundName) {
-      return this.connectedServerInfo.some((x) => {
+      return this.getConnectedServersInOutbound(outboundName).some((which) => {
         if (sub !== undefined) {
           return (
-            x.which._type === "subscriptionServer" &&
-            x.which.id === row.id &&
-            x.which.sub === sub &&
-            x.which.outbound === outboundName
+            which._type === "subscriptionServer" &&
+            which.id === row.id &&
+            which.sub === sub
           );
         }
-        return (
-          x.which._type === "server" &&
-          x.which.id === row.id &&
-          x.which.outbound === outboundName
-        );
+        return which._type === "server" && which.id === row.id;
       });
     },
     openPickProxyGroup(row, sub) {
@@ -1595,21 +1655,23 @@ export default {
             this.syncLatestNodeOverview();
           } else {
             this.$buefy.toast.open({
-              message: res.data.message,
+              message: this.$t("connection.connectFailed", {
+                message: backendMessage(this, res) || this.$t("common.fail"),
+              }),
               type: "is-warning",
               position: "is-top",
               duration: 5000,
-              queue: false,
             });
           }
         }).catch((err) => {
           loading.close();
           this.$buefy.toast.open({
-            message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            message: this.$t("connection.connectFailed", {
+              message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }),
         3 * 1000,
@@ -1620,15 +1682,12 @@ export default {
       const targetType = row._type;
       const targetSub = targetType === "subscriptionServer" ? sub : 0;
       const targetId = row.id;
-      const currentMembers = this.connectedServerInfo
-        .map((x) => x.which)
-        .filter((w) => (w.outbound || "proxy") === group)
-        .map((w) => ({
-          id: w.id,
-          _type: w._type,
-          sub: w._type === "subscriptionServer" ? w.sub : 0,
-          outbound: group,
-        }));
+      const currentMembers = this.getConnectedServersInOutbound(group).map((w) => ({
+        id: w.id,
+        _type: w._type,
+        sub: w._type === "subscriptionServer" ? w.sub : 0,
+        outbound: group,
+      }));
 
       const sameWhich = (w) => {
         if (w._type !== targetType || w.id !== targetId) {
@@ -1672,21 +1731,25 @@ export default {
           this.syncLatestNodeOverview();
         } else {
           this.$buefy.toast.open({
-            message: res.data.message || this.$t("common.fail"),
+            message: this.$t("proxyGroup.updateFailed", {
+              group,
+              message: backendMessage(this, res) || this.$t("common.fail"),
+            }),
             type: "is-warning",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
         }
       }).catch((err) => {
         loading.close();
         this.$buefy.toast.open({
-          message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+          message: this.$t("proxyGroup.updateFailed", {
+            group,
+            message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+          }),
           type: "is-warning",
           position: "is-top",
           duration: 5000,
-          queue: false,
         });
       });
     },
@@ -1704,7 +1767,7 @@ export default {
           };
         })
       );
-      this.checkedRows.forEach((x) => (x.pingLatency = "testing...")); //refresh
+      this.checkedRows.forEach((x) => (x.pingLatency = this.$t("latency.testing"))); //refresh
       // this.checkedRows = [];
       let timerTip = setTimeout(() => {
         this.$buefy.toast.open({
@@ -1712,7 +1775,6 @@ export default {
           type: "is-primary",
           position: "is-top",
           duration: 5000,
-          queue: false,
         });
       }, 10 * 1200);
       this.$axios({
@@ -1735,15 +1797,21 @@ export default {
             },
             () => {
               this.$buefy.toast.open({
-                message: res.data.message,
+                message: this.$t("latency.failed", {
+                  message: backendMessage(this, res) || this.$t("common.fail"),
+                }),
                 type: "is-warning",
                 position: "is-top",
-                queue: false,
                 duration: 5000,
               });
               this.checkedRows.forEach((x) => (x.pingLatency = ""));
             }
           );
+        })
+        .catch(() => {
+          // network error: the interceptor already reported it; do not
+          // leave the rows on "testing..."
+          this.checkedRows.forEach((x) => (x.pingLatency = ""));
         })
         .finally(() => {
           clearTimeout(timerTip);
@@ -1798,7 +1866,10 @@ export default {
       const responses = await Promise.all(requests);
       return responses.map((res) => {
         if (!res?.data || res.data.code !== "SUCCESS") {
-          throw new Error(res?.data?.message || this.$t("common.fail"));
+          throw new Error(
+            (res?.data && backendMessage(this, res)) ||
+              this.$t("operations.exportEmpty")
+          );
         }
         return res.data.data.sharingAddress || "";
       }).filter((address) => !!address);
@@ -1806,7 +1877,7 @@ export default {
     async buildSelectedNodesExportText() {
       const addresses = await this.collectSelectedSharingAddresses();
       if (!addresses.length) {
-        throw new Error(this.$t("common.fail"));
+        throw new Error(this.$t("operations.exportEmpty"));
       }
       return addresses.join("\n");
     },
@@ -1848,27 +1919,29 @@ export default {
           this.downloadTextFile(exportText);
         }
         this.$buefy.toast.open({
-          message: this.$t("common.success"),
+          message: this.$t(
+            mode === "copy" ? "operations.copySelectedDone" : "operations.downloadTxtDone"
+          ),
           type: "is-primary",
           position: "is-top",
           duration: 2500,
-          queue: false,
         });
       } catch (err) {
         this.$buefy.toast.open({
-          message: err?.message || this.$t("common.fail"),
+          message: this.$t("operations.exportFailed", {
+            message: err?.message || this.$t("common.fail"),
+          }),
           type: "is-warning",
           position: "is-top",
           duration: 5000,
-          queue: false,
         });
       }
     },
     handleClickShare(row, sub) {
       const TYPE_MAP = {
-        [CONST.SubscriptionServerType]: "SERVER",
-        [CONST.ServerType]: "SERVER",
-        [CONST.SubscriptionType]: "SUBSCRIPTION",
+        [CONST.SubscriptionServerType]: this.$t("sharing.serverTitle"),
+        [CONST.ServerType]: this.$t("sharing.serverTitle"),
+        [CONST.SubscriptionType]: this.$t("sharing.subscriptionTitle"),
       };
       this.$axios({
         url: apiRoot + "/sharingAddress",
@@ -1892,7 +1965,7 @@ export default {
               type: row._type,
             },
           });
-        });
+        }, null, "sharing.failed");
       });
     },
     handleClickUpdateSubscription(row) {
@@ -1907,13 +1980,12 @@ export default {
         handleResponse(res, this, () => {
           this.syncLatestNodeOverview();
           this.$buefy.toast.open({
-            message: this.$t("common.success"),
+            message: this.$t("subscription.updated"),
             type: "is-primary",
             position: "is-top",
             duration: 5000,
-            queue: false,
           });
-        });
+        }, null, "subscription.updateFailed");
       });
     },
     handleClickCreate() {
@@ -1938,21 +2010,21 @@ export default {
         method: "post",
         data: {
           url: url,
+          kind: "server",
           which: this.which,
         },
         timeout: 0,
       }).then((res) => {
         handleResponse(res, this, () => {
           this.$buefy.toast.open({
-            message: this.$t("common.success"),
+            message: this.$t("server.saved"),
             type: "is-primary",
             position: "is-top",
             duration: 3000,
-            queue: false,
           });
           this.showModalServer = false;
           this.syncLatestNodeOverview();
-        });
+        }, null, "server.saveFailed");
       });
     },
     handleClickModifySubscription(row) {
@@ -1970,15 +2042,14 @@ export default {
       }).then((res) => {
         handleResponse(res, this, () => {
           this.$buefy.toast.open({
-            message: this.$t("common.success"),
+            message: this.$t("subscription.saved"),
             type: "is-primary",
             position: "is-top",
             duration: 3000,
-            queue: false,
           });
           this.showModalSubscription = false;
           this.syncLatestNodeOverview();
-        });
+        }, null, "subscription.saveFailed");
       });
     },
   },
@@ -1993,7 +2064,7 @@ td {
 .node-section {
   margin-top: 1rem;
 
-  .iconfont {
+  .lucide {
     margin-right: 0.1em;
   }
 
@@ -2024,8 +2095,45 @@ td {
       margin-left: 25px;
       width: calc(100% - 50px);
     }
-    .field.is-grouped .field:not(:last-child) {
-      margin-right: 0.3rem;
+  }
+
+  // Phones: the two groups stack as full-width rows with one gap value, so
+  // the buttons line up instead of wrapping into three ragged rows with
+  // Bulma's per-field margins.
+  @media screen and (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.5rem;
+
+    > .field-body,
+    > .field-body > .field.is-grouped {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+      width: 100%;
+    }
+
+    > .field-body > .field.is-grouped > div,
+    .right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      max-width: 100% !important;
+      margin: 0;
+    }
+
+    // .right is the create/import pair: keep it right-aligned like on
+    // desktop, on its own row under the selection actions
+    .right {
+      justify-content: flex-end;
+      width: 100%;
+    }
+
+    .button,
+    .field,
+    .dropdown {
+      margin: 0 !important;
     }
   }
 
@@ -2038,20 +2146,52 @@ td {
   position: sticky;
   top: 65px;
   z-index: 2;
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
   width: 100%;
   border-radius: 3px;
   pointer-events: none;
+
+  // While stuck to the top the table scrolls underneath; the bar needs an
+  // opaque surface or the rows show through between and behind the
+  // (possibly disabled, half-transparent) buttons. Dark values live in
+  // dark-theme.scss.
+  &.float-toolbar {
+    background: #f5f5f5;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+  &.float-toolbar-active {
+    background: #ececec;
+  }
 
   * {
     pointer-events: auto;
   }
 
+  // Both groups stay in flow: with the buttons absolutely positioned the
+  // toolbar collapsed to its padding when the left group was hidden (no
+  // rows selected) and the create/import buttons overlapped whatever came
+  // next, e.g. the welcome card on an empty page.
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  // below the tablet breakpoint Buefy wraps the groups in
+  // .field-body > .field.is-grouped, neither of which stretches; keep
+  // both full-width flex rows so the right group still ends up right
+  > .field-body,
+  > .field-body > .field.is-grouped {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
   .right {
-    position: absolute;
-    right: 0.75rem;
-    top: 0.75em;
-    /*max-width: 70%;*/
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   transition: all 200ms linear;
@@ -2061,20 +2201,11 @@ td {
   }
 }
 
-.tabs {
-  .icon + span {
-    color: #ff6719; //方案1
-  }
-
-  .icon {
-    display: none; //方案1
-    margin: 0 0 0 -0.5em !important;
-
-    .iconfont {
-      font-size: 32px;
-      color: coral;
-    }
-  }
+// a tab whose table holds a connected node; set through header-class
+// instead of a hidden 32px icon that showed as a stray glyph on some
+// phones
+.tabs li.tab-connected a span {
+  color: #ff6719;
 }
 
 .node-group-option {
@@ -2127,7 +2258,7 @@ table th {
   vertical-align: middle !important;
 }
 
-.dialog .mdi-.iconfont.icon-alert {
+.dialog .icon-triangle-alert {
   font-size: 40px;
 }
 
@@ -2166,10 +2297,17 @@ $coverBackground: rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 
-.mobile-small {
-  @media screen and (max-width: 450px) {
-    border-radius: 2px;
-    font-size: 0.65rem;
+// Toolbar buttons on phones. reset.scss scales the root font to 0.8em
+// below 768px, so rem values shrink again; use px for a real touch target
+// (14px text, ~36px tall) instead of the old 0.65rem (~8px text).
+@media screen and (max-width: 768px) {
+  #toolbar .button.mobile-small,
+  #toolbar .button.field {
+    font-size: 14px;
+    height: 2.5em;
+    padding-left: 0.9em;
+    padding-right: 0.9em;
+    border-radius: 4px;
   }
 }
 
@@ -2183,6 +2321,17 @@ $coverBackground: rgba(0, 0, 0, 0.6);
   border-radius: 4px;
 }
 
+// The handle that brings the status sidebar back was a 36px glyph in a
+// shadowed box, larger than any control on the page; a phone showed it as the
+// biggest thing on screen. Keep it a small, evenly padded target.
+.sidebar-handle {
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px;
+  cursor: pointer;
+}
+
 .b-sidebar.node-status-sidebar > .sidebar-content.is-fixed {
   left: 1px;
   top: 4.25rem;
@@ -2192,6 +2341,17 @@ $coverBackground: rgba(0, 0, 0, 0.6);
 
   .message {
     cursor: pointer;
+  }
+
+  // Bulma's small message pads the header and the body differently, which
+  // left a gap under the title and the body text a step further in.
+  .message.is-small .message-header,
+  .message.is-small .message-body {
+    padding: 0.55rem 0.75rem;
+  }
+
+  .message.is-small .message-body {
+    padding-top: 0.45rem;
   }
 
   .tabs:not(:last-child),
@@ -2213,25 +2373,35 @@ $coverBackground: rgba(0, 0, 0, 0.6);
   }
 }
 
+// Three things share the header: the name, the group tag and the
+// subscription it came from. The tag used to sit beside the name and squeeze
+// it into two lines while staying centred against them, and the subscription
+// name wrapped wherever the flex line broke. The name takes the row; a tag
+// that does not fit beside it drops to its own line; the subscription name
+// always sits under both, in a smaller face.
 .node-status-card__header {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.3rem;
   font-weight: 600;
-  gap: 0.5rem;
 }
 
 .node-status-card__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.95rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .node-status-card__subscription {
+  flex: 0 0 100%;
   font-size: 0.75rem;
-  opacity: 0.85;
+  font-weight: 500;
+  opacity: 0.75;
+  line-height: 1.2;
 }
 
 .node-status-card__group {
@@ -2244,6 +2414,8 @@ $coverBackground: rgba(0, 0, 0, 0.6);
   background-color: var(--node-status-group-bg, rgba(255, 255, 255, 0.15));
   color: var(--node-status-group-color, inherit);
   white-space: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .message.is-light .node-status-card__group {
@@ -2253,10 +2425,11 @@ $coverBackground: rgba(0, 0, 0, 0.6);
 
 .node-status-card__body {
   font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 .node-status-card__body p {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.15rem;
 }
 
 .node-status-card__body p:last-child {
@@ -2286,10 +2459,59 @@ tr.highlight-row-disconnected > td {
 .click-through {
   pointer-events: none;
 }
+
+// The core-version notice is the one persistent banner in the app; keep it
+// inside the content column instead of edge to edge, and lay the icon out
+// as a column so long text does not wrap under it.
+.core-version-error {
+  margin: 0.75rem auto 0;
+  max-width: 1200px;
+  width: calc(100% - 1.5rem);
+  display: flex;
+  border-radius: 6px;
+  font-size: 0.9rem;
+
+  ::v-deep .media,
+  ::v-deep .media-content {
+    align-items: flex-start;
+  }
+
+  &__icon {
+    margin-right: 0.5rem;
+  }
+}
 .address-column {
   max-width: 350px !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+}
+
+// Buefy's mobile cards (below 769px): one td per line with the label on
+// the left. Long host names wrapped over three lines and the checkbox
+// took a line of its own, so a card was ~350px tall.
+@media screen and (max-width: 768px) {
+  .b-table .table tbody tr {
+    position: relative;
+  }
+  .b-table .table tbody td.checkbox-cell {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.5rem;
+    width: 2.5rem;
+    justify-content: flex-end;
+    padding: 0;
+    border: 0;
+  }
+  // the ID line shares the row with the checkbox, which sits at its right end
+  .b-table .table tbody td.checkbox-cell + td {
+    padding-right: 3.5rem !important;
+  }
+  .b-table .table tbody td .address-column {
+    max-width: 60vw !important;
+    white-space: nowrap;
+    direction: rtl; // keep the distinctive tail of long host names visible
+    text-align: right;
+  }
 }
 .latency-column {
   max-width: 120px !important;

@@ -30,7 +30,7 @@ use crate::async_stream::{
     AsyncFlushMessage, AsyncMessageStream, AsyncPing, AsyncReadMessage, AsyncReadSessionMessage,
     AsyncReadTargetedMessage, AsyncSessionMessageStream, AsyncShutdownMessage,
     AsyncShutdownMessageExt, AsyncTargetedMessageStream, AsyncWriteMessage,
-    AsyncWriteSessionMessage, AsyncWriteSourcedMessage,
+    AsyncWriteSessionMessage, AsyncWriteSourcedMessage, MessageSessionId,
 };
 use crate::client_proxy_selector::{ClientProxySelector, ConnectDecision};
 use crate::resolver::{Resolver, resolve_single_address};
@@ -131,7 +131,7 @@ enum LookupKey {
     /// For Targeted streams: use destination
     Destination(NetLocation),
     /// For SessionBased streams: use protocol session_id
-    SessionId(u16),
+    SessionId(MessageSessionId),
 }
 
 /// Session lookup strategy - determined by server stream type
@@ -139,7 +139,7 @@ enum SessionLookup {
     /// For Targeted: destination -> KeyState
     ByDestination(FxHashMap<NetLocation, KeyState>),
     /// For SessionBased: session_id -> KeyState
-    BySessionId(FxHashMap<u16, KeyState>),
+    BySessionId(FxHashMap<MessageSessionId, KeyState>),
 }
 
 /// A routing session (one per unique flow)
@@ -148,7 +148,7 @@ struct RoutingSession {
     destination: NetLocation,
 
     /// The session's session id if this is a session UDP stream
-    session_id: u16,
+    session_id: MessageSessionId,
 
     /// Resolved address for response source field
     resolved_addr: SocketAddr,
@@ -187,7 +187,7 @@ struct RoutingSession {
 impl RoutingSession {
     fn new(
         destination: NetLocation,
-        session_id: u16,
+        session_id: MessageSessionId,
         resolved_addr: SocketAddr,
         lookup_key: LookupKey,
         remote: Box<dyn AsyncMessageStream>,
@@ -292,7 +292,7 @@ impl ServerStream {
         cx: &mut Context<'_>,
         data: &[u8],
         source: &SocketAddr,
-        session_id: u16,
+        session_id: MessageSessionId,
     ) -> Poll<io::Result<()>> {
         match self {
             ServerStream::Targeted(stream) => {
@@ -331,6 +331,13 @@ impl ServerStream {
             ServerStream::Session(stream) => stream.shutdown_message().await,
         }
     }
+
+    fn take_closed_session(&mut self) -> Option<MessageSessionId> {
+        match self {
+            ServerStream::Targeted(_) => None,
+            ServerStream::Session(stream) => stream.take_closed_session(),
+        }
+    }
 }
 
 impl std::fmt::Debug for ServerStream {
@@ -345,7 +352,7 @@ impl std::fmt::Debug for ServerStream {
 /// Packet info extracted from server stream
 struct InboundPacket {
     destination: NetLocation,
-    session_id: u16,
+    session_id: MessageSessionId,
 }
 
 /// Result of session creation
@@ -361,7 +368,7 @@ type SessionCreateFuture = Pin<Box<dyn Future<Output = io::Result<SessionCreateR
 struct PendingSessionCreate {
     lookup_key: LookupKey,
     destination: NetLocation,
-    session_id: u16,
+    session_id: MessageSessionId,
     initial_data: Vec<u8>,
     future: SessionCreateFuture,
 }
@@ -507,6 +514,30 @@ impl<'a> UdpRouter<'a> {
         }
     }
 
+    fn drain_closed_server_sessions(&mut self) {
+        while let Some(session_id) = self.server.take_closed_session() {
+            let state = match &mut self.session_lookup {
+                SessionLookup::BySessionId(map) => map.remove(&session_id),
+                SessionLookup::ByDestination(_) => unreachable!(),
+            };
+
+            match state {
+                Some(KeyState::Active(id)) => self.cancel_session(id),
+                Some(KeyState::Pending) => {
+                    if let Some(index) = self.pending_creates.iter().position(|pending| {
+                        matches!(
+                            pending.lookup_key,
+                            LookupKey::SessionId(id) if id == session_id
+                        )
+                    }) {
+                        self.pending_creates.swap_remove(index);
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
     /// Read from server, route to sessions
     /// Returns (made_progress, exhausted) - exhausted only if read hit Pending, not pool exhaustion
     #[inline]
@@ -523,7 +554,9 @@ impl<'a> UdpRouter<'a> {
         loop {
             // Read packet from server directly into pool buffer
             let mut read_buf = ReadBuf::new(&mut buf);
-            let packet = match self.server.poll_read_message(cx, &mut read_buf) {
+            let poll_result = self.server.poll_read_message(cx, &mut read_buf);
+            self.drain_closed_server_sessions();
+            let packet = match poll_result {
                 Poll::Ready(Ok(p)) => {
                     server_read_progress = true;
                     debug!(
@@ -1080,9 +1113,21 @@ impl<'a> UdpRouter<'a> {
     /// Remove a session (split-borrow friendly version)
     #[inline]
     fn remove_session(&mut self, id: SessionKey) {
-        let Some(mut session) = self.sessions.swap_remove(&id) else {
+        let Some(session) = self.take_session(id) else {
             return;
         };
+
+        self.pending_shutdowns.push_back(session.remote);
+    }
+
+    #[inline]
+    fn cancel_session(&mut self, id: SessionKey) {
+        drop(self.take_session(id));
+    }
+
+    #[inline]
+    fn take_session(&mut self, id: SessionKey) -> Option<RoutingSession> {
+        let mut session = self.sessions.swap_remove(&id)?;
 
         debug!("Session removed: {}", session.destination);
 
@@ -1092,18 +1137,17 @@ impl<'a> UdpRouter<'a> {
         }
 
         // Remove from lookup map
-        match (&mut self.session_lookup, session.lookup_key) {
+        match (&mut self.session_lookup, &session.lookup_key) {
             (SessionLookup::ByDestination(map), LookupKey::Destination(dest)) => {
-                map.remove(&dest);
+                map.remove(dest);
             }
             (SessionLookup::BySessionId(map), LookupKey::SessionId(sid)) => {
-                map.remove(&sid);
+                map.remove(sid);
             }
             _ => unreachable!(),
         }
 
-        // Queue remote stream for graceful shutdown
-        self.pending_shutdowns.push_back(session.remote);
+        Some(session)
     }
 
     /// Process expired sessions
@@ -1328,4 +1372,292 @@ pub async fn run_udp_routing(
     let result = UdpRouter::new(&mut server, selector, resolver, need_initial_flush).await;
     let _ = server.shutdown_message().await;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::{BufMut, BytesMut};
+    use futures::task::noop_waker;
+    use std::future::Future;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncRead, AsyncWrite};
+
+    use crate::async_stream::AsyncStream;
+    use crate::resolver::NativeResolver;
+    use crate::xudp::XudpMessageStream;
+    use crate::xudp::frame::{FrameMetadata, FrameOption, SessionStatus, TargetNetwork};
+    use crate::xudp::message_stream::MAX_XUDP_ROUTES;
+
+    struct PendingByteStream {
+        input: Vec<u8>,
+        offset: usize,
+    }
+
+    impl AsyncRead for PendingByteStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if self.offset == self.input.len() {
+                return Poll::Pending;
+            }
+
+            let end = (self.offset + buf.remaining()).min(self.input.len());
+            buf.put_slice(&self.input[self.offset..end]);
+            self.offset = end;
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncWrite for PendingByteStream {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncPing for PendingByteStream {
+        fn supports_ping(&self) -> bool {
+            false
+        }
+
+        fn poll_write_ping(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<bool>> {
+            Poll::Ready(Ok(false))
+        }
+    }
+
+    impl AsyncStream for PendingByteStream {}
+
+    #[derive(Debug)]
+    struct CountingFailingResolver {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Resolver for CountingFailingResolver {
+        fn resolve_location(
+            &self,
+            _location: &NetLocation,
+        ) -> Pin<Box<dyn Future<Output = io::Result<Vec<SocketAddr>>> + Send>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {
+                tokio::task::yield_now().await;
+                Err(io::Error::other("injected DNS failure"))
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct RemoteState {
+        writes: Mutex<Vec<Vec<u8>>>,
+        shutdown_polls: AtomicUsize,
+        drops: AtomicUsize,
+    }
+
+    struct RecordingRemote {
+        state: Arc<RemoteState>,
+    }
+
+    impl Drop for RecordingRemote {
+        fn drop(&mut self) {
+            self.state.drops.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    impl AsyncReadMessage for RecordingRemote {
+        fn poll_read_message(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Pending
+        }
+    }
+
+    impl AsyncWriteMessage for RecordingRemote {
+        fn poll_write_message(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<()>> {
+            self.state.writes.lock().unwrap().push(buf.to_vec());
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncFlushMessage for RecordingRemote {
+        fn poll_flush_message(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncShutdownMessage for RecordingRemote {
+        fn poll_shutdown_message(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.state.shutdown_polls.fetch_add(1, Ordering::SeqCst);
+            Poll::Pending
+        }
+    }
+
+    impl AsyncPing for RecordingRemote {
+        fn supports_ping(&self) -> bool {
+            false
+        }
+
+        fn poll_write_ping(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<bool>> {
+            Poll::Ready(Ok(false))
+        }
+    }
+
+    impl AsyncMessageStream for RecordingRemote {}
+
+    fn append_xudp_frame(
+        output: &mut BytesMut,
+        session_id: u16,
+        status: SessionStatus,
+        destination: Option<NetLocation>,
+        payload: Option<&[u8]>,
+    ) {
+        FrameMetadata {
+            session_id,
+            status,
+            option: if payload.is_some() {
+                FrameOption::new().with_data()
+            } else {
+                FrameOption::new()
+            },
+            network: destination.as_ref().map(|_| TargetNetwork::Udp),
+            target: destination,
+        }
+        .encode(output)
+        .unwrap();
+        if let Some(payload) = payload {
+            output.put_u16(payload.len() as u16);
+            output.extend_from_slice(payload);
+        }
+    }
+
+    #[tokio::test]
+    async fn route_overflow_preserves_existing_route_and_end_cancels_remote() {
+        let address = Address::Ipv4("127.0.0.1".parse().unwrap());
+        let default_destination = NetLocation::new(address.clone(), 1);
+        let mut input = BytesMut::new();
+        append_xudp_frame(
+            &mut input,
+            10,
+            SessionStatus::New,
+            Some(default_destination.clone()),
+            Some(b"before limit"),
+        );
+        for port in 2..=MAX_XUDP_ROUTES as u16 {
+            append_xudp_frame(
+                &mut input,
+                10,
+                SessionStatus::Keep,
+                Some(NetLocation::new(address.clone(), port)),
+                Some(b"fill"),
+            );
+        }
+        let overflow_destination = NetLocation::new(
+            Address::Hostname("cap-probe.invalid".to_string()),
+            MAX_XUDP_ROUTES as u16 + 1,
+        );
+        for _ in 0..2 {
+            append_xudp_frame(
+                &mut input,
+                10,
+                SessionStatus::Keep,
+                Some(overflow_destination.clone()),
+                Some(b"overflow"),
+            );
+        }
+        append_xudp_frame(
+            &mut input,
+            10,
+            SessionStatus::Keep,
+            None,
+            Some(b"after limit"),
+        );
+        append_xudp_frame(&mut input, 10, SessionStatus::End, None, None);
+
+        let inner = PendingByteStream {
+            input: input.to_vec(),
+            offset: 0,
+        };
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let xudp = XudpMessageStream::new_with_resolver(
+            Box::new(inner),
+            Arc::new(CountingFailingResolver {
+                calls: Arc::clone(&resolver_calls),
+            }),
+        );
+        let mut server = ServerStream::Session(Box::new(xudp));
+        let selector = Arc::new(ClientProxySelector::new(Vec::new()));
+        let resolver: Arc<dyn Resolver> = Arc::new(NativeResolver::new());
+        let mut router = UdpRouter::new(&mut server, selector, resolver, false);
+
+        let state = Arc::new(RemoteState::default());
+        let resolved_destination = default_destination.to_socket_addr_nonblocking().unwrap();
+        let mut session = RoutingSession::new(
+            default_destination,
+            1,
+            resolved_destination,
+            LookupKey::SessionId(1),
+            Box::new(RecordingRemote {
+                state: Arc::clone(&state),
+            }),
+        );
+        session.expiry_key = Some(
+            router
+                .expiry_queue
+                .insert(0, Duration::from_secs(SESSION_TIMEOUT_SECS)),
+        );
+        router.sessions.insert(0, session);
+        let SessionLookup::BySessionId(lookup) = &mut router.session_lookup else {
+            unreachable!()
+        };
+        lookup.insert(1, KeyState::Active(0));
+
+        for index in 0..MAX_PENDING_CREATES {
+            router.pending_creates.push(PendingSessionCreate {
+                lookup_key: LookupKey::SessionId(10_000 + index as u64),
+                destination: NetLocation::new(
+                    Address::Ipv4("192.0.2.1".parse().unwrap()),
+                    index as u16 + 1,
+                ),
+                session_id: 10_000 + index as u64,
+                initial_data: Vec::new(),
+                future: Box::pin(std::future::pending()),
+            });
+        }
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert_eq!(router.poll_read_server(&mut cx), (true, true));
+        assert!(!router.server_read_eof);
+        assert!(router.sessions.is_empty());
+        assert!(router.pending_shutdowns.is_empty());
+        assert_eq!(
+            *state.writes.lock().unwrap(),
+            vec![b"before limit".to_vec(), b"after limit".to_vec()]
+        );
+        assert_eq!(state.shutdown_polls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.drops.load(Ordering::SeqCst), 1);
+        assert_eq!(resolver_calls.load(Ordering::SeqCst), 0);
+    }
 }
