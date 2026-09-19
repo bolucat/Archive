@@ -304,6 +304,7 @@ func Run() error {
 		auth.POST("outbound", controller.PostOutbound)
 		auth.PUT("outbound", controller.PutOutbound)
 		auth.PUT("outboundConnections", controller.PutOutboundConnections)
+		auth.PUT("outboundSelection", controller.PutOutboundSelection)
 		auth.DELETE("outbound", controller.DeleteOutbound)
 		auth.GET("message", controller.WsMessage)
 		auth.GET("logger", controller.GetLogger)
@@ -311,7 +312,6 @@ func Run() error {
 		auth.GET("tproxyWhiteIpGroups", controller.GetTproxyWhiteIpGroups)
 		auth.PUT("domainsExcluded", controller.PutDomainsExcluded)
 		auth.PUT("tproxyWhiteIpGroups", controller.PutTproxyWhiteIpGroups)
-		auth.GET("networkInterfaces", controller.GetNetworkInterfaces)
 	}
 
 	ServeGUI(root)

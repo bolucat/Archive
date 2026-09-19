@@ -29,6 +29,8 @@ type Template struct {
 	MultiObservatory *coreObj.MultiObservatory `json:"multiObservatory,omitempty"`
 	Observatory      *coreObj.ObservatoryItem  `json:"observatory,omitempty"`
 	API              *coreObj.APIObject        `json:"api,omitempty"`
+	Stats            *struct{}                 `json:"stats,omitempty"`
+	Policy           *coreObj.Policy           `json:"policy,omitempty"`
 	// DnsModuleConfig 是新 DNS 模块的配置，由 v2raya-core 启动时解析并启动 DNS 监听器。
 	DnsModuleConfig json.RawMessage `json:"dns_module,omitempty"`
 
@@ -104,14 +106,9 @@ func NewTemplate(serverInfos []serverInfo, setting *configure.Setting) (t *Templ
 	if err = t.setInbound(setting); err != nil {
 		return nil, err
 	}
-	// When TinyTun is active it handles DNS routing natively; v2ray only forwards traffic.
-	// Skip the DNS module for that mode.
-	isTinyTunMode := setting.TransparentType == configure.TransparentTun && IsTransparentOn(setting)
-	if !isTinyTunMode {
-		//生成新 DNS 模块配置
-		if err = t.setDNS(serverInfos); err != nil {
-			return nil, err
-		}
+	//生成新 DNS 模块配置
+	if err = t.setDNS(serverInfos); err != nil {
+		return nil, err
 	}
 	// 路由域名匹配器
 	t.Routing.DomainMatcher = "mph"

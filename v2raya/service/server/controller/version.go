@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/v2rayA/v2rayA/common"
@@ -32,6 +33,11 @@ func GetVersion(ctx *gin.Context) {
 	}
 
 	versionErr := service.CheckCoreVersionMatch()
+	// the core's own version, for the dashboard; empty when the binary cannot be asked
+	coreVersion := ""
+	if _, ver, err := where.GetV2rayServiceVersion(); err == nil {
+		coreVersion = ver
+	}
 
 	common.ResponseSuccess(ctx, gin.H{
 		"version":          conf.Version,
@@ -42,9 +48,10 @@ func GetVersion(ctx *gin.Context) {
 		"lite":             lite,
 		"loadBalanceValid": true,
 		"variant":          where.V2rayaCore,
+		"coreVersion":      coreVersion,
 		"os":               runtime.GOOS,
 		"isRoot":           isRoot,
-		"tinytunSupported": v2ray.IsTinyTunEnabled(),
+		"tunSupported":     v2ray.TunSupported(),
 		"coreVersionValid": versionErr == nil,
 		"coreVersionErr": func() string {
 			if versionErr != nil {
@@ -58,12 +65,7 @@ func GetVersion(ctx *gin.Context) {
 }
 
 func GetRemoteGFWListVersion(ctx *gin.Context) {
-	//c, err := httpClient.GetHttpClientAutomatically()
-	//if err != nil {
-	//	tools.ResponseError(ctx, err)
-	//	return
-	//}
-	g, err := dat.GetRemoteGFWListUpdateTime(http.DefaultClient)
+	g, err := dat.GetRemoteGFWListUpdateTime(&http.Client{Timeout: 10 * time.Second})
 	if err != nil {
 		common.ResponseError(ctx, logError(err))
 		return

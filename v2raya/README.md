@@ -2,7 +2,7 @@
 
 [**English**](https://github.com/v2rayA/v2rayA/blob/main/README.md)&nbsp;&nbsp;&nbsp;[**简体中文**](https://github.com/v2rayA/v2rayA/blob/main/README_zh.md)
 
-v2rayA is a V2Ray client supporting global transparent proxy on Linux and system proxy on Windows and macOS, it is compatible with SS, SSR, Trojan(trojan-go), Tuic and [Juicity](https://github.com/juicity) protocols. [[SSR protocol list]](https://github.com/v2rayA/shadowsocksR/blob/main/README.md#ss-encrypting-algorithm)
+v2rayA is a V2Ray client supporting global transparent proxy on Linux, Windows and macOS, it is compatible with SS, SSR, Trojan(trojan-go), Tuic and [Juicity](https://github.com/juicity) protocols. [[SSR protocol list]](https://github.com/v2rayA/shadowsocksR/blob/main/README.md#ss-encrypting-algorithm)
 
 We are committed to providing the simplest operation and meet most needs.
 
@@ -27,12 +27,23 @@ v2rayA mainly provides the following methods of installation:
 See [**v2rayA - Docs**](https://v2raya.org/en/docs/prologue/introduction/)
 
 
-## Screenshot
+## Transparent proxy
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-dark.png">
-  <img src="docs/images/screenshot-light.png" alt="v2rayA web interface" width="100%">
-</picture>
+On Linux, transparent proxy is available as `redirect`, `tproxy` or `tun`; on Windows and macOS as `tun` or the system proxy.
+
+`tun` is built into the core: the core opens a TUN device, assigns its address and takes the default route. Its own connections, the direct outbound and the DNS module's upstream queries never enter the TUN (by socket mark on Linux, by binding to the physical interface on Windows and macOS), and every DNS query an application sends to a public resolver is answered by the core's DNS module. v2rayA and the core are always excluded; other processes can be excluded by executable name in the settings. Connected and static routes always bypass the TUN.
+
+Known limitation: on Windows and macOS an application that queries a LAN resolver directly still bypasses the TUN. The system resolver is pointed at the TUN and is covered.
+
+## Screenshots
+
+The dashboard: the core, the node in use, live traffic, the transparent proxy and splitting modes, the members' latency and the subscriptions, each a tile.
+
+<img src="docs/images/screenshot.png" alt="v2rayA dashboard, light and dark" width="100%">
+
+The RoutingA editor: rules as a list with a rule editor, or as text with line numbers, colouring and per-line checks; the syntax at hand; import and export.
+
+<img src="docs/images/routinga.png" alt="the RoutingA editor, light and dark" width="100%">
 
 ## Statement
 

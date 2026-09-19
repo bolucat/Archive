@@ -3,36 +3,63 @@
 package dns
 
 import (
+	"encoding/binary"
 	"net"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/miekg/dns"
 )
 
-// setSocketMark is a no-op on Windows since SO_MARK is a Linux-specific
-// socket option used for iptables/nftables mark-based filtering.
+// From ws2ipdef.h; the two options share the number.
+const (
+	ipUnicastIf   = 31
+	ipv6UnicastIf = 31
+)
+
+// setSocketMark is a no-op on Windows: there is no SO_MARK. Self-exclusion
+// from the TUN is done by binding to the physical interface instead.
 func setSocketMark(fd uintptr) error {
 	return nil
 }
 
-// markFd is a no-op Control function on Windows (SO_MARK unsupported).
+// markFd binds the socket to the configured egress interface, if any.
+// IP_UNICAST_IF wants the index in network byte order; IPV6_UNICAST_IF
+// wants host order.
 func markFd(network, address string, c syscall.RawConn) error {
-	return nil
+	idx, ok := egressInterfaceIndex()
+	if !ok {
+		return nil
+	}
+	var opErr error
+	err := c.Control(func(fd uintptr) {
+		if isIPv6Address(network, address) {
+			opErr = syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_IPV6, ipv6UnicastIf, idx)
+			return
+		}
+		var be [4]byte
+		binary.BigEndian.PutUint32(be[:], uint32(idx))
+		opErr = syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_IP, ipUnicastIf, int(*(*uint32)(unsafe.Pointer(&be[0]))))
+	})
+	if err != nil {
+		return err
+	}
+	return opErr
 }
 
-// markedDialer returns a plain dialer on Windows (no socket marking).
 func markedDialer() *net.Dialer {
 	return &net.Dialer{
 		Timeout:   5 * time.Second,
+		Control:   markFd,
 		KeepAlive: 30 * time.Second,
 	}
 }
 
-// newMarkedDnsClient creates a *dns.Client. On Windows the mark is a no-op;
-// on Linux it sets SO_MARK=0x80 to bypass transparent-proxy DNS redirects.
-// UDPSize=4096 gives queries without an EDNS0 OPT record a 4 KiB receive
-// buffer instead of miekg/dns's 512-byte default.
+// newMarkedDnsClient creates a *dns.Client whose sockets are bound to the
+// egress interface when one is configured. UDPSize=4096 gives queries
+// without an EDNS0 OPT record a 4 KiB receive buffer instead of
+// miekg/dns's 512-byte default.
 func newMarkedDnsClient(network string) *dns.Client {
 	return &dns.Client{
 		Net:          network,

@@ -2,6 +2,7 @@ package v2raygrpclite
 
 import (
 	std_bufio "bufio"
+	"context"
 	"encoding/binary"
 	"io"
 	"net"
@@ -27,6 +28,7 @@ type GunConn struct {
 	flusher       http.Flusher
 	create        chan struct{}
 	err           error
+	cancel        context.CancelFunc
 	readRemaining int
 	onClose       func()
 }
@@ -40,10 +42,11 @@ func newGunConn(reader io.Reader, writer io.Writer, flusher http.Flusher) *GunCo
 	}
 }
 
-func newLateGunConn(writer io.Writer) *GunConn {
+func newLateGunConn(writer io.Writer, cancel context.CancelFunc) *GunConn {
 	return &GunConn{
 		create: make(chan struct{}),
 		writer: writer,
+		cancel: cancel,
 	}
 }
 
@@ -62,7 +65,7 @@ func (c *GunConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *GunConn) read(b []byte) (n int, err error) {
-	if c.reader == nil {
+	if c.create != nil {
 		<-c.create
 		if c.err != nil {
 			return 0, c.err
@@ -142,7 +145,20 @@ func (c *GunConn) FrontHeadroom() int {
 }
 
 func (c *GunConn) Close() error {
-	err := common.Close(c.rawReader, c.writer)
+	var reader io.Reader
+	if c.create != nil {
+		select {
+		case <-c.create:
+			reader = c.rawReader
+		default:
+		}
+	} else {
+		reader = c.rawReader
+	}
+	err := common.Close(reader, c.writer)
+	if c.cancel != nil {
+		c.cancel()
+	}
 	if c.onClose != nil {
 		c.onClose()
 	}

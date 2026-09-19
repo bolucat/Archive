@@ -291,3 +291,76 @@ func TestHeaderCustomUDPBuildRejectsExprWithoutArgs(t *testing.T) {
 		t.Fatalf("expected transform arg rejection, got %v", err)
 	}
 }
+
+func TestXDriveStreamConfig(t *testing.T) {
+	config := new(StreamConfig)
+	if err := json.Unmarshal([]byte(`{
+		"method": "xdrive",
+		"xdriveSettings": {
+			"remoteFolder": "/tmp/xdrive",
+			"service": "local"
+		}
+	}`), config); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	built, err := config.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if built.ProtocolName != "xdrive" {
+		t.Fatalf("ProtocolName is %q, want %q", built.ProtocolName, "xdrive")
+	}
+	if len(built.TransportSettings) != 1 || built.TransportSettings[0].ProtocolName != "xdrive" {
+		t.Fatalf("TransportSettings is %v, want a single xdrive entry", built.TransportSettings)
+	}
+}
+
+func TestXDriveRejectsUnknownService(t *testing.T) {
+	config := new(XDriveConfig)
+	if err := json.Unmarshal([]byte(`{"remoteFolder": "/tmp/xdrive", "service": "Dropbox"}`), config); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if _, err := config.Build(); err == nil {
+		t.Fatal("Build accepted an unsupported service")
+	}
+}
+
+func TestXDriveTemplateStreamConfig(t *testing.T) {
+	config := new(StreamConfig)
+	if err := json.Unmarshal([]byte(`{
+		"method": "xdrive",
+		"xdriveSettings": {
+			"remoteFolder": "folder",
+			"service": "template",
+			"secrets": ["user", "pass"],
+			"template": {
+				"flatten": true,
+				"auth": {"type": "basic", "username": "{secret0}", "password": "{secret1}"},
+				"put": {"method": "PUT", "url": "https://dav.example/{folder}/{name}"},
+				"get": {"method": "GET", "url": "https://dav.example/{folder}/{name}"},
+				"delete": {"method": "DELETE", "url": "https://dav.example/{folder}/{name}"},
+				"list": {"method": "PROPFIND", "url": "https://dav.example/{folder}/", "namesRegex": "<d:href>/folder/([^<]+)</d:href>"}
+			}
+		}
+	}`), config); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	built, err := config.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if built.ProtocolName != "xdrive" {
+		t.Fatalf("ProtocolName is %q, want xdrive", built.ProtocolName)
+	}
+}
+
+func TestXDriveTemplateNeedsTemplate(t *testing.T) {
+	config := new(XDriveConfig)
+	if err := json.Unmarshal([]byte(`{"remoteFolder": "f", "service": "template"}`), config); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if _, err := config.Build(); err == nil {
+		t.Fatal("Build accepted a template service without a template")
+	}
+}

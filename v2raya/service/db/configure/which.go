@@ -5,7 +5,6 @@ import (
 	"net"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/v2rayA/v2rayA/common"
@@ -83,6 +82,7 @@ func (ws *Whiches) SortSameTypeReverse() {
 				ws.Touches[begin+j], ws.Touches[i-j-1] = ws.Touches[i-j-1], ws.Touches[begin+j]
 			}
 			begin = i
+			typ = ws.Touches[i].TYPE
 		}
 	}
 	if begin < len(ws.Touches)-1 {
@@ -153,6 +153,8 @@ type Which struct {
 	Latency  string    `json:"pingLatency,omitempty"` //历史遗留问题，前后端通信还是使用pingLatency这个名字，该值仅作为ping的返回值
 	Link     string    //optional
 	Outbound string    `json:"outbound"`
+	// Selected marks, in a touch, the member the group routes through alone.
+	Selected bool `json:"selected,omitempty"`
 }
 
 func (w *Which) EqualTo(another Which) (ok bool) {
@@ -198,11 +200,8 @@ func (w *Which) Ping(timeout time.Duration) (err error) {
 	}
 	t := time.Now()
 	conn, e := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(tsr.ServerObj.GetPort())), timeout)
-	if e == nil || (strings.Contains(e.Error(), "refuse")) {
-		if e == nil {
-			_ = conn.Close()
-		}
-		//log.Println(host+":"+tsr.VmessInfo.Port, e)
+	if e == nil {
+		_ = conn.Close()
 		w.Latency = fmt.Sprintf("%.0fms", time.Since(t).Seconds()*1000)
 	} else {
 		log.Debug("Ping: %v", e)
