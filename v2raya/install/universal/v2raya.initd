@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+# Copyright 2021 Gentoo Authors
+# Distributed under the terms of the GNU General Public License v2
+
+name="v2rayA"
+description="Web client for its own Xray-based core, with transparent proxy"
+command="/usr/bin/v2raya"
+command_args="${V2RAYA_OPTS}"
+error_log="/var/log/v2raya/error.log"
+# supervise-daemon restarts the service after a crash, as the systemd
+# unit's Restart=on-failure does (OpenRC's default: up to 10 times in
+# 10 s); rc_cgroup_cleanup takes a core the service left behind.
+supervisor="supervise-daemon"
+rc_ulimit="-n 30000"
+rc_cgroup_cleanup="yes"
+# The service stops its core and removes the transparent-proxy rules on
+# SIGTERM; give it time before OpenRC escalates, or the rules stay behind.
+retry="TERM/30/KILL/5"
+
+depend() {
+	need net
+	use dns firewall
+	after net firewall nftables iptables
+}
+
+start_pre() {
+	checkpath -d -m 0755 /var/log/v2raya
+	checkpath -d -m 0750 /etc/v2raya
+}

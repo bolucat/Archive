@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,11 @@ type DnsConfigResponse struct {
 // PutDnsRules 处理 PUT /api/dns 请求，保存 DNS 规则配置。
 // 支持新格式和旧格式请求，向后兼容。
 func PutDnsRules(ctx *gin.Context) {
+	release, ok := beginMutation(ctx)
+	if !ok {
+		return
+	}
+	defer release()
 	var rules []configure.DnsRule
 	if err := ctx.ShouldBindJSON(&rules); err != nil {
 		common.ResponseError(ctx, badRequest("DNS rules", fmt.Errorf("request body must be a JSON array of DNS rules: %w", err)))
@@ -33,6 +39,10 @@ func PutDnsRules(ctx *gin.Context) {
 		}
 		if upstream == "" {
 			common.ResponseError(ctx, logError(fmt.Errorf("DNS rule %d has no upstream server", i+1)))
+			return
+		}
+		if err := v2ray.CheckDnsUpstream(upstream); err != nil {
+			common.ResponseError(ctx, badRequest("DNS rules", fmt.Errorf("DNS rule %d: %w", i+1, err)))
 			return
 		}
 		// 同步新旧字段：确保 Server 和 Upstream 至少有一个有值
@@ -58,21 +68,24 @@ func PutDnsRules(ctx *gin.Context) {
 	// 执行迁移以确保新字段有默认值
 	migrated := configure.MigrateDnsRules(rules)
 
-	previous := configure.GetDnsRulesNotNil()
-	if err := configure.SetDnsRules(migrated); err != nil {
+	err := service.ApplyCoreConfig(func() func() error {
+		previous := configure.GetDnsRulesNotNil()
+		return func() error { return configure.SetDnsRules(previous) }
+	}, func() error {
+		return configure.SetDnsRules(migrated)
+	})
+	if err != nil {
+		var failure *service.ApplyCoreConfigError
+		if errors.As(err, &failure) {
+			err = failure.UpdateErr
+			if failure.RestoreStoreErr != nil {
+				err = fmt.Errorf("%w; restoring DNS rules failed: %v", err, failure.RestoreStoreErr)
+			} else if failure.RestoreUpdateErr != nil {
+				err = fmt.Errorf("%w; restarting with previous DNS rules failed: %v", err, failure.RestoreUpdateErr)
+			}
+		}
 		common.ResponseError(ctx, logError(err))
 		return
-	}
-	if v2ray.ProcessManager.Running() {
-		if err := v2ray.UpdateV2RayConfig(); err != nil {
-			if restoreErr := configure.SetDnsRules(previous); restoreErr != nil {
-				err = fmt.Errorf("%w; restoring DNS rules failed: %v", err, restoreErr)
-			} else if restoreErr := v2ray.UpdateV2RayConfig(); restoreErr != nil {
-				err = fmt.Errorf("%w; restarting with previous DNS rules failed: %v", err, restoreErr)
-			}
-			common.ResponseError(ctx, logError(err))
-			return
-		}
 	}
 	common.ResponseSuccess(ctx, nil)
 }

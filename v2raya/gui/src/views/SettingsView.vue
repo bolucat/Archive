@@ -4,7 +4,8 @@ import { useI18n } from "vue-i18n";
 import { useDisplay } from "vuetify";
 import dayjs from "dayjs";
 import { errorText } from "@/api/errors";
-import { useDialog, useNotify } from "@/composables";
+import { useDialog, useNotify, useUnsavedGuard } from "@/composables";
+import DocsLink from "@/components/DocsLink.vue";
 import CustomInboundDialog from "@/dialogs/settings/CustomInbound.vue";
 import DnsDialog from "@/dialogs/settings/Dns.vue";
 import DomainsExcludedDialog from "@/dialogs/settings/DomainsExcluded.vue";
@@ -35,6 +36,7 @@ const notify = useNotify();
 const { open } = useDialog();
 const store = useAppStore();
 const settings = useSettings();
+useUnsavedGuard(() => settings.dirty.value);
 const { form, ready, localGFWListVersion, remoteGFWListVersion } = settings;
 const saving = ref(false);
 const formRef = ref<{ validate(): Promise<{ valid: boolean }> } | null>(null);
@@ -130,7 +132,7 @@ const gfwUpdateModes = computed(() => [
 const gfwlistInUse = computed(
   () => form.pacMode === "gfwlist" || form.transparent === "gfwlist",
 );
-const localVersionStale = computed(
+const localVersionAhead = computed(
   () =>
     !!localGFWListVersion.value &&
     !!remoteGFWListVersion.value &&
@@ -181,7 +183,10 @@ defineExpose({ sync: () => settings.load() });
     />
     <template v-else>
       <v-list class="mb-4" bg-color="surface-container-low" rounded="xl">
-        <v-list-subheader>{{ t("setting.sections.proxy") }}</v-list-subheader>
+        <v-list-subheader>
+          {{ t("setting.sections.proxy") }}
+          <DocsLink section="transparent-proxy" />
+        </v-list-subheader>
         <SettingChoice
           v-model="form.transparent"
           :title="t('setting.transparentProxy')"
@@ -278,7 +283,10 @@ defineExpose({ sync: () => settings.load() });
       </v-list>
 
       <v-list class="mb-4" bg-color="surface-container-low" rounded="xl">
-        <v-list-subheader>{{ t("setting.sections.traffic") }}</v-list-subheader>
+        <v-list-subheader>
+          {{ t("setting.sections.traffic") }}
+          <DocsLink section="routing" />
+        </v-list-subheader>
         <SettingChoice
           v-model="form.pacMode"
           :title="t('setting.pacMode')"
@@ -286,14 +294,14 @@ defineExpose({ sync: () => settings.load() });
           :items="pacModes"
         />
         <SettingRow
-          title="RoutingA"
+          :title="t('routingA.title')"
           :subtitle="t('operations.configure')"
           action
           @click="openRoutingA"
         />
         <SettingRow
           :title="t('gfwList.title')"
-          :hint="localVersionStale ? t('setting.messages.gfwlist') : undefined"
+          :hint="localVersionAhead ? t('setting.messages.gfwlist') : undefined"
           :subtitle="`${t('common.latest')}: ${remoteGFWListVersion || t('common.checkRunning')}  ${t('common.local')}: ${localGFWListVersion || t('common.none')}`"
           action
           @click="openGfwList"

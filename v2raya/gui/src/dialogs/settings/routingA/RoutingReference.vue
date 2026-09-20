@@ -3,7 +3,6 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { mdiContentCopy } from "@mdi/js";
 import HighlightedCode from "./HighlightedCode.vue";
-import { template } from "./template";
 
 defineOptions({ name: "RoutingReference" });
 defineProps<{ disabled?: boolean }>();
@@ -50,11 +49,6 @@ const sections = computed(() => [
       "outbound: name = socks(address: 127.0.0.1, port: 10800)",
       "outbound: authenticated = http(address: 127.0.0.1, port: 8080, user: 'username', pass: 'password')",
     ],
-  },
-  {
-    title: t("routingA.reference.examples.title"),
-    description: t("routingA.reference.examples.description"),
-    examples: [template, "domain(geosite: category-ads) -> block"],
   },
 ]);
 </script>

@@ -54,6 +54,12 @@ export default {
     removeFromGroup: "Remover do grupo",
     selectAll: "Selecionar todos",
     autoUpdate: "Atualização automática",
+    noSubscriptions: "Nenhuma assinatura ainda",
+    noSubscriptionsHint:
+      "Importe um endereço de assinatura; seus nós ficam agrupados aqui, atualizados manualmente ou por agenda.",
+    importSubscription: "Importar assinatura",
+    emptyHint:
+      "Importe um link de compartilhamento ou um endereço de assinatura, ou crie um nó manualmente.",
     deleteSubscriptionNodes:
       "Os nós de uma assinatura não podem ser excluídos individualmente.",
   },
@@ -93,6 +99,7 @@ export default {
     outboundSetting: "Configuração do grupo de proxy",
     setting: "Configurações",
     about: "Sobre",
+    docs: "Documentação",
     loggedAs: "Conectado como {username}",
     checkRunning: "Verificando",
     isRunning: "Em execução",
@@ -310,7 +317,8 @@ export default {
     colServer: "Servidor DNS",
     colDomains: "Lista de domínios",
     colOutbound: "Saída",
-    serverPlaceholder: "por exemplo, 8.8.8.8 ou https://dns.google/dns-query",
+    serverPlaceholder:
+      "por exemplo, 8.8.8.8, tls://dns.google ou https://dns.google/dns-query",
     domainsPlaceholder:
       "Um por linha, por exemplo, geosite:cn\nDeixe vazio para usar o DNS de fallback",
     addRule: "Adicionar regra",
@@ -355,13 +363,13 @@ export default {
     wireguardPrivateKey: "Chave privada",
     wireguardLocalAddress: "Endereço (local)",
     wireguardLocalAddressPlaceholder: "CIDR, por exemplo, 10.0.0.1/24",
-    wireguardDns: "DNS",
+    wireguardReserved: "Bytes reservados",
     wireguardMtu: "MTU",
     wireguardAllowedIPs: "IPs permitidos",
     wireguardPersistentKeepalive: "Keepalive persistente",
     wireguardPreSharedKey: "Chave pré-compartilhada",
-    wireguardEndpoint: "Endpoint",
-    wireguardEndpointPlaceholder: "Opcional; o padrão é Endereço:Porta",
+    wireguardWorkers: "Workers",
+    wireguardKernelMode: "Modo kernel",
     security: "Segurança",
     auto: "Automático",
     utlsFingerprint: "Impressão digital uTLS",
@@ -386,8 +394,6 @@ export default {
     plugin: "Plugin",
     pluginImpl: "Implementação",
     obfs: "Obfs",
-    protocolParam: "Parâmetro do protocolo",
-    obfsParam: "Parâmetro de obfs",
     ssCipher: "Cifra do Shadowsocks",
     ssPassword: "Senha do Shadowsocks",
     websocketHost: "Host do WebSocket",
@@ -434,12 +440,15 @@ export default {
       "Incompatibilidade de versão do núcleo: a versão do v2raya_core deve corresponder exatamente à versão do v2rayA. {err}",
   },
   about: {
-    intro: "v2rayA é um cliente web do V2Ray.",
-    local: "Todos os dados são armazenados localmente, não na nuvem.",
+    intro:
+      "Um cliente web com núcleo próprio baseado em Xray e proxy transparente global no Linux, Windows e macOS.",
+    protocols:
+      "Aceita links VMess, VLESS, Shadowsocks, Trojan, Hysteria2, TUIC, Juicity, AnyTLS, WireGuard, SOCKS5 e HTTP(S).",
+    founded: "Fundado por {'@'}mzz2017.",
+    local: "Todos os dados ficam nesta máquina; nada é enviado à nuvem.",
     report:
       "Problemas encontrados durante o uso podem ser relatados em {discussions}.",
     discussions: "discussões",
-    docs: "Documentação:",
   },
   axios: {
     messages: {
@@ -455,7 +464,50 @@ export default {
       usage: "https://github.com/v2rayA/v2rayA/wiki/Usage",
     },
   },
+  docs: {
+    fallback:
+      "Esta seção ainda não foi traduzida; o texto em inglês é exibido.",
+    sections: {
+      "quick-start": "Início rápido",
+      "transparent-proxy": "Proxy transparente",
+      routing: "Regras de roteamento",
+      inbounds: "Entradas e compartilhamento",
+      parameters: "Opções e variáveis de ambiente",
+      troubleshooting: "Solução de problemas",
+    },
+    params: {
+      flag: "Opção",
+      env: "Variável de ambiente",
+      default: "Padrão",
+      desc: "Descrição",
+    },
+  },
   routingA: {
+    title: "Regras RoutingA",
+    templates: {
+      title: "Modelos",
+      full: "Conjunto completo, substitui as regras atuais",
+      add: "Adicionar regras, inseridas no cursor",
+      whitelist: "China direto, o resto pelo proxy",
+      blacklist: "Sites fora da China pelo proxy, o resto direto",
+      global: "Tudo pelo proxy, rede local direto",
+      minimal: "Só os serviços estrangeiros comuns pelo proxy, o resto direto",
+      ads: "Bloquear domínios de publicidade",
+      streaming:
+        "Streaming pelo proxy (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
+      social: "Redes sociais pelo proxy",
+      telegram: "Telegram pelo proxy",
+      ai: "Serviços de IA pelo proxy",
+      dev: "Serviços de desenvolvimento pelo proxy (GitHub, GitLab, Docker, npm, JetBrains, Hugging Face)",
+      cnServices:
+        "Serviços chineses de Apple, Google, Microsoft, Steam e Bilibili direto",
+      appleMicrosoft: "Apple e Microsoft direto",
+      games: "Plataformas de jogos direto",
+      speedtest: "Testes de velocidade direto",
+      lan: "Rede local e endereços privados direto",
+      bittorrent: "BitTorrent direto (precisa de Sniffing)",
+      quic: "Bloquear QUIC (UDP 443)",
+    },
     export: "Exportar",
     import: {
       title: "Importar",
@@ -494,12 +546,13 @@ export default {
       actions: "Ações da entrada",
       raw: "Sintaxe não reconhecida; preservada no editor de texto.",
     },
-    editor: "Regras RoutingA",
     loading: "Carregando regras",
     resetDefault: "Restaurar padrão",
     resetConfirm: "Substituir as regras atuais pelo modelo padrão?",
     discard: "Descartar alterações não salvas?",
     insert: "Inserir",
+    replace: "Substituir todas as regras",
+    replaceConfirm: "Substituir as regras atuais por este modelo?",
     lineError: "Linha {line}: {message}",
     errors: {
       noArrow: "É necessário indicar uma condição seguida de -> e uma saída.",
@@ -532,11 +585,6 @@ export default {
         title: "Saídas",
         description:
           "As saídas integradas são proxy, direct e block; default define a saída quando nenhuma regra corresponde. Defina uma saída SOCKS ou HTTP nomeada com user e pass opcionais.",
-      },
-      examples: {
-        title: "Exemplos",
-        description:
-          "Insira o modelo padrão ou uma regra que bloqueia domínios da lista de publicidade.",
       },
     },
     messages: ["clique no botão 'Ajuda e manual' para obter ajuda"],

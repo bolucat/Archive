@@ -21,6 +21,22 @@ import (
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 )
 
+const maxAssetDownloadSize int64 = 256 << 20
+
+func readAssetBody(resp *http.Response) ([]byte, error) {
+	if resp.ContentLength > maxAssetDownloadSize {
+		return nil, fmt.Errorf("asset exceeds the 256 MiB download limit")
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAssetDownloadSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxAssetDownloadSize {
+		return nil, fmt.Errorf("asset exceeds the 256 MiB download limit")
+	}
+	return b, nil
+}
+
 func GetV2rayLocationAssetOverride() string {
 	if assetDir := conf.GetEnvironmentConfig().V2rayAssetsDirectory; assetDir != "" {
 		return assetDir
@@ -29,10 +45,23 @@ func GetV2rayLocationAssetOverride() string {
 		return assetDir
 	}
 	if runtime.GOOS != "windows" {
-		return filepath.Join(xdg.RuntimeDir, "v2raya")
+		return runtimeAssetDir()
 	} else {
 		return conf.GetEnvironmentConfig().Config
 	}
+}
+
+// runtimeAssetDir is where the core's asset links go when nothing names a
+// directory: v2raya's subdirectory of the XDG runtime directory. A service
+// user has no session, so /run/user/<uid> does not exist and cannot be
+// created by it; then the configuration directory, which the process owns,
+// holds the links instead of the start failing on the lookup.
+func runtimeAssetDir() string {
+	dir := filepath.Join(xdg.RuntimeDir, "v2raya")
+	if err := os.MkdirAll(dir, 0700); err == nil {
+		return dir
+	}
+	return conf.GetEnvironmentConfig().Config
 }
 
 func GetV2rayLocationAsset(filename string) (string, error) {
@@ -77,10 +106,7 @@ func GetV2rayLocationAsset(filename string) (string, error) {
 					return "", err
 				}
 			}
-			runtimepath, err := xdg.RuntimeFile(filepath.Join("v2raya", filename))
-			if err != nil {
-				return "", err
-			}
+			runtimepath := filepath.Join(runtimeAssetDir(), filename)
 			os.Remove(runtimepath)
 			err = os.Symlink(fullpath, runtimepath)
 			if err != nil {
@@ -201,13 +227,17 @@ func GetNftablesConfigPath() (p string) {
 }
 
 func Download(url string, to string) (err error) {
+	c := &http.Client{Timeout: 90 * time.Second}
+	return download(c, url, to)
+}
+
+func download(c *http.Client, url string, to string) (err error) {
 	log.Info("Downloading %v to %v", url, to)
 	host := "unknown host"
 	if u, parseErr := url2.Parse(url); parseErr == nil && u.Hostname() != "" {
 		host = u.Hostname()
 	}
 	status := ""
-	c := http.Client{Timeout: 90 * time.Second}
 	resp, err := c.Get(url)
 	if err != nil || resp.StatusCode != 200 {
 		if err == nil {
@@ -237,7 +267,7 @@ func Download(url string, to string) (err error) {
 	}
 	defer resp.Body.Close()
 	status = resp.Status
-	b, err := io.ReadAll(resp.Body)
+	b, err := readAssetBody(resp)
 	if err != nil {
 		return common.Coded("ASSET_DOWNLOAD_FAILED", err, map[string]interface{}{
 			"host":   host,

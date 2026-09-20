@@ -24,7 +24,8 @@ export function normalizeOutbounds(outbounds: unknown): string[] {
 export type Running = "checking" | "running" | "stopped" | "paused";
 export type ThemePreference = "auto" | "light" | "dark";
 /** The page's destinations, in the order the rail and the bar show them. */
-export type View = "dashboard" | "proxies" | "settings" | "logs" | "about";
+export type View =
+  "dashboard" | "proxies" | "settings" | "logs" | "docs" | "about";
 
 // One store for the session-wide state the old App.vue kept in data and
 // localStorage: what was a translated text ("正在运行") is an enum here, so
@@ -54,7 +55,6 @@ export const useAppStore = defineStore("app", {
     )
       ? localStorage.getItem("theme")
       : "auto") as ThemePreference,
-    systemDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
     /** the seed colour the theme's palettes derive from */
     themeSeed: (() => {
       const seed = localStorage.getItem("themeSeed") ?? "";
@@ -62,6 +62,8 @@ export const useAppStore = defineStore("app", {
     })(),
     language: localStorage.getItem("_lang") ?? "",
     view: "dashboard" as View,
+    /** the documentation section to show; "" is the first */
+    docsSection: "",
   }),
   getters: {
     loggedIn: (s) => s.token !== "",
@@ -75,10 +77,6 @@ export const useAppStore = defineStore("app", {
         return "";
       }
     },
-    isDark: (s) =>
-      s.themePreference === "auto"
-        ? s.systemDark
-        : s.themePreference === "dark",
   },
   actions: {
     setToken(token: string) {

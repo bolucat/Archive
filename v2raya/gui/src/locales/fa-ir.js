@@ -54,6 +54,12 @@ export default {
     removeFromGroup: "حذف از گروه",
     selectAll: "انتخاب همه",
     autoUpdate: "به‌روزرسانی خودکار",
+    noSubscriptions: "هنوز اشتراکی وجود ندارد",
+    noSubscriptionsHint:
+      "نشانی اشتراک را وارد کنید؛ گره‌های آن این‌جا کنار هم نگه داشته و دستی یا زمان‌بندی‌شده به‌روز می‌شوند.",
+    importSubscription: "وارد کردن اشتراک",
+    emptyHint:
+      "پیوند اشتراک‌گذاری یا نشانی اشتراک را وارد کنید یا گره را دستی بسازید.",
     deleteSubscriptionNodes: "گره‌های اشتراک را نمی‌توان جداگانه حذف کرد.",
   },
   dashboard: {
@@ -92,6 +98,7 @@ export default {
     outboundSetting: "تنظیمات گروه پروکسی",
     setting: "تنظیمات",
     about: "درباره",
+    docs: "مستندات",
     loggedAs: "واردشده با حساب کاربری {username}",
     checkRunning: "در حال بررسی",
     isRunning: "در حال اجرا",
@@ -303,7 +310,8 @@ export default {
     colServer: "سرور DNS",
     colDomains: "فهرست دامنه‌ها",
     colOutbound: "خروجی",
-    serverPlaceholder: "برای نمونه 8.8.8.8 یا https://dns.google/dns-query",
+    serverPlaceholder:
+      "برای نمونه 8.8.8.8، tls://dns.google یا https://dns.google/dns-query",
     domainsPlaceholder:
       "هر مورد در یک خط؛ برای نمونه geosite:cn\nبرای DNS جایگزین خالی بگذارید",
     addRule: "افزودن قانون",
@@ -348,14 +356,13 @@ export default {
     wireguardPrivateKey: "کلید خصوصی",
     wireguardLocalAddress: "نشانی (محلی)",
     wireguardLocalAddressPlaceholder: "CIDR؛ برای نمونه 10.0.0.1/24",
-    wireguardDns: "DNS",
+    wireguardReserved: "بایت‌های رزرو",
     wireguardMtu: "MTU",
     wireguardAllowedIPs: "IPهای مجاز",
     wireguardPersistentKeepalive: "زنده‌نگه‌داشتن پایدار",
     wireguardPreSharedKey: "کلید ازپیش‌اشتراکی",
-    wireguardEndpoint: "نقطه پایانی",
-    wireguardEndpointPlaceholder:
-      "اختیاری؛ به‌طور پیش‌فرض برابر با Address:Port است",
+    wireguardWorkers: "تعداد کارگرها",
+    wireguardKernelMode: "حالت هسته",
     security: "امنیت",
     auto: "خودکار",
     utlsFingerprint: "اثر انگشت uTLS",
@@ -380,8 +387,6 @@ export default {
     plugin: "افزونه",
     pluginImpl: "پیاده‌سازی",
     obfs: "Obfs",
-    protocolParam: "پارامتر پروتکل",
-    obfsParam: "پارامتر Obfs",
     ssCipher: "رمزنگاری Shadowsocks",
     ssPassword: "گذرواژه Shadowsocks",
     websocketHost: "میزبان WebSocket",
@@ -426,12 +431,16 @@ export default {
       "ناسازگاری نسخه هسته: نسخه v2raya_core باید دقیقاً با نسخه v2rayA یکسان باشد. {err}",
   },
   about: {
-    intro: "v2rayA یک رابط وب برای V2Ray است.",
-    local: "همه داده‌ها به‌صورت محلی و نه در فضای ابری ذخیره می‌شوند.",
+    intro:
+      "یک رابط وب با هستهٔ اختصاصی مبتنی بر Xray و پراکسی شفاف سراسری در Linux، Windows و macOS.",
+    protocols:
+      "از پیوندهای VMess، VLESS، Shadowsocks، Trojan، Hysteria2، TUIC، Juicity، AnyTLS، WireGuard، SOCKS5 و HTTP(S) پشتیبانی می‌کند.",
+    founded: "بنیان‌گذار: {'@'}mzz2017.",
+    local:
+      "همهٔ داده‌ها روی همین دستگاه می‌مانند و به هیچ سرویس ابری فرستاده نمی‌شوند.",
     report:
       "مشکلات مشاهده‌شده هنگام استفاده را می‌توانید در {discussions} گزارش کنید.",
     discussions: "discussions",
-    docs: "مستندات:",
   },
   axios: {
     messages: {
@@ -447,7 +456,49 @@ export default {
       usage: "https://github.com/v2rayA/v2rayA/wiki/Usage",
     },
   },
+  docs: {
+    fallback: "این بخش هنوز ترجمه نشده است؛ متن انگلیسی نمایش داده می‌شود.",
+    sections: {
+      "quick-start": "شروع سریع",
+      "transparent-proxy": "پروکسی شفاف",
+      routing: "قوانین مسیریابی",
+      inbounds: "ورودی‌ها و اشتراک‌گذاری",
+      parameters: "گزینه‌ها و متغیرهای محیطی",
+      troubleshooting: "عیب‌یابی",
+    },
+    params: {
+      flag: "گزینه",
+      env: "متغیر محیطی",
+      default: "پیش‌فرض",
+      desc: "توضیح",
+    },
+  },
   routingA: {
+    title: "قوانین RoutingA",
+    templates: {
+      title: "الگوها",
+      full: "مجموعهٔ کامل قوانین، جایگزین قوانین فعلی",
+      add: "افزودن قوانین، درج در محل مکان‌نما",
+      whitelist: "چین مستقیم، بقیه از پروکسی",
+      blacklist: "سایت‌های خارج از چین از پروکسی، بقیه مستقیم",
+      global: "همه از پروکسی، شبکهٔ محلی مستقیم",
+      minimal: "فقط سرویس‌های خارجی رایج از پروکسی، بقیه مستقیم",
+      ads: "مسدود کردن دامنه‌های تبلیغاتی",
+      streaming:
+        "پخش ویدئو و موسیقی از پروکسی (Netflix، Disney، HBO، Prime Video، YouTube، Spotify، TikTok)",
+      social: "شبکه‌های اجتماعی از پروکسی",
+      telegram: "Telegram از پروکسی",
+      ai: "سرویس‌های هوش مصنوعی از پروکسی",
+      dev: "سرویس‌های توسعه‌دهندگان از پروکسی (GitHub، GitLab، Docker، npm، JetBrains، Hugging Face)",
+      cnServices:
+        "سرویس‌های چینی Apple، Google، Microsoft، Steam و Bilibili مستقیم",
+      appleMicrosoft: "Apple و Microsoft مستقیم",
+      games: "پلتفرم‌های بازی مستقیم",
+      speedtest: "تست سرعت مستقیم",
+      lan: "شبکهٔ محلی و آدرس‌های خصوصی مستقیم",
+      bittorrent: "BitTorrent مستقیم (نیاز به Sniffing)",
+      quic: "مسدود کردن QUIC (UDP 443)",
+    },
     export: "برون‌بری",
     import: {
       title: "درون‌ریزی",
@@ -483,12 +534,13 @@ export default {
       actions: "عملیات ورودی",
       raw: "نحو ناشناخته؛ متن اصلی در ویرایشگر متنی حفظ می‌شود.",
     },
-    editor: "قوانین RoutingA",
     loading: "در حال بارگذاری قوانین",
     resetDefault: "بازگردانی پیش‌فرض",
     resetConfirm: "قوانین فعلی با الگوی پیش‌فرض جایگزین شوند؟",
     discard: "تغییرات ذخیره‌نشده کنار گذاشته شوند؟",
     insert: "درج",
+    replace: "جایگزینی همهٔ قوانین",
+    replaceConfirm: "قوانین فعلی با این الگو جایگزین شوند؟",
     lineError: "خط {line}: {message}",
     errors: {
       noArrow: "شرط باید با -> و یک خروجی دنبال شود.",
@@ -521,11 +573,6 @@ export default {
         title: "خروجی‌ها",
         description:
           "خروجی‌های داخلی proxy، direct و block هستند؛ default خروجی هنگام نبود تطبیق را تعیین می‌کند. می‌توانید خروجی SOCKS یا HTTP نام‌دار با user و pass اختیاری تعریف کنید.",
-      },
-      examples: {
-        title: "نمونه‌ها",
-        description:
-          "الگوی پیش‌فرض یا قانونی برای مسدود کردن دامنه‌های فهرست تبلیغات درج کنید.",
       },
     },
     messages: ["برای دریافت راهنمایی، روی دکمه «Help&Manual» کلیک کنید"],

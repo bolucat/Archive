@@ -54,6 +54,12 @@ export default {
     removeFromGroup: "Remove from group",
     selectAll: "Select all",
     autoUpdate: "Auto-update",
+    noSubscriptions: "No subscriptions yet",
+    noSubscriptionsHint:
+      "Import a subscription address and its nodes are kept together here, updated by hand or on a schedule.",
+    importSubscription: "Import a subscription",
+    emptyHint:
+      "Import a share link or a subscription address, or create a node by hand.",
     deleteSubscriptionNodes:
       "Subscription nodes cannot be deleted individually.",
   },
@@ -91,8 +97,9 @@ export default {
     nodes: "Nodes",
     menu: "Menu",
     outboundSetting: "Proxy Group Setting",
-    setting: "Setting",
+    setting: "Settings",
     about: "About",
+    docs: "Documentation",
     loggedAs: "Logged in as {username}",
     checkRunning: "Checking",
     isRunning: "Running",
@@ -306,7 +313,8 @@ export default {
     colServer: "DNS Server",
     colDomains: "Domain List",
     colOutbound: "Outbound",
-    serverPlaceholder: "e.g. 8.8.8.8 or https://dns.google/dns-query",
+    serverPlaceholder:
+      "e.g. 8.8.8.8, tls://dns.google or https://dns.google/dns-query",
     domainsPlaceholder:
       "One per line, e.g. geosite:cn\nLeave empty for fallback DNS",
     addRule: "Add Rule",
@@ -351,13 +359,13 @@ export default {
     wireguardPrivateKey: "Private Key",
     wireguardLocalAddress: "Address (Local)",
     wireguardLocalAddressPlaceholder: "CIDR, e.g. 10.0.0.1/24",
-    wireguardDns: "DNS",
+    wireguardReserved: "Reserved bytes",
     wireguardMtu: "MTU",
     wireguardAllowedIPs: "Allowed IPs",
     wireguardPersistentKeepalive: "Persistent Keepalive",
     wireguardPreSharedKey: "Pre-shared Key",
-    wireguardEndpoint: "Endpoint",
-    wireguardEndpointPlaceholder: "Optional, defaults to Address:Port",
+    wireguardWorkers: "Workers",
+    wireguardKernelMode: "Kernel mode",
     security: "Security",
     auto: "Auto",
     utlsFingerprint: "uTLS Fingerprint",
@@ -382,8 +390,6 @@ export default {
     plugin: "Plugin",
     pluginImpl: "Implementation",
     obfs: "Obfs",
-    protocolParam: "Protocol Param",
-    obfsParam: "Obfs Param",
     ssCipher: "Shadowsocks Cipher",
     ssPassword: "Shadowsocks Password",
     websocketHost: "WebSocket Host",
@@ -429,11 +435,14 @@ export default {
       "Core version mismatch: v2raya_core version must exactly match v2rayA version. {err}",
   },
   about: {
-    intro: "v2rayA is a web GUI client of V2Ray.",
-    local: "All data is stored in local instead of in the cloud.",
+    intro:
+      "A web client for its own Xray-based core with global transparent proxy on Linux, Windows and macOS.",
+    protocols:
+      "Speaks VMess, VLESS, Shadowsocks, Trojan, Hysteria2, TUIC, Juicity, AnyTLS, WireGuard, SOCKS5 and HTTP(S) proxy links.",
+    founded: "Founded by {'@'}mzz2017.",
+    local: "All data stays on this machine; nothing is sent to a cloud.",
     report: "Problems found during use can be reported in {discussions}.",
     discussions: "discussions",
-    docs: "Documentation:",
   },
   axios: {
     messages: {
@@ -449,7 +458,52 @@ export default {
       usage: "https://github.com/v2rayA/v2rayA/wiki/Usage",
     },
   },
+  docs: {
+    fallback:
+      "This section has not been translated yet; the English text is shown.",
+    sections: {
+      "quick-start": "Quick start",
+      "transparent-proxy": "Transparent proxy",
+      routing: "Routing rules",
+      inbounds: "Inbounds and sharing",
+      parameters: "Flags and environment",
+      troubleshooting: "Troubleshooting",
+    },
+    params: {
+      flag: "Flag",
+      env: "Environment variable",
+      default: "Default",
+      desc: "Description",
+    },
+  },
   routingA: {
+    title: "RoutingA rules",
+    templates: {
+      title: "Templates",
+      full: "Full rule set, replaces the current rules",
+      add: "Add rules, inserted at the cursor",
+      whitelist: "China direct, everything else through the proxy",
+      blacklist:
+        "Sites outside China through the proxy, everything else direct",
+      global: "Everything through the proxy, LAN direct",
+      minimal:
+        "Only common foreign services through the proxy, everything else direct",
+      ads: "Block advertising domains",
+      streaming:
+        "Streaming through the proxy (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
+      social: "Social media through the proxy",
+      telegram: "Telegram through the proxy",
+      ai: "AI services through the proxy",
+      dev: "Developer services through the proxy (GitHub, GitLab, Docker, npm, JetBrains, Hugging Face)",
+      cnServices:
+        "Chinese mirrors of Apple, Google, Microsoft, Steam and Bilibili direct",
+      appleMicrosoft: "Apple and Microsoft direct",
+      games: "Game platforms direct",
+      speedtest: "Speed tests direct",
+      lan: "LAN and private addresses direct",
+      bittorrent: "BitTorrent direct (needs Sniffing)",
+      quic: "Block QUIC (UDP 443)",
+    },
     export: "Export",
     import: {
       title: "Import",
@@ -485,12 +539,13 @@ export default {
       actions: "Entry actions",
       raw: "Unrecognized syntax; preserved in the text editor.",
     },
-    editor: "RoutingA rules",
     loading: "Loading rules",
     resetDefault: "Restore defaults",
     resetConfirm: "Replace the current rules with the default template?",
     discard: "Discard unsaved changes?",
     insert: "Insert",
+    replace: "Replace all rules",
+    replaceConfirm: "Replace the current rules with this template?",
     lineError: "Line {line}: {message}",
     errors: {
       noArrow: "Expected a condition followed by -> and an outbound.",
@@ -498,7 +553,7 @@ export default {
       noOutbound: "An outbound is required after ->.",
     },
     reference: {
-      title: "Syntax",
+      title: "Reference",
       format: {
         title: "Rule format",
         description:
@@ -523,11 +578,6 @@ export default {
         title: "Outbounds",
         description:
           "Built-in outbounds are proxy, direct and block; default selects the fallback. Define a named SOCKS or HTTP outbound with optional user and pass.",
-      },
-      examples: {
-        title: "Examples",
-        description:
-          "Insert the default template or a rule that blocks domains in the advertising list.",
       },
     },
     messages: ["click the button 'Help&Manual' for help"],

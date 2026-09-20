@@ -88,9 +88,6 @@ onMounted(sync);
         @click:clear="query = ''"
       />
       <v-spacer />
-      <v-btn variant="text" :disabled="disabled" @click="model.editRoutingA">{{
-        t("routingA.editor")
-      }}</v-btn>
       <v-btn
         variant="outlined"
         :prepend-icon="mdiPlus"
@@ -104,7 +101,7 @@ onMounted(sync);
         color="primary"
         :prepend-icon="mdiTrayArrowDown"
         :disabled="disabled"
-        @click="model.importNodes"
+        @click="model.importNodes()"
         >{{ t("operations.import") }}</v-btn
       >
     </div>
@@ -163,21 +160,35 @@ onMounted(sync);
                 @action="model.subscriptionAction(subscription, $event)"
               />
             </div>
-            <v-card v-else variant="outlined" rounded="xl">
-              <v-empty-state
+            <v-sheet
+              v-else
+              color="surface-container-low"
+              rounded="xl"
+              class="proxies__empty"
+            >
+              <v-icon
                 :icon="mdiRss"
-                :text="t('import.subscriptionMessage')"
+                size="28"
+                color="on-surface-variant"
+                class="flex-shrink-0"
+              />
+              <div class="proxies__empty-text">
+                <p class="md3-title-medium ma-0">
+                  {{ t("proxies.noSubscriptions") }}
+                </p>
+                <p class="md3-body-medium text-on-surface-variant ma-0">
+                  {{ t("proxies.noSubscriptionsHint") }}
+                </p>
+              </div>
+              <v-btn
+                variant="tonal"
+                color="primary"
+                class="flex-shrink-0"
+                :disabled="disabled"
+                @click="model.importNodes('subscription')"
+                >{{ t("proxies.importSubscription") }}</v-btn
               >
-                <template #actions
-                  ><v-btn
-                    variant="tonal"
-                    :disabled="disabled"
-                    @click="model.importNodes"
-                    >{{ t("operations.import") }}</v-btn
-                  ></template
-                >
-              </v-empty-state>
-            </v-card>
+            </v-sheet>
           </div>
         </v-expand-transition>
       </section>
@@ -201,6 +212,7 @@ onMounted(sync);
           <v-chip
             :model-value="true"
             :aria-pressed="membersOnly"
+            link
             variant="text"
             :prepend-icon="membersOnly ? mdiCheck : undefined"
             class="proxies__chip"
@@ -342,14 +354,14 @@ onMounted(sync);
           v-if="!rows.length"
           :icon="mdiServerNetworkOutline"
           :title="t('common.empty')"
-          :text="t('import.subscriptionMessage')"
+          :text="t('proxies.emptyHint')"
         >
           <template #actions
             ><v-btn
               variant="flat"
               color="primary"
               :disabled="disabled"
-              @click="model.importNodes"
+              @click="model.importNodes()"
               >{{ t("operations.import") }}</v-btn
             ></template
           >
@@ -455,6 +467,18 @@ onMounted(sync);
 </template>
 
 <style scoped>
+/* no subscriptions yet: one row, icon, words and the action, wrapping when narrow */
+.proxies__empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 16px 20px;
+}
+.proxies__empty-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
 .proxies__row {
   display: flex;
   flex-wrap: wrap;

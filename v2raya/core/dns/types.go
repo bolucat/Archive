@@ -104,10 +104,11 @@ type DnsListenerConfig struct {
 
 // DnsModuleConfig holds the complete DNS module configuration.
 type DnsModuleConfig struct {
-	Listener  DnsListenerConfig `json:"listener"`
-	Cache     CacheConfig       `json:"cache"`
-	Upstreams []UpstreamConfig  `json:"upstreams"`
-	Rules     []RuleConfig      `json:"rules"`
+	Listener        DnsListenerConfig `json:"listener"`
+	Cache           CacheConfig       `json:"cache"`
+	Upstreams       []UpstreamConfig  `json:"upstreams"`
+	Rules           []RuleConfig      `json:"rules"`
+	DefaultUpstream string            `json:"default_upstream,omitempty"`
 	// ProxyMap maps proxy tags (e.g. "proxy") to SOCKS5 proxy addresses (e.g. "127.0.0.1:20170").
 	// The DNS module connects to these SOCKS5 proxies when sending queries through tagged upstreams.
 	// If a tag is not found in this map, the module falls back to common defaults ("proxy" → "127.0.0.1:1080").
@@ -144,6 +145,9 @@ type UpstreamConfig struct {
 	Protocol  string `json:"protocol,omitempty"`
 	ProxyTag  string `json:"proxy_tag,omitempty"`
 	Bootstrap bool   `json:"bootstrap,omitempty"`
+	// ServerName is the hostname of a tls or https upstream, kept when
+	// bootstrap replaces the address with an IP: TLS verifies against it.
+	ServerName string `json:"server_name,omitempty"`
 }
 
 // RuleConfig holds DNS routing rule configuration.

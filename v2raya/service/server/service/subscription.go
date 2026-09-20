@@ -17,6 +17,7 @@ import (
 	"github.com/v2rayA/v2rayA/common/httpClient"
 	"github.com/v2rayA/v2rayA/common/resolv"
 	"github.com/v2rayA/v2rayA/db/configure"
+	"github.com/v2rayA/v2rayA/kernel/ipforward"
 	"github.com/v2rayA/v2rayA/kernel/serverObj"
 	"github.com/v2rayA/v2rayA/kernel/serverObj/clash"
 	"github.com/v2rayA/v2rayA/kernel/touch"
@@ -40,6 +41,22 @@ type SIP008 struct {
 		Remarks    string `json:"remarks"`
 		ID         string `json:"id"`
 	} `json:"servers"`
+}
+
+const maxSubscriptionDocumentSize int64 = 32 << 20
+
+func readSubscriptionBody(resp *http.Response) ([]byte, error) {
+	if resp.ContentLength > maxSubscriptionDocumentSize {
+		return nil, fmt.Errorf("subscription document exceeds the 32 MiB limit")
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxSubscriptionDocumentSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxSubscriptionDocumentSize {
+		return nil, fmt.Errorf("subscription document exceeds the 32 MiB limit")
+	}
+	return b, nil
 }
 
 func resolveSIP008(raw string) (infos []serverObj.ServerObj, sip SIP008, err error) {
@@ -194,7 +211,7 @@ func ResolveSubscriptionWithClient(source string, client *http.Client) (infos []
 	if res.StatusCode >= 400 {
 		return nil, "", fmt.Errorf("subscription server answered %s", res.Status)
 	}
-	b, err := io.ReadAll(res.Body)
+	b, err := readSubscriptionBody(res)
 	if err != nil {
 		return nil, "", err
 	}
@@ -265,9 +282,10 @@ func UpdateSubscription(index int, disconnectIfNecessary bool) (err error) {
 	// serverObj.ServerObj is a pointer(interface), and shouldn't be as a key
 	link2Raw := make(map[string]*configure.ServerRaw)
 	connectedVmessInfo2CssIndex := make(map[string][]int)
+	loc := configure.NewLocator()
 	for i, cs := range css.Get() {
 		if cs.TYPE == configure.SubscriptionServerType && cs.Sub == index {
-			if sRaw, err := cs.LocateServerRaw(); err != nil {
+			if sRaw, err := loc.Locate(cs); err != nil {
 				return err
 			} else {
 				if sRaw.ServerObj == nil {
@@ -360,9 +378,6 @@ func UpdateSubscription(index int, disconnectIfNecessary bool) (err error) {
 			}
 		}
 	}
-	if err := configure.OverwriteConnects(configure.NewWhiches(cssAfter)); err != nil {
-		return err
-	}
 	subscription = configure.GetSubscription(index)
 	if subscription == nil {
 		return common.Coded("SUBSCRIPTION_NOT_FOUND", fmt.Errorf("subscription #%d no longer exists; reload the page", index+1), map[string]interface{}{"id": index + 1})
@@ -370,17 +385,21 @@ func UpdateSubscription(index int, disconnectIfNecessary bool) (err error) {
 	subscription.Servers = infoServerRaws
 	subscription.Status = string(touch.NewUpdateStatus())
 	subscription.Info = status
-	if err := configure.SetSubscription(index, subscription); err != nil {
+	if err := configure.SetSubscriptionAndConnects(index, subscription, configure.NewNodeRefs(cssAfter)); err != nil {
 		return err
 	}
 	// A remapped connection may point at a server whose config differs from the old
 	// one; the running core keeps using the old config until it is regenerated.
 	if connectedServerChanged && v2ray.ProcessManager.Running() {
 		if err := v2ray.UpdateV2RayConfig(); err != nil {
-			log.Warn("UpdateSubscription: failed to reload core after remapping connected servers: %v", err)
+			return subscriptionCoreApplyError(err)
 		}
 	}
 	return nil
+}
+
+func subscriptionCoreApplyError(err error) error {
+	return fmt.Errorf("subscription stored, but the core could not apply it: %w", err)
 }
 
 func ModifySubscriptionRemark(subscription touch.Subscription) (err error) {
@@ -395,7 +414,7 @@ func ModifySubscriptionRemark(subscription touch.Subscription) (err error) {
 }
 
 func SelectServersFromSubscription(index int, shouldDisconnect bool) (err error) {
-	var subscriptionServer configure.Which
+	var subscriptionServer configure.NodeRef
 	subscriptionServer.TYPE = "subscriptionServer"
 	subscriptionServer.Sub = index // Subscription IDs start with 0
 	subscriptionServer.Outbound = "proxy"
@@ -404,7 +423,7 @@ func SelectServersFromSubscription(index int, shouldDisconnect bool) (err error)
 		if connections == nil {
 			return nil
 		}
-		remaining := make([]configure.Which, 0, connections.Len())
+		remaining := make([]configure.NodeRef, 0, connections.Len())
 		var found bool
 		for _, connected := range connections.Get() {
 			if connected.TYPE == configure.SubscriptionServerType && connected.Sub == index {
@@ -419,35 +438,71 @@ func SelectServersFromSubscription(index int, shouldDisconnect bool) (err error)
 		return ReplaceOutboundConnections(subscriptionServer.Outbound, remaining)
 	}
 
-	for i := 1; i < configure.GetLenSubscriptionServers(index)+1; i++ {
-		subscriptionServer.ID = i // Server IDs start with 1
-		sub := configure.GetSubscription(index)
-		if sub == nil {
-			return common.Coded("SUBSCRIPTION_NOT_FOUND", fmt.Errorf("subscription #%d no longer exists", index+1), map[string]interface{}{"id": index + 1})
+	// One replacement for the whole subscription: connecting the members one
+	// by one restarted the core once per node.
+	sub := configure.GetSubscription(index)
+	if sub == nil {
+		return common.Coded("SUBSCRIPTION_NOT_FOUND", fmt.Errorf("subscription #%d no longer exists", index+1), map[string]interface{}{"id": index + 1})
+	}
+	backup := configure.GetConnectedServersByOutbound(subscriptionServer.Outbound)
+	var existing []*configure.NodeRef
+	if backup != nil {
+		existing = backup.Get()
+	}
+	members := autoSelectMembers(index, sub, existing)
+	if len(members) == len(existing) {
+		return nil
+	}
+	// What Connect did once per node: the asset check and the ip forward
+	// reconciliation, then the store, then the core.
+	if err := checkSupport(nil); err != nil {
+		return err
+	}
+	if setting := GetSetting(); setting.IpForward != ipforward.IsIpForwardOn() {
+		if e := ipforward.WriteIpForward(setting.IpForward); e != nil {
+			log.Warn("[AutoSelect] %v", e)
 		}
-		serverObj := sub.Servers[i-1].ServerObj // ServerObj IDs start with 0
-		if serverObj == nil {
-			log.Warn("[AutoSelect] Skipping server %d in subscription %d: nil ServerObj", i, index)
-			continue
-		}
-		serverName := serverObj.GetName()
-
-		// Workaround for partial SS support in v2fly and xray
-		isSupported, _ := IsSupported(subscriptionServer)
-		if !isSupported {
-			log.Info("[AutoSelect] Skipping unsupported server %v", serverName)
-			continue
-		}
-
-		err := Connect(&subscriptionServer)
-		if err == nil {
-			log.Info("[AutoSelect] Automatically selected server: %v", serverName)
-		} else {
-			log.Error("[AutoSelect] Failed to connect to server: %v", serverName)
+	}
+	if err := ReplaceOutboundConnections(subscriptionServer.Outbound, members); err != nil {
+		return err
+	}
+	// Connect started the core for a selection made while it was stopped,
+	// and dropped the selection when that failed.
+	if !v2ray.ProcessManager.Running() {
+		if err := v2ray.UpdateV2RayConfig(); err != nil {
+			if backup != nil && backup.Len() > 0 {
+				_ = configure.OverwriteConnects(backup)
+			} else {
+				_ = configure.ClearConnects(subscriptionServer.Outbound)
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+// autoSelectMembers appends every supported node of the subscription to the
+// members already in the proxy group.
+func autoSelectMembers(index int, sub *configure.SubscriptionRaw, existing []*configure.NodeRef) []configure.NodeRef {
+	members := make([]configure.NodeRef, 0, len(existing)+len(sub.Servers))
+	for _, connected := range existing {
+		members = append(members, *connected)
+	}
+	for i, server := range sub.Servers {
+		if server.ServerObj == nil {
+			log.Warn("[AutoSelect] Skipping server %d in subscription %d: nil ServerObj", i+1, index)
+			continue
+		}
+		serverName := server.ServerObj.GetName()
+		// Workaround for partial SS support in v2fly and xray
+		if supported, _ := isSupportedObj(server.ServerObj); !supported {
+			log.Info("[AutoSelect] Skipping unsupported server %v", serverName)
+			continue
+		}
+		members = append(members, configure.NodeRef{TYPE: configure.SubscriptionServerType, ID: i + 1, Sub: index, Outbound: "proxy"})
+		log.Info("[AutoSelect] Automatically selected server: %v", serverName)
+	}
+	return members
 }
 
 func AutoSelectServersFromSubscriptions(shouldDisconnect bool) (err error) {

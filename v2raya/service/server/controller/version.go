@@ -61,6 +61,7 @@ func GetVersion(ctx *gin.Context) {
 		}(),
 		"hasAccounts":    configure.HasAnyAccounts(),
 		"lastKernelExit": configure.GetLastKernelExitStatus(),
+		"docker":         common.IsDocker(),
 	})
 }
 
@@ -71,4 +72,9 @@ func GetRemoteGFWListVersion(ctx *gin.Context) {
 		return
 	}
 	common.ResponseSuccess(ctx, gin.H{"remoteGFWListVersion": g.UpdateTime.Local().Format("2006-01-02")})
+}
+
+// GetParams lists the command-line flags for the documentation page.
+func GetParams(ctx *gin.Context) {
+	common.ResponseSuccess(ctx, gin.H{"params": conf.Parameters()})
 }

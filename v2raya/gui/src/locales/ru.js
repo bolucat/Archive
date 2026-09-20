@@ -54,6 +54,12 @@ export default {
     removeFromGroup: "Удалить из группы",
     selectAll: "Выбрать все",
     autoUpdate: "Автообновление",
+    noSubscriptions: "Подписок пока нет",
+    noSubscriptionsHint:
+      "Импортируйте адрес подписки: её узлы будут храниться здесь и обновляться вручную или по расписанию.",
+    importSubscription: "Импортировать подписку",
+    emptyHint:
+      "Импортируйте ссылку или адрес подписки либо создайте узел вручную.",
     deleteSubscriptionNodes: "Узлы подписки нельзя удалять по отдельности.",
   },
   dashboard: {
@@ -93,6 +99,7 @@ export default {
     outboundSetting: "Настройка группы прокси",
     setting: "Настройки",
     about: "О программе",
+    docs: "Документация",
     loggedAs: "Выполнен вход как {username}",
     checkRunning: "Проверка",
     isRunning: "Работает",
@@ -306,7 +313,8 @@ export default {
     colServer: "DNS-сервер",
     colDomains: "Список доменов",
     colOutbound: "Исходящий трафик",
-    serverPlaceholder: "например, 8.8.8.8 или https://dns.google/dns-query",
+    serverPlaceholder:
+      "например, 8.8.8.8, tls://dns.google или https://dns.google/dns-query",
     domainsPlaceholder:
       "По одному в строке, например geosite:cn\nОставьте пустым для резервного DNS",
     addRule: "Добавить правило",
@@ -351,13 +359,13 @@ export default {
     wireguardPrivateKey: "Закрытый ключ",
     wireguardLocalAddress: "Адрес (локальный)",
     wireguardLocalAddressPlaceholder: "CIDR, например 10.0.0.1/24",
-    wireguardDns: "DNS",
+    wireguardReserved: "Зарезервированные байты",
     wireguardMtu: "MTU",
     wireguardAllowedIPs: "Разрешённые IP-адреса",
     wireguardPersistentKeepalive: "Постоянное поддержание соединения",
     wireguardPreSharedKey: "Предварительно согласованный ключ",
-    wireguardEndpoint: "Конечная точка",
-    wireguardEndpointPlaceholder: "Необязательно, по умолчанию — Адрес:Порт",
+    wireguardWorkers: "Рабочие потоки",
+    wireguardKernelMode: "Режим ядра",
     security: "Безопасность",
     auto: "Автоматически",
     utlsFingerprint: "Отпечаток uTLS",
@@ -382,8 +390,6 @@ export default {
     plugin: "Плагин",
     pluginImpl: "Реализация",
     obfs: "Obfs",
-    protocolParam: "Параметр протокола",
-    obfsParam: "Параметр Obfs",
     ssCipher: "Шифр Shadowsocks",
     ssPassword: "Пароль Shadowsocks",
     websocketHost: "Хост WebSocket",
@@ -430,12 +436,15 @@ export default {
       "Несовпадение версий ядра: версия v2raya_core должна в точности совпадать с версией v2rayA. {err}",
   },
   about: {
-    intro: "v2rayA — веб-клиент с графическим интерфейсом для V2Ray.",
-    local: "Все данные хранятся локально, а не в облаке.",
+    intro:
+      "Веб-клиент для собственного ядра на базе Xray с глобальным прозрачным прокси в Linux, Windows и macOS.",
+    protocols:
+      "Поддерживает ссылки VMess, VLESS, Shadowsocks, Trojan, Hysteria2, TUIC, Juicity, AnyTLS, WireGuard, SOCKS5 и HTTP(S).",
+    founded: "Основатель проекта — {'@'}mzz2017.",
+    local: "Все данные хранятся локально и никуда не отправляются.",
     report:
       "О проблемах, обнаруженных при использовании, можно сообщить в разделе {discussions}.",
     discussions: "discussions",
-    docs: "Документация:",
   },
   axios: {
     messages: {
@@ -451,7 +460,50 @@ export default {
       usage: "https://github.com/v2rayA/v2rayA/wiki/Usage",
     },
   },
+  docs: {
+    fallback: "Этот раздел ещё не переведён; показан английский текст.",
+    sections: {
+      "quick-start": "Быстрый старт",
+      "transparent-proxy": "Прозрачный прокси",
+      routing: "Правила маршрутизации",
+      inbounds: "Входящие и общий доступ",
+      parameters: "Флаги и переменные окружения",
+      troubleshooting: "Устранение неполадок",
+    },
+    params: {
+      flag: "Флаг",
+      env: "Переменная окружения",
+      default: "По умолчанию",
+      desc: "Описание",
+    },
+  },
   routingA: {
+    title: "Правила RoutingA",
+    templates: {
+      title: "Шаблоны",
+      full: "Полный набор правил, заменяет текущие",
+      add: "Добавить правила, вставляются у курсора",
+      whitelist: "Китай напрямую, остальное через прокси",
+      blacklist: "Сайты за пределами Китая через прокси, остальное напрямую",
+      global: "Всё через прокси, локальная сеть напрямую",
+      minimal:
+        "Только распространённые зарубежные сервисы через прокси, остальное напрямую",
+      ads: "Блокировать рекламные домены",
+      streaming:
+        "Стриминг через прокси (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
+      social: "Социальные сети через прокси",
+      telegram: "Telegram через прокси",
+      ai: "Сервисы ИИ через прокси",
+      dev: "Сервисы для разработчиков через прокси (GitHub, GitLab, Docker, npm, JetBrains, Hugging Face)",
+      cnServices:
+        "Китайские зеркала Apple, Google, Microsoft, Steam и Bilibili напрямую",
+      appleMicrosoft: "Apple и Microsoft напрямую",
+      games: "Игровые платформы напрямую",
+      speedtest: "Тесты скорости напрямую",
+      lan: "Локальная сеть и частные адреса напрямую",
+      bittorrent: "BitTorrent напрямую (нужен Sniffing)",
+      quic: "Блокировать QUIC (UDP 443)",
+    },
     export: "Экспорт",
     import: {
       title: "Импорт",
@@ -488,12 +540,13 @@ export default {
       actions: "Действия с записью",
       raw: "Неизвестный синтаксис; сохранён в текстовом редакторе.",
     },
-    editor: "Правила RoutingA",
     loading: "Загрузка правил",
     resetDefault: "Восстановить по умолчанию",
     resetConfirm: "Заменить текущие правила шаблоном по умолчанию?",
     discard: "Отменить несохранённые изменения?",
     insert: "Вставить",
+    replace: "Заменить все правила",
+    replaceConfirm: "Заменить текущие правила этим шаблоном?",
     lineError: "Строка {line}: {message}",
     errors: {
       noArrow: "Ожидаются условие, -> и исходящее подключение.",
@@ -526,11 +579,6 @@ export default {
         title: "Исходящие подключения",
         description:
           "Встроенные подключения: proxy, direct и block; default задаёт подключение при отсутствии совпадений. Можно определить именованное подключение SOCKS или HTTP с необязательными user и pass.",
-      },
-      examples: {
-        title: "Примеры",
-        description:
-          "Вставьте шаблон по умолчанию или правило блокировки доменов из рекламного списка.",
       },
     },
     messages: ["Нажмите кнопку «Справка и руководство», чтобы получить помощь"],

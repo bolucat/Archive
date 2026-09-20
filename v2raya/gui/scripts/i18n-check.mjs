@@ -23,6 +23,8 @@ const srcDir = join(root, "src");
 // the prefix exists in en.
 const dynamicPrefixes = [
   "backend.",
+  "docs.sections.",
+  "routingA.templates.",
   "log.",
   "operations.export",
   "setting.options.",

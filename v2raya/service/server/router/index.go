@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -294,10 +295,10 @@ func Run() error {
 		auth.GET("customInbound", controller.GetCustomInbound)
 		auth.POST("customInbound", controller.PostCustomInbound)
 		auth.DELETE("customInbound", controller.DeleteCustomInbound)
-		//auth.PUT("account", controller.PutAccount)
 		auth.GET("dnsRules", controller.GetDnsRules)
 		auth.PUT("dnsRules", controller.PutDnsRules)
 		auth.GET("routingA", controller.GetRoutingA)
+		auth.GET("params", controller.GetParams)
 		auth.PUT("routingA", controller.PutRoutingA)
 		auth.GET("outbounds", controller.GetOutbounds)
 		auth.GET("outbound", controller.GetOutbound)
@@ -335,7 +336,7 @@ func Run() error {
 		}
 	}
 
-	srv := &http.Server{Handler: engine}
+	srv := newHTTPServer(engine)
 	httpServerMu.Lock()
 	httpServer = srv
 	httpServerMu.Unlock()
@@ -350,6 +351,14 @@ func Run() error {
 		return nil
 	}
 	return err
+}
+
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }
 
 // Shutdown gracefully stops the HTTP server started by Run.

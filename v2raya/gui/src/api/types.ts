@@ -120,6 +120,8 @@ export interface DnsRule {
   server: string;
   domains: string;
   outbound: string;
+  // matchers the DNS module reads and only the API sets; kept on save
+  [extra: string]: unknown;
 }
 
 export interface DnsRulesResponse {
@@ -154,3 +156,12 @@ export interface TrafficMessage {
   };
 }
 export type WsMessage = { type: string; body?: unknown };
+
+/** one command-line flag of the service, from GET params */
+export interface Param {
+  flag: string;
+  short: string;
+  env: string;
+  default: string;
+  desc: string;
+}

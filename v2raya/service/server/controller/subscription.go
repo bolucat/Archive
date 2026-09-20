@@ -10,6 +10,12 @@ import (
 
 /*修改Remarks*/
 func PatchSubscription(ctx *gin.Context) {
+	release, ok := beginMutation(ctx)
+	if !ok {
+		return
+	}
+	defer release()
+
 	var data struct {
 		Subscription touch.Subscription `json:"subscription"`
 	}
@@ -30,21 +36,13 @@ func PatchSubscription(ctx *gin.Context) {
 
 /*更新订阅*/
 func PutSubscription(ctx *gin.Context) {
-	updatingMu.Lock()
-	if updating {
-		common.ResponseError(ctx, processingErr)
-		updatingMu.Unlock()
+	release, ok := beginMutation(ctx)
+	if !ok {
 		return
 	}
-	updating = true
-	updatingMu.Unlock()
-	defer func() {
-		updatingMu.Lock()
-		updating = false
-		updatingMu.Unlock()
-	}()
+	defer release()
 
-	var data configure.Which
+	var data configure.NodeRef
 	err := ctx.ShouldBindJSON(&data)
 	index := data.ID - 1
 	if err != nil || data.TYPE != configure.SubscriptionType || index < 0 || index >= configure.GetLenSubscriptions() {

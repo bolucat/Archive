@@ -28,15 +28,15 @@ type Server struct {
 	PingLatency string              `json:"pingLatency"`
 }
 type Subscription struct {
-	Remarks string              `json:"remarks,omitempty"`
-	ID      int                 `json:"id"`
-	TYPE    configure.TouchType `json:"_type"`
-	Host    string              `json:"host"`
-	Address string              `json:"address"`
-	Status  SubscriptionStatus  `json:"status"`
-	Info    string              `json:"info"`
-	Servers []Server            `json:"servers"`
-	AutoSelect bool             `json:"autoSelect"`
+	Remarks    string              `json:"remarks,omitempty"`
+	ID         int                 `json:"id"`
+	TYPE       configure.TouchType `json:"_type"`
+	Host       string              `json:"host"`
+	Address    string              `json:"address"`
+	Status     SubscriptionStatus  `json:"status"`
+	Info       string              `json:"info"`
+	Servers    []Server            `json:"servers"`
+	AutoSelect bool                `json:"autoSelect"`
 }
 
 func NewUpdateStatus() SubscriptionStatus {
@@ -66,7 +66,8 @@ func serverRawsToServers(rss []configure.ServerRaw) (ts []Server) {
 
 // GenerateTouch generates a touch from database
 func GenerateTouch() (t Touch) {
-	t.Servers = serverRawsToServers(configure.GetServers())
+	servers := configure.GetServers()
+	t.Servers = serverRawsToServers(servers)
 	subscriptions := configure.GetSubscriptions()
 	t.Subscriptions = make([]Subscription, len(subscriptions))
 	for i, v := range subscriptions {
@@ -87,18 +88,18 @@ func GenerateTouch() (t Touch) {
 			}
 		}
 		t.Subscriptions[i] = Subscription{
-			Remarks: v.Remarks,
-			ID:      i + 1,
-			Host:    u.Host,
-			Address: v.Address,
-			Status:  SubscriptionStatus(v.Status),
-			Servers: serverRawsToServers(v.Servers),
-			Info:    v.Info,
-			AutoSelect:  v.AutoSelect,
+			Remarks:    v.Remarks,
+			ID:         i + 1,
+			Host:       u.Host,
+			Address:    v.Address,
+			Status:     SubscriptionStatus(v.Status),
+			Servers:    serverRawsToServers(v.Servers),
+			Info:       v.Info,
+			AutoSelect: v.AutoSelect,
 		}
 	}
-	t.ConnectedServers = configure.GetConnectedServers().Get()
-	markSelected(t.ConnectedServers)
+	t.ConnectedServers = configure.GetConnectedServers().ToWhiches()
+	markSelected(t.ConnectedServers, configure.LocatorOf(servers, subscriptions))
 	//补充TYPE
 	for i := range t.Subscriptions {
 		t.Subscriptions[i].TYPE = configure.SubscriptionType
@@ -114,7 +115,7 @@ func GenerateTouch() (t Touch) {
 
 // markSelected flags the member each group routes through alone, when its
 // setting names one that is still a member.
-func markSelected(connected []*configure.Which) {
+func markSelected(connected []*configure.Which, loc *configure.Locator) {
 	selected := make(map[string]string)
 	for _, w := range connected {
 		if _, ok := selected[w.Outbound]; !ok {
@@ -124,7 +125,7 @@ func markSelected(connected []*configure.Which) {
 		if link == "" {
 			continue
 		}
-		sr, err := w.LocateServerRaw()
+		sr, err := loc.Locate(&w.NodeRef)
 		if err != nil || sr.ServerObj == nil {
 			continue
 		}
