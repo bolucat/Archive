@@ -3,14 +3,19 @@
 // brand, the destinations, the version at the bottom. There is no top
 // app bar at this width: the page titles itself and carries the theme,
 // language and account menus; the core's state lives on the dashboard.
+// The menu button by the version folds it to the rail.
 import { useI18n } from "vue-i18n";
+import { mdiBackburger, mdiForwardburger } from "@mdi/js";
+import { useRtl } from "vuetify";
 import { destinations } from "./destinations";
 import { useDialog } from "@/composables";
 import AboutDialog from "@/views/settings/AboutDialog.vue";
 import { useAppStore } from "@/stores/app";
-import logo from "@/assets/img/v2raya-icon.svg";
+import BrandShape from "./BrandShape.vue";
 
+const emit = defineEmits<{ fold: [] }>();
 const { t } = useI18n();
+const { isRtl } = useRtl();
 const store = useAppStore();
 const { open } = useDialog();
 const openAbout = () => open(AboutDialog, {}, { width: 640 });
@@ -19,7 +24,7 @@ const openAbout = () => open(AboutDialog, {}, { width: 640 });
 <template>
   <v-navigation-drawer permanent :width="256" color="surface" class="drawer">
     <div class="drawer__brand">
-      <img :src="logo" alt="" class="drawer__logo" />
+      <BrandShape :size="48" />
       <span class="md3-title-large drawer__wordmark">v2rayA</span>
     </div>
     <v-list nav density="default" class="px-3 pt-2 pb-0">
@@ -36,18 +41,28 @@ const openAbout = () => open(AboutDialog, {}, { width: 640 });
     </v-list>
     <template #append>
       <v-divider class="mx-7" />
-      <v-btn
-        variant="plain"
-        class="drawer__version text-none"
-        @click="openAbout"
-      >
-        <span class="md3-label-large"
-          >v2rayA {{ store.version?.version ?? "" }}</span
+      <div class="drawer__foot">
+        <v-btn
+          variant="plain"
+          class="drawer__version text-none"
+          @click="openAbout"
         >
-        <v-tooltip activator="parent" location="end" :offset="12">
-          {{ t("common.about") }}
-        </v-tooltip>
-      </v-btn>
+          <span class="md3-label-large"
+            >v2rayA {{ store.version?.version ?? "" }}</span
+          >
+          <v-tooltip activator="parent" location="end" :offset="12">
+            {{ t("common.about") }}
+          </v-tooltip>
+        </v-btn>
+        <v-btn
+          :icon="isRtl ? mdiForwardburger : mdiBackburger"
+          variant="text"
+          class="drawer__menu"
+          :aria-label="t('common.menu')"
+          aria-expanded="true"
+          @click="emit('fold')"
+        />
+      </div>
     </template>
   </v-navigation-drawer>
 </template>
@@ -57,7 +72,18 @@ const openAbout = () => open(AboutDialog, {}, { width: 640 });
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 28px 28px 20px;
+  padding: 24px 24px 16px;
+}
+/* the version and, at the end, the button that folds the drawer */
+.drawer__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 20px;
+}
+.drawer__menu {
+  color: rgb(var(--v-theme-outline));
+  padding: 18px 18px 10px;
 }
 .drawer__wordmark {
   font-weight: 500;
@@ -65,14 +91,13 @@ const openAbout = () => open(AboutDialog, {}, { width: 640 });
 /* the version is a footnote aligned with the brand: outline text, no container; it opens About */
 .drawer__version {
   height: auto;
-  margin: 12px 16px 20px;
   padding: 4px 12px;
   color: rgb(var(--v-theme-outline));
   opacity: 1;
 }
 .drawer__logo {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
 }
 /* Material's drawer item: 56 dp tall, label-large */
 .drawer :deep(.v-list-item) {

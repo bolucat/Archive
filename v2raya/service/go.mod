@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/adrg/xdg v0.4.0
 	github.com/beevik/ntp v0.3.0
+	github.com/cilium/ebpf v0.22.0
 	github.com/devfeel/mapper v0.7.5
 	github.com/gin-contrib/cors v1.6.0
 	github.com/gin-gonic/gin v1.9.1
@@ -71,7 +72,6 @@ require (
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.3 // indirect
