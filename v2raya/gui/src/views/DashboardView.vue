@@ -229,10 +229,8 @@ defineExpose({ sync });
             size="20"
             color="on-surface-variant"
           />
-          <h2 class="md3-title-small flex-grow-1">
-            {{ t("dashboard.inUse") }}
-          </h2>
-          <OutboundMenu variant="chip" />
+          <h2 class="md3-title-small">{{ t("dashboard.proxyGroup") }}</h2>
+          <OutboundMenu variant="chip" @changed="sync" />
         </div>
         <v-skeleton-loader
           v-if="loading"
@@ -599,12 +597,12 @@ defineExpose({ sync });
           <p class="md3-body-medium my-4">
             {{ t("dashboard.noSubscriptions") }}
           </p>
-          <v-btn variant="text" @click="store.view = 'proxies'">{{
+          <v-btn variant="text" @click="store.view = 'subscriptions'">{{
             t("operations.import")
           }}</v-btn>
         </div>
         <div v-if="subscriptions.length > 2" class="dashboard-actions d-flex">
-          <v-btn variant="text" @click="store.view = 'proxies'">{{
+          <v-btn variant="text" @click="store.view = 'subscriptions'">{{
             t("dashboard.moreSubscriptions")
           }}</v-btn>
         </div>

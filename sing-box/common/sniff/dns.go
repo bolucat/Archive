@@ -48,7 +48,7 @@ func DomainNameQuery(ctx context.Context, metadata *adapter.InboundContext, pack
 	}
 	offset := dnsHeaderSize
 	questionCount := int(binary.BigEndian.Uint16(packet[4:6]))
-	for i := 0; i < questionCount; i++ {
+	for range questionCount {
 		_, offset, err = mDNS.UnpackDomainName(packet, offset)
 		if err != nil {
 			return err
@@ -59,7 +59,7 @@ func DomainNameQuery(ctx context.Context, metadata *adapter.InboundContext, pack
 		offset += 4
 	}
 	additionalCount := int(binary.BigEndian.Uint16(packet[10:12]))
-	for i := 0; i < additionalCount; i++ {
+	for range additionalCount {
 		_, offset, err = mDNS.UnpackRR(packet, offset)
 		if err != nil {
 			return err

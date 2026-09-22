@@ -1,22 +1,12 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  deleteTouch,
-  getSharingAddress,
-  putOutboundConnections,
-  putOutboundSelection,
-} from "@/api";
+import { deleteTouch, getSharingAddress, putOutboundConnections } from "@/api";
 import { errorText } from "@/api/errors";
 import { copyText } from "@/lib/clipboard";
+import { exportName, saveText } from "@/lib/download";
 import type { Touch, TouchSubscription, Which } from "@/api/types";
-import {
-  useConfirm,
-  useDialog,
-  useNotify,
-  useOutboundGroups,
-} from "@/composables";
+import { useConfirm, useDialog, useNotify } from "@/composables";
 import ImportDialog from "@/dialogs/Import.vue";
-import OutboundGroupDialog from "@/dialogs/OutboundGroup.vue";
 import ServerDialog from "@/dialogs/Server/index.vue";
 import SharingDialog from "@/dialogs/Sharing.vue";
 import SubscriptionDialog from "@/dialogs/Subscription.vue";
@@ -34,7 +24,7 @@ import {
 import { useSubscriptions } from "../subscriptions/model";
 
 export type NodeAction =
-  "test" | "select" | "membership" | "edit" | "share" | "delete";
+  "test" | "addToGroup" | "removeFromGroup" | "edit" | "share" | "delete";
 export type SubscriptionAction = "update" | "edit" | "share" | "delete";
 
 export function groupMembers(
@@ -56,10 +46,8 @@ export function useProxies() {
   const notify = useNotify();
   const confirm = useConfirm();
   const { open } = useDialog();
-  const groups = useOutboundGroups();
   const query = ref("");
   const source = ref("all");
-  const membersOnly = ref(false);
   const view = ref(
     localStorage.getItem("proxiesView") === "list" ? "list" : "cards",
   );
@@ -67,7 +55,6 @@ export function useProxies() {
   const loadError = ref("");
   const busy = ref(false);
   const testing = ref(false);
-  const manualIntent = ref<string | null>(null);
   const selectedKeys = ref<string[]>([]);
   const subscriptions = computed(() => nodes.touch.value.subscriptions);
   const rows = computed(() => [
@@ -76,25 +63,6 @@ export function useProxies() {
   ]);
   const members = computed(() =>
     groupMembers(nodes.touch.value, store.connectedServer, store.outboundName),
-  );
-  /** every group with its member count; the page lists them as chips */
-  const groupList = computed(() =>
-    store.outbounds.map((name) => ({
-      name,
-      count: store.connectedServer.filter(
-        (w) => (w.outbound ?? "proxy") === name,
-      ).length,
-    })),
-  );
-  const selectedMember = computed(() =>
-    store.connectedServer.find(
-      (w) => (w.outbound ?? "proxy") === store.outboundName && w.selected,
-    ),
-  );
-  const mode = computed(() =>
-    selectedMember.value || manualIntent.value === store.outboundName
-      ? "manual"
-      : "auto",
   );
   const sources = computed(() => [
     { value: "all", title: t("proxies.sources.all") },
@@ -106,14 +74,13 @@ export function useProxies() {
   ]);
   const listed = computed(() =>
     filterRows(
-      rows.value.filter((row) => {
-        const matchesSource =
+      rows.value.filter(
+        (row) =>
           source.value === "all" ||
           (source.value === "local"
             ? row._type === "server"
-            : subscriptions.value[row.sub ?? -1]?.address === source.value);
-        return matchesSource && (!membersOnly.value || isMember(row));
-      }),
+            : subscriptions.value[row.sub ?? -1]?.address === source.value),
+      ),
       query.value ?? "",
     ),
   );
@@ -139,7 +106,6 @@ export function useProxies() {
   watch(
     () => store.outboundName,
     () => {
-      manualIntent.value = null;
       selectedKeys.value = [];
     },
   );
@@ -150,10 +116,9 @@ export function useProxies() {
   function isMember(row: Row) {
     return nodes.inGroup(row, store.outboundName);
   }
-  function isSelected(row: Row) {
-    return (
-      !!selectedMember.value && sameWhich(selectedMember.value, whichOf(row))
-    );
+  /** the groups the row belongs to, in the order the app bar lists them */
+  function memberGroups(row: Row) {
+    return store.outbounds.filter((group) => nodes.inGroup(row, group));
   }
   function inUse(group: string): Row | null {
     const connected = store.connectedServer.filter(
@@ -212,31 +177,15 @@ export function useProxies() {
       loading.value = false;
     }
   }
-  async function toggleGroup(row: Row, group = store.outboundName) {
+  /** setMembership adds or removes the row, leaving the other members alone */
+  async function setMembership(row: Row, group: string, member: boolean) {
+    if (nodes.inGroup(row, group) === member) return;
     await run(() => nodes.toggleGroup(row, group));
   }
-  async function selectMember(row: Row | null) {
-    if (row && !isMember(row)) return;
-    await run(async () => {
-      nodes.apply(
-        await putOutboundSelection({
-          outbound: store.outboundName,
-          which: row ? whichOf(row) : null,
-        }),
-      );
-      manualIntent.value = null;
-    });
-  }
-  async function setMode(value: string) {
-    if (value === "manual") manualIntent.value = store.outboundName;
-    else if (selectedMember.value) await selectMember(null);
-    else manualIntent.value = null;
-  }
-  async function batchMembership(add: boolean) {
+  async function batchMembership(add: boolean, outbound = store.outboundName) {
     const selectedRows = selected.value;
     if (!selectedRows.length) return;
     await run(async () => {
-      const outbound = store.outboundName;
       const touches: Which[] = store.connectedServer
         .filter((w) => (w.outbound ?? "proxy") === outbound)
         .map(({ id, _type, sub }) => ({ id, _type, sub }));
@@ -282,7 +231,8 @@ export function useProxies() {
       await sync();
     });
   }
-  async function exportSelected() {
+  /** exportSelected copies the selected nodes' links, or saves them as a file */
+  async function exportSelected(where: "clipboard" | "file" = "clipboard") {
     const targets = [...selected.value];
     await run(async () => {
       const links = (
@@ -294,23 +244,14 @@ export function useProxies() {
         notify.warning(t("operations.exportEmpty"));
         return;
       }
+      if (where === "file") {
+        const file = exportName();
+        saveText(file, links.join("\n"));
+        notify.success(t("operations.exportSaved", { file }));
+        return;
+      }
       await copyText(links.join("\n"));
       notify.success(t("operations.copySelectedDone"));
-    });
-  }
-  /** the splitting rules, edited in place */
-  /** the group's balancing: probe URL, interval and strategy */
-  function groupSettings() {
-    open(OutboundGroupDialog, { outbound: store.outboundName }, { width: 440 });
-  }
-  async function removeGroup() {
-    await run(async () => {
-      if (await groups.remove(store.outboundName)) await sync();
-    });
-  }
-  async function newGroup() {
-    await run(async () => {
-      if (await groups.add()) await sync();
     });
   }
   async function newNode() {
@@ -330,10 +271,14 @@ export function useProxies() {
   }
   const subscriptionSettings = () =>
     open(SubscriptionSettings, {}, { width: 560 });
-  async function nodeAction(row: Row, action: NodeAction) {
+  async function nodeAction(
+    row: Row,
+    action: NodeAction,
+    group = store.outboundName,
+  ) {
     if (action === "test") return testRows([row]);
-    if (action === "membership") return toggleGroup(row);
-    if (action === "select") return selectMember(isSelected(row) ? null : row);
+    if (action === "addToGroup") return setMembership(row, group, true);
+    if (action === "removeFromGroup") return setMembership(row, group, false);
     if (action === "delete") return removeRows([row]);
     await run(async () => {
       if (action === "edit") {
@@ -413,7 +358,6 @@ export function useProxies() {
     query,
     source,
     sources,
-    membersOnly,
     view,
     loading,
     loadError,
@@ -422,8 +366,6 @@ export function useProxies() {
     rows,
     subscriptions,
     members,
-    selectedMember,
-    mode,
     listed,
     selected,
     selectedKeys,
@@ -431,24 +373,18 @@ export function useProxies() {
     canDelete,
     preferred,
     isMember,
-    isSelected,
+    memberGroups,
     inUse,
     sourceName,
     selectAll,
     selectRow,
     sync,
-    toggleGroup,
-    selectMember,
-    setMode,
+    setMembership,
     batchMembership,
     testRows,
     testListed,
     removeRows,
     exportSelected,
-    newGroup,
-    removeGroup,
-    groupSettings,
-    groupList,
     newNode,
     importNodes,
     subscriptionSettings,

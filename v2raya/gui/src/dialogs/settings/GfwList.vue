@@ -17,6 +17,7 @@ const link = ref("");
 const busy = ref(false);
 
 async function update() {
+  if (busy.value) return;
   if (link.value && !link.value.startsWith("http")) {
     notify.warning(t("gfwList.wrongCustomLink"));
     return;
@@ -65,6 +66,7 @@ async function remove() {
         :label="t('gfwList.formName')"
         placeholder="https://example.com/LoyalsoldierSite.dat"
         dir="ltr"
+        @keydown.enter="update"
       />
       <v-alert
         type="warning"
