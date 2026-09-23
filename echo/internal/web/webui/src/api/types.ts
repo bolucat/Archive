@@ -50,6 +50,32 @@ export interface OverviewResp {
   // RFC3339; zero-value omitted by the server. Time of last config
   // reload attempt (file or remote HTTP).
   last_reload_at?: string;
+  // Proxy inbound tag -> "listen,port" for the listeners xray is
+  // actually on. The desired side comes from /api/v1/config
+  // (xray_config.inbounds, xray's own shape).
+  running_inbounds?: Record<string, string>;
+  // True when the newest config has not been applied yet (a reload is
+  // pending or has failed). Details are in the Logs page / journal.
+  drift?: boolean;
+  // Last upstream round-trips and the in-memory lifecycle log. All
+  // three reset when the process restarts.
+  config_sync?: SyncStatus;
+  traffic_sync?: SyncStatus;
+  recent_events?: RuntimeEvent[];
+  // Flat since-start counter registry (conn_total, reload_fail, ...).
+  counters?: Record<string, number>;
+}
+
+export interface SyncStatus {
+  ok: boolean;
+  at?: string; // RFC3339; omitted when it never ran
+  error?: string;
+}
+
+export interface RuntimeEvent {
+  at: string; // RFC3339
+  kind: string; // config_error | drift | reload_ok | reload_error
+  detail?: string;
 }
 
 export interface QueryNodeMetricsResp {
@@ -159,3 +185,4 @@ export interface LogFrame {
   msg: string;
   [k: string]: unknown;
 }
+

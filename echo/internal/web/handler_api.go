@@ -139,6 +139,21 @@ type OverviewResp struct {
 	// rules / xray inbounds — distinct from boot time, which is
 	// surfaced on the settings page.
 	LastReloadAt time.Time `json:"last_reload_at,omitempty"`
+	// RunningInbounds maps proxy inbound tag -> "listen,port" for the
+	// listeners xray is actually on; Drift is true when the newest
+	// config has not been applied yet. The desired side lives in
+	// /api/v1/config (xray's own xray_config.inbounds).
+	RunningInbounds map[string]string `json:"running_inbounds,omitempty"`
+	Drift           bool              `json:"drift,omitempty"`
+	// ConfigSync / TrafficSync are the last upstream round-trips;
+	// RecentEvents is the in-memory lifecycle log (oldest first). All
+	// three go stale on restart by design.
+	ConfigSync   glue.SyncStatus     `json:"config_sync"`
+	TrafficSync  glue.SyncStatus     `json:"traffic_sync"`
+	RecentEvents []glue.RuntimeEvent `json:"recent_events,omitempty"`
+	// Counters is the flat since-start registry (conn_total,
+	// config_fetch_fail, reload_fail, ...). In-memory: resets on restart.
+	Counters map[string]int64 `json:"counters,omitempty"`
 }
 
 func (s *Server) Overview(c echo.Context) error {
@@ -152,6 +167,12 @@ func (s *Server) Overview(c echo.Context) error {
 	if p := s.xrayStatus.Load(); p != nil && *p != nil {
 		snap := (*p).Snapshot()
 		out.Xray = &snap
+		out.RunningInbounds = (*p).RunningInbounds()
+		out.Drift = (*p).Drifted()
+		out.ConfigSync = (*p).ConfigSync()
+		out.TrafficSync = (*p).TrafficSync()
+		out.RecentEvents = (*p).RecentEvents()
+		out.Counters = (*p).Counters()
 	}
 
 	if s.connMgr != nil {

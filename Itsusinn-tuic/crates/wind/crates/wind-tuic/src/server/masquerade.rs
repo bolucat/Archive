@@ -248,7 +248,9 @@ fn is_forwardable(name: &HeaderName) -> bool {
 			| "proxy-connection"
 			| "transfer-encoding"
 			| "upgrade"
-			| "te" | "trailer"
-			| "host" | "content-length"
+			| "te"
+			| "trailer"
+			| "host"
+			| "content-length"
 	)
 }

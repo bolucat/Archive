@@ -57,7 +57,7 @@ const CORES: CoreDef[] = [
     name: "clash-rs",
     version: "v0.10.8",
     urlTemplate:
-      "https://github.com/Watfaq/clash-rs/releases/download/{ver}/{}",
+      "https://github.com/ibigbug/clash-rs/releases/download/{ver}/{}",
     archTemplate: {
       "windows-x86_64": "clash-rs-x86_64-pc-windows-msvc.exe",
       "windows-aarch64": "clash-rs-aarch64-pc-windows-msvc.exe",

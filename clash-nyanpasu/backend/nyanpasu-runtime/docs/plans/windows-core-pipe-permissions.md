@@ -6,7 +6,7 @@
 
 授权逻辑通过 `ControllerAccess` 注入，创建参数属于单个实例，自动重启沿用；readiness 和 liveness 都检查授权。没有修改进程全局环境，也没有保留旧 ACL API 包装层。
 
-能力依据：Mihomo [v1.18.9 的实现](https://github.com/MetaCubeX/mihomo/blob/v1.18.9/adapter/inbound/listen_windows.go) 已读取 `LISTEN_NAMEDPIPE_SDDL`；clash-rs [v0.9.7 的实现](https://github.com/Watfaq/clash-rs/blob/v0.9.7/clash-lib/src/app/api/ipc.rs) 使用固定描述符，走服务设置路径。
+能力依据：Mihomo [v1.18.9 的实现](https://github.com/MetaCubeX/mihomo/blob/v1.18.9/adapter/inbound/listen_windows.go) 已读取 `LISTEN_NAMEDPIPE_SDDL`；clash-rs [v0.9.7 的实现](https://github.com/ibigbug/clash-rs/blob/v0.9.7/clash-lib/src/app/api/ipc.rs) 使用固定描述符，走服务设置路径。
 
 验证：Windows 普通权限下，真实 Mihomo 和 clash-rs 的 REST/WebSocket、自动重启测试通过；受限令牌被 Windows 拒绝访问。完整相关测试串行通过（410 通过、27 忽略，真实内核两项另行执行通过）；Clippy 与 Linux 目标的相关 crate/tests 编译检查通过（保留原有警告）。曾有一个原有配置补偿测试在并发执行时超时，单独与串行复查均通过。
 

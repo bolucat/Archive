@@ -37,6 +37,10 @@ jobs:
         runner: [ubuntu-latest]
     steps: &codspeed-steps
       - uses: actions/checkout@v7
+        with:
+          # `[patch.crates-io]` points datagram-socket/tokio-quiche at
+          # forks/quiche, so the submodules must be present for cargo metadata.
+          submodules: recursive
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -79,6 +83,10 @@ jobs:
       (github.event_name == 'push' && startsWith(github.ref_name, 'v'))
     steps:
       - uses: actions/checkout@v7
+        with:
+          # `[patch.crates-io]` points datagram-socket/tokio-quiche at
+          # forks/quiche, so the submodules must be present for cargo metadata.
+          submodules: recursive
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
