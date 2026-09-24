@@ -13,7 +13,7 @@ jobs:
       github.event.label.name == 'invalid' || 
       github.event.label.name == 'no plan' || 
       github.event.label.name == 'wontfix'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       issues: write
       pull-requests: write

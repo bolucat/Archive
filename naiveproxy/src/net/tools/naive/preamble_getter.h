@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -102,4 +103,4 @@ class PreambleGetter {
 };
 
 }  // namespace net
-#endif  // NET_TOOLS_NAIVE_URL_GETTER_H_
+#endif  // NET_TOOLS_NAIVE_PREAMBLE_GETTER_H_

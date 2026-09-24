@@ -24,6 +24,7 @@ namespace mpv_texture {
 struct MpvStatus {
     bool playing;
     double volume;
+    double speed = 1.0;
     bool muted;
     double position;
     double duration;
@@ -66,6 +67,7 @@ struct MpvConfig {
     uint32_t height = 1080;
     std::string hwdec = "auto";  // Hardware decoding: auto, d3d11va, videotoolbox, etc.
     std::string vo = "libmpv";   // Video output
+    bool headless = false;        // Control-only mode; no GL context or shared texture
 };
 
 class MpvContext {
@@ -85,12 +87,13 @@ public:
     void stop();
     void seek(double position);
     void setVolume(double volume);
+    void setSpeed(double speed);
     void setAudioTrack(int id);
     void setSubtitleTrack(int id);
     void setSubtitleStyle(const MpvSubtitleStyle& style);
     void setVideoProperty(const std::string& name, const std::string& value);
-    bool addAudio(const std::string& url, const std::string& title = "");
-    bool addSubtitle(const std::string& url, const std::string& title = "");
+    int addAudio(const std::string& url, const std::string& title = "");
+    int addSubtitle(const std::string& url, const std::string& title = "");
     void toggleMute();
 
     // Callbacks
@@ -137,6 +140,12 @@ private:
     std::mutex m_renderMutex;
     std::condition_variable m_renderCV;
     std::atomic<bool> m_needsRender{false};
+
+    // libmpv's software render context must not be entered while a command is
+    // synchronously rebuilding the track graph (audio-add/sub-add). The
+    // Linux/Windows renderer runs on a dedicated thread, so serialize those
+    // two operations without blocking ordinary property controls.
+    std::mutex m_renderApiMutex;
 
     // Texture resize synchronization (resize must happen on render thread)
     std::atomic<bool> m_needsResize{false};

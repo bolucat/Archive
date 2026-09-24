@@ -1,5 +1,8 @@
 mod connection_policy;
+mod mutations;
+mod recovery;
 mod service_recovery;
+mod validation;
 
 use super::{
     super::{
@@ -9,6 +12,7 @@ use super::{
     *,
 };
 use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
+use nyanpasu_config::application::ClashCore;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use struct_patch::Patch;
 use tokio::sync::Notify;
@@ -25,22 +29,31 @@ struct BlockingBuilder {
 
 #[async_trait::async_trait]
 impl ports::RuntimeBuildPort for BlockingBuilder {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> anyhow::Result<super::inputs::FrozenProfileContent> {
+        self.delegate.capture_content(profiles).await
+    }
+
     fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
         self.delegate.core_spec(core)
     }
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
-        self.delegate.build(revision, profiles, clash, app).await
+        self.delegate
+            .build(revision, inputs, ports, strict_transforms)
+            .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
         self.delegate.publish(snapshot).await
@@ -82,6 +95,135 @@ async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
     client.shutdown().await.unwrap();
 }
 
+/// V09: an apply the core confirmed is the recovery checkpoint even when the
+/// effective-config inspection never arrives. The baseline must not fall back
+/// to an older apply, and it must not wait for an inspection that is only ever
+/// diagnostic. The fake core answers `effective_config` with `None` here, so
+/// `applied` stays empty throughout.
+#[tokio::test]
+async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = runtime::RuntimeSnapshotStore::default();
+    let (client, _notifier, builder, _, _) = dirty_graph_with_store(&dir, store.clone()).await;
+    builder.release.notify_one();
+
+    client.reconcile().await.unwrap();
+    let first = store
+        .last_confirmed_runtime_receipt()
+        .expect("the core confirmed the first apply");
+    assert!(
+        store.read().applied.is_none(),
+        "no effective config arrived, so nothing is inspected"
+    );
+    assert!(
+        store.read().pending.is_some(),
+        "the apply is recorded as awaiting its inspection"
+    );
+    assert_eq!(
+        first.config_digest,
+        nyanpasu_core_manager::payload_digest(first.config_text.as_bytes()),
+        "the receipt carries the bytes the core accepted, and their digest"
+    );
+
+    client.reconcile().await.unwrap();
+    let second = store
+        .last_confirmed_runtime_receipt()
+        .expect("the core confirmed the second apply");
+    assert!(
+        second.revision.get() > first.revision.get(),
+        "the baseline follows the latest confirmed apply, not the last inspected one"
+    );
+    assert!(store.read().applied.is_none());
+    client.shutdown().await.unwrap();
+}
+
+/// An unobserved reconcile is the third case where the confirmed binding stops
+/// being a fact, and the one where it matters most: the core may already be
+/// listening on the candidate's ports and the app cannot ask. Publishing the
+/// previous binding afterwards is exactly the "the port we used last time"
+/// decay the module disclaims.
+#[tokio::test]
+async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    let ports = Arc::new(super::super::SessionPortResolver::default());
+    let (client, _notifier, builder, _, clash) =
+        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    builder.release.notify_one();
+
+    // Two ports that are distinct by construction. Nothing binds them here, and
+    // two ephemeral probes can hand back the same number once the first
+    // listener is dropped, which would make the assertion below vacuous.
+    let mut config = clash.snapshot().state;
+    config.mixed_port = fixed_port(48611);
+    clash.replace(config.clone()).await.unwrap();
+    client.reconcile().await.unwrap();
+    let confirmed = ports
+        .confirmed()
+        .expect("the apply the core accepted confirms its ports");
+
+    // A new candidate on a different port, and a reconcile whose result is
+    // lost: the core may or may not have moved onto it.
+    config.mixed_port = fixed_port(48612);
+    clash.replace(config).await.unwrap();
+    endpoint.set_result_missing(true);
+    client
+        .reconcile()
+        .await
+        .expect_err("an unobserved outcome is not an applied one");
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "the previous binding on {} is no longer a fact about anything",
+        confirmed.mixed_port
+    );
+    client.shutdown().await.unwrap();
+}
+
+/// V11 (port half): the confirmed binding describes a running instance. When
+/// the user stops the core nothing is holding those ports any more, so the
+/// self-proxy source and the system proxy must get "unavailable" rather than
+/// the endpoint the stopped core used to listen on.
+#[tokio::test]
+async fn stopping_the_core_ends_the_confirmed_port_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
+        .await
+        .unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    let ports = Arc::new(super::super::SessionPortResolver::default());
+    let (client, _notifier, builder, _, _) =
+        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    builder.release.notify_one();
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "nothing has been applied yet, so nothing is listening"
+    );
+    client.reconcile().await.unwrap();
+    let running = ports
+        .confirmed()
+        .expect("the apply the core accepted confirms its ports");
+
+    client.stop_core().await.unwrap();
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "a stopped core is not still holding {}",
+        running.mixed_port
+    );
+    client.shutdown().await.unwrap();
+}
+
 async fn dirty_graph_with_store(
     dir: &tempfile::TempDir,
     snapshots: runtime::RuntimeSnapshotStore,
@@ -98,15 +240,24 @@ async fn dirty_graph_with_store(
     let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
         .await
         .unwrap();
-    dirty_graph_with_clients(dir, snapshots, core, service, false).await
+    dirty_graph_with_clients(
+        dir,
+        core,
+        service,
+        false,
+        Arc::new(super::super::SessionPortResolver::new(snapshots)),
+    )
+    .await
 }
 
 async fn dirty_graph_with_clients(
     dir: &tempfile::TempDir,
-    snapshots: runtime::RuntimeSnapshotStore,
     core: CoreClient,
     service: ServiceClient,
     schedule_ticks: bool,
+    // Injected so a test can read the binding the workflow confirms; the
+    // workflow is the only writer.
+    ports: Arc<super::super::SessionPortResolver>,
 ) -> (
     ApplicationWorkflowClient,
     DirtyNotifier,
@@ -133,11 +284,12 @@ async fn dirty_graph_with_clients(
             dir.path().join("data"),
         ))
         .unwrap();
+    let validator_paths = paths.clone();
+    let core_for_validator = core.clone();
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths,
-            ports: Arc::new(super::super::SessionPortResolver::default()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -146,22 +298,34 @@ async fn dirty_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            snapshots,
-            application: application.clone(),
-            clash: clash.clone(),
-            profiles,
+            application: application.snapshot_handle(),
+            clash: clash.snapshot_handle(),
+            profiles: profiles.snapshot_handle(),
             core,
             service,
             builder: builder.clone(),
+            validator: Arc::new(adapters::CoreCheckValidator::new(
+                core_for_validator,
+                validator_paths,
+            )),
+            ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
+            budgets: mutation::MutationBudgets::default(),
         },
         schedule_ticks,
     )
     .await
     .unwrap();
     (client, notifier, builder, application, clash)
+}
+
+fn fixed_port(port: u16) -> nyanpasu_config::clash::config::clash_strategy::port::PortStrategy {
+    nyanpasu_config::clash::config::clash_strategy::port::PortStrategy {
+        kind: nyanpasu_config::clash::config::clash_strategy::port::PortStrategyKind::Fixed,
+        start_port: port,
+    }
 }
 
 async fn tick(client: &ApplicationWorkflowClient) {
@@ -299,8 +463,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     args.service = service;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
-        let mut switch = Box::pin(client.set_execution_host(true));
-        assert!(switch.as_mut().now_or_never().is_none());
+        let switch = {
+            let client = client.clone();
+            tokio::spawn(async move { client.set_execution_host(true).await })
+        };
         endpoint.entered.notified().await;
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
@@ -309,7 +475,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
         assert!(matches!(
-            switch.await.unwrap(),
+            switch.await.unwrap().unwrap(),
             runtime::MutationOutcome::Applied { .. }
         ));
         assert_eq!(
@@ -411,6 +577,20 @@ impl Fixture {
             },
             progress,
         )
+    }
+}
+
+/// How many attempts still own a control context inside the actor.
+async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
+    match client
+        .0
+        .actor
+        .call(Message::LiveMutationContexts, Some(Duration::from_secs(5)))
+        .await
+        .unwrap()
+    {
+        CallResult::Success(live) => live,
+        other => panic!("the workflow should answer: {other:?}"),
     }
 }
 
@@ -806,7 +986,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         disable_mode_interruption(&client).await;
-        let before = client.inner.clash_config.get().await.unwrap();
+        let before = client.inner.clash_config.snapshot();
         bridge.0.store(true, Ordering::SeqCst);
         assert!(
             client
@@ -814,7 +994,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
                 .await
                 .is_err()
         );
-        let after = client.inner.clash_config.get().await.unwrap();
+        let after = client.inner.clash_config.snapshot();
         assert_eq!(after.version, before.version);
         assert_eq!(
             serde_json::to_value(after.state).unwrap(),
@@ -826,10 +1006,10 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
 }
 
 #[tokio::test]
-async fn config_write_waits_for_active_lifecycle_work_before_committing() {
+async fn queued_config_apply_waits_for_active_lifecycle_work() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _, builder, _, clash) = dirty_graph(&dir).await;
-    let mut config = clash.get().await.unwrap().state;
+    let mut config = clash.snapshot().state;
     config.break_connection.on_mode_change = false;
     clash.replace(config).await.unwrap();
     let active = {
@@ -837,21 +1017,24 @@ async fn config_write_waits_for_active_lifecycle_work_before_committing() {
         tokio::spawn(async move { client.reconcile().await })
     };
     builder.entered.notified().await;
-    let mut patch = Box::pin(
-        client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
-    );
-    assert!(patch.as_mut().now_or_never().is_none());
+    // The facade's own commit does not wait for the workflow, so the candidate
+    // that queues here is already the committed one.
+    let committed = clash
+        .patch_overrides(override_patch(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    let mut apply = Box::pin(client.apply_clash_overrides(committed.state, true));
+    assert!(apply.as_mut().now_or_never().is_none());
     barrier(&client).await;
     assert_eq!(client.status().queued.len(), 1);
     assert_eq!(
-        serde_json::to_value(clash.get().await.unwrap().state.overrides).unwrap()["mode"],
-        "rule",
-        "queued writes must not commit ahead of lifecycle admission"
+        builder.calls.load(Ordering::SeqCst),
+        1,
+        "a queued apply must not build ahead of lifecycle admission"
     );
-    assert_eq!(builder.calls.load(Ordering::SeqCst), 1);
     builder.release.notify_one();
     active.await.unwrap().unwrap();
-    assert!(patch.await.unwrap().degradations().is_empty());
+    assert!(apply.await.unwrap().degradations().is_empty());
     let config = &client.runtime().promoted.unwrap().config;
     assert_eq!(config["mode"].as_str(), Some("global"));
     assert_eq!(builder.calls.load(Ordering::SeqCst), 2);
@@ -867,7 +1050,7 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         disable_mode_interruption(&client).await;
-        let before = client.inner.clash_config.get().await.unwrap();
+        let before = client.inner.clash_config.snapshot();
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
         }
@@ -878,7 +1061,7 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
                 .await
                 .is_err()
         );
-        let after = client.inner.clash_config.get().await.unwrap();
+        let after = client.inner.clash_config.snapshot();
         assert_eq!(after.version, before.version);
         assert_eq!(
             serde_json::to_value(after.state).unwrap(),

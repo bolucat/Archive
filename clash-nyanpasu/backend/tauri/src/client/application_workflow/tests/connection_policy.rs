@@ -318,27 +318,29 @@ fn lifecycle_work_cannot_overtake_pending_interruption() {
         )
         .await
         .unwrap();
-        let mut next = Box::pin(f.client.patch_runtime_overrides(ClashGuardOverridesPatch {
-            ipv6: Some(true),
-            ..Default::default()
-        }));
-        assert!(next.as_mut().now_or_never().is_none());
-        f.client
-            .inner
-            .application_workflow
-            .0
-            .actor
-            .call(
-                super::Message::Barrier,
-                Some(std::time::Duration::from_secs(5)),
-            )
-            .await
-            .unwrap();
-        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 1);
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move {
+                client
+                    .patch_runtime_overrides(ClashGuardOverridesPatch {
+                        ipv6: Some(true),
+                        ..Default::default()
+                    })
+                    .await
+            })
+        };
+        let mut status = f.client.inner.application_workflow.0.status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            status.wait_for(|status| status.queued.len() == 1),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(next.await.unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "close", "reconcile"]
@@ -540,25 +542,24 @@ fn profile_mutations_cannot_overtake_pending_interruption() {
         )
         .await
         .unwrap();
-        let mut next = Box::pin(f.client.activate_profile(None));
-        assert!(next.as_mut().now_or_never().is_none());
-        f.client
-            .inner
-            .application_workflow
-            .0
-            .actor
-            .call(
-                super::Message::Barrier,
-                Some(std::time::Duration::from_secs(5)),
-            )
-            .await
-            .unwrap();
-        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 1);
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(None).await })
+        };
+        let mut status = f.client.inner.application_workflow.0.status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            status.wait_for(|status| status.queued.len() == 1),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        // The deselection is already committed; what queues is its apply.
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(next.await.unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "close", "reconcile", "close"]
@@ -656,16 +657,25 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         let mut dirty =
             Box::pin(workflow.call(super::Command::Core(super::CoreCommand::RuntimeDirty)));
         assert!(dirty.as_mut().now_or_never().is_none());
-        let mut next = Box::pin(f.client.activate_profile(None));
-        assert!(next.as_mut().now_or_never().is_none());
-        super::barrier(workflow).await;
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(None).await })
+        };
+        let mut status = workflow.0.status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            status.wait_for(|status| status.queued.len() == 2),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(workflow.status().active, Some(active));
-        assert_eq!(workflow.status().queued.len(), 2);
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        // The deselection is already committed; what queues is its apply.
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         dirty.await.unwrap();
-        assert!(next.await.unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
         assert!(
             workflow
                 .status()
@@ -681,7 +691,7 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
 }
 
 #[test]
-fn shutdown_rejects_a_queued_profile_before_commit_and_waits_for_close() {
+fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
         let uid = add_profile(&f).await;
@@ -702,7 +712,9 @@ fn shutdown_rejects_a_queued_profile_before_commit_and_waits_for_close() {
         assert!(shutdown.as_mut().now_or_never().is_none());
         super::barrier(&f.client.inner.application_workflow).await;
         assert!(next.await.is_err());
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        // Shutdown refuses the apply, not the commit: the facade wrote the
+        // deselection before the workflow was asked for it.
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
         assert!(shutdown.as_mut().now_or_never().is_none());
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
@@ -720,8 +732,12 @@ fn shutdown_rejects_a_queued_profile_before_commit_and_waits_for_close() {
     });
 }
 
+/// The facade commits the selection before the workflow is asked to apply it,
+/// so a refused admission is a "saved but not applied" error rather than a
+/// rejected write. Admission gates the commit again once the workflow becomes a
+/// Required participant of the state transaction.
 #[test]
-fn full_queue_rejects_profile_without_changing_selection() {
+fn full_queue_rejects_the_apply_after_the_selection_is_committed() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
         let uid = add_profile(&f).await;
@@ -752,12 +768,12 @@ fn full_queue_rejects_profile_without_changing_selection() {
         }
         super::barrier(workflow).await;
         assert_eq!(workflow.status().queued.len(), super::MAX_PENDING);
-        let error = workflow.activate_profile(None).await.unwrap_err();
-        assert_eq!(
-            error.kind,
-            Some(nyanpasu_core_manager::CoreErrorKind::OperationConflict)
+        let error = f.client.activate_profile(None).await.unwrap_err();
+        assert!(
+            error.to_string().contains("queue is full"),
+            "unexpected error: {error:#}"
         );
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
         let mut shutdown = Box::pin(f.client.shutdown_core());
         assert!(shutdown.as_mut().now_or_never().is_none());
         super::barrier(workflow).await;
@@ -806,11 +822,25 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         } else {
             Mode::Global
         };
-        let mut mode = Box::pin(f.client.patch_runtime_overrides(ClashGuardOverridesPatch {
-            mode: Some(next_mode),
-            ..Default::default()
-        }));
-        assert!(mode.as_mut().now_or_never().is_none());
+        let mode = {
+            let client = f.client.clone();
+            tokio::spawn(async move {
+                client
+                    .patch_runtime_overrides(ClashGuardOverridesPatch {
+                        mode: Some(next_mode),
+                        ..Default::default()
+                    })
+                    .await
+            })
+        };
+        let mut status = f.client.inner.application_workflow.0.status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            status.wait_for(|status| status.queued.len() == 1),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         let mut host = Box::pin(f.client.change_execution_host(ExecutionHost::Local));
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
@@ -826,16 +856,17 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         assert!(install.as_mut().now_or_never().is_none());
         super::barrier(&f.client.inner.application_workflow).await;
         assert_eq!(f.client.inner.application_workflow.status().queued.len(), 3);
+        // The mode patch is committed; only the apply that follows it is queued.
         assert_eq!(
             serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
-            before
+            serde_json::to_value(next_mode).unwrap()
         );
         assert_eq!(installer.0.load(Ordering::SeqCst), 0);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(mode.await.unwrap().degradations().is_empty());
+        assert!(mode.await.unwrap().unwrap().degradations().is_empty());
         host.await.unwrap();
         install.await.unwrap();
         assert_eq!(
@@ -861,6 +892,13 @@ struct RecordingBuilder {
 
 #[async_trait::async_trait]
 impl super::ports::RuntimeBuildPort for RecordingBuilder {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+        self.delegate.capture_content(profiles).await
+    }
+
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
@@ -870,16 +908,18 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn build(
         &self,
         revision: crate::client::runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<crate::client::runtime::RuntimeSnapshot>> {
         self.inputs
             .lock()
             .unwrap()
-            .push((profiles.clone(), clash.clone()));
+            .push((inputs.profiles.clone(), inputs.clash.clone()));
         anyhow::ensure!(!self.fail_build, "scripted build failure");
-        self.delegate.build(revision, profiles, clash, app).await
+        self.delegate
+            .build(revision, inputs, ports, strict_transforms)
+            .await
     }
     async fn publish(
         &self,
@@ -896,7 +936,6 @@ impl RecordingBuilder {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: f.client.inner.runtime_paths.clone(),
-                ports: f.client.inner.ports.clone(),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,
@@ -935,27 +974,28 @@ fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         f.client.replace_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
         let mut preparation = super::RuntimePreparation::new(
-            f.client.inner.application.clone(),
-            f.client.inner.clash_config.clone(),
-            f.client.inner.profiles.clone(),
+            f.client.inner.application.snapshot_handle(),
+            f.client.inner.clash_config.snapshot_handle(),
+            f.client.inner.profiles.snapshot_handle(),
             builder.clone(),
+            f.client.inner.ports.clone(),
         );
         let prepared = preparation
             .prepare_committed(committed.snapshot.clone(), original)
             .await
             .unwrap();
         assert_eq!(
-            prepared.local_ipc.policy,
+            prepared.intent.local_ipc.policy,
             nyanpasu_core_manager::LocalIpcPolicy::Disable
         );
-        assert!(prepared.local_ipc.keep_http_controller);
+        assert!(prepared.intent.local_ipc.keep_http_controller);
         assert_eq!(prepared.snapshot.revision.get(), 1);
         let latest = preparation.prepare_latest().await.unwrap();
         assert_eq!(
-            latest.local_ipc.policy,
+            latest.intent.local_ipc.policy,
             nyanpasu_core_manager::LocalIpcPolicy::Prefer
         );
-        assert!(!latest.local_ipc.keep_http_controller);
+        assert!(!latest.intent.local_ipc.keep_http_controller);
         assert_eq!(latest.snapshot.revision.get(), 2);
         let inputs = builder.inputs.lock().unwrap();
         assert!(Arc::ptr_eq(&inputs[0].0, &committed.snapshot));
@@ -981,10 +1021,14 @@ fn failed_profile_build_or_publish_preserves_commit_without_reconcile_or_close()
             let builder = RecordingBuilder::new(&f, !publish, publish);
             let workflow = super::ApplicationWorkflowClient::spawn_with_ticks(
                 super::ApplicationWorkflowArgs {
-                    snapshots: crate::client::runtime::RuntimeSnapshotStore::default(),
-                    application: f.client.inner.application.clone(),
-                    clash: f.client.inner.clash_config.clone(),
-                    profiles: f.client.inner.profiles.clone(),
+                    application: f.client.inner.application.snapshot_handle(),
+                    clash: f.client.inner.clash_config.snapshot_handle(),
+                    profiles: f.client.inner.profiles.snapshot_handle(),
+                    validator: Arc::new(super::adapters::CoreCheckValidator::new(
+                        super::CoreClient::spawn(f.endpoint.clone()).await.unwrap(),
+                        f.client.inner.runtime_paths.clone(),
+                    )),
+                    ports: f.client.inner.ports.clone(),
                     core: super::CoreClient::spawn(f.endpoint.clone()).await.unwrap(),
                     service: super::ServiceClient::spawn(
                         Arc::new(crate::client::tests::IdleServiceAdapter),
@@ -996,12 +1040,20 @@ fn failed_profile_build_or_publish_preserves_commit_without_reconcile_or_close()
                     installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
                     ui: Arc::new(crate::client::NoopUiEventSink),
                     dirty: super::DirtyNotifier::channel().1,
+                    budgets: super::mutation::MutationBudgets::default(),
                 },
                 false,
             )
             .await
             .unwrap();
-            let outcome = workflow.activate_profile(Some(uid.clone())).await.unwrap();
+            let report = f
+                .client
+                .inner
+                .profiles
+                .set_current(Some(uid.clone()))
+                .await
+                .unwrap();
+            let outcome = workflow.apply_profile_activation(report).await.unwrap();
             assert_eq!(outcome.degradations().len(), 1);
             assert_eq!(outcome.degradations()[0].code, "runtime_rebuild_failed");
             assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));

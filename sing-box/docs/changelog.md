@@ -2,6 +2,22 @@
 icon: material/alert-decagram
 ---
 
+#### 1.15.0-alpha.8
+
+* Add `dns_server_address` and `dns_search_domain` rule items **1**
+* Fixes and improvements
+
+**1**:
+
+Match the server addresses and search domains that DNS servers obtain from the system, DHCP or VPN.
+
+See [Route Rule](/configuration/route/rule/#dns_server_address) and
+[DNS Rule](/configuration/dns/rule/#dns_server_address).
+
+#### 1.14.2
+
+* Fixes and improvements
+
 #### 1.15.0-alpha.7
 
 * Add MASQUE client and server support **1**

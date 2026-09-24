@@ -130,6 +130,8 @@ void main() {
 
 let glState: WebGLVideoState | null = null
 let fallbackContext: CanvasRenderingContext2D | null = null
+let softwareSourceCanvas: HTMLCanvasElement | null = null
+let softwareSourceContext: CanvasRenderingContext2D | null = null
 let statusTimer: number | null = null
 let controlsHideTimer: number | null = null
 let noticeTimer: number | null = null
@@ -340,6 +342,60 @@ const drawFrame = (videoFrame: VideoFrame, index: number) => {
   }
 }
 
+const drawSoftwareFrame = (pixels: Uint8Array, width: number, height: number, index: number) => {
+  const canvas = fallbackCanvasRef.value
+  if (!canvas || width < 1 || height < 1 || pixels.length !== width * height * 4) return
+  softwareSourceCanvas = softwareSourceCanvas || document.createElement('canvas')
+  if (softwareSourceCanvas.width !== width) softwareSourceCanvas.width = width
+  if (softwareSourceCanvas.height !== height) softwareSourceCanvas.height = height
+  softwareSourceContext = softwareSourceContext || softwareSourceCanvas.getContext('2d', { alpha: false })
+  if (!softwareSourceContext) return
+  softwareSourceContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0)
+
+  let sourceX = 0
+  let sourceY = 0
+  let sourceWidth = width
+  let sourceHeight = height
+  if (cropRatio.value !== 'no') {
+    const [ratioWidth, ratioHeight] = cropRatio.value.split(':').map(Number)
+    const targetRatio = ratioWidth > 0 && ratioHeight > 0 ? ratioWidth / ratioHeight : 0
+    if (targetRatio > 0 && width / height > targetRatio) {
+      sourceWidth = Math.max(1, Math.round(height * targetRatio))
+      sourceX = Math.floor((width - sourceWidth) / 2)
+    } else if (targetRatio > 0) {
+      sourceHeight = Math.max(1, Math.round(width / targetRatio))
+      sourceY = Math.floor((height - sourceHeight) / 2)
+    }
+  }
+
+  const normalizedRotation = ((rotation.value % 360) + 360) % 360
+  const swapsAxes = normalizedRotation === 90 || normalizedRotation === 270
+  const outputWidth = swapsAxes ? sourceHeight : sourceWidth
+  const outputHeight = swapsAxes ? sourceWidth : sourceHeight
+  if (canvas.width !== outputWidth) canvas.width = outputWidth
+  if (canvas.height !== outputHeight) canvas.height = outputHeight
+  fallbackContext = fallbackContext || canvas.getContext('2d', { alpha: false })
+  if (!fallbackContext) return
+  fallbackContext.save()
+  fallbackContext.clearRect(0, 0, outputWidth, outputHeight)
+  if (normalizedRotation === 90) {
+    fallbackContext.translate(outputWidth, 0)
+    fallbackContext.rotate(Math.PI / 2)
+  } else if (normalizedRotation === 180) {
+    fallbackContext.translate(outputWidth, outputHeight)
+    fallbackContext.rotate(Math.PI)
+  } else if (normalizedRotation === 270) {
+    fallbackContext.translate(0, outputHeight)
+    fallbackContext.rotate(-Math.PI / 2)
+  }
+  fallbackContext.drawImage(softwareSourceCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
+  fallbackContext.restore()
+  renderMode.value = 'fallback'
+  frameCount.value = index + 1
+  loading.value = false
+  errorText.value = ''
+}
+
 const clearFrame = () => {
   if (glState) {
     glState.gl.clearColor(0, 0, 0, 1)
@@ -548,7 +604,7 @@ const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' 
   if (!result?.ok) {
     const message = result?.error || 'macOS 内嵌 MPV 控制失败。'
     if (optionalControlActions.has(action)) {
-      statusText.value = message
+      showNotice(message)
     } else {
       errorText.value = message
       emit('error', message)
@@ -558,6 +614,11 @@ const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' 
   const status = { ...result.status, __loading: !loaded.value }
   emit('status', status)
   applyStatusResult(result)
+  // Keep the transport button deterministic immediately after an accepted
+  // command. Native property-change delivery is asynchronous and can briefly
+  // return the previous pause state, especially through the Linux host.
+  if (action === 'pause') paused.value = true
+  else if (action === 'play') paused.value = false
   if (action === 'stop') clearFrame()
 }
 
@@ -939,6 +1000,7 @@ const handleQualityChange = (event: Event) => {
 
 onMounted(async () => {
   window.WebMpvSharedTexture?.onFrame?.(drawFrame)
+  window.WebMpvSharedTexture?.onSoftwareFrame?.(drawSoftwareFrame)
   window.WebMpvSharedTexture?.onClear?.(clearFrame)
   await load()
   statusTimer = window.setInterval(() => {
@@ -954,9 +1016,12 @@ onBeforeUnmount(() => {
   noticeTimer = null
   clearControlsHideTimer()
   window.WebMpvSharedTexture?.removeFrameListener?.()
+  window.WebMpvSharedTexture?.removeSoftwareFrameListener?.()
   window.WebMpvSharedTexture?.removeClearListener?.()
   void control('stop')
   destroyWebGL()
+  softwareSourceCanvas = null
+  softwareSourceContext = null
 })
 
 watch(() => props.url, () => {
@@ -1009,6 +1074,10 @@ watch(chapters, (nextChapters) => {
             <button class="mpv-icon-btn mpv-marker-btn" :class="{ active: introSkipSeconds > 0 }" title="设置片头" aria-label="设置片头" type="button" @click="handleIntroSkipToggle"><Flag :size="18" /></button>
             <button class="mpv-icon-btn mpv-marker-btn" :class="{ active: outroSkipSeconds > 0 }" title="设置片尾" aria-label="设置片尾" type="button" @click="handleOutroSkipToggle"><Flag :size="18" /></button>
           </div>
+          <label class="mpv-volume-control mpv-inline-volume">
+            <span>音量 {{ Math.round(volume) }}%</span>
+            <input aria-label="音量" max="100" min="0" step="1" type="range" :style="{ '--mpv-volume': volumePercent }" :value="volume" @change="handleVolumeChange" />
+          </label>
         </div>
 
         <div class="mpv-progress-row">

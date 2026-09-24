@@ -14,9 +14,19 @@ struct LogTextView: View {
     let shouldAutoScroll: Bool
     let searchText: String
 
+    #if os(iOS)
+        @Environment(\.logBottomInset) private var bottomInset
+    #endif
+
     var body: some View {
         #if os(iOS)
-            LogTextViewIOS(logs: logs, font: font, shouldAutoScroll: shouldAutoScroll, searchText: searchText)
+            LogTextViewIOS(
+                logs: logs,
+                font: font,
+                shouldAutoScroll: shouldAutoScroll,
+                searchText: searchText,
+                bottomInset: bottomInset
+            )
         #elseif os(macOS)
             LogTextViewMacOS(logs: logs, font: font, shouldAutoScroll: shouldAutoScroll, searchText: searchText)
         #endif
@@ -27,6 +37,31 @@ struct LogTextView: View {
     /// The logs array is a sliding window over a trimmed stream: entries are appended at
     /// the tail and dropped from the head. Updates are applied as a prefix deletion plus
     /// a tail append, so the text storage is never rebuilt while streaming.
+    ///
+    /// The text views are pinned to TextKit 1. On TextKit 2 neither update model works:
+    ///
+    /// - In-place edits leak. Measured on the iOS 27.0 simulator (24A434) by streaming
+    ///   20 lines per cycle into a 1000-line window (append at the tail plus
+    ///   `deleteCharacters` at the head, so the document stays a constant ~115 KB):
+    ///   UITextView on TextKit 2 grows +166 MB over 300 cycles (~28 KB per log line),
+    ///   +3.5 GB over 4000 cycles, and nothing is returned when the edits stop, when the
+    ///   text view is released, or under memory pressure. A bare `NSTextContentStorage`
+    ///   + `NSTextLayoutManager` + `NSTextContainer` driven by `ensureLayout(for:)` with
+    ///   no text view at all grows +121 MB over the same 300 cycles, append-only edits
+    ///   grow the same way faster per line, and `beginEditing`/`endEditing` or
+    ///   `NSTextContentManager.performEditingTransaction` change nothing. In-place edits
+    ///   also drift `contentSize.height` upward for a window whose line count never
+    ///   changes (39413 -> 85817 pt over 4000 cycles); a field report from 1.15.0-alpha.5
+    ///   on iOS 27.0 (24A437) had the main thread spending 4+ seconds inside
+    ///   `-[NSTextLayoutManager _estimatedTextLocationForVerticalOffset:...]` while the
+    ///   footprint climbed from 791 MB to 1.49 GB, until jetsam killed the app.
+    /// - Replacing the whole document every batch keeps memory flat (17 -> 16 MB over
+    ///   600 cycles) but discards every laid-out fragment, and the viewport is not
+    ///   re-laid-out until a later layout pass, so the view blanks on every batch and
+    ///   stays blank while batches arrive faster than the layout completes.
+    ///
+    /// The same in-place edits on the same views forced onto TextKit 1 are flat.
+    /// `NSTextLayoutManager` ships in UIFoundation, so AppKit behaves identically.
     private struct TextUpdate {
         var replaceAll: Bool
         var deletePrefixLength: Int
@@ -237,12 +272,18 @@ struct LogTextView: View {
         let font: Font
         let shouldAutoScroll: Bool
         let searchText: String
+        let bottomInset: CGFloat
 
         private static let monoFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         private static let defaultColor = UIColor.label
 
         func makeUIView(context _: Context) -> UITextView {
-            let textView = UITextView()
+            let textView: UITextView
+            if #available(iOS 16.0, *) {
+                textView = UITextView(usingTextLayoutManager: false)
+            } else {
+                textView = UITextView()
+            }
             textView.isEditable = false
             textView.isSelectable = true
             textView.isScrollEnabled = true
@@ -255,6 +296,15 @@ struct LogTextView: View {
         }
 
         func updateUIView(_ textView: UITextView, context: Context) {
+            if textView.contentInset.bottom != bottomInset {
+                let wasPinnedToBottom = Self.isPinnedToBottom(textView)
+                textView.contentInset.bottom = bottomInset
+                textView.verticalScrollIndicatorInsets.bottom = bottomInset
+                if shouldAutoScroll, wasPinnedToBottom {
+                    Self.scrollToBottom(textView)
+                }
+            }
+
             let backgroundColor = UIColor.systemBackground.resolvedColor(with: textView.traitCollection)
             let backgroundColorHash = backgroundColor.hash
 
@@ -272,6 +322,8 @@ struct LogTextView: View {
                     guard let textView else { return }
                     let wasPinnedToBottom = Self.isPinnedToBottom(textView)
                     if update.replaceAll {
+                        // Assigning `attributedText` preserves `contentOffset`, so a reader
+                        // scrolled up into history is not yanked around by a rebuild.
                         textView.attributedText = update.appended
                     } else {
                         textView.textStorage.apply(update, separatorAttributes: [
@@ -294,14 +346,8 @@ struct LogTextView: View {
             return bottom <= 0 || textView.contentOffset.y >= bottom - 44
         }
 
-        /// Must not touch `layoutManager` here: accessing it opts the view out of
-        /// TextKit 2, and TextKit 1 invalidates layout for the entire document on
-        /// every head trim. TextKit 2 only lays out the visible viewport, so both
-        /// appends and trims stay O(visible) regardless of log size.
         private static func scrollToBottom(_ textView: UITextView) {
-            if #available(iOS 16.0, *), let textLayoutManager = textView.textLayoutManager {
-                textLayoutManager.ensureLayout(for: NSTextRange(location: textLayoutManager.documentRange.endLocation))
-            }
+            textView.layoutManager.ensureLayout(for: textView.textContainer)
             textView.layoutIfNeeded()
             let bottom = textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom
             if bottom > 0 {
@@ -331,9 +377,7 @@ struct LogTextView: View {
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
 
-            // TextKit 2: viewport-based layout keeps head trims and appends
-            // O(visible) instead of re-laying-out the whole document.
-            let textView = NSTextView(usingTextLayoutManager: true)
+            let textView = NSTextView(usingTextLayoutManager: false)
             textView.isEditable = false
             textView.isSelectable = true
             textView.drawsBackground = false
@@ -381,11 +425,8 @@ struct LogTextView: View {
                         ])
                     }
                     if shouldAutoScroll, update.replaceAll || wasPinnedToBottom {
-                        // `layoutManager` must stay untouched (it would force a fallback
-                        // to TextKit 1); laying out just the document end is enough for
-                        // an accurate scroll target.
-                        if let textLayoutManager = textView.textLayoutManager {
-                            textLayoutManager.ensureLayout(for: NSTextRange(location: textLayoutManager.documentRange.endLocation))
+                        if let layoutManager = textView.layoutManager, let textContainer = textView.textContainer {
+                            layoutManager.ensureLayout(for: textContainer)
                         }
                         textView.scrollToEndOfDocument(nil)
                     }

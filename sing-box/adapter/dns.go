@@ -8,9 +8,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
-	"github.com/sagernet/sing/service"
 
 	"github.com/miekg/dns"
 )
@@ -45,26 +43,6 @@ type DNSQueryOptions struct {
 	RemoveClientSubnet     bool
 }
 
-func DNSQueryOptionsFrom(ctx context.Context, options *option.DomainResolveOptions) (DNSQueryOptions, error) {
-	if options == nil || options.Server == "" {
-		return DNSQueryOptions{}, nil
-	}
-	transportManager := service.FromContext[DNSTransportManager](ctx)
-	transport, loaded := transportManager.Transport(options.Server)
-	if !loaded {
-		return DNSQueryOptions{}, E.New("domain resolver not found: " + options.Server)
-	}
-	return DNSQueryOptions{
-		Transport:              transport,
-		Strategy:               C.DomainStrategy(options.Strategy),
-		DisableCache:           options.DisableCache,
-		DisableOptimisticCache: options.DisableOptimisticCache,
-		RewriteTTL:             options.RewriteTTL,
-		Timeout:                time.Duration(options.Timeout),
-		ClientSubnet:           options.ClientSubnet.Build(netip.Prefix{}),
-	}, nil
-}
-
 type RDRCStore interface {
 	LoadRDRC(transportName string, qName string, qType uint16) (rejected bool)
 	SaveRDRC(transportName string, qName string, qType uint16) error
@@ -93,6 +71,12 @@ type DNSTransport interface {
 type DNSTransportWithPreferredDomain interface {
 	DNSTransport
 	PreferredDomain(domain string) bool
+}
+
+type DNSTransportWithConfiguration interface {
+	DNSTransport
+	ServerAddresses() []netip.Addr
+	SearchDomains() []string
 }
 
 type DNSTransportWithEnvironment interface {

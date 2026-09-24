@@ -9,6 +9,7 @@ declare global {
     openDatabase: any
     WebIsE2E: boolean
     WebE2EAllowTransfers: boolean
+    WebE2ESeedCloudAccounts?: (accounts: unknown[], defaultUserId: string) => Promise<void>
     WebRelaunchAria: () => Promise<number>
     platform: string
     WebGetPathForFile: (file: File) => string
@@ -63,6 +64,8 @@ declare global {
     WebMpvSharedTexture: {
       isAvailable: () => boolean
       onFrame: (callback: (videoFrame: VideoFrame, index: number) => void) => void
+      onSoftwareFrame: (callback: (pixels: Uint8Array, width: number, height: number, index: number) => void) => void
+      removeSoftwareFrameListener: () => void
       removeFrameListener: () => void
       onClear: (callback: () => void) => void
       removeClearListener: () => void

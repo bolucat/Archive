@@ -1,4 +1,4 @@
-import { BrowserWindow, SharedTextureHandle, sharedTexture } from 'electron'
+import { BrowserWindow, SharedTextureHandle, WebContents, sharedTexture } from 'electron'
 import { EmbeddedMpvCapability, getEmbeddedMpvCapability } from './embeddedMpvCapability'
 import { EmbeddedMpvNativeAddonLoadResult, EmbeddedMpvNativeInstance, EmbeddedMpvNativeResourceStatus, EmbeddedMpvStatus, EmbeddedMpvTextureInfo, getEmbeddedMpvNativeResourceStatus, loadEmbeddedMpvNativeAddon } from './embeddedMpvNativeAddon'
 import type { EmbeddedMpvControlRequest, EmbeddedMpvControlResult, EmbeddedMpvLoadRequest, EmbeddedMpvLoadResult } from './embeddedMpvBridge'
@@ -14,15 +14,30 @@ export class EmbeddedMpvTextureBridge {
   private frameIndex = 0
   private sendingFrame = false
   private pendingFrame: EmbeddedMpvTextureInfo | null = null
+  private softwareFrameInFlight = false
+  private pendingSoftwareFrame: EmbeddedMpvTextureInfo | null = null
   private nativeLoadResult: EmbeddedMpvNativeAddonLoadResult | null = null
   private nativeResourceStatus: EmbeddedMpvNativeResourceStatus | null = null
   private mpv: EmbeddedMpvNativeInstance | null = null
   private latestStatus: EmbeddedMpvStatus | null = null
+  private lastNativeError = ''
   private consecutiveFrameErrors = 0
   private frameStats = { received: 0, dropped: 0, sent: 0, errors: 0, importMs: 0, sendMs: 0, sendCount: 0 }
   private frameStatsTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private readonly options: EmbeddedMpvTextureBridgeOptions = {}) {}
+
+  private async readTrackStatus(expectedIncrease?: { type: 'audio' | 'sub'; previousCount: number }) {
+    let latest = this.mpv?.getTrackStatus?.()
+    for (const delay of expectedIncrease ? [0, 25, 75, 150, 300, 500] : [0]) {
+      if (delay > 0) await waitForMpvCommand(delay)
+      latest = this.mpv?.refreshTrackStatus
+        ? await this.mpv.refreshTrackStatus()
+        : this.mpv?.getTrackStatus?.()
+      if (!expectedIncrease || (latest?.tracks || []).filter((track) => track.type === expectedIncrease.type).length > expectedIncrease.previousCount) break
+    }
+    return latest
+  }
 
   private loadNativeAddon(): EmbeddedMpvNativeAddonLoadResult {
     if (!this.nativeLoadResult) this.nativeLoadResult = loadEmbeddedMpvNativeAddon()
@@ -30,7 +45,10 @@ export class EmbeddedMpvTextureBridge {
   }
 
   private getNativeResourceStatus(): EmbeddedMpvNativeResourceStatus {
-    if (!this.nativeResourceStatus) this.nativeResourceStatus = getEmbeddedMpvNativeResourceStatus(this.loadNativeAddon().searchedPaths)
+    if (!this.nativeResourceStatus) {
+      const nativeLoadResult = this.loadNativeAddon()
+      this.nativeResourceStatus = getEmbeddedMpvNativeResourceStatus(nativeLoadResult.addonPath && nativeLoadResult.addon ? [nativeLoadResult.addonPath] : nativeLoadResult.searchedPaths)
+    }
     return this.nativeResourceStatus
   }
 
@@ -39,19 +57,30 @@ export class EmbeddedMpvTextureBridge {
     const nativeResourceStatus = this.getNativeResourceStatus()
     return getEmbeddedMpvCapability({
       nativeAddonAvailable: this.options.nativeAddonAvailable === true || Boolean(nativeLoadResult.addon),
-      nativeResourcesComplete: nativeResourceStatus.complete
+      nativeAddonError: nativeLoadResult.error,
+      nativeResourcesComplete: nativeResourceStatus.complete,
+      nativeResourcesMissing: nativeResourceStatus.missing,
+      rendererAvailable: process.platform === 'darwin' || nativeLoadResult.addon?.mpvTexture.renderMode === 'software'
     })
   }
 
   async initialize(window: BrowserWindow): Promise<boolean> {
+    console.error('[mpv] initialize: checking capability')
     const capability = this.getCapability()
     if (!capability.enabled) return false
+    console.error('[mpv] initialize: loading addon')
     const nativeLoadResult = this.loadNativeAddon()
     if (!nativeLoadResult.addon) return false
     this.window = window
+    window.once('closed', () => {
+      if (this.window === window) this.destroy()
+    })
     this.mpv = nativeLoadResult.addon.mpvTexture
     try {
-      this.mpv.create()
+      console.error('[mpv] initialize: creating native context')
+      // The software renderer cannot import hardware-decoded GPU surfaces.
+      this.mpv.create(process.platform === 'darwin' ? {} : { headless: false, width: 640, height: 360, hwdec: 'no' })
+      console.error('[mpv] initialize: native context created')
     } catch (error) {
       console.error('[mpv] native addon create failed:', error)
       this.mpv = null
@@ -61,8 +90,12 @@ export class EmbeddedMpvTextureBridge {
     this.mpv.onStatus((status) => {
       this.latestStatus = status
     })
-    this.mpv.onError((error) => console.error('[mpv] native addon error:', error))
+    this.mpv.onError((error) => {
+      this.lastNativeError = String(error || 'MPV native error')
+      console.error('[mpv] native addon error:', error)
+    })
     this.initialized = true
+    console.error('[mpv] initialize: callbacks installed')
     this.frameStatsTimer = setInterval(() => {
       if (this.frameStats.received === 0) return
       const averageImport = this.frameStats.sendCount > 0 ? (this.frameStats.importMs / this.frameStats.sendCount).toFixed(1) : '?'
@@ -74,12 +107,13 @@ export class EmbeddedMpvTextureBridge {
   }
 
   async load(window: BrowserWindow, request: EmbeddedMpvLoadRequest): Promise<EmbeddedMpvLoadResult> {
+    console.error('[mpv] load: entered')
     const capability = this.getCapability()
     if (!capability.enabled) {
       return {
         ok: false,
         capability,
-        error: capability.reason || 'macOS 内嵌 MPV 尚未启用。'
+        error: capability.reason || '内嵌 MPV 尚未启用。'
       }
     }
 
@@ -87,7 +121,7 @@ export class EmbeddedMpvTextureBridge {
       return {
         ok: false,
         capability,
-        error: 'macOS 内嵌 MPV 初始化失败。'
+        error: '内嵌 MPV 初始化失败。'
       }
     }
 
@@ -97,13 +131,19 @@ export class EmbeddedMpvTextureBridge {
     if (this.window !== window) {
       this.window = window
       this.pendingFrame = null
+      this.pendingSoftwareFrame = null
+      this.softwareFrameInFlight = false
       this.frameIndex = 0
     }
 
     this.clearTexture()
     this.pendingFrame = null
+    this.pendingSoftwareFrame = null
+    this.softwareFrameInFlight = false
     this.latestStatus = null
+    this.lastNativeError = ''
     try {
+      console.error('[mpv] load: invoking native load')
       console.info('[播放][MPV] native 加载链接', {
         url: request.url || '',
         startPosition: request.startPosition || 0,
@@ -111,6 +151,7 @@ export class EmbeddedMpvTextureBridge {
         userAgent: Object.entries(request.headers || {}).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
       })
       await this.mpv?.load(request.url || '', buildMpvLoadOptions(request))
+      console.error('[mpv] load: native load returned')
     } catch (error: any) {
       return {
         ok: false,
@@ -131,58 +172,61 @@ export class EmbeddedMpvTextureBridge {
       return {
         ok: false,
         capability,
-        error: capability.reason || 'macOS 内嵌 MPV 尚未初始化。'
+        error: capability.reason || '内嵌 MPV 尚未初始化。'
       }
     }
 
+    const trackType = request.action === 'addAudio' ? 'audio' : request.action === 'addSubtitle' ? 'sub' : undefined
+    const previousTrackCount = trackType ? (this.mpv.getTrackStatus?.().tracks || []).filter((track) => track.type === trackType).length : 0
+
     switch (request.action) {
       case 'play':
-        this.mpv.play()
+        await this.mpv.play()
         break
       case 'pause':
-        this.mpv.pause()
+        await this.mpv.pause()
         break
       case 'stop':
-        this.mpv.stop()
+        await this.mpv.stop()
         this.clearTexture()
         break
       case 'seek':
         if (typeof request.value !== 'number') return { ok: false, capability, error: 'seek 需要数字位置。' }
-        this.mpv.seek(request.value)
+        await this.mpv.seek(request.value)
         break
       case 'setVolume':
         if (typeof request.value !== 'number') return { ok: false, capability, error: 'setVolume 需要数字音量。' }
-        this.mpv.setVolume(request.value)
+        await this.mpv.setVolume(request.value)
         break
       case 'setSpeed':
-        if (typeof request.value !== 'number') return { ok: false, capability, error: 'setSpeed 需要数字倍速。' }
+        if (typeof request.value !== 'number' || !Number.isFinite(request.value) || request.value < 0.25 || request.value > 4) return { ok: false, capability, error: '倍速必须在 0.25–4 倍之间。' }
         if (!this.mpv.setSpeed) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露倍速控制。')
-        this.mpv.setSpeed(request.value)
+        await this.mpv.setSpeed(request.value)
         break
       case 'setAudioTrack':
         if (typeof request.value !== 'number') return { ok: false, capability, error: 'setAudioTrack 需要数字轨道 ID。' }
         if (!this.mpv.setAudioTrack) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露音轨控制。')
-        this.mpv.setAudioTrack(request.value)
+        await this.mpv.setAudioTrack(request.value)
         break
       case 'setSubtitleTrack':
         if (typeof request.value !== 'number') return { ok: false, capability, error: 'setSubtitleTrack 需要数字轨道 ID。' }
         if (!this.mpv.setSubtitleTrack) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露字幕轨控制。')
-        this.mpv.setSubtitleTrack(request.value)
+        await this.mpv.setSubtitleTrack(request.value)
         break
       case 'setSubtitleStyle':
         if (!request.style) return { ok: false, capability, error: 'setSubtitleStyle 需要字幕样式。' }
         if (!this.mpv.setSubtitleStyle) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露字幕样式控制。')
-        this.mpv.setSubtitleStyle(request.style)
+        await this.mpv.setSubtitleStyle(request.style)
         break
       case 'setVideoProperty':
         if (!request.property || request.propertyValue == null) return { ok: false, capability, error: 'setVideoProperty 参数不完整。' }
         if (!this.mpv.setVideoProperty) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露视频属性控制。')
-        this.mpv.setVideoProperty(request.property, String(request.propertyValue))
+        await this.mpv.setVideoProperty(request.property, String(request.propertyValue))
         break
       case 'addAudio':
         if (!request.url) return { ok: false, capability, error: 'addAudio 需要音频文件路径。' }
         if (!this.mpv.addAudio) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露外置音频控制。')
-        this.mpv.addAudio(request.url, request.title || '')
+        await this.mpv.addAudio(request.url, request.title || '')
         break
       case 'addSubtitle':
         if (!request.url) return { ok: false, capability, error: 'addSubtitle 需要字幕 URL。' }
@@ -192,7 +236,7 @@ export class EmbeddedMpvTextureBridge {
           for (const delay of [0, 250, 750]) {
             if (delay > 0) await waitForMpvCommand(delay)
             try {
-              this.mpv.addSubtitle(request.url, request.title || '')
+              await this.mpv.addSubtitle(request.url, request.title || '')
               lastError = undefined
               break
             } catch (error) {
@@ -206,24 +250,23 @@ export class EmbeddedMpvTextureBridge {
         }
         break
       default:
-        return { ok: false, capability, error: '未知的 macOS 内嵌 MPV 控制命令。' }
+        return { ok: false, capability, error: '未知的内嵌 MPV 控制命令。' }
     }
 
+    const trackStatus = await this.readTrackStatus(trackType ? { type: trackType, previousCount: previousTrackCount } : undefined)
     return {
       ok: true,
       capability,
       status: this.mpv.getStatus?.() || this.latestStatus,
-      trackStatus: this.mpv.getTrackStatus?.()
+      trackStatus
     }
   }
 
   private getUnsupportedOptionalControlResult(capability: EmbeddedMpvCapability, warning: string): EmbeddedMpvControlResult {
     return {
-      ok: true,
+      ok: false,
       capability,
-      warning,
-      status: this.latestStatus || this.mpv?.getStatus?.(),
-      trackStatus: this.mpv?.getTrackStatus?.()
+      error: warning
     }
   }
 
@@ -233,7 +276,7 @@ export class EmbeddedMpvTextureBridge {
       return {
         ok: false,
         capability,
-        error: capability.reason || 'macOS 内嵌 MPV 尚未初始化。'
+        error: capability.reason || '内嵌 MPV 尚未初始化。'
       }
     }
 
@@ -241,16 +284,44 @@ export class EmbeddedMpvTextureBridge {
       ok: true,
       capability,
       status: this.mpv.getStatus?.() || this.latestStatus,
-      trackStatus: this.mpv.getTrackStatus?.()
+      trackStatus: await this.readTrackStatus(),
+      error: this.lastNativeError || undefined
     }
   }
 
   private handleFrame(textureInfo: EmbeddedMpvTextureInfo): void {
     if (!this.window || !this.mpv) return
+    if (textureInfo.pixels) {
+      if (this.softwareFrameInFlight) {
+        this.pendingSoftwareFrame = textureInfo
+        return
+      }
+      this.sendSoftwareFrame(textureInfo)
+      return
+    }
     this.frameStats.received++
     if (this.sendingFrame) this.frameStats.dropped++
     this.pendingFrame = textureInfo
     if (!this.sendingFrame) void this.sendFrameLoop()
+  }
+
+  private sendSoftwareFrame(textureInfo: EmbeddedMpvTextureInfo): void {
+    if (!this.window || this.window.isDestroyed() || !textureInfo.pixels) return
+    this.softwareFrameInFlight = true
+    this.window.webContents.send('MpvEmbedded:softwareFrame', {
+        pixels: textureInfo.pixels,
+        width: textureInfo.width,
+        height: textureInfo.height,
+        index: this.frameIndex++
+      })
+  }
+
+  acknowledgeSoftwareFrame(sender: WebContents): void {
+    if (!this.window || this.window.isDestroyed() || this.window.webContents !== sender) return
+    this.softwareFrameInFlight = false
+    const next = this.pendingSoftwareFrame
+    this.pendingSoftwareFrame = null
+    if (next) this.sendSoftwareFrame(next)
   }
 
   private async sendFrameLoop(): Promise<void> {
@@ -311,7 +382,10 @@ export class EmbeddedMpvTextureBridge {
     }
     this.clearTexture()
     this.pendingFrame = null
+    this.pendingSoftwareFrame = null
+    this.softwareFrameInFlight = false
     this.latestStatus = null
+    this.lastNativeError = ''
     this.mpv?.destroy()
     this.mpv = null
     this.window = null

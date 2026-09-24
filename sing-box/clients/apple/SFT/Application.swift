@@ -9,6 +9,7 @@ struct Application: App {
     @StateObject private var environments = ExtensionEnvironments()
     @StateObject private var peerStore = TailscaleSSHPeerStore()
     @StateObject private var tailscaleViewModel = TailscaleStatusViewModel()
+    @State private var isReady = false
 
     init() {
         ScreenshotLocalization.applyIfNeeded()
@@ -16,11 +17,19 @@ struct Application: App {
 
     var body: some Scene {
         WindowGroup {
-            MainView()
-                .tailscaleStatusSubscription(tailscaleViewModel, environments: environments, peerStore: peerStore)
-                .environmentObject(environments)
-                .environmentObject(peerStore)
-                .environmentObject(tailscaleViewModel)
+            if isReady {
+                MainView()
+                    .tailscaleStatusSubscription(tailscaleViewModel, environments: environments, peerStore: peerStore)
+                    .environmentObject(environments)
+                    .environmentObject(peerStore)
+                    .environmentObject(tailscaleViewModel)
+            } else {
+                ProgressView()
+                    .task {
+                        await appDelegate.setupTask?.value
+                        isReady = true
+                    }
+            }
         }
     }
 }

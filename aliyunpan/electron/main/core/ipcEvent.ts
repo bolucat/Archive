@@ -49,6 +49,8 @@ import { completeDocumentReadingUnit, createDocumentReadingJob, failDocumentRead
 import type { CreateDocumentReadingJobInput, DocumentReadingJobStatus } from '@shared/types/documentReading'
 import { downloadAndExtractPdf } from '../documentInsight/PdfExtractionService'
 import { sendPdfProgress } from '../documentInsight/pdfProgress'
+import { buildQuarkCookieHeader, mergeQuarkCookieHeaders } from '@shared/quarkCookies'
+import { resolveCloudDriveCliConfigDir } from './cliConfigPath'
 
 let psbId: any
 const panHubStreamControllers = new Map<string, AbortController>()
@@ -56,19 +58,9 @@ const panHubStreamControllers = new Map<string, AbortController>()
 const QUARK_DOWNLOAD_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch'
 
-const mergeQuarkCookie = (preferredCookie: string, supplementalCookie = '') => {
-  if (!preferredCookie) return supplementalCookie
-  const preferredKeys = new Set(preferredCookie.split(';').map((item) => item.trim().split('=')[0].toLowerCase()).filter(Boolean))
-  const supplemental = supplementalCookie.split(';').map((item) => item.trim()).filter((item) => item && !preferredKeys.has(item.split('=')[0].toLowerCase()))
-  return [preferredCookie, ...supplemental].filter(Boolean).join('; ')
-}
-
-const getQuarkSessionCookieHeader = async () => {
-  const cookies = await session.defaultSession.cookies.get({})
-  return cookies
-    .filter((cookie) => /(^|\.)quark\.cn$/i.test(String(cookie.domain || '').replace(/^\./, '')) && cookie.name && cookie.value)
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join('; ')
+const getQuarkSessionCookieHeader = async (targetUrl: string) => {
+  const cookies = await session.defaultSession.cookies.get({ url: targetUrl })
+  return buildQuarkCookieHeader(cookies, targetUrl)
 }
 
 function shellQuote(value: string): string {
@@ -245,6 +237,7 @@ export default class ipcEvent {
     ipcMain.handle('MpvEmbedded:load', async (event, data) => embeddedMpvBridge.load(data || {}, event.sender))
     ipcMain.handle('MpvEmbedded:control', async (_event, data) => embeddedMpvBridge.control(data || {}))
     ipcMain.handle('MpvEmbedded:getStatus', async () => embeddedMpvBridge.getStatus())
+    ipcMain.on('MpvEmbedded:softwareFrameConsumed', (event) => embeddedMpvBridge.acknowledgeSoftwareFrame?.(event.sender))
   }
 
   private static handleMediaAcquisition() {
@@ -658,9 +651,9 @@ export default class ipcEvent {
         fr: 'pc'
       })
       const url = `https://drive.quark.cn/1/clouddrive/file/download?${params.toString()}`
-      const sessionCookieHeader = await getQuarkSessionCookieHeader()
+      const sessionCookieHeader = await getQuarkSessionCookieHeader('https://drive.quark.cn')
       const accountCookieHeader = String(data?.cookie || '')
-      const cookieHeader = mergeQuarkCookie(sessionCookieHeader, accountCookieHeader)
+      const cookieHeader = mergeQuarkCookieHeaders(sessionCookieHeader, accountCookieHeader)
 
       return await new Promise((resolve) => {
         const request = net.request({
@@ -692,8 +685,8 @@ export default class ipcEvent {
                 }
               }
             }
-            const latestSessionCookie = await getQuarkSessionCookieHeader()
-            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body, cookie: mergeQuarkCookie(latestSessionCookie, accountCookieHeader) })
+            const latestSessionCookie = await getQuarkSessionCookieHeader('https://drive.quark.cn')
+            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body, cookie: mergeQuarkCookieHeaders(latestSessionCookie, accountCookieHeader) })
           })
         })
         request.on('error', (error) => resolve({ ok: false, status: 0, body: '', cookies: [], error: error.message }))
@@ -712,7 +705,7 @@ export default class ipcEvent {
       })
       const url = `https://drive-pc.quark.cn/1/clouddrive/file/sort?${params.toString()}`
       const accountCookieHeader = String(data?.cookie || '')
-      const cookieHeader = mergeQuarkCookie(await getQuarkSessionCookieHeader(), accountCookieHeader)
+      const cookieHeader = mergeQuarkCookieHeaders(await getQuarkSessionCookieHeader('https://drive-pc.quark.cn'), accountCookieHeader)
       return await new Promise((resolve) => {
         const request = net.request({ method: 'GET', url, useSessionCookies: true } as any)
         request.setHeader('Accept', 'application/json, text/plain, */*')
@@ -729,11 +722,11 @@ export default class ipcEvent {
             const setCookie = response.headers['set-cookie']
             const setCookieList = Array.isArray(setCookie) ? setCookie : (setCookie ? [String(setCookie)] : [])
             for (const rawCookie of setCookieList) {
-              const cookie = ipcEvent.parseSetCookie(rawCookie, 'https://drive.quark.cn')
+              const cookie = ipcEvent.parseSetCookie(rawCookie, 'https://drive-pc.quark.cn')
               if (cookie) await session.defaultSession.cookies.set(cookie).catch(() => undefined)
             }
-            const latestSessionCookie = await getQuarkSessionCookieHeader()
-            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: Buffer.concat(chunks).toString('utf8'), cookie: mergeQuarkCookie(latestSessionCookie, accountCookieHeader) })
+            const latestSessionCookie = await getQuarkSessionCookieHeader('https://drive-pc.quark.cn')
+            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: Buffer.concat(chunks).toString('utf8'), cookie: mergeQuarkCookieHeaders(latestSessionCookie, accountCookieHeader) })
           })
         })
         request.on('error', (error) => resolve({ ok: false, status: 0, body: '', error: error.message }))
@@ -1192,7 +1185,7 @@ export default class ipcEvent {
   private static handleExportCliTokens() {
     ipcMain.handle('ExportCliTokens', async (_event, data: { accounts: any[] }) => {
       try {
-        const cliDir = path.join(os.homedir(), '.clouddrive-cli')
+        const cliDir = resolveCloudDriveCliConfigDir(process.env.CLOUDDRIVE_CLI_CONFIG_DIR, os.homedir())
         const tokensPath = path.join(cliDir, 'tokens.json')
         const configPath = path.join(cliDir, 'config.json')
         mkdirSync(cliDir, { recursive: true })

@@ -7,6 +7,8 @@
 #define TEXTURE_SHARE_H_
 
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace mpv_texture {
 
@@ -24,6 +26,7 @@ struct TextureInfo {
     uint32_t height;
     TextureFormat format;
     bool is_valid;
+    std::shared_ptr<std::vector<uint8_t>> pixels; // software renderer only
 };
 
 // Abstract interface for platform-specific texture sharing
@@ -53,6 +56,12 @@ public:
     // Unlock and export the texture (call after mpv_render_context_render)
     // Returns the texture info for sharing with Electron
     virtual TextureInfo unlockAndExport() = 0;
+
+    // Headless macOS runners can expose only the CGL software renderer. In
+    // that case Electron cannot import an IOSurface through its GPU process,
+    // so the rendered FBO is read back over the existing CPU frame path.
+    // Hardware-backed Macs keep zero-copy texture sharing.
+    virtual void setSoftwareReadback(bool enabled) { (void)enabled; }
 
     // Release a previously exported texture
     virtual void releaseTexture() = 0;

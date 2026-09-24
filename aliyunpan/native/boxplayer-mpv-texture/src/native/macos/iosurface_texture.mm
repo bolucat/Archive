@@ -12,7 +12,9 @@
 #include <OpenGL/CGLIOSurface.h>
 #include <IOSurface/IOSurface.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <array>
 #include <iostream>
+#include <vector>
 
 namespace mpv_texture {
 
@@ -70,9 +72,16 @@ public:
             return true;
         }
 
+        // Electron may still import a previously exported IOSurface when mpv
+        // reports the video's actual dimensions. Keep those surfaces alive
+        // until this playback context is destroyed.
+        std::array<IOSurfaceRef, BUFFER_COUNT> retired{};
         for (int i = 0; i < BUFFER_COUNT; i++) {
+            retired[i] = m_slots[i].ioSurface;
+            m_slots[i].ioSurface = nullptr;
             destroySlot(m_slots[i]);
         }
+        m_retiredSurfaces.push_back(retired);
 
         return createTexture(width, height);
     }
@@ -103,6 +112,24 @@ public:
 
         auto& slot = m_slots[m_writeIndex];
 
+        if (m_softwareReadback) {
+            auto pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(m_width) * m_height * 4);
+            while (glGetError() != GL_NO_ERROR) {}
+            glBindFramebuffer(GL_FRAMEBUFFER, slot.glFBO);
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glReadPixels(0, 0, static_cast<GLsizei>(m_width), static_cast<GLsizei>(m_height), GL_RGBA, GL_UNSIGNED_BYTE, pixels->data());
+            const bool valid = glGetError() == GL_NO_ERROR;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            info.handle = 0;
+            info.width = m_width;
+            info.height = m_height;
+            info.format = TextureFormat::RGBA8;
+            info.is_valid = valid;
+            info.pixels = pixels;
+            m_writeIndex = (m_writeIndex + 1) % BUFFER_COUNT;
+            return info;
+        }
+
         // Pass IOSurfaceRef as raw pointer — Electron's importSharedTexture expects
         // the ioSurface Buffer to contain the IOSurfaceRef pointer, not the IOSurfaceID.
         info.handle = reinterpret_cast<uint64_t>(slot.ioSurface);
@@ -117,6 +144,11 @@ public:
         return info;
     }
 
+    void setSoftwareReadback(bool enabled) override {
+        m_softwareReadback = enabled;
+        if (enabled) std::cout << "[IOSurface] Electron GPU import unavailable; using CPU frame readback" << std::endl;
+    }
+
     void releaseTexture() override {
         // No-op with triple buffering - mpv always has a free slot to write to
     }
@@ -127,6 +159,12 @@ public:
         for (int i = 0; i < BUFFER_COUNT; i++) {
             destroySlot(m_slots[i]);
         }
+        for (const auto& generation : m_retiredSurfaces) {
+            for (IOSurfaceRef surface : generation) {
+                if (surface) CFRelease(surface);
+            }
+        }
+        m_retiredSurfaces.clear();
 
         m_initialized = false;
     }
@@ -226,6 +264,7 @@ private:
 
     bool m_initialized = false;
     bool m_locked = false;
+    bool m_softwareReadback = false;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
 
@@ -233,6 +272,7 @@ private:
 
     // Triple-buffered texture slots
     IOSurfaceSlot m_slots[BUFFER_COUNT];
+    std::vector<std::array<IOSurfaceRef, BUFFER_COUNT>> m_retiredSurfaces;
     int m_writeIndex = 0;
 };
 

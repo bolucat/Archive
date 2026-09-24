@@ -8,12 +8,46 @@ on:
 
 concurrency:
   group: release-${{ github.ref_name }}
-  cancel-in-progress: false
+  # A new candidate for the same release tag supersedes an older run. This
+  # prevents a failed or stalled Windows provider test from blocking retries.
+  cancel-in-progress: true
 
 jobs:
   linux-mpv-test:
     name: Verify Linux MPV
     uses: ./.github/workflows/mpv-linux.yml
+
+  embedded-mpv-linux-test:
+    name: Verify cloud providers except 115/Box/189 and Emby playback on Linux
+    uses: ./.github/workflows/embedded-mpv-linux.yml
+    with:
+      real_cloud: true
+      required_providers: aliyun,cloud123,baidu,pikpak,quark,139,guangya,dropbox,onedrive,google
+    secrets: inherit
+
+  embedded-mpv-windows-test:
+    name: Verify cloud providers except 115/Box/189, Emby and MPV on Windows x64
+    uses: ./.github/workflows/embedded-mpv-windows-x64.yml
+    with:
+      real_cloud: true
+      required_providers: aliyun,cloud123,baidu,pikpak,quark,139,guangya,dropbox,onedrive,google
+    secrets: inherit
+
+  embedded-mpv-macos-arm64-test:
+    name: Verify cloud providers except 115/Box/189 and Emby playback on macOS ARM64
+    uses: ./.github/workflows/embedded-mpv-macos-arm64.yml
+    with:
+      real_cloud: true
+      required_providers: aliyun,cloud123,baidu,pikpak,quark,139,guangya,dropbox,onedrive,google
+    secrets: inherit
+
+  embedded-mpv-macos-x64-test:
+    name: Verify cloud providers except 115/Box/189 and Emby playback on macOS x64
+    uses: ./.github/workflows/embedded-mpv-macos-x64.yml
+    with:
+      real_cloud: true
+      required_providers: aliyun,cloud123,baidu,pikpak,quark,139,guangya,dropbox,onedrive,google
+    secrets: inherit
 
   electron-e2e:
     name: Verify packaged Electron UI
@@ -39,11 +73,15 @@ jobs:
 
   create-release:
     name: Create Release Draft
+    needs: [linux-mpv-test, embedded-mpv-linux-test, embedded-mpv-windows-test, embedded-mpv-macos-arm64-test, embedded-mpv-macos-x64-test, electron-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - name: Checkout Git repository
+        uses: actions/checkout@v4
+
       - name: Create shared release draft
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -62,11 +100,11 @@ jobs:
 
   release:
     name: Build Release
-    needs: [linux-mpv-test, electron-e2e, create-release]
+    needs: [create-release, embedded-mpv-linux-test, embedded-mpv-windows-test, embedded-mpv-macos-arm64-test, embedded-mpv-macos-x64-test]
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest, ubuntu-latest, macos-14 ]
+        os: [ windows-latest, ubuntu-latest, macos-14, macos-15-intel ]
     runs-on: ${{ matrix.os }}
 
     permissions:
@@ -124,7 +162,7 @@ jobs:
 
       - name: Setup Cache Electron Builder
         uses: actions/cache@v4
-        if: matrix.os != 'macos-14'
+        if: runner.os != 'macOS'
         with:
           path: ${{ env.ELECTRON_BUILDER_STORE_PATH }}
           key: ${{ runner.os }}-electron-builder-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -134,6 +172,48 @@ jobs:
       - name: Install Dependencies
         run: |
           pnpm install --frozen-lockfile
+
+      - name: Download verified Windows x64 embedded MPV runtime
+        if: matrix.os == 'windows-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-mpv-windows-x64-candidate
+          path: static/engine/win32/x64/mpv-texture
+
+      - name: Download verified Linux x64 embedded MPV runtime
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-mpv-linux-x64-candidate
+          path: static/engine/linux/x64/mpv-texture
+
+      - name: Download verified macOS arm64 embedded MPV runtime
+        if: matrix.os == 'macos-14'
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-mpv-darwin-arm64-candidate
+          path: static/engine/darwin/arm64/mpv-texture
+
+      - name: Download verified macOS x64 embedded MPV runtime
+        if: matrix.os == 'macos-15-intel'
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-mpv-darwin-x64-candidate
+          path: static/engine/darwin/x64/mpv-texture
+
+      - name: Verify release uses the tested embedded MPV runtime
+        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest' || matrix.os == 'macos-14' || matrix.os == 'macos-15-intel'
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            node scripts/check-embedded-mpv-bundles.mjs win32/x64
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            node scripts/check-embedded-mpv-bundles.mjs linux/x64
+          elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
+            node scripts/check-embedded-mpv-bundles.mjs darwin/arm64
+          else
+            node scripts/check-embedded-mpv-bundles.mjs darwin/x64
+          fi
 
       - name: Generate Release Secrets
         env:
