@@ -1,3 +1,4 @@
+use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -31,6 +32,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
         seed: ClashConfig,
         bridge: Arc<dyn ClashLegacyBridge>,
@@ -55,7 +57,11 @@ impl ClashConfigClient {
         let actor_ref = Actor::spawn(
             None,
             ClashConfigActor,
-            ClashConfigActorArgs { manager, bridge },
+            ClashConfigActorArgs {
+                manager,
+                bridge,
+                mutations,
+            },
         )
         .await
         .context("failed to spawn clash config actor")?
@@ -210,6 +216,7 @@ mod tests {
     async fn test_client() -> (ClashConfigClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
         let client = ClashConfigClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir),
             ClashConfig::default(),
             Arc::new(NoopClashBridge),
