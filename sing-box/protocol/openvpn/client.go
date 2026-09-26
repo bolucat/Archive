@@ -129,25 +129,30 @@ func NewClientEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 	if deviceMTU == 0 {
 		deviceMTU = ovpntransport.DefaultMTU
 	}
+	packetFrontHeadroom, packetRearHeadroom := clientOptions.DataPacketHeadroom()
 	clientEndpoint.deviceOptions = &device.Options{
-		Context:         ctx,
-		Logger:          logger,
-		System:          options.System,
-		Handler:         clientEndpoint,
-		UDPTimeout:      udpTimeout,
-		ICMPTimeout:     C.ICMPTimeout,
-		UDPMapping:      tun.NATMapping(options.UDPMapping),
-		UDPFiltering:    tun.NATFiltering(options.UDPFiltering),
-		UDPNATMax:       options.UDPNATMax,
-		InterfaceFinder: service.FromContext[adapter.NetworkManager](ctx).InterfaceFinder(),
-		Name:            options.Name,
-		NamePrefix:      "ovpn",
-		MTU:             deviceMTU,
-		PacketHeadroom:  ovpntransport.PacketHeadroom,
+		Context:             ctx,
+		Logger:              logger,
+		System:              options.System,
+		Handler:             clientEndpoint,
+		UDPTimeout:          udpTimeout,
+		ICMPTimeout:         C.ICMPTimeout,
+		UDPMapping:          tun.NATMapping(options.UDPMapping),
+		UDPFiltering:        tun.NATFiltering(options.UDPFiltering),
+		UDPNATMax:           options.UDPNATMax,
+		InterfaceFinder:     service.FromContext[adapter.NetworkManager](ctx).InterfaceFinder(),
+		Name:                options.Name,
+		NamePrefix:          "ovpn",
+		MTU:                 deviceMTU,
+		PacketFrontHeadroom: packetFrontHeadroom,
+		PacketRearHeadroom:  packetRearHeadroom,
 		Configuration: device.Configuration{
 			MTU:     deviceMTU,
 			Address: clientOptions.Tunnel.LocalAddress,
 		},
+	}
+	clientOptions.IncomingPacketHeadroom = func() int {
+		return clientEndpoint.device.FrontHeadroom()
 	}
 	client, err := ovpn.NewClient(clientOptions)
 	if err != nil {
@@ -404,7 +409,6 @@ func buildClientDataChannelOptions(options option.OpenVPNClientEndpointOptions) 
 		AllowCompression: options.AllowCompression,
 		ReplayWindow:     options.ReplayWindow,
 		ReplayWindowTime: time.Duration(options.ReplayWindowTime),
-		PacketHeadroom:   ovpntransport.PacketHeadroom,
 	}
 }
 
@@ -683,7 +687,9 @@ func (c *ClientEndpoint) OnDemand() bool {
 }
 
 func (c *ClientEndpoint) SetKeepIdleConnections(keep bool) {
-	if !keep {
+	if keep {
+		c.client.Resume()
+	} else {
 		c.client.Suspend()
 	}
 }

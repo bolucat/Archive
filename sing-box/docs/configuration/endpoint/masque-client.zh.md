@@ -76,8 +76,6 @@ HTTP 版本。
 
 默认使用 `3`。
 
-当为 `1` 或 `2` 时，IP 数据包通过 TCP 流传输，而不是 QUIC 数据报。
-
 当为 `2` 时，[QUIC 字段](#quic-字段) 替换为 [HTTP2 字段](#http2-字段)。
 
 ### disable_version_fallback
@@ -101,8 +99,6 @@ HTTP/3 需要 TLS。
 使用系统接口。
 
 需要特权且不能与已有系统接口冲突。
-
-endpoint 会配置接口地址和 MTU，但不会安装操作系统路由或 DNS 设置。
 
 如果禁用，sing-box 将使用内部网络栈。
 
@@ -128,17 +124,11 @@ endpoint 会配置接口地址和 MTU，但不会安装操作系统路由或 DNS
 
 参阅 [HTTP2 字段](/zh/configuration/shared/http2/)。
 
-`keep_alive_period` 默认为 `10s`。
-
 ## QUIC 字段
 
 当 `version` 为 `3`（默认）时。
 
 参阅 [QUIC 字段](/zh/configuration/shared/quic/)。
-
-`keep_alive_period` 默认为 `10s`。
-
-`initial_packet_size` 默认为 `mtu + 51`，使不超过隧道 MTU 的 IP 数据包能放入一个 QUIC 数据报。QUIC 数据包最大为 1452 字节，`mtu` 更大时，放不下的 IP 数据包会收到 ICMP Packet Too Big 回复。如果路径无法传输这个大小的数据包，QUIC 握手会失败，客户端将回退到更低的 HTTP 版本。
 
 ## UDP NAT 字段
 

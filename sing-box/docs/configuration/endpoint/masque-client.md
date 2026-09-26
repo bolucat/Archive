@@ -76,8 +76,6 @@ Available values: `1`, `2`, `3`.
 
 `3` is used by default.
 
-When `1` or `2`, IP packets are carried in the TCP stream instead of QUIC datagrams.
-
 When `2`, [QUIC Fields](#quic-fields) are replaced by [HTTP2 Fields](#http2-fields).
 
 ### disable_version_fallback
@@ -101,9 +99,6 @@ The server will route traffic for these prefixes into this endpoint, where it is
 Use system interface.
 
 Requires privilege and cannot conflict with existing system interfaces.
-
-The endpoint configures interface addresses and MTU but does not install
-operating-system routes or DNS settings.
 
 If disabled, sing-box uses the internal network stack.
 
@@ -129,17 +124,11 @@ When `version` is `2`.
 
 See [HTTP2 Fields](/configuration/shared/http2/) for details.
 
-`keep_alive_period` is `10s` by default.
-
 ## QUIC Fields
 
 When `version` is `3` (default).
 
 See [QUIC Fields](/configuration/shared/quic/) for details.
-
-`keep_alive_period` is `10s` by default.
-
-`initial_packet_size` is `mtu + 51` by default, so that IP packets up to the tunnel MTU fit into a QUIC datagram. QUIC packets cannot exceed 1452 bytes; with a larger `mtu`, IP packets that do not fit are answered with ICMP Packet Too Big. If the path cannot carry packets of that size, the QUIC handshake fails and the client falls back to a lower HTTP version.
 
 ## UDP NAT Fields
 
