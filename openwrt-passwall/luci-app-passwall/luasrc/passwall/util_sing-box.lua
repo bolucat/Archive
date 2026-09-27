@@ -1643,8 +1643,8 @@ function gen_config(var)
 					return table.concat(list, "\n")
 				end
 
-				local domain_list = read_proxy_list("/usr/share/passwall/rules/proxy_host")
-				local ip_list = read_proxy_list("/usr/share/passwall/rules/proxy_ip")
+				local domain_list = read_proxy_list("/etc/passwall/rules/proxy_host")
+				local ip_list = read_proxy_list("/etc/passwall/rules/proxy_ip")
 
 				local bin = api.finded_com("geoview")
 				if bin then
@@ -1986,7 +1986,7 @@ function gen_config(var)
 				tag = fakedns_tag,
 				type = "fakeip",
 				inet4_range = "198.18.0.0/15",
-				inet6_range = "fc00::/18",
+				inet6_range = "2001:2::/48",
 			})
 
 			if not experimental then

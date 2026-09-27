@@ -47,7 +47,7 @@ FWMARK="0x50535731"
 
 FWI=$(uci -q get firewall.passwall.path 2>/dev/null)
 FAKE_IP="198.18.0.0/15"
-FAKE_IP_6="fc00::/18"
+FAKE_IP_6="2001:2::/48"
 
 USE_GEOVIEW=0
 EXCLUDE_VPSIP="^(0\.0\.0\.0|127\.0\.0\.1|1\.1\.1\.1|1\.1\.1\.2|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9)$"
@@ -1042,10 +1042,10 @@ add_firewall_rule() {
 
 	#直连列表
 	[ "$USE_DIRECT_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/direct_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_WHITE_STATIC
-		cat $RULES_PATH/direct_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_WHITE6_STATIC
+		cat $USER_RULES_PATH/direct_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_WHITE_STATIC
+		cat $USER_RULES_PATH/direct_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_WHITE6_STATIC
 		[ "$USE_GEOVIEW" = "1" ] && {
-			local GEOIP_CODE=$(cat $RULES_PATH/direct_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
+			local GEOIP_CODE=$(cat $USER_RULES_PATH/direct_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
 				get_geoip $GEOIP_CODE ipv4 | insert_nftset $NFTSET_WHITE_STATIC
 				get_geoip $GEOIP_CODE ipv6 | insert_nftset $NFTSET_WHITE6_STATIC
@@ -1056,10 +1056,10 @@ add_firewall_rule() {
 
 	#代理列表
 	[ "$USE_PROXY_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/proxy_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLACK_STATIC
-		cat $RULES_PATH/proxy_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLACK6_STATIC
+		cat $USER_RULES_PATH/proxy_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLACK_STATIC
+		cat $USER_RULES_PATH/proxy_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLACK6_STATIC
 		[ "$USE_GEOVIEW" = "1" ] && {
-			local GEOIP_CODE=$(cat $RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
+			local GEOIP_CODE=$(cat $USER_RULES_PATH/proxy_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
 				get_geoip $GEOIP_CODE ipv4 | insert_nftset $NFTSET_BLACK_STATIC
 				get_geoip $GEOIP_CODE ipv6 | insert_nftset $NFTSET_BLACK6_STATIC
@@ -1070,10 +1070,10 @@ add_firewall_rule() {
 
 	#屏蔽列表
 	[ "$USE_BLOCK_LIST_ALL" = "1" ] && {
-		cat $RULES_PATH/block_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLOCK_STATIC
-		cat $RULES_PATH/block_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLOCK6_STATIC
+		cat $USER_RULES_PATH/block_ip | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLOCK_STATIC
+		cat $USER_RULES_PATH/block_ip | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLOCK6_STATIC
 		[ "$USE_GEOVIEW" = "1" ] && {
-			local GEOIP_CODE=$(cat $RULES_PATH/block_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
+			local GEOIP_CODE=$(cat $USER_RULES_PATH/block_ip | tr -s "\r\n" "\n" | sed -e "/^$/d" | grep -E "^geoip:" | grep -v "^geoip:private" | sed -E 's/^geoip:(.*)/\1/' | sed ':a;N;$!ba;s/\n/,/g')
 			if [ -n "$GEOIP_CODE" ]; then
 				get_geoip $GEOIP_CODE ipv4 | insert_nftset $NFTSET_BLOCK_STATIC
 				get_geoip $GEOIP_CODE ipv6 | insert_nftset $NFTSET_BLOCK6_STATIC
