@@ -50,6 +50,10 @@ jobs:
       # Install your linters here
       - name: Clippy
         run: cargo clippy --all-targets --all-features
+      - name: Jobs contracts and feature boundaries
+        run: |
+          cargo test -p nyanpasu-jobs --all-features --locked
+          cargo test -p nyanpasu-jobs --no-default-features --locked
       - name: Run linters
         uses: wearerequired/lint-action@master
         with:

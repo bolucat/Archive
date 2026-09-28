@@ -4,6 +4,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
 use super::{
     HotkeyArgs, HotkeyClient,
     adapters::PlatformAcceleratorValidator,
@@ -223,6 +225,7 @@ impl RecordingRegistrar {
     }
 }
 
+#[async_trait::async_trait]
 impl ShortcutRegistrar for RecordingRegistrar {
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
         if self
@@ -237,7 +240,7 @@ impl ShortcutRegistrar for RecordingRegistrar {
         Ok(())
     }
 
-    fn register(
+    async fn register(
         &self,
         accelerator: &str,
         action: HotkeyAction,
@@ -261,7 +264,7 @@ impl ShortcutRegistrar for RecordingRegistrar {
         Ok(())
     }
 
-    fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
         self.calls
             .lock()
             .expect("call log")
@@ -278,7 +281,7 @@ impl ShortcutRegistrar for RecordingRegistrar {
         Ok(())
     }
 
-    fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> anyhow::Result<()> {
         self.calls
             .lock()
             .expect("call log")
@@ -288,10 +291,23 @@ impl ShortcutRegistrar for RecordingRegistrar {
 }
 
 async fn client_with(registrar: Arc<RecordingRegistrar>) -> HotkeyClient {
-    HotkeyClient::spawn(HotkeyArgs {
-        registrar,
-        sink: Arc::new(MockHotkeyActionSink::new()),
-    })
+    owned_client(registrar, &CancellationToken::new(), &TaskTracker::new()).await
+}
+
+/// The same client, which releases its grabs once `shutdown` is cancelled.
+async fn owned_client(
+    registrar: Arc<RecordingRegistrar>,
+    shutdown: &CancellationToken,
+    tasks: &TaskTracker,
+) -> HotkeyClient {
+    HotkeyClient::spawn(
+        HotkeyArgs {
+            registrar,
+            sink: Arc::new(MockHotkeyActionSink::new()),
+            shutdown: shutdown.clone(),
+        },
+        tasks,
+    )
     .await
     .expect("the hotkey actor should start")
 }
@@ -494,7 +510,8 @@ async fn stale_revision_is_superseded() {
 #[tokio::test]
 async fn exit_unregisters_all() {
     let registrar = RecordingRegistrar::new();
-    let client = client_with(registrar.clone()).await;
+    let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+    let client = owned_client(registrar.clone(), &shutdown, &tasks).await;
     client
         .reconcile(
             EffectRevision::new(1),
@@ -503,27 +520,30 @@ async fn exit_unregisters_all() {
         .await;
     registrar.calls.lock().expect("call log").clear();
 
-    let status = client.unregister_all().await;
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
 
-    assert_eq!(status.health, EffectHealth::Healthy);
     assert_eq!(registrar.calls(), vec!["unregister_all".to_owned()]);
-    assert!(client.status().await.registered.is_empty());
 }
 
 #[tokio::test]
-async fn reconcile_after_unregister_all_is_rejected() {
+async fn reconcile_after_the_cancel_is_rejected() {
     let registrar = RecordingRegistrar::new();
-    let client = client_with(registrar.clone()).await;
+    let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+    let client = owned_client(registrar.clone(), &shutdown, &tasks).await;
     client
         .reconcile(
             EffectRevision::new(1),
             bindings(&["enable_tun_mode,Control+A"]),
         )
         .await;
-    client.unregister_all().await;
     registrar.calls.lock().expect("call log").clear();
 
-    // A plan admitted before the shutdown can still be in flight here.
+    shutdown.cancel();
+    tasks.close();
+    // Sent before this test yields, so it is queued ahead of the drain, the
+    // way a plan admitted before the shutdown can still be in flight.
     let status = client
         .reconcile(
             EffectRevision::new(2),
@@ -535,17 +555,16 @@ async fn reconcile_after_unregister_all_is_rejected() {
         status.health,
         EffectHealth::Degraded {
             code: "hotkey_shut_down",
-            message: "the hotkey owner released its shortcuts and stopped accepting changes"
-                .to_owned(),
+            message: "the hotkey owner is shutting down and stopped accepting changes".to_owned(),
             retryable: false,
         }
     );
-    assert!(
-        registrar.calls().is_empty(),
-        "an exiting process must not take a grab it will never give back: {:?}",
-        registrar.calls()
+    tasks.wait().await;
+    assert_eq!(
+        registrar.calls(),
+        vec!["unregister_all".to_owned()],
+        "an exiting process must not take a grab it will never give back"
     );
-    assert!(client.status().await.registered.is_empty());
 }
 
 #[tokio::test]
@@ -556,10 +575,14 @@ async fn callback_dispatches_action_to_sink() {
         .withf(|action| *action == HotkeyAction::ToggleSystemProxy)
         .times(1)
         .return_const(());
-    let client = HotkeyClient::spawn(HotkeyArgs {
-        registrar: registrar.clone(),
-        sink: Arc::new(sink),
-    })
+    let client = HotkeyClient::spawn(
+        HotkeyArgs {
+            registrar: registrar.clone(),
+            sink: Arc::new(sink),
+            shutdown: CancellationToken::new(),
+        },
+        &TaskTracker::new(),
+    )
     .await
     .expect("the hotkey actor should start");
 
@@ -604,9 +627,12 @@ mod facade {
     /// A mode change would otherwise ask the core to drop connections, which
     /// the stub endpoint cannot answer.
     async fn disable_mode_interruption(client: &NyanpasuClient) {
+        use struct_patch::Patch as _;
         let mut config = client.get_clash_config().await.unwrap();
         config.break_connection.on_mode_change = false;
-        client.replace_clash_config(config).await.unwrap();
+        let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        patch.break_connection = config.break_connection.into_patch();
+        client.patch_clash_config(patch).await.unwrap();
     }
 
     #[test]
@@ -720,7 +746,6 @@ mod facade {
         let dir = tempdir().expect("tempdir should be created");
         let mut effects = MockApplicationEffectsPort::new();
         effects.expect_apply().never();
-        effects.expect_shutdown().never();
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.effects = Arc::new(effects);
         let client = NyanpasuClient::try_new_with_args(args).expect("client should construct");

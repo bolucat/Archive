@@ -122,6 +122,7 @@ impl RuntimePreparation {
             .resolve_candidate(&inputs.clash)
             .map_err(domain_error)?;
         let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
+        let target = inputs.target_key().ok();
         let snapshot = self
             .builder
             .build(
@@ -148,6 +149,7 @@ impl RuntimePreparation {
             snapshot,
             intent: Arc::new(intent),
             ports,
+            target,
         })
     }
 
@@ -164,7 +166,7 @@ impl RuntimePreparation {
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
     async fn prepare_latest(&mut self) -> Result<PreparedRuntime, CoreError> {
-        // Independent committed snapshots; changes during a build retain a dirty pass.
+        // Independent committed snapshots, sampled when the build starts.
         let profiles = Arc::new(self.profiles.load().state.clone());
         let clash = self.clash.load().state.clone();
         self.prepare_committed(profiles, clash).await

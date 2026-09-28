@@ -8,7 +8,6 @@
 'require view';
 'require form';
 
-// Scoped helper: auto-dismiss notification after specified timeout (default 3s)
 function showNotification(title, children, type, timeout) {
 	timeout = (timeout != null) ? timeout : 3000;
 	if (ui && ui.addTimeLimitedNotification) {
@@ -44,6 +43,12 @@ var callHonkReload = rpc.declare({
 	expect: { success: true }
 });
 
+var callHonkRestart = rpc.declare({
+	object: 'luci.honk',
+	method: 'restart',
+	expect: { success: true }
+});
+
 var callHonkGetLog = rpc.declare({
 	object: 'luci.honk',
 	method: 'get_log',
@@ -70,18 +75,9 @@ var callHonkDownloadDashboard = rpc.declare({
 	expect: { }
 });
 
-var callHonkZashboardInfo = callHonkDashboardInfo;
-var callHonkDownloadZashboard = callHonkDownloadDashboard;
-
 var callHonkDownloadStatus = rpc.declare({
 	object: 'luci.honk',
 	method: 'download_status',
-	expect: { }
-});
-
-var callHonkEnableClashApi = rpc.declare({
-	object: 'luci.honk',
-	method: 'enable_clash_api',
 	expect: { }
 });
 
@@ -90,6 +86,13 @@ var callHonkSwitchDashboardApi = rpc.declare({
 	method: 'switch_dashboard_api',
 	params: [ 'type' ],
 	expect: { }
+});
+
+var callUciGet = rpc.declare({
+	object: 'uci',
+	method: 'get',
+	params: [ 'config', 'section', 'option' ],
+	expect: { value: '' }
 });
 
 function readFile(path) {
@@ -173,16 +176,23 @@ function ensureEditorStyles() {
 	document.head.appendChild(style);
 }
 
+var _cmPromise = null;
+
 function ensureCodeMirror() {
+	if (_cmPromise) {
+		return _cmPromise;
+	}
+
 	loadStyle(L.resource('honk/lib/codemirror.css'));
 	loadStyle(L.resource('honk/addon/fold/foldgutter.css'));
 	ensureEditorStyles();
 
 	if (window.CodeMirror && window.CodeMirror.modes && window.CodeMirror.modes.dae) {
-		return Promise.resolve(window.CodeMirror);
+		_cmPromise = Promise.resolve(window.CodeMirror);
+		return _cmPromise;
 	}
 
-	return loadScript(L.resource('honk/lib/codemirror.js'))
+	_cmPromise = loadScript(L.resource('honk/lib/codemirror.js'))
 		.then(function() {
 			return Promise.all([
 				loadScript(L.resource('honk/addon/edit/matchbrackets.js')),
@@ -195,7 +205,12 @@ function ensureCodeMirror() {
 		})
 		.then(function() {
 			return window.CodeMirror;
+		}).catch(function(err) {
+			_cmPromise = null;
+			throw err;
 		});
+
+	return _cmPromise;
 }
 
 function formatEditor(ed) {
@@ -401,7 +416,7 @@ function initCodeMirror(textarea, onSaveCallback) {
 	});
 }
 
-function createConfigFileView(filePath, mapTitle, mapDesc, fieldTitle, successMsg) {
+function createConfigFileView(filePath, mapTitle, mapDesc, fieldTitle, successMsg, needRestart) {
 	return view.extend({
 		render: function() {
 			var m = new form.Map('honk', mapTitle, mapDesc);
@@ -419,7 +434,9 @@ function createConfigFileView(filePath, mapTitle, mapDesc, fieldTitle, successMs
 			o.rows = 25;
 			o.wrap = 'off';
 			o.load = function(section_id) {
-				return readFile(filePath);
+				return readFile(filePath).then(function(content) {
+					return content || '';
+				});
 			};
 			o.write = function(section_id, formvalue) {
 				return writeFile(filePath, formvalue);
@@ -431,7 +448,7 @@ function createConfigFileView(filePath, mapTitle, mapDesc, fieldTitle, successMs
 
 		handleSaveApply: function(ev, mode) {
 			return this.handleSave(ev).then(function() {
-				return callHonkReload();
+				return needRestart ? callHonkRestart() : callHonkReload();
 			}).then(function() {
 				showNotification(null, E('p', successMsg || _('Configuration applied and service reloaded.')), 'info');
 			});
@@ -440,60 +457,57 @@ function createConfigFileView(filePath, mapTitle, mapDesc, fieldTitle, successMs
 }
 
 
-// Advanced-only tabs: these paths are hidden when advanced=0.
-// This runs on every honk page render and reads live UCI values,
-// bypassing LuCI's sessionStorage menu cache entirely.
-var ADVANCED_TAB_PATHS = ['/honk/dns', '/honk/node', '/honk/route'];
+// Tab visibility control:
+// - dns, node, route are hidden when advanced=0
+// - api is hidden when dashboard=none
+function applyTabVisibility() {
+	return Promise.all([
+		L.resolveDefault(callUciGet('honk', 'config', 'advanced'), '0'),
+		L.resolveDefault(callUciGet('honk', 'config', 'dashboard'), 'none')
+	]).then(function(res) {
+		var isAdvanced = (res[0] === '1');
+		var dashType = res[1] || 'none';
 
-function applyAdvancedTabVisibility() {
-	// Use ubus directly to read the committed UCI value (not the in-memory
-	// JS UCI module, which may have pending unsaved changes).
-	return L.resolveDefault(
-		rpc.declare({
-			object: 'uci',
-			method: 'get',
-			params: ['config', 'section', 'option'],
-			expect: { value: '' }
-		})('honk', 'config', 'advanced'),
-		''
-	).then(function(val) {
-		var isAdvanced = (val === '1');
-		applyTabCss(isAdvanced);
+		var hiddenTabs = [];
 		if (!isAdvanced) {
-			var isAdvPage = (window.L && L.env && Array.isArray(L.env.dispatchpath) && ['dns', 'node', 'route'].indexOf(L.env.dispatchpath[3]) !== -1) ||
-				ADVANCED_TAB_PATHS.some(function(p) { return window.location.pathname.replace(/\/+$/, '').endsWith(p); });
-			if (isAdvPage) {
-				window.location.href = L.url('admin/services/honk/global');
-			}
+			hiddenTabs.push('dns', 'node', 'route');
+		}
+		if (dashType === 'none') {
+			hiddenTabs.push('api');
+		}
+
+		applyTabCss(hiddenTabs);
+
+		var currentTab = (window.L && L.env && Array.isArray(L.env.dispatchpath)) ? L.env.dispatchpath[3] : '';
+		if (!currentTab) {
+			var m = window.location.pathname.match(/\/honk\/([a-z0-9_-]+)/);
+			if (m) currentTab = m[1];
+		}
+		if (currentTab && hiddenTabs.indexOf(currentTab) !== -1) {
+			window.location.href = L.url('admin/services/honk/global');
 		}
 	}).catch(function() {
 	});
 }
 
-function applyTabCss(isAdvanced) {
-	// Inject a style element that hides advanced-only tab items and links.
-	// This is idempotent and works seamlessly across themes (Bootstrap, Aurora, etc.).
-	var styleId = 'honk-adv-tab-style';
+var applyAdvancedTabVisibility = applyTabVisibility;
+
+function applyTabCss(hiddenTabs) {
+	var styleId = 'honk-tab-visibility-style';
 	var existing = document.getElementById(styleId);
 	if (!existing) {
 		existing = document.createElement('style');
 		existing.id = styleId;
 		document.head.appendChild(existing);
 	}
-	if (isAdvanced) {
+	if (!hiddenTabs || hiddenTabs.length === 0) {
 		existing.textContent = '';
 	} else {
-		existing.textContent = [
-			'#tabmenu .tabmenu-item-dns,',
-			'#tabmenu .tabmenu-item-node,',
-			'#tabmenu .tabmenu-item-route,',
-			'.tabmenu-item-dns,',
-			'.tabmenu-item-node,',
-			'.tabmenu-item-route,',
-			'#tabmenu a[href$="/honk/dns"],',
-			'#tabmenu a[href$="/honk/node"],',
-			'#tabmenu a[href$="/honk/route"] { display: none !important; }'
-		].join('\n');
+		existing.textContent = hiddenTabs.map(function(tab) {
+			return '#tabmenu .tabmenu-item-' + tab + ',\n' +
+			       '.tabmenu-item-' + tab + ',\n' +
+			       '#tabmenu a[href$="/honk/' + tab + '"]';
+		}).join(',\n') + ' { display: none !important; }';
 	}
 }
 
@@ -555,27 +569,23 @@ function renderStatusHeader() {
 		return callHonkStatus().then(updateStatus);
 	}, 3);
 
-	// Apply tab visibility based on live UCI advanced value.
-	// This runs asynchronously after render; the CSS injection is fast enough
-	// that tabs flicker is imperceptible (tabs hide before user can click them).
-	applyAdvancedTabVisibility();
+	applyTabVisibility();
 
 	return section;
 }
 
 
 return baseclass.extend({
-	applyAdvancedTabVisibility: applyAdvancedTabVisibility,
+	applyTabVisibility: applyTabVisibility,
+	applyAdvancedTabVisibility: applyTabVisibility,
 	callHonkStatus: callHonkStatus,
 	callHonkReload: callHonkReload,
+	callHonkRestart: callHonkRestart,
 	callHonkGetLog: callHonkGetLog,
 	callHonkClearLog: callHonkClearLog,
 	callHonkDashboardInfo: callHonkDashboardInfo,
-	callHonkZashboardInfo: callHonkDashboardInfo,
 	callHonkDownloadDashboard: callHonkDownloadDashboard,
-	callHonkDownloadZashboard: callHonkDownloadDashboard,
 	callHonkDownloadStatus: callHonkDownloadStatus,
-	callHonkEnableClashApi: callHonkEnableClashApi,
 	callHonkSwitchDashboardApi: callHonkSwitchDashboardApi,
 	readFile: readFile,
 	writeFile: writeFile,

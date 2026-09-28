@@ -1,0 +1,39 @@
+[package]
+name = "nyanpasu-jobs"
+version = "0.1.1-rc.1"
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Actor-owned jobs with durable runs, scheduling, and scoped tracing journals"
+
+[features]
+default = ["redb-store"]
+redb-store = ["dep:redb"]
+specta = ["dep:specta"]
+
+[dependencies]
+jiff = { version = "0.2", features = ["serde"] }
+jiff-cron = "=0.3.0"
+futures-util.workspace = true
+ractor = "0.16.5"
+redb = { version = "4.2", optional = true }
+serde.workspace = true
+serde_json = "1"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid = { version = "1", features = ["v4", "serde"] }
+
+specta = { version = "2.0.0-rc.25", features = ["derive"], optional = true }
+
+[dev-dependencies]
+specta-serde = "0.0.12"
+specta-typescript = "0.0.12"
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+
+[[example]]
+name = "manual"
+required-features = ["redb-store"]

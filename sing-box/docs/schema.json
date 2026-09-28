@@ -153,17 +153,10 @@
               "$ref": "#/$defs/Duration"
             },
             "resolvers": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "override_domain": {
               "type": "string"
@@ -202,17 +195,10 @@
               "$ref": "#/$defs/Duration"
             },
             "resolvers": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "override_domain": {
               "type": "string"
@@ -245,17 +231,10 @@
               "$ref": "#/$defs/Duration"
             },
             "resolvers": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "override_domain": {
               "type": "string"
@@ -3636,17 +3615,10 @@
               "type": "boolean"
             },
             "advertise_routes": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/IPPrefix"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/$defs/IPPrefix"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IPPrefix"
+              }
             },
             "udp_timeout": {
               "$ref": "#/$defs/Duration"
@@ -3844,17 +3816,10 @@
               ]
             },
             "advertise_routes": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/IPPrefix"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/$defs/IPPrefix"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IPPrefix"
+              }
             },
             "idle_timeout": {
               "$ref": "#/$defs/Duration"
@@ -4433,17 +4398,10 @@
               "type": "string"
             },
             "data_ciphers": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "data_ciphers_fallback": {
               "type": "string"
@@ -4522,17 +4480,10 @@
               }
             },
             "routes": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/IPPrefix"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/$defs/IPPrefix"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IPPrefix"
+              }
             },
             "route_gateway": {
               "$ref": "#/$defs/IPAddress"
@@ -4544,17 +4495,10 @@
               "type": "boolean"
             },
             "redirect_gateway_flags": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "redirect_private": {
               "type": "boolean"
@@ -4797,17 +4741,10 @@
               "type": "string"
             },
             "data_ciphers": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "data_ciphers_fallback": {
               "type": "string"
@@ -5012,17 +4949,10 @@
               "type": "boolean"
             },
             "advertise_tags": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "listen_port": {
               "type": "integer",
@@ -6078,17 +6008,10 @@
           "type": "string"
         },
         "stun_servers": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "ip_version": {
           "type": "integer",
@@ -6123,17 +6046,10 @@
           "type": "string"
         },
         "stun_servers": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "ip_version": {
           "type": "integer",
@@ -7812,81 +7728,42 @@
               "type": "integer"
             },
             "derp_servers": {
-              "anyOf": [
-                {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "host": {
-                          "type": "string"
-                        },
-                        "ipv4": {
-                          "type": "string"
-                        },
-                        "ipv6": {
-                          "type": "string"
-                        },
-                        "derp_port": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 65535
-                        },
-                        "stun_port": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 65535
-                        },
-                        "cert_name": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "host": {
                         "type": "string"
                       },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "host": {
-                            "type": "string"
-                          },
-                          "ipv4": {
-                            "type": "string"
-                          },
-                          "ipv6": {
-                            "type": "string"
-                          },
-                          "derp_port": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 65535
-                          },
-                          "stun_port": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 65535
-                          },
-                          "cert_name": {
-                            "type": "string"
-                          }
-                        },
-                        "additionalProperties": false
+                      "ipv4": {
+                        "type": "string"
+                      },
+                      "ipv6": {
+                        "type": "string"
+                      },
+                      "derp_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "stun_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "cert_name": {
+                        "type": "string"
                       }
-                    ]
+                    },
+                    "additionalProperties": false
                   }
-                }
-              ]
+                ]
+              }
             },
             "http_client": {
               "$ref": "#/$defs/HTTPClientReference"
@@ -9138,44 +9015,23 @@
           ]
         },
         "cipher_suites": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "curve_preferences": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": [
-                "P256",
-                "P384",
-                "P521",
-                "X25519",
-                "X25519MLKEM768"
-              ]
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "P256",
-                  "P384",
-                  "P521",
-                  "X25519",
-                  "X25519MLKEM768"
-                ]
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "P256",
+              "P384",
+              "P521",
+              "X25519",
+              "X25519MLKEM768"
+            ]
+          }
         },
         "certificate": {
           "anyOf": [
@@ -11446,30 +11302,16 @@
           "type": "integer"
         },
         "addresses": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "resolve_domains": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "dnssec": {
           "type": "string",
@@ -11497,17 +11339,10 @@
       "type": "object",
       "properties": {
         "routes": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/IPPrefix"
-            },
-            {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/IPPrefix"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IPPrefix"
+          }
         },
         "dns": {
           "anyOf": [
@@ -11529,46 +11364,25 @@
           }
         },
         "search_domains": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "dhcp_options": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "redirect_gateway": {
           "type": "boolean"
         },
         "redirect_gateway_flags": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "block_outside_dns": {
           "type": "boolean"
@@ -12208,17 +12022,10 @@
               "maximum": 65535
             },
             "server_ports": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "hop_interval": {
               "$ref": "#/$defs/Duration"
@@ -12456,17 +12263,10 @@
               "maximum": 65535
             },
             "server_ports": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "hop_interval": {
               "$ref": "#/$defs/Duration"
@@ -13843,17 +13643,10 @@
               ]
             },
             "host_key_algorithms": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ]
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             },
             "client_version": {
               "type": "string"
@@ -13931,81 +13724,42 @@
               "type": "integer"
             },
             "derp_servers": {
-              "anyOf": [
-                {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "host": {
-                          "type": "string"
-                        },
-                        "ipv4": {
-                          "type": "string"
-                        },
-                        "ipv6": {
-                          "type": "string"
-                        },
-                        "derp_port": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 65535
-                        },
-                        "stun_port": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 65535
-                        },
-                        "cert_name": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "host": {
                         "type": "string"
                       },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "host": {
-                            "type": "string"
-                          },
-                          "ipv4": {
-                            "type": "string"
-                          },
-                          "ipv6": {
-                            "type": "string"
-                          },
-                          "derp_port": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 65535
-                          },
-                          "stun_port": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 65535
-                          },
-                          "cert_name": {
-                            "type": "string"
-                          }
-                        },
-                        "additionalProperties": false
+                      "ipv4": {
+                        "type": "string"
+                      },
+                      "ipv6": {
+                        "type": "string"
+                      },
+                      "derp_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "stun_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "cert_name": {
+                        "type": "string"
                       }
-                    ]
+                    },
+                    "additionalProperties": false
                   }
-                }
-              ]
+                ]
+              }
             },
             "http_client": {
               "$ref": "#/$defs/HTTPClientReference"
@@ -15139,44 +14893,23 @@
           ]
         },
         "cipher_suites": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "curve_preferences": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": [
-                "P256",
-                "P384",
-                "P521",
-                "X25519",
-                "X25519MLKEM768"
-              ]
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "P256",
-                  "P384",
-                  "P521",
-                  "X25519",
-                  "X25519MLKEM768"
-                ]
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "P256",
+              "P384",
+              "P521",
+              "X25519",
+              "X25519MLKEM768"
+            ]
+          }
         },
         "certificate": {
           "anyOf": [
@@ -15398,17 +15131,10 @@
           "type": "boolean"
         },
         "dhcp_lease_files": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "auto_detect_interface": {
           "type": "boolean"
@@ -18589,17 +18315,10 @@
           "type": "string"
         },
         "allowed_ips": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/IPPrefix"
-            },
-            {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/IPPrefix"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IPPrefix"
+          }
         },
         "persistent_keepalive_interval": {
           "type": "integer",

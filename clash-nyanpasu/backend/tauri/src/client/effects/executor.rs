@@ -13,7 +13,7 @@ use std::sync::{
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh,
+        SystemProxyDesired, TrayRefresh, TrayView,
     },
     ports::ApplicationEffectsPort,
     status::{EffectHealth, EffectRevision, EffectStatus},
@@ -25,7 +25,7 @@ use crate::client::{
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
+        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -99,8 +99,13 @@ impl ApplicationEffectExecutor {
             EffectKind::Logger,
             revision,
             "logger_refresh_failed",
-            self.logger
-                .refresh(Some(desired.level.clone()), Some(desired.max_files)),
+            self.logger.refresh(
+                Some(desired.level.clone()),
+                Some(LogRotation {
+                    max_files: desired.max_files,
+                    max_file_size: desired.max_file_size,
+                }),
+            ),
         )
     }
 
@@ -127,10 +132,24 @@ impl ApplicationEffectExecutor {
                 format!("{error:#}"),
                 true,
             ),
+            // A disable whose stop ran out of time: the old widget is still
+            // owned, and the next reconcile stops it again.
+            Err(error @ (WidgetError::StillOwned | WidgetError::HandshakeBlocked)) => degraded(
+                EffectKind::Widget,
+                revision,
+                "widget_apply_failed",
+                error.to_string(),
+                true,
+            ),
         }
     }
 
-    async fn apply_tray(&self, revision: EffectRevision, refresh: TrayRefresh) -> EffectStatus {
+    async fn apply_tray(
+        &self,
+        revision: EffectRevision,
+        refresh: TrayRefresh,
+        view: TrayView,
+    ) -> EffectStatus {
         // Full dominates part. A partial refresh re-reads the values of a menu
         // that is already built; it cannot finish a rebuild an earlier full
         // refresh started and failed, so while one is outstanding every
@@ -140,8 +159,8 @@ impl ApplicationEffectExecutor {
             false => refresh,
         };
         let result = match refresh {
-            TrayRefresh::Full => self.tray.refresh_full().await,
-            TrayRefresh::Part => self.tray.refresh_part().await,
+            TrayRefresh::Full => self.tray.refresh_full(view).await,
+            TrayRefresh::Part => self.tray.refresh_part(view).await,
         };
         if refresh == TrayRefresh::Full {
             self.tray_full_pending
@@ -200,32 +219,13 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                 }
                 ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
                 ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
-                ApplicationEffect::Tray(refresh) => self.apply_tray(revision, *refresh).await,
+                ApplicationEffect::Tray(refresh, view) => {
+                    self.apply_tray(revision, *refresh, *view).await
+                }
             };
             statuses.push(status);
         }
         statuses
-    }
-
-    async fn shutdown(&self) -> Vec<EffectStatus> {
-        let revision = EffectRevision::default();
-        let widget = match self.widget.stop().await {
-            Ok(()) => healthy(EffectKind::Widget, revision),
-            // Never installed means there is nothing left running to tear down.
-            Err(WidgetError::Unavailable) => healthy(EffectKind::Widget, revision),
-            Err(WidgetError::Failed(error)) => degraded(
-                EffectKind::Widget,
-                revision,
-                "widget_stop_failed",
-                format!("{error:#}"),
-                false,
-            ),
-        };
-        vec![
-            self.system_proxy.restore().await,
-            self.hotkeys.unregister_all().await,
-            widget,
-        ]
     }
 }
 

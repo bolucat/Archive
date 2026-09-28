@@ -13,7 +13,6 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
-import { ConfigurationStatusPanel } from '@/components/configuration-status'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
@@ -49,8 +48,14 @@ export const Catch = ({ error }: ErrorComponentProps) => {
       <p>Something went wrong... Caught in error boundary.</p>
 
       <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
-        {error.message}
-        {error.stack}
+        {error instanceof Error ? (
+          <>
+            {error.message}
+            {error.stack}
+          </>
+        ) : (
+          String(error)
+        )}
       </pre>
 
       <div className="flex items-center gap-2">
@@ -123,8 +128,6 @@ function WindowReveal() {
 
 function localizeDegradationPhase(phase: DegradationPhase): string {
   switch (phase) {
-    case 'legacy_mirror':
-      return m.mutation_degradation_phase_legacy_mirror()
     case 'profile_materialization':
       return m.mutation_degradation_phase_profile_materialization()
     case 'runtime_build':
@@ -222,8 +225,8 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <MutationDegradationNotifier />
-                {appWindow.label === 'main' && <ConfigurationStatusPanel />}
-                <DeepLinkImport />
+                {/* Taking a link consumes it, and every link opens the main window. */}
+                {appWindow.label === 'main' && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

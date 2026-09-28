@@ -7,7 +7,7 @@ use super::super::runtime;
 
 /// Owns the staging directory until installation and its restart have finished.
 pub struct PreparedCoreBinary {
-    pub target: crate::config::nyanpasu::ClashCore,
+    pub target: nyanpasu_config::application::ClashCore,
     pub source: PathBuf,
     pub destination: PathBuf,
     pub staging: Arc<TempDir>,
@@ -45,4 +45,7 @@ pub(in crate::client) struct PreparedRuntime {
     /// The ports this candidate would bind. Inert: only the receipt of an
     /// apply that succeeded may confirm them.
     pub ports: crate::client::ports::CandidatePortBindings,
+    /// The committed target the build came from (`RuntimeInputs::target_key`),
+    /// when it has one.
+    pub target: Option<String>,
 }

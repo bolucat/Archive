@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
@@ -229,10 +230,7 @@ impl Actor for ProxiesActor {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 if actor
-                    .call(
-                        |reply| Message::Read { force: true, reply },
-                        Some(Duration::from_secs(120)),
-                    )
+                    .call(|reply| Message::Read { force: true, reply }, None)
                     .await
                     .is_err()
                 {
@@ -308,7 +306,11 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
-    pub async fn spawn(core: CoreClient) -> Result<Self> {
+    pub async fn spawn(
+        core: CoreClient,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
         let (actor, _) = Actor::spawn(
@@ -321,6 +323,7 @@ impl ProxiesClient {
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             snapshots: snapshot_rx,
@@ -331,16 +334,8 @@ impl ProxiesClient {
         &self,
         message: impl FnOnce(RpcReplyPort<Result<T>>) -> Message,
     ) -> Result<T> {
-        match self
-            .0
-            .actor
-            .call(message, Some(Duration::from_secs(120)))
-            .await
-        {
+        match self.0.actor.call(message, None).await {
             Ok(ractor::rpc::CallResult::Success(result)) => result,
-            Ok(ractor::rpc::CallResult::Timeout) => anyhow::bail!(
-                "proxy actor timed out; an operation may still be running, do not replay mutations automatically"
-            ),
             _ => anyhow::bail!("proxy actor is unavailable"),
         }
     }
@@ -608,7 +603,10 @@ mod tests {
         let (url, server) = server(router).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = ProxiesClient::spawn(core.clone()).await.unwrap();
+        let client =
+            ProxiesClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         (client, core, endpoint, fixture, server)
     }
     #[tokio::test]

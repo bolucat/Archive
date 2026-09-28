@@ -18,6 +18,7 @@ export * from './use-profile'
 export * from './use-proxy-mode'
 export * from './use-runtime-profile'
 export * from './use-settings'
+export * from './settings-conversions'
 export * from './use-release-channel'
 export * from './use-system-proxy'
 export * from './use-system-service'
@@ -41,4 +42,8 @@ export {
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
 export type { RuleProviderItem as ClashProviderRule } from './bindings'
 
-export { acceptConfigurationStatus } from './configuration-status'
+export {
+  acceptConfigurationStatus,
+  attentionSources,
+  sourceMessage,
+} from './configuration-status'

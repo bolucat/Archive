@@ -14,7 +14,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
-            ipc::get_clash_logs,
             ipc::get_runtime_config,
             ipc::get_runtime_yaml,
             ipc::get_runtime_exists,
@@ -32,7 +31,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::fetch_latest_core_versions,
             ipc::inspect_updater,
             ipc::get_core_version,
-            ipc::get_verge_config,
+            ipc::get_app_config,
+            ipc::get_clash_config,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::read_profile_file,
@@ -74,17 +74,18 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_web_url,
             ipc::open_core_dir,
             ipc::restart_sidecar,
+            ipc::patch_app_config,
             ipc::patch_clash_config,
+            ipc::patch_runtime_overrides,
             ipc::change_clash_core,
             ipc::clash_api_delete_connections,
             ipc::clash_api_update_providers_rules,
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
-            ipc::patch_verge_config,
             ipc::enhance_profiles,
             ipc::import_profile,
-            ipc::get_pending_deep_link,
+            ipc::take_pending_deep_links,
             ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,
@@ -258,6 +259,12 @@ mod tests {
             "MutationOutcome",
             "Degradation",
             "DegradationPhase",
+            "NyanpasuAppConfig",
+            "NyanpasuAppConfigPatch",
+            "ClashConfig",
+            "ClashConfigPatch",
+            "ClashGuardOverridesPatch",
+            "ClashApiConfig",
         ] {
             assert!(
                 generated.contains(&format!("export type {name}"))
@@ -275,6 +282,35 @@ mod tests {
             !generated.contains("export type CommitOutcome")
                 && !generated.contains("export interface CommitOutcome"),
             "old CommitOutcome wire must be removed from bindings"
+        );
+        assert!(
+            !generated.contains("export type PatchRuntimeConfig"),
+            "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+        );
+        assert!(
+            !generated.contains("export type IVerge") && !generated.contains("export type Legacy"),
+            "no legacy verge DTO may stay on the wire"
+        );
+
+        // The plain `ClashConfig` name belongs to the typed persistent config,
+        // not to the clash-API `/configs` DTO.
+        let clash_config = exported_type(&generated, "ClashConfig");
+        assert_contains_all(
+            clash_config,
+            "ClashConfig",
+            &["overrides: ClashGuardOverrides", "mixed_port: PortStrategy"],
+        );
+        // The composite clash fields take nested patches, so edits of sibling
+        // sub-fields merge in the actor instead of replacing each other.
+        let clash_patch = exported_type(&generated, "ClashConfigPatch_Deserialize");
+        assert_contains_all(
+            clash_patch,
+            "ClashConfigPatch_Deserialize",
+            &[
+                "mixed_port?: PortStrategyPatch_Deserialize",
+                "external_controller?: ExternalControllerStrategyPatch_Deserialize",
+                "break_connection?: BreakConnectionStrategyPatch_Deserialize",
+            ],
         );
 
         for phase in ["Deserialize", "Serialize"] {
@@ -381,7 +417,6 @@ mod tests {
             phase,
             "DegradationPhase",
             &[
-                "'legacy_mirror'",
                 "'profile_materialization'",
                 "'runtime_build'",
                 "'runtime_check'",
@@ -392,6 +427,10 @@ mod tests {
                 "'system_effect'",
                 "'ui_effect'",
             ],
+        );
+        assert!(
+            !generated.contains("legacy_mirror"),
+            "nothing constructs the legacy_mirror phase, so it may not return to the wire"
         );
 
         // create/import must return the instantiated generic carrying ProfileId.

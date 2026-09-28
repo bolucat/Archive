@@ -136,6 +136,9 @@ pub(in crate::client) struct RuntimeApplyReceipt {
     pub binding: crate::core::actor_v2::facade::AppliedConfigBinding,
     /// The ports this apply bound. Confirming them is gated on this receipt.
     pub ports: super::ports::CandidatePortBindings,
+    /// The committed target these bytes were built from, when the build had
+    /// one: what tells a running receipt from a newer target still owed.
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -535,7 +538,6 @@ pub enum RuntimeCommitStatus {
     Deferred,
     SavedInactive,
     Unchanged,
-    Pending,
     RecoveryRequired,
 }
 
@@ -652,7 +654,6 @@ pub struct Degradation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DegradationPhase {
-    LegacyMirror,
     ProfileMaterialization,
     RuntimeBuild,
     RuntimeCheck,
@@ -887,8 +888,9 @@ pub(crate) mod tests {
             },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
+                .resolve_candidate(&crate::client::tests::test_clash_config())
                 .expect("default port strategies resolve"),
+            target: None,
         }
     }
 

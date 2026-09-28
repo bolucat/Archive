@@ -21,8 +21,6 @@ export const commands = {
     typedError<GetSysProxyResponse, string>(__TAURI_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
     typedError<ClashInfo, string>(__TAURI_INVOKE('get_clash_info')),
-  getClashLogs: () =>
-    typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
     typedError<any | null, string>(__TAURI_INVOKE('get_runtime_config')),
@@ -75,7 +73,7 @@ export const commands = {
       __TAURI_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
     ),
   clashApiGetConfigs: () =>
-    typedError<ClashConfig, string>(__TAURI_INVOKE('clash_api_get_configs')),
+    typedError<ClashApiConfig, string>(__TAURI_INVOKE('clash_api_get_configs')),
   clashApiGetVersion: () =>
     typedError<ClashVersion, string>(__TAURI_INVOKE('clash_api_get_version')),
   clashApiGetRules: () =>
@@ -104,8 +102,12 @@ export const commands = {
     typedError<string, string>(
       __TAURI_INVOKE('get_core_version', { coreType }),
     ),
-  getVergeConfig: () =>
-    typedError<IVerge_Serialize, string>(__TAURI_INVOKE('get_verge_config')),
+  getAppConfig: () =>
+    typedError<NyanpasuAppConfig_Serialize, string>(
+      __TAURI_INVOKE('get_app_config'),
+    ),
+  getClashConfig: () =>
+    typedError<ClashConfig, string>(__TAURI_INVOKE('get_clash_config')),
   getHotkeyFunctions: () => __TAURI_INVOKE<string[]>('get_hotkey_functions'),
   getProfiles: () =>
     typedError<ProfileDocument_Serialize, string>(
@@ -214,10 +216,18 @@ export const commands = {
   /**  restart the sidecar */
   restartSidecar: () =>
     typedError<null, string>(__TAURI_INVOKE('restart_sidecar')),
-  /**  patch clash runtime config */
-  patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
+  patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
     typedError<MutationOutcome<null>, string>(
-      __TAURI_INVOKE('patch_clash_config', { payload }),
+      __TAURI_INVOKE('patch_app_config', { patch }),
+    ),
+  patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_clash_config', { patch }),
+    ),
+  /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
+  patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_runtime_overrides', { patch }),
     ),
   changeClashCore: (
     clashCore:
@@ -247,10 +257,6 @@ export const commands = {
   updateCore: (coreType: ClashCore_Deserialize) =>
     typedError<number, string>(__TAURI_INVOKE('update_core', { coreType })),
   collectLogs: () => typedError<null, string>(__TAURI_INVOKE('collect_logs')),
-  patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
-      __TAURI_INVOKE('patch_verge_config', { payload }),
-    ),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -271,11 +277,12 @@ export const commands = {
       __TAURI_INVOKE('import_profile', { url, name, option }),
     ),
   /**
-   *  Take and clear the pending cold-start deep link, if any. Called once by the
-   *  frontend during startup.
+   *  Take and clear the queued deep links, oldest first. The frontend calls it
+   *  once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+   *  every such event.
    */
-  getPendingDeepLink: () =>
-    typedError<string | null, string>(__TAURI_INVOKE('get_pending_deep_link')),
+  takePendingDeepLinks: () =>
+    typedError<string[], string>(__TAURI_INVOKE('take_pending_deep_links')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
@@ -369,6 +376,10 @@ export const commands = {
     typedError<null, string>(__TAURI_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
     typedError<null, string>(__TAURI_INVOKE('open_that', { path })),
+  /**
+   *  Shuts every owner down and returns with the app still running; the caller
+   *  then installs an update or relaunches.
+   */
   cleanupProcesses: () =>
     typedError<null, string>(__TAURI_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
@@ -439,7 +450,30 @@ export const events = {
 }
 
 /* Types */
-export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
+export type BreakConnectionStrategy = {
+  /**  切换代理时中断连接 */
+  on_proxy_change: ProxyChangeBreakMode
+  /**  切换配置时中断连接 */
+  on_profile_change: boolean
+  /**  切换模式时中断连接 */
+  on_mode_change: boolean
+}
+
+export type BreakConnectionStrategyPatch =
+  | BreakConnectionStrategyPatch_Serialize
+  | BreakConnectionStrategyPatch_Deserialize
+
+export type BreakConnectionStrategyPatch_Deserialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
+
+export type BreakConnectionStrategyPatch_Serialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
 
 export type BuildInfo = {
   app_name: string
@@ -459,10 +493,11 @@ export type BuildInfo = {
 export type BuiltinStepKind =
   | 'guard_overrides'
   | 'whitelist_field_filter'
+  | 'include_all_expansion'
   | 'finalizing'
   | 'core_controller'
 
-export type ClashConfig = {
+export type ClashApiConfig = {
   port: number | null
   mode: string | null
   ipv6: boolean | null
@@ -475,6 +510,72 @@ export type ClashConfig = {
   'tproxy-port': number | null
   'external-controller': string | null
   secret: string | null
+}
+
+/**  Clash Related Config */
+export type ClashConfig = {
+  /**  Clash Overrides config, used to patch clash config directly */
+  overrides: ClashGuardOverrides
+  /**  clash tun mode */
+  enable_tun_mode: boolean
+  /**  web ui list */
+  web_ui_list: string[]
+  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
+  enable_clash_fields: boolean
+  /**
+   *  在 Nyanpasu 侧按 mihomo 语义展开代理组的 `include-all*`，默认为真；
+   *  关闭时原样交给核心处理
+   */
+  expand_include_all?: boolean
+  /**  外部控制器端口策略 */
+  external_controller: ExternalControllerStrategy
+  clash_control_channel?: ClashControlChannel
+  clash_ipc_disable_http_controller?: boolean
+  /**  Mixed Proxy(Socks5, HTTP) Port Strategy */
+  mixed_port: PortStrategy
+  /**  Socks5 Proxy Port */
+  socks_port: PortStrategy | null
+  /**  HTTP Proxy Port */
+  http_port: PortStrategy | null
+  /**  断开连接策略 */
+  break_connection: BreakConnectionStrategy
+  /**  Tun 堆栈选择 */
+  tun_stack: TunStack
+}
+
+export type ClashConfigPatch =
+  ClashConfigPatch_Serialize | ClashConfigPatch_Deserialize
+
+export type ClashConfigPatch_Deserialize = {
+  overrides?: ClashGuardOverrides | null
+  enable_tun_mode?: boolean | null
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port?: PortStrategyPatch_Deserialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
+  tun_stack?: TunStack | null
+}
+
+export type ClashConfigPatch_Serialize = {
+  overrides?: ClashGuardOverrides | null
+  enable_tun_mode?: boolean | null
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port: PortStrategyPatch_Serialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
+  tun_stack?: TunStack | null
 }
 
 export type ClashConnectionsConnectorEvent =
@@ -513,6 +614,39 @@ export type ClashCore_Deserialize =
 export type ClashCore_Serialize =
   'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
 
+export type ClashGuardOverrides = {
+  'log-level': LogLevel
+  'allow-lan': boolean
+  mode: Mode
+  secret: string
+  'unified-delay': boolean
+  'tcp-concurrent': boolean
+  ipv6: boolean
+}
+
+export type ClashGuardOverridesPatch =
+  ClashGuardOverridesPatch_Serialize | ClashGuardOverridesPatch_Deserialize
+
+export type ClashGuardOverridesPatch_Deserialize = {
+  'log-level'?: LogLevel | null
+  'allow-lan'?: boolean | null
+  mode?: Mode | null
+  secret?: string | null
+  'unified-delay'?: boolean | null
+  'tcp-concurrent'?: boolean | null
+  ipv6?: boolean | null
+}
+
+export type ClashGuardOverridesPatch_Serialize = {
+  'log-level'?: LogLevel | null
+  'allow-lan'?: boolean | null
+  mode?: Mode | null
+  secret?: string | null
+  'unified-delay'?: boolean | null
+  'tcp-concurrent'?: boolean | null
+  ipv6?: boolean | null
+}
+
 export type ClashInfo = {
   /**  clash core port */
   port: number
@@ -526,10 +660,6 @@ export type ClashRule = {
   type: string
   payload: string
   proxy: string
-}
-
-export type ClashStrategy = {
-  external_controller_port_strategy: ExternalControllerPortStrategy
 }
 
 export type ClashVersion = {
@@ -720,8 +850,9 @@ export type ConfigurationStatus = {
   source_versions: SourceVersions
   runtime: RuntimeConvergence
   effects: EffectConvergence[]
+  /**  The latest background-source receipt per profile. */
+  sources: SourceStatus[]
   active: string | null
-  queued: string[]
   recent_operations: OperationStatus[]
 }
 
@@ -911,7 +1042,6 @@ export type Degradation = {
 
 /**  Public degradation phases for mutation outcomes. Serde/Specta use snake_case. */
 export type DegradationPhase =
-  | 'legacy_mirror'
   | 'profile_materialization'
   | 'runtime_build'
   | 'runtime_check'
@@ -1018,8 +1148,24 @@ export type EnvInfo = {
  */
 export type ExecutionHost = 'local' | 'service'
 
-export type ExternalControllerPortStrategy =
-  'fixed' | 'random' | 'allow_fallback'
+export type ExternalControllerStrategy = {
+  host: string
+  port: PortStrategy
+}
+
+export type ExternalControllerStrategyPatch =
+  | ExternalControllerStrategyPatch_Serialize
+  | ExternalControllerStrategyPatch_Deserialize
+
+export type ExternalControllerStrategyPatch_Deserialize = {
+  host?: string | null
+  port?: PortStrategyPatch_Deserialize
+}
+
+export type ExternalControllerStrategyPatch_Serialize = {
+  host?: string | null
+  port: PortStrategyPatch_Serialize
+}
 
 export type ExternalMode = 'symlink' | 'mirror'
 
@@ -1056,296 +1202,39 @@ export type GetSysProxyResponse = {
   server: string
 }
 
-/**  ### `verge.yaml` schema */
-export type IVerge = IVerge_Serialize | IVerge_Deserialize
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
 
-/**  ### `verge.yaml` schema */
-export type IVerge_Deserialize =
-  | ({
-      /**  app listening port for app singleton */
-      app_singleton_port: number | null
-      /**
-       *  app log level
-       *  silent | error | warn | info | debug | trace
-       */
-      app_log_level: LoggingLevel_Deserialize | null
-      language: string | null
-      /**  `light` or `dark` or `system` */
-      theme_mode: string | null
-      /**  enable traffic graph default is true */
-      traffic_graph: boolean | null
-      /**  show memory info (only for Clash Meta) */
-      enable_memory_usage: boolean | null
-      /**  global ui framer motion effects */
-      lighten_animation_effects: boolean | null
-      /**  clash tun mode */
-      enable_tun_mode: boolean | null
-      /**  windows service mode */
-      enable_service_mode: boolean | null
-      /**  can the app auto startup */
-      enable_auto_launch: boolean | null
-      /**  not show the window on launch */
-      enable_silent_start: boolean | null
-      /**  set system proxy */
-      enable_system_proxy: boolean | null
-      /**  enable proxy guard */
-      enable_proxy_guard: boolean | null
-      /**  set system proxy bypass */
-      system_proxy_bypass: string | null
-      /**  theme setting */
-      theme_color: string | null
-      /**  web ui list */
-      web_ui_list: string[] | null
-      /**  clash core path */
-      clash_core: ClashCore_Deserialize | null
-      clash_control_channel: ClashControlChannel | null
-      clash_ipc_disable_http_controller: boolean | null
-      /**
-       *  hotkey map
-       *  format: {func},{key}
-       */
-      hotkeys: string[] | null
-      /**
-       *  切换代理时自动关闭连接 (已弃用)
-       * @deprecated use `break_when_proxy_change` instead
-       */
-      auto_close_connection: boolean | null
-      /**
-       *  切换代理时中断连接
-       *  None: 不中断
-       *  Chain: 仅中断使用该代理链的连接
-       *  All: 中断所有连接
-       */
-      break_when_proxy_change: BreakWhenProxyChange | null
-      /**
-       *  切换配置时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_profile_change: boolean | null
-      /**
-       *  切换模式时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_mode_change: boolean | null
-      /**  默认的延迟测试连接 */
-      default_latency_test: string | null
-      /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-      enable_clash_fields: boolean | null
-      /**  是否使用内部的脚本支持，默认为真 */
-      enable_builtin_enhanced: boolean | null
-      /**  proxy 页面布局 列数 */
-      proxy_layout_column: number | null
-      /**
-       *  日志清理
-       *  分钟数； 0 为不清理
-       * @deprecated use `max_log_files` instead
-       */
-      auto_log_clean: number | null
-      /**  日记轮转时间，单位：天 */
-      max_log_files: number | null
-      /**
-       *  window size and position
-       * @deprecated use `window_size_state` instead
-       */
-      window_size_position: (number | null)[] | null
-      window_size_state: WindowState | null
-      /**  是否启用随机端口 */
-      enable_random_port: boolean | null
-      /**  verge mixed port 用于覆盖 clash 的 mixed port */
-      verge_mixed_port: number | null
-      /**  Check update when app launch */
-      enable_auto_check_update: boolean | null
-      /**  Clash 相关策略 */
-      clash_strategy: ClashStrategy | null
-      /**  是否启用代理托盘选择 */
-      clash_tray_selector: ProxiesSelectorMode | null
-      always_on_top: boolean | null
-      /**
-       *  Tun 堆栈选择
-       *  TODO: 弃用此字段，转移到 clash config 里
-       */
-      tun_stack: TunStack | null
-      /**  是否启用网络统计信息浮窗 */
-      network_statistic_widget: NetworkStatisticWidgetConfig | null
-      /**
-       *  PAC URL for automatic proxy configuration
-       *  This field is used to set PAC proxy without exposing it to the frontend UI
-       */
-      pac_url: string | null
-      /**
-       *  enable tray text display on Linux systems
-       *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-       *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-       */
-      enable_tray_text: boolean | null
-      /**
-       *  Window type to use when opening the app window
-       *  Main: opens new main window
-       */
-      window_type: WindowType | null
-      /**
-       *  Tray menu implementation mode
-       *  Native: use the OS system tray menu (default on non-Windows)
-       *  Webview: use a custom WebView window (default on Windows)
-       */
-      tray_menu_mode: TrayMenuMode | null
-      /**
-       *  Webview tray menu window dismiss behavior
-       *  Hide: hide the window on close (fast re-open, higher memory usage)
-       *  Close: destroy the window on close (slower re-open, lower memory usage)
-       */
-      tray_menu_close_behavior: TrayMenuCloseBehavior | null
-    } & {
-      /**  proxy guard interval */
-      proxy_guard_interval: number | null
-    })
-  | {
-      /**  proxy guard interval */
-      proxy_guard_duration: number | null
-    }
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage_Deserialize =
+  'en' | 'en-US' | 'ko' | 'ru' | 'zh-cn' | 'zh-CN' | 'zh-tw' | 'zh-TW'
 
-/**  ### `verge.yaml` schema */
-export type IVerge_Serialize = {
-  /**  app listening port for app singleton */
-  app_singleton_port: number | null
-  /**
-   *  app log level
-   *  silent | error | warn | info | debug | trace
-   */
-  app_log_level: LoggingLevel_Serialize | null
-  language: string | null
-  /**  `light` or `dark` or `system` */
-  theme_mode: string | null
-  /**  enable traffic graph default is true */
-  traffic_graph: boolean | null
-  /**  show memory info (only for Clash Meta) */
-  enable_memory_usage: boolean | null
-  /**  global ui framer motion effects */
-  lighten_animation_effects: boolean | null
-  /**  clash tun mode */
-  enable_tun_mode: boolean | null
-  /**  windows service mode */
-  enable_service_mode?: boolean | null
-  /**  can the app auto startup */
-  enable_auto_launch: boolean | null
-  /**  not show the window on launch */
-  enable_silent_start: boolean | null
-  /**  set system proxy */
-  enable_system_proxy: boolean | null
-  /**  enable proxy guard */
-  enable_proxy_guard: boolean | null
-  /**  set system proxy bypass */
-  system_proxy_bypass: string | null
-  /**  proxy guard interval */
-  proxy_guard_interval: number | null
-  /**  theme setting */
-  theme_color: string | null
-  /**  web ui list */
-  web_ui_list: string[] | null
-  /**  clash core path */
-  clash_core?: ClashCore_Serialize | null
-  clash_control_channel: ClashControlChannel | null
-  clash_ipc_disable_http_controller: boolean | null
-  /**
-   *  hotkey map
-   *  format: {func},{key}
-   */
-  hotkeys: string[] | null
-  /**
-   *  切换代理时自动关闭连接 (已弃用)
-   * @deprecated use `break_when_proxy_change` instead
-   */
-  auto_close_connection: boolean | null
-  /**
-   *  切换代理时中断连接
-   *  None: 不中断
-   *  Chain: 仅中断使用该代理链的连接
-   *  All: 中断所有连接
-   */
-  break_when_proxy_change: BreakWhenProxyChange | null
-  /**
-   *  切换配置时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_profile_change: boolean | null
-  /**
-   *  切换模式时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_mode_change: boolean | null
-  /**  默认的延迟测试连接 */
-  default_latency_test: string | null
-  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-  enable_clash_fields: boolean | null
-  /**  是否使用内部的脚本支持，默认为真 */
-  enable_builtin_enhanced: boolean | null
-  /**  proxy 页面布局 列数 */
-  proxy_layout_column: number | null
-  /**
-   *  日志清理
-   *  分钟数； 0 为不清理
-   * @deprecated use `max_log_files` instead
-   */
-  auto_log_clean: number | null
-  /**  日记轮转时间，单位：天 */
-  max_log_files: number | null
-  /**
-   *  window size and position
-   * @deprecated use `window_size_state` instead
-   */
-  window_size_position?: (number | null)[] | null
-  window_size_state?: WindowState | null
-  /**  是否启用随机端口 */
-  enable_random_port: boolean | null
-  /**  verge mixed port 用于覆盖 clash 的 mixed port */
-  verge_mixed_port: number | null
-  /**  Check update when app launch */
-  enable_auto_check_update: boolean | null
-  /**  Clash 相关策略 */
-  clash_strategy: ClashStrategy | null
-  /**  是否启用代理托盘选择 */
-  clash_tray_selector: ProxiesSelectorMode | null
-  always_on_top: boolean | null
-  /**
-   *  Tun 堆栈选择
-   *  TODO: 弃用此字段，转移到 clash config 里
-   */
-  tun_stack: TunStack | null
-  /**  是否启用网络统计信息浮窗 */
-  network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  /**
-   *  PAC URL for automatic proxy configuration
-   *  This field is used to set PAC proxy without exposing it to the frontend UI
-   */
-  pac_url?: string | null
-  /**
-   *  enable tray text display on Linux systems
-   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-   */
-  enable_tray_text: boolean | null
-  /**
-   *  Window type to use when opening the app window
-   *  Main: opens new main window
-   */
-  window_type: WindowType | null
-  /**
-   *  Tray menu implementation mode
-   *  Native: use the OS system tray menu (default on non-Windows)
-   *  Webview: use a custom WebView window (default on Windows)
-   */
-  tray_menu_mode: TrayMenuMode | null
-  /**
-   *  Webview tray menu window dismiss behavior
-   *  Hide: hide the window on close (fast re-open, higher memory usage)
-   *  Close: destroy the window on close (slower re-open, lower memory usage)
-   */
-  tray_menu_close_behavior: TrayMenuCloseBehavior | null
-}
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
 
 export type Level =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
@@ -1399,6 +1288,8 @@ export type LogFileInfo = {
   name: string
   bytes: string
 }
+
+export type LogLevel = 'silent' | 'error' | 'warning' | 'info' | 'debug'
 
 export type LogPage = {
   rows: LogRow[]
@@ -1553,6 +1444,8 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+export type Mode = 'rule' | 'global' | 'direct' | 'script'
+
 export type MutationOutcome<T> =
   | {
       status: 'committed'
@@ -1568,7 +1461,8 @@ export type MutationOutcome<T> =
       degradations: Degradation[]
     }
 
-export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
+export type NetworkStatisticWidgetConfig =
+  { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
 
 export type NewProfileRequest =
   NewProfileRequest_Serialize | NewProfileRequest_Deserialize
@@ -1583,6 +1477,280 @@ export type NewProfileRequest_Serialize = {
   metadata: ProfileMetadata_Serialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Serialize
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig =
+  NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
+
+export type NyanpasuAppConfigPatch =
+  NyanpasuAppConfigPatch_Serialize | NyanpasuAppConfigPatch_Deserialize
+
+export type NyanpasuAppConfigPatch_Deserialize =
+  | ({
+      app_singleton_port?: number | null
+      app_log_level?: LoggingLevel_Deserialize | null
+      language?: I18nLanguage_Deserialize | null
+      theme_mode?: ThemeMode | null
+      traffic_graph?: boolean | null
+      enable_memory_usage?: boolean | null
+      lighten_animation_effects?: boolean | null
+      enable_service_mode?: boolean | null
+      enable_auto_launch?: boolean | null
+      enable_silent_start?: boolean | null
+      enable_system_proxy?: boolean | null
+      enable_proxy_guard?: boolean | null
+      system_proxy_bypass?: string | null
+      theme_color?: string
+      hotkeys?: string[] | null
+      default_latency_test?: string | null
+      enable_builtin_enhanced?: boolean | null
+      proxy_layout_column?: number | null
+      max_log_files?: number | null
+      max_log_file_size?: number | null
+      enable_auto_check_update?: boolean | null
+      release_channel?: ReleaseChannel | null
+      always_on_top?: boolean | null
+      tray_menu_mode?: TrayMenuMode | null
+      tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+      network_statistic_widget?: NetworkStatisticWidgetConfig | null
+      pac_url?: string | null
+      enable_tray_text?: boolean | null
+      enable_tray_traffic?: boolean | null
+      use_legacy_ui?: boolean | null
+    } & {
+      proxy_guard_interval?: number | null
+    })
+  | ({
+      proxy_guard_duration?: number | null
+    } & {
+      core?: ClashCore_Deserialize | null
+    })
+  | ({
+      clash_core?: ClashCore_Deserialize | null
+    } & {
+      tray_selector_mode?: ProxiesSelectorMode | null
+    })
+  | {
+      clash_tray_selector?: ProxiesSelectorMode | null
+    }
+
+export type NyanpasuAppConfigPatch_Serialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Serialize | null
+  language?: I18nLanguage_Serialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_service_mode?: boolean | null
+  enable_auto_launch?: boolean | null
+  enable_silent_start?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  theme_color?: string
+  core?: ClashCore_Serialize | null
+  hotkeys?: string[] | null
+  default_latency_test?: string | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  pac_url?: string | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig_Deserialize = {
+  /**  app listening port for app singleton */
+  app_singleton_port: number
+  /**
+   *  app log level
+   *  silent | error | warn | info | debug | trace
+   */
+  app_log_level: LoggingLevel_Deserialize
+  language: I18nLanguage_Deserialize
+  /**  `light` or `dark` or `system` */
+  theme_mode: ThemeMode
+  /**  enable traffic graph */
+  traffic_graph: boolean
+  /**  show memory info (only for Clash Meta) */
+  enable_memory_usage: boolean
+  /**  global ui framer motion effects */
+  lighten_animation_effects: boolean
+  /**  service mode */
+  enable_service_mode: boolean
+  /**  can the app auto startup */
+  enable_auto_launch: boolean
+  /**  not show the window on launch */
+  enable_silent_start: boolean
+  /**  set system proxy */
+  enable_system_proxy: boolean
+  /**  enable proxy guard */
+  enable_proxy_guard: boolean
+  /**  set system proxy bypass */
+  system_proxy_bypass: string
+  /**  proxy guard interval */
+  proxy_guard_interval: number
+  /**  theme setting */
+  theme_color: string
+  /**  clash core path */
+  core: ClashCore_Deserialize
+  /**
+   *  hotkey map
+   *  format: {func},{key}
+   */
+  hotkeys: string[]
+  /**  默认的延迟测试连接 */
+  default_latency_test: string
+  /**  是否使用内部的脚本支持，默认为真 */
+  enable_builtin_enhanced: boolean
+  /**  proxy 页面布局 列数 */
+  proxy_layout_column: number
+  /**  最多保留的日志文件数 */
+  max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size?: number
+  /**  Check update when app launch */
+  enable_auto_check_update: boolean
+  /**  None in older configurations means the channel of the installed build. */
+  release_channel?: ReleaseChannel | null
+  /**  是否启用代理托盘选择 */
+  tray_selector_mode: ProxiesSelectorMode
+  /**  是否窗口置顶 */
+  always_on_top: boolean
+  /**
+   *  托盘菜单模式：系统原生菜单还是 WebView 菜单
+   *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
+   */
+  tray_menu_mode: TrayMenuMode
+  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
+  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  是否启用网络统计信息浮窗 */
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  /**
+   *  PAC URL for automatic proxy configuration
+   *  This field is used to set PAC proxy without exposing it to the frontend UI
+   */
+  pac_url: string | null
+  /**
+   *  enable tray text display on Linux systems
+   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
+   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
+   */
+  enable_tray_text: boolean
+  /**
+   *  enable traffic information display in system tray
+   *  When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+   */
+  enable_tray_traffic: boolean
+  /**
+   *  Use legacy UI (original UI at "/" route)
+   *  When true, opens legacy window; when false, opens new main window
+   */
+  use_legacy_ui: boolean
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig_Serialize = {
+  /**  app listening port for app singleton */
+  app_singleton_port: number
+  /**
+   *  app log level
+   *  silent | error | warn | info | debug | trace
+   */
+  app_log_level: LoggingLevel_Serialize
+  language: I18nLanguage_Serialize
+  /**  `light` or `dark` or `system` */
+  theme_mode: ThemeMode
+  /**  enable traffic graph */
+  traffic_graph: boolean
+  /**  show memory info (only for Clash Meta) */
+  enable_memory_usage: boolean
+  /**  global ui framer motion effects */
+  lighten_animation_effects: boolean
+  /**  service mode */
+  enable_service_mode: boolean
+  /**  can the app auto startup */
+  enable_auto_launch: boolean
+  /**  not show the window on launch */
+  enable_silent_start: boolean
+  /**  set system proxy */
+  enable_system_proxy: boolean
+  /**  enable proxy guard */
+  enable_proxy_guard: boolean
+  /**  set system proxy bypass */
+  system_proxy_bypass: string
+  /**  proxy guard interval */
+  proxy_guard_interval: number
+  /**  theme setting */
+  theme_color: string
+  /**  clash core path */
+  core: ClashCore_Serialize
+  /**
+   *  hotkey map
+   *  format: {func},{key}
+   */
+  hotkeys: string[]
+  /**  默认的延迟测试连接 */
+  default_latency_test: string
+  /**  是否使用内部的脚本支持，默认为真 */
+  enable_builtin_enhanced: boolean
+  /**  proxy 页面布局 列数 */
+  proxy_layout_column: number
+  /**  最多保留的日志文件数 */
+  max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size: number
+  /**  Check update when app launch */
+  enable_auto_check_update: boolean
+  /**  None in older configurations means the channel of the installed build. */
+  release_channel: ReleaseChannel | null
+  /**  是否启用代理托盘选择 */
+  tray_selector_mode: ProxiesSelectorMode
+  /**  是否窗口置顶 */
+  always_on_top: boolean
+  /**
+   *  托盘菜单模式：系统原生菜单还是 WebView 菜单
+   *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
+   */
+  tray_menu_mode: TrayMenuMode
+  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
+  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  是否启用网络统计信息浮窗 */
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  /**
+   *  PAC URL for automatic proxy configuration
+   *  This field is used to set PAC proxy without exposing it to the frontend UI
+   */
+  pac_url?: string | null
+  /**
+   *  enable tray text display on Linux systems
+   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
+   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
+   */
+  enable_tray_text: boolean
+  /**
+   *  enable traffic information display in system tray
+   *  When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+   */
+  enable_tray_traffic: boolean
+  /**
+   *  Use legacy UI (original UI at "/" route)
+   *  When true, opens legacy window; when false, opens new main window
+   */
+  use_legacy_ui: boolean
 }
 
 export type OpenLogs = {
@@ -1673,21 +1841,30 @@ export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
 }
 
-export type PatchRuntimeConfig =
-  PatchRuntimeConfig_Serialize | PatchRuntimeConfig_Deserialize
-
-export type PatchRuntimeConfig_Deserialize = {
-  'allow-lan'?: boolean | null
-  ipv6?: boolean | null
-  'log-level'?: string | null
-  mode?: string | null
+export type PortStrategy = {
+  /**  外部控制器端口策略类型 */
+  kind: PortStrategyKind
+  /**
+   *  外部控制器端口起始端口
+   *
+   *  用于固定或允许回退策略
+   */
+  start_port: number
 }
 
-export type PatchRuntimeConfig_Serialize = {
-  'allow-lan'?: boolean | null
-  ipv6?: boolean | null
-  'log-level'?: string | null
-  mode?: string | null
+export type PortStrategyKind = 'fixed' | 'random' | 'allow_fallback'
+
+export type PortStrategyPatch =
+  PortStrategyPatch_Serialize | PortStrategyPatch_Deserialize
+
+export type PortStrategyPatch_Deserialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
+}
+
+export type PortStrategyPatch_Serialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
 }
 
 /**  后处理输出 */
@@ -2190,6 +2367,13 @@ export type Proxies_Serialize = {
   proxies: ProxyItem_Serialize[]
 }
 
+export type ProxyChangeBreakMode =
+  | 'off'
+  /**  仅中断当前使用的代理组的连接 */
+  | 'proxy_group'
+  /**  中断所有连接 */
+  | 'all'
+
 export type ProxyGroupItem =
   ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
 
@@ -2340,12 +2524,7 @@ export type RulesRes = {
 }
 
 export type RuntimeCommitStatus =
-  | 'applied'
-  | 'deferred'
-  | 'saved_inactive'
-  | 'unchanged'
-  | 'pending'
-  | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
@@ -2394,20 +2573,13 @@ export type RuntimeInspectionNode = {
 }
 
 /**
- *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
- *  link is received: either from a secondary instance while the app is already
- *  running, or on cold start once the window exists. The frontend listens for
- *  this to import the referenced `install-config` profile. On cold start the
- *  same URL is also stashed in [`PendingDeepLink`] and drained once via
- *  [`get_pending_deep_link`], covering the race where the event fires before the
- *  JS listener attaches.
+ *  Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+ *  link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+ *  frontend to take the queue through [`take_pending_deep_links`].
  *
  *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
  */
-export type SchemeRequestReceivedEvent = {
-  /**  The raw deep-link URL as received from the OS. */
-  url: string
-}
+export type SchemeRequestReceivedEvent = null
 
 export type ScriptRuntime = 'javascript' | 'lua'
 
@@ -2560,12 +2732,38 @@ export type SnapshotDiffHunk = {
   lines: string[]
 }
 
+export type SourceOrigin =
+  'scheduled_refresh' | 'manual_refresh' | 'external_file'
+
+export type SourceOutcome =
+  | { kind: 'committed'; operation_id: string | null }
+  /**  Its result no longer applied to the profile and was dropped (V31). */
+  | { kind: 'superseded'; reason: string }
+  | { kind: 'failed'; message: string }
+  /**
+   *  The content reached the source transaction and was refused; nothing
+   *  was committed and an external file is never rewritten (V33).
+   */
+  | { kind: 'rejected'; code: string; message: string }
+
+export type SourceStatus = {
+  profile: ProfileId
+  name: string
+  origin: SourceOrigin
+  outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
 export type SourceVersions = {
   application: number
   clash: number
   session: number
   profiles: number
 }
+
+export type StatisticWidgetVariant = 'large' | 'small'
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
 
@@ -2656,6 +2854,8 @@ export type SubscriptionInfo_Serialize = {
   expire: number
 }
 
+export type ThemeMode = 'light' | 'dark' | 'system'
+
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition =
   TransformDefinition_Serialize | TransformDefinition_Deserialize
@@ -2688,8 +2888,14 @@ export type TransformOwner =
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 
+/**  What happens to the WebView tray menu window when it loses focus. */
 export type TrayMenuCloseBehavior = 'hide' | 'close'
 
+/**
+ *  Whether the tray menu uses the system-native menu or the WebView menu.
+ *
+ *  Platform-dependent default: `Webview` on Windows, `Native` elsewhere.
+ */
 export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
@@ -2711,8 +2917,7 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | ({ pending: string } & { failed?: never })
-  | ({ failed: string } & { pending?: never })
+  | { failed: string }
 
 export type UpdaterSummary = {
   id: number
@@ -2742,17 +2947,6 @@ export type WindowMessageEvent = {
 export type WindowReadyEvent = {
   label: string
 }
-
-export type WindowState = {
-  width: number
-  height: number
-  x: number
-  y: number
-  maximized: boolean
-  fullscreen: boolean
-}
-
-export type WindowType = 'main'
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(
@@ -2823,11 +3017,6 @@ export const queries = {
     queryOptions({
       queryKey: ['getClashInfo', ...args],
       queryFn: () => commands.getClashInfo(...args),
-    }),
-  getClashLogs: (...args: Parameters<typeof commands.getClashLogs>) =>
-    queryOptions({
-      queryKey: ['getClashLogs', ...args],
-      queryFn: () => commands.getClashLogs(...args),
     }),
   getRuntimeConfig: (...args: Parameters<typeof commands.getRuntimeConfig>) =>
     queryOptions({
@@ -2934,10 +3123,15 @@ export const queries = {
       queryKey: ['getCoreVersion', ...args],
       queryFn: () => commands.getCoreVersion(...args),
     }),
-  getVergeConfig: (...args: Parameters<typeof commands.getVergeConfig>) =>
+  getAppConfig: (...args: Parameters<typeof commands.getAppConfig>) =>
     queryOptions({
-      queryKey: ['getVergeConfig', ...args],
-      queryFn: () => commands.getVergeConfig(...args),
+      queryKey: ['getAppConfig', ...args],
+      queryFn: () => commands.getAppConfig(...args),
+    }),
+  getClashConfig: (...args: Parameters<typeof commands.getClashConfig>) =>
+    queryOptions({
+      queryKey: ['getClashConfig', ...args],
+      queryFn: () => commands.getClashConfig(...args),
     }),
   getHotkeyFunctions: (
     ...args: Parameters<typeof commands.getHotkeyFunctions>
@@ -3144,10 +3338,20 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.restartSidecar>) =>
       commands.restartSidecar(...input),
   }),
+  patchAppConfig: mutationOptions({
+    mutationKey: ['patchAppConfig'],
+    mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>
+      commands.patchAppConfig(...input),
+  }),
   patchClashConfig: mutationOptions({
     mutationKey: ['patchClashConfig'],
     mutationFn: (input: Parameters<typeof commands.patchClashConfig>) =>
       commands.patchClashConfig(...input),
+  }),
+  patchRuntimeOverrides: mutationOptions({
+    mutationKey: ['patchRuntimeOverrides'],
+    mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>
+      commands.patchRuntimeOverrides(...input),
   }),
   changeClashCore: mutationOptions({
     mutationKey: ['changeClashCore'],
@@ -3181,11 +3385,6 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
       commands.collectLogs(...input),
   }),
-  patchVergeConfig: mutationOptions({
-    mutationKey: ['patchVergeConfig'],
-    mutationFn: (input: Parameters<typeof commands.patchVergeConfig>) =>
-      commands.patchVergeConfig(...input),
-  }),
   enhanceProfiles: mutationOptions({
     mutationKey: ['enhanceProfiles'],
     mutationFn: (input: Parameters<typeof commands.enhanceProfiles>) =>
@@ -3196,10 +3395,10 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.importProfile>) =>
       commands.importProfile(...input),
   }),
-  getPendingDeepLink: mutationOptions({
-    mutationKey: ['getPendingDeepLink'],
-    mutationFn: (input: Parameters<typeof commands.getPendingDeepLink>) =>
-      commands.getPendingDeepLink(...input),
+  takePendingDeepLinks: mutationOptions({
+    mutationKey: ['takePendingDeepLinks'],
+    mutationFn: (input: Parameters<typeof commands.takePendingDeepLinks>) =>
+      commands.takePendingDeepLinks(...input),
   }),
   createProfile: mutationOptions({
     mutationKey: ['createProfile'],

@@ -5,10 +5,15 @@ use std::sync::Arc;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::widget::StatisticWidgetVariant;
-use tauri::Emitter;
 
 use super::ports::{
-    LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError, WidgetRuntime,
+    LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
+    WidgetError, WidgetRuntime,
+};
+use crate::{
+    client::effects::plan::TrayView,
+    core::tray::{Tray, TrayWork},
+    utils::init::logging::ReloadSignal,
 };
 
 /// The `rust_i18n` locale.
@@ -29,6 +34,12 @@ impl LocaleSink for RustI18nLocaleSink {
 }
 
 /// The system tray, through the handle that owns it.
+///
+/// Each refresh first stores its view in the tray's managed state: every build
+/// and repaint renders from that cached view, including the rebuilds the tray
+/// starts on its own when the proxy list changes. It then requests the work,
+/// which the tray runs on the main thread (GTK) on its own; the effect
+/// executor only asked for a refresh.
 pub struct TauriTrayRefresher<R: tauri::Runtime = tauri::Wry> {
     app_handle: tauri::AppHandle<R>,
 }
@@ -39,44 +50,45 @@ impl<R: tauri::Runtime> TauriTrayRefresher<R> {
     }
 }
 
+// Wry only: the tray publishes Wry menus. A refresh only queues its work, so
+// the effect degrades only when queueing fails. A failure while the tray
+// applies the work is logged there, and a menu it left unknown heals itself:
+// the next request of any kind rebuilds it.
 #[async_trait::async_trait]
-impl<R: tauri::Runtime> TrayRefresher for TauriTrayRefresher<R> {
-    async fn refresh_full(&self) -> anyhow::Result<()> {
-        // Rebuilding the menu has to happen on the main thread (GTK), so it
-        // goes out as an event that the app's own listener runs there. The
-        // hop is the adapter's business; the effect executor only asked for a
-        // refresh.
-        self.app_handle.emit("update_systray", ())?;
-        Ok(())
+impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
+    async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()> {
+        Tray::store_view(&self.app_handle, view);
+        Tray::request(&self.app_handle, TrayWork::REBUILD)
     }
 
-    async fn refresh_part(&self) -> anyhow::Result<()> {
-        crate::core::tray::Tray::update_part(&self.app_handle)
+    async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()> {
+        Tray::store_view(&self.app_handle, view);
+        Tray::request(&self.app_handle, TrayWork::PART)
     }
 }
 
-/// The running `tracing` subscriber, through its reload channel.
-#[derive(Debug, Default)]
-pub struct TracingLoggerRefresher;
+/// The running `tracing` subscriber, through the reload channel that
+/// initializing it returned.
+#[derive(Debug)]
+pub struct TracingLoggerRefresher {
+    reload: std::sync::mpsc::Sender<ReloadSignal>,
+}
+
+impl TracingLoggerRefresher {
+    pub fn new(reload: std::sync::mpsc::Sender<ReloadSignal>) -> Self {
+        Self { reload }
+    }
+}
 
 impl LoggerRefresher for TracingLoggerRefresher {
-    fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()> {
-        crate::utils::init::refresh_logger((level.map(legacy_logging_level), max_files))
-    }
-}
-
-/// The logger still speaks the legacy enum. Written out rather than derived so
-/// that adding a level to either side fails to compile instead of silently
-/// mapping to the wrong one.
-fn legacy_logging_level(level: LoggingLevel) -> crate::config::nyanpasu::LoggingLevel {
-    use crate::config::nyanpasu::LoggingLevel as Legacy;
-    match level {
-        LoggingLevel::Silent => Legacy::Silent,
-        LoggingLevel::Trace => Legacy::Trace,
-        LoggingLevel::Debug => Legacy::Debug,
-        LoggingLevel::Info => Legacy::Info,
-        LoggingLevel::Warn => Legacy::Warn,
-        LoggingLevel::Error => Legacy::Error,
+    fn refresh(
+        &self,
+        level: Option<LoggingLevel>,
+        rotation: Option<LogRotation>,
+    ) -> anyhow::Result<()> {
+        self.reload
+            .send((level, rotation))
+            .map_err(|_| anyhow::anyhow!("the logger reload thread has stopped"))
     }
 }
 
@@ -91,8 +103,8 @@ fn legacy_logging_level(level: LoggingLevel) -> crate::config::nyanpasu::Logging
 pub struct TauriWidgetController {
     runtime: tokio::sync::OnceCell<Arc<dyn WidgetRuntime>>,
     /// The variant this controller last started. Narrow implementation detail,
-    /// not shared state: only `apply` and `stop` touch it, and it exists so a
-    /// repeated configuration does not tear the widget down and build it again.
+    /// not shared state: only `apply` touches it, and it exists so a repeated
+    /// configuration does not tear the widget down and build it again.
     started: tokio::sync::Mutex<Option<StatisticWidgetVariant>>,
 }
 
@@ -116,9 +128,12 @@ impl WidgetController for TauriWidgetController {
         let mut started = self.started.lock().await;
         match config {
             NetworkStatisticWidgetConfig::Disabled => {
-                if runtime.is_running().await {
-                    runtime.stop().await?;
-                }
+                // Unconditional: a start that failed and could not clean up
+                // keeps its widget owned without running. With nothing owned
+                // the stop is a no-op.
+                runtime
+                    .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+                    .await?;
                 *started = None;
             }
             NetworkStatisticWidgetConfig::Enabled(variant) => {
@@ -135,16 +150,6 @@ impl WidgetController for TauriWidgetController {
         }
         Ok(())
     }
-
-    async fn stop(&self) -> Result<(), WidgetError> {
-        let runtime = self.runtime()?;
-        let mut started = self.started.lock().await;
-        if runtime.is_running().await {
-            runtime.stop().await?;
-        }
-        *started = None;
-        Ok(())
-    }
 }
 
 #[async_trait::async_trait]
@@ -153,8 +158,8 @@ impl WidgetRuntime for crate::widget::WidgetManager {
         crate::widget::WidgetManager::start(self, variant).await
     }
 
-    async fn stop(&self) -> anyhow::Result<()> {
-        crate::widget::WidgetManager::stop(self).await
+    async fn stop(&self, deadline: tokio::time::Instant) -> Result<(), WidgetError> {
+        crate::widget::WidgetManager::stop(self, deadline).await
     }
 
     async fn is_running(&self) -> bool {

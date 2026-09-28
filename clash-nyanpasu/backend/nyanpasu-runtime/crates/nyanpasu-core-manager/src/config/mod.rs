@@ -58,16 +58,16 @@ impl ConfigSnapshot {
 
     fn from_bytes(source_path: Utf8PathBuf, raw: &[u8]) -> Result<Self, Error> {
         let value: Value = serde_yaml_ng::from_slice(raw)?;
-        let Value::Mapping(document) = canonicalize(value)? else {
+        let Value::Mapping(document) = value else {
             return Err(Error::InvalidConfig(
                 "top-level YAML document must be a mapping".into(),
             ));
         };
-        let canonical = serialize_mapping(&document)?;
+        let source_hash = semantic_hash(&document)?;
         Ok(Self {
             source_path,
             document,
-            source_hash: semantic_hash(&canonical),
+            source_hash,
         })
     }
 
@@ -158,9 +158,6 @@ impl ConfigSnapshot {
             document.remove(Value::String("external-controller-pipe".into()));
             document.remove(Value::String("external-controller-unix".into()));
         }
-        let Value::Mapping(document) = canonicalize(Value::Mapping(document))? else {
-            unreachable!("canonical mapping remains a mapping")
-        };
         let info = if rewrote_controller {
             clash::inspect(&document)
         } else {
@@ -169,7 +166,7 @@ impl ConfigSnapshot {
         let controller = resolve_controller(&info)?;
         let bytes = serialize_mapping(&document)?;
         Ok(PreparedConfig {
-            effective_hash: semantic_hash(&bytes),
+            effective_hash: semantic_hash(&document)?,
             source_hash: self.source_hash.clone(),
             bytes,
             document,
@@ -214,7 +211,16 @@ fn serialize_mapping(document: &Mapping) -> Result<Vec<u8>, Error> {
     Ok(serde_yaml_ng::to_string(document)?.into_bytes())
 }
 
-fn semantic_hash(bytes: &[u8]) -> String {
+/// Mapping order is meaningful to the core (e.g. `dns.nameserver-policy`), so
+/// only this hash sees the canonical key order; the written document keeps
+/// the source order.
+fn semantic_hash(document: &Mapping) -> Result<String, Error> {
+    let canonical = canonicalize(Value::Mapping(document.clone()))?;
+    let bytes = serde_yaml_ng::to_string(&canonical)?;
+    Ok(fnv1a(bytes.as_bytes()))
+}
+
+fn fnv1a(bytes: &[u8]) -> String {
     // Stable FNV-1a over canonical YAML; this is a change identity, not a
     // cryptographic integrity primitive.
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
@@ -441,6 +447,27 @@ mod tests {
         let first = snapshot("mode: rule\ndns:\n  enable: true\n  listen: ''\n");
         let second = snapshot("dns: { listen: '', enable: true }\n\nmode: rule\n");
         assert_eq!(first.source_hash, second.source_hash);
+    }
+
+    #[test]
+    fn prepared_document_keeps_the_source_mapping_order() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Utf8PathBuf::from_path_buf(root.path().canonicalize().unwrap()).unwrap();
+        let source = snapshot(
+            "mode: rule\nexternal-controller: 127.0.0.1:9090\ndns:\n  nameserver-policy:\n    www.example.com: 1.1.1.1\n    geosite:cn: 223.5.5.5\n  enable: true\n",
+        );
+        let prepared = source
+            .prepare_full(None, &runtime, epoch(1), EnumSet::new(), None)
+            .unwrap();
+        let text = String::from_utf8(prepared.bytes).unwrap();
+        let position = |needle: &str| text.find(needle).unwrap();
+        assert!(position("mode:") < position("dns:"));
+        assert!(position("nameserver-policy:") < position("enable:"));
+        assert!(position("www.example.com:") < position("geosite:cn:"));
+        assert_eq!(
+            prepared.document.keys().next(),
+            Some(&Value::String("mode".into()))
+        );
     }
 
     #[test]

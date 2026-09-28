@@ -53,7 +53,7 @@ func TestTailcat(t *testing.T) {
 	var presharedKey [32]byte
 	_, err = rand.Read(presharedKey[:])
 	require.NoError(t, err)
-	derpServers := badoption.Listable[option.TailcatDERPServer]{{
+	derpServers := []option.TailcatDERPServer{{
 		Host:     "localhost",
 		IPv4:     loopback.String(),
 		IPv6:     "none",

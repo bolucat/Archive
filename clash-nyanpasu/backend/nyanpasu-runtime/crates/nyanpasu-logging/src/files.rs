@@ -25,9 +25,14 @@ impl FsLogFiles {
     pub fn new(directory: PathBuf, prefix: String) -> Self {
         Self { directory, prefix }
     }
+    /// Accepts both `tracing-appender`'s `{prefix}.{date}.app.log` and
+    /// `flexi_logger`'s `{prefix}_{timestamp}[.restart-NNNN].log`. Both sort by
+    /// name in write order, and `_` sorts after `.`, so the newer scheme's
+    /// files come first in a descending catalog.
     fn valid(&self, name: &str) -> bool {
-        name.starts_with(&format!("{}.", self.prefix))
-            && name.ends_with(".app.log")
+        let appender = name.starts_with(&format!("{}.", self.prefix)) && name.ends_with(".app.log");
+        let flexi = name.starts_with(&format!("{}_", self.prefix)) && name.ends_with(".log");
+        (appender || flexi)
             && name.len() <= 255
             && !name.contains(['/', '\\', ':'])
             && !name.contains("..")
@@ -109,5 +114,47 @@ impl LogFiles for FsLogFiles {
             prefix,
             bytes,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_lists_both_naming_schemes_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "app.2026-09-28.app.log",
+            "app_2026-09-29_08-00-00.log",
+            "app_2026-09-29_08-00-00.restart-0000.log",
+            "app_2026-09-29_09-30-00.log",
+            "app_2026-09-29_09-30-00.txt",
+            "other_2026-09-29_09-30-00.log",
+            "app.2026-09-29.log",
+        ] {
+            std::fs::write(dir.path().join(name), b"{}\n").unwrap();
+        }
+        let files = FsLogFiles::new(dir.path().into(), "app".into());
+        let names: Vec<_> = files
+            .catalog()
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "app_2026-09-29_09-30-00.log",
+                "app_2026-09-29_08-00-00.restart-0000.log",
+                "app_2026-09-29_08-00-00.log",
+                "app.2026-09-28.app.log",
+            ]
+        );
+        assert!(files.read("app_2026-09-29_09-30-00.log", 0, 3).is_ok());
+        assert_eq!(
+            files.read("app_../outside.log", 0, 1).err(),
+            Some(LogError::InvalidRequest)
+        );
     }
 }

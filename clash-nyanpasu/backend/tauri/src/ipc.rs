@@ -1,18 +1,21 @@
 use crate::{
-    bridge::verge::LegacyVergeBridge,
     client::{ClientError, NyanpasuClient},
-    config::*,
-    core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
-    feat::{self, CopyEnvOption},
-    utils::{candy, collect::EnvInfo, dirs, help, resolve},
+    utils::{
+        candy,
+        collect::EnvInfo,
+        dirs, help,
+        proxy_env::{self, CopyEnvOption},
+        resolve,
+    },
 };
 use anyhow::Context;
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
+use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
@@ -144,35 +147,40 @@ pub async fn import_profile(
     Ok(client.import_profile(url, name, option).await?)
 }
 
-/// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
-/// link is received: either from a secondary instance while the app is already
-/// running, or on cold start once the window exists. The frontend listens for
-/// this to import the referenced `install-config` profile. On cold start the
-/// same URL is also stashed in [`PendingDeepLink`] and drained once via
-/// [`get_pending_deep_link`], covering the race where the event fires before the
-/// JS listener attaches.
+/// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+/// link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+/// frontend to take the queue through [`take_pending_deep_links`].
 ///
 /// Event name: `scheme-request-received-event` (derived by `tauri_specta`).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct SchemeRequestReceivedEvent {
-    /// The raw deep-link URL as received from the OS.
-    pub url: String,
+pub struct SchemeRequestReceivedEvent;
+
+/// Deep links no frontend has taken yet, oldest first: the cold-start link from
+/// argv and every link a later instance forwards. A link leaves the queue only
+/// when a frontend takes it, so one that arrives while no frontend listens,
+/// before the window loads or while it reloads, waits for the next frontend
+/// to mount and drain it. Managed Tauri state, not a global singleton.
+#[derive(Debug, Default)]
+pub struct PendingDeepLinks(std::sync::Mutex<Vec<String>>);
+
+impl PendingDeepLinks {
+    pub fn push(&self, url: String) {
+        self.0.lock().unwrap().push(url);
+    }
+
+    /// Takes every queued link, oldest first, and leaves the queue empty.
+    pub fn take_all(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
 }
 
-/// Deep-link URL captured on cold start (from argv) before the frontend could
-/// receive the [`SchemeRequestReceivedEvent`] event. The frontend drains it once
-/// on startup via [`get_pending_deep_link`], closing the race where the event is
-/// emitted before the JS listener has attached. Managed Tauri state, not a
-/// global singleton.
-#[derive(Default)]
-pub struct PendingDeepLink(pub std::sync::Mutex<Option<String>>);
-
-/// Take and clear the pending cold-start deep link, if any. Called once by the
-/// frontend during startup.
+/// Take and clear the queued deep links, oldest first. The frontend calls it
+/// once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+/// every such event.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>> {
-    Ok(pending.0.lock().unwrap().take())
+pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
+    Ok(pending.take_all())
 }
 
 /// create a new profile
@@ -318,8 +326,8 @@ pub async fn save_profile_file(
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_info() -> Result<ClashInfo> {
-    Ok(Config::clash().latest().get_client_info())
+pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client::ClashInfo> {
+    Ok(client.clash_info())
 }
 
 /// get the runtime config
@@ -417,60 +425,84 @@ pub async fn get_core_status(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(url, expected_status).await)
+pub async fn url_delay_test(
+    client: State<'_, NyanpasuClient>,
+    url: &str,
+    expected_status: u16,
+) -> Result<Option<u64>> {
+    Ok(crate::utils::net::url_delay_test(url, expected_status, client.clash_info().port).await)
 }
 
 #[tauri::command]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion.
-pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn().await?;
+pub async fn get_ipsb_asn(
+    client: State<'_, NyanpasuClient>,
+) -> Result<specta_typescript::Any<serde_json::Value>> {
+    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub struct PatchRuntimeConfig {
-    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
-    pub allow_lan: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ipv6: Option<bool>,
-    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
-    pub log_level: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<String>,
+// ---- typed configuration commands (thin adapters over NyanpasuClient) ----
+
+use nyanpasu_config::{
+    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    clash::config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+};
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
+    Ok(client.get_app_config().await?)
 }
 
-/// patch clash runtime config
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_app_config(
+    client: State<'_, NyanpasuClient>,
+    patch: NyanpasuAppConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_app_config(patch).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
+    Ok(client.get_clash_config().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_clash_config(
+    client: State<'_, NyanpasuClient>,
+    patch: ClashConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_clash_config(patch).await?)
+}
+
+/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
 #[tauri::command]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
-pub async fn patch_clash_config(
+pub async fn patch_runtime_overrides(
     client: State<'_, NyanpasuClient>,
-    payload: PatchRuntimeConfig,
+    patch: ClashGuardOverridesPatch,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future DTO fields never auto-leak into logs.
+    // Explicit-field whitelist so future patch fields never auto-leak into
+    // logs; the secret is reported by presence only.
     tracing::debug!(
-        allow_lan = ?payload.allow_lan,
-        ipv6 = ?payload.ipv6,
-        log_level = ?payload.log_level,
-        mode = ?payload.mode,
-        "patch_clash_config"
+        log_level = ?patch.log_level,
+        allow_lan = ?patch.allow_lan,
+        mode = ?patch.mode,
+        secret = patch.secret.is_some(),
+        unified_delay = ?patch.unified_delay,
+        tcp_concurrent = ?patch.tcp_concurrent,
+        ipv6 = ?patch.ipv6,
+        "patch_runtime_overrides"
     );
-
-    let overrides = serde_yaml::from_value::<
-        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
-    >(serde_yaml::to_value(payload)?)?;
-    Ok(client.patch_runtime_overrides(overrides).await?)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
-    Ok(legacy.get_verge_config().await?)
+    Ok(client.patch_runtime_overrides(patch).await?)
 }
 
 #[tauri::command]
@@ -484,29 +516,12 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(
-    legacy: State<'_, LegacyVergeBridge>,
-    payload: IVerge,
-) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    Ok(legacy.patch_verge_config(payload).await?)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
-    clash_core: Option<nyanpasu::ClashCore>,
+    clash_core: Option<ClashCore>,
 ) -> Result {
     let clash_core =
         clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    let clash_core = match clash_core {
-        nyanpasu::ClashCore::ClashPremium => nyanpasu_config::application::ClashCore::ClashPremium,
-        nyanpasu::ClashCore::ClashRs => nyanpasu_config::application::ClashCore::ClashRs,
-        nyanpasu::ClashCore::Mihomo => nyanpasu_config::application::ClashCore::Mihomo,
-        nyanpasu::ClashCore::MihomoAlpha => nyanpasu_config::application::ClashCore::MihomoAlpha,
-        nyanpasu::ClashCore::ClashRsAlpha => nyanpasu_config::application::ClashCore::ClashRsAlpha,
-        nyanpasu::ClashCore::Meow => nyanpasu_config::application::ClashCore::Meow,
-    };
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -542,12 +557,6 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
     client.flush_system_dns_cache().await?;
     Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn get_clash_logs() -> Result<VecDeque<String>> {
-    Ok(Logger::global().get_log())
 }
 
 #[tauri::command]
@@ -613,10 +622,7 @@ pub async fn fetch_latest_core_versions(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_version(
-    app_handle: AppHandle,
-    core_type: nyanpasu::ClashCore,
-) -> Result<String> {
+pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
     match resolve::resolve_core_version(&app_handle, &core_type).await {
         Ok(version) => Ok(version),
         Err(err) => Err(IpcError::from(err)),
@@ -650,10 +656,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(
-    client: State<'_, NyanpasuClient>,
-    core_type: nyanpasu::ClashCore,
-) -> Result<usize> {
+pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
     Ok(client.download_core_update(core_type).await?)
 }
 
@@ -864,8 +867,8 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_server_port() -> Result<u16> {
-    Ok(*crate::server::SERVER_PORT)
+pub fn get_server_port(port: State<'_, crate::server::ServerPort>) -> Result<u16> {
+    Ok(port.0)
 }
 
 #[cfg(not(windows))]
@@ -878,12 +881,13 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 #[cfg(windows)]
 pub mod uwp {
     use super::Result;
-    use crate::core::win_uwp;
+    use crate::{core::win_uwp, utils::path::PathResolver};
+    use tauri::State;
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn invoke_uwp_tool() -> Result {
-        (win_uwp::invoke_uwptools().await)?;
+    pub async fn invoke_uwp_tool(paths: State<'_, PathResolver>) -> Result {
+        (win_uwp::invoke_uwptools(paths.app_resources_dir()?).await)?;
         Ok(())
     }
 }
@@ -896,7 +900,10 @@ pub async fn set_tray_icon(
     path: Option<PathBuf>,
 ) -> Result {
     (crate::core::tray::icon::set_icon(mode, path))?;
-    (crate::core::tray::Tray::update_part(&app_handle))?;
+    // Checked here, so a bad icon reaches the caller; only applying it to the
+    // tray is queued.
+    (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode)))?;
+    (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
     Ok(())
 }
 
@@ -1002,10 +1009,12 @@ pub async fn get_service_install_prompt() -> Result<String> {
     Ok(prompt)
 }
 
+/// Shuts every owner down and returns with the app still running; the caller
+/// then installs an update or relaunches.
 #[tauri::command]
 #[specta::specta]
-pub fn cleanup_processes(app_handle: AppHandle) -> Result {
-    crate::utils::help::cleanup_processes(&app_handle);
+pub async fn cleanup_processes(app_handle: AppHandle) -> Result {
+    crate::utils::exit::clean_up(&app_handle).await;
     Ok(())
 }
 
@@ -1254,9 +1263,11 @@ pub async fn check_update(
             crate::bundle::is_newer_release(channel, &local, &remote, build_time)
         });
     // apply proxy
-    if let Ok(proxy) = get_self_proxy() {
-        builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
-    }
+    builder = builder.proxy(
+        get_self_proxy(client.clash_info().port)
+            .parse()
+            .context("failed to parse proxy")?,
+    );
     if let Ok(Some(proxy)) = get_system_proxy() {
         builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
     }
@@ -1321,8 +1332,12 @@ pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn copy_clash_env(app_handle: AppHandle, env_type: CopyEnvOption) {
-    feat::copy_clash_env(&app_handle, &env_type);
+pub fn copy_clash_env(
+    app_handle: AppHandle,
+    client: State<'_, NyanpasuClient>,
+    env_type: CopyEnvOption,
+) {
+    proxy_env::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
 #[tauri::command]
@@ -1378,4 +1393,34 @@ pub fn retry_configuration_effect(
     kind: crate::client::effects::plan::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PendingDeepLinks;
+
+    #[test]
+    fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {
+        let pending = PendingDeepLinks::default();
+        assert!(pending.take_all().is_empty());
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fb".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        assert_eq!(
+            pending.take_all(),
+            [
+                "clash://install-config?url=https%3A%2F%2Fa",
+                "clash://install-config?url=https%3A%2F%2Fb",
+                "clash://install-config?url=https%3A%2F%2Fa",
+            ]
+        );
+        assert!(pending.take_all().is_empty(), "taking empties the queue");
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fc".into());
+        assert_eq!(
+            pending.take_all(),
+            ["clash://install-config?url=https%3A%2F%2Fc"]
+        );
+    }
 }
