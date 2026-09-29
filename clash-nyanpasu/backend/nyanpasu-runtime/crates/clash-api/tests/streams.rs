@@ -193,17 +193,22 @@ fn common_connections_preserve_absence_unknown_enums_and_extensions() {
     let connection = &snapshot.connections.as_ref().unwrap()[0];
     assert_eq!(connection.provider_chains, None);
     let metadata = connection.metadata.as_ref().unwrap();
-    assert_eq!(metadata.source_port, Some(1234));
-    assert_eq!(metadata.destination_port, Some(443));
-    assert_eq!(metadata.process_path, None);
+    assert_eq!(metadata.known.source_port, Some(1234));
+    assert_eq!(metadata.known.destination_port, Some(443));
+    assert_eq!(metadata.known.process_path, None);
     assert!(
-        matches!(&metadata.network, Some(clash_api::ConfigEnum::Unknown(value)) if value == "future-network")
+        matches!(&metadata.known.network, Some(clash_api::ConfigEnum::Unknown(value)) if value == "future-network")
     );
     let serialized = serde_json::to_value(connection).unwrap();
     assert_eq!(serialized["metadata"]["type"], "FutureInbound");
     assert_eq!(serialized["metadata"]["dnsMode"], "future-dns");
-    assert_eq!(serialized["metadata"]["extension"]["nested"][1], "two");
-    assert_eq!(serialized["newConnectionField"], true);
+    assert_eq!(
+        serialized["metadata"]["_extra"]["extension"]["nested"][1],
+        "two"
+    );
+    assert_eq!(serialized["_extra"]["newConnectionField"], true);
+    assert!(serialized.get("newConnectionField").is_none());
+    assert!(serialized["metadata"].get("extension").is_none());
     assert!(serialized.get("providerChains").is_none());
     for port in [
         serde_json::json!(-1),

@@ -31,6 +31,9 @@ uuid = { version = "1", features = ["serde"] }
 axum = { workspace = true, features = ["ws"] }
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["service", "tokio"] }
+specta-serde = "0.0.12"
+specta-typescript = "0.0.12"
+specta-util = "0.0.12"
 
 [target."cfg(windows)".dev-dependencies]
 windows = {

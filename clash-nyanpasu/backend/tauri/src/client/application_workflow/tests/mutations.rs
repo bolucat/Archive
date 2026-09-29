@@ -44,19 +44,20 @@ use super::{
             TouchedContent, runtime_impact,
         },
         mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind,
-            MutationReceipt,
+            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
+            MutationOutcomeKind, MutationReceipt,
         },
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
-    RecordingNotifications, ScriptedWaitEndpoint,
+    RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
         runtime,
+        runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
     core::actor_v2::{
@@ -64,6 +65,7 @@ use crate::{
         endpoint::ExecutionHost,
         service_actor::{ServiceClient, ServiceHostAdapter},
     },
+    state::mutation::{CommitAborted, RuntimeAftermath},
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -87,11 +89,15 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+    ) -> super::super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
-    fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    fn core_spec(
+        &self,
+        core: &ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -100,7 +106,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -110,11 +116,13 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
             .build(revision, inputs, ports, strict_transforms)
             .await
     }
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            !self.fail_publish.load(Ordering::SeqCst),
-            "scripted product publication failure"
-        );
+    async fn publish(
+        &self,
+        snapshot: &runtime::RuntimeSnapshot,
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+        if self.fail_publish.load(Ordering::SeqCst) {
+            return Err(super::scripted_publish_failure());
+        }
         self.delegate.publish(snapshot).await
     }
 }
@@ -720,7 +728,7 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for Rejector {
         "rejector".into()
     }
     async fn on_prepare(&self, _change: StateChange<T>) -> Ack {
-        Ack::Rejected("scripted domain veto".to_string())
+        Ack::Rejected(Arc::new(std::io::Error::other("scripted domain veto")))
     }
 }
 
@@ -1289,11 +1297,17 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
     // V08: the persistence cause, and that the runtime went back.
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(text.contains("failed to write config"), "{text}");
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::WriteConfig { runtime, source } = &aborted else {
+        panic!("{aborted:?}");
+    };
     assert!(
-        text.contains("the runtime was rolled back to the previous configuration"),
-        "{text}"
+        matches!(runtime, RuntimeAftermath::RolledBack),
+        "{runtime:?}"
+    );
+    assert!(
+        source.to_string().contains("failed to write config"),
+        "{source}"
     );
     assert_eq!(clash.snapshot_handle().load().version, committed);
     assert_eq!(
@@ -1557,16 +1571,30 @@ async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
         Some(&baseline.config_text.as_bytes().to_vec()),
         "the Cancel put the baseline back"
     );
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::RecoverAfterWriteFailure {
+        runtime,
+        source:
+            ReplaceIfVersionError::ResourceRecovery {
+                cause,
+                recovery_error,
+            },
+    } = &aborted
+    else {
+        panic!("{aborted:?}");
+    };
     // Both failures reach the caller with their causes.
-    assert!(text.contains("resource write failed: disk full"), "{text}");
     assert!(
-        text.contains("resource recovery failed: file locked"),
-        "{text}"
+        matches!(runtime, RuntimeAftermath::RolledBack),
+        "{runtime:?}"
     );
     assert!(
-        text.contains("the runtime was rolled back to the previous configuration"),
-        "{text}"
+        format!("{cause:#}").contains("resource write failed: disk full"),
+        "{cause:#}"
+    );
+    assert!(
+        format!("{recovery_error:#}").contains("resource recovery failed: file locked"),
+        "{recovery_error:#}"
     );
     drop(clash);
 }
@@ -1606,10 +1634,18 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
     let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("a core is running that this session has not applied to"),
-        "{text}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::UnsettledBaseline {
+                    gap: EvidenceGap::NoRestorableBaseline
+                }
+            )
+        ),
+        "{refused:?}"
     );
     assert!(
         !client.status().uncertain,
@@ -1705,15 +1741,18 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
     assert_eq!(receipt.conclusion, MutationConclusion::Withdrawn);
     // V07: the caller is told why.
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(
-        text.contains("the core will not run this document"),
-        "{text}"
-    );
     // A Try that ran and was refused, not an evidence gap.
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("the core rejected this configuration"),
-        "{text}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::CoreRejectedConfig { message, .. }
+                    if message.contains("the core will not run this document")
+            )
+        ),
+        "{refused:?}"
     );
     assert!(!f.client.status().uncertain);
 }
@@ -1780,10 +1819,18 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
     let receipt = settled(&f.client, operation_id).await;
     assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("reports no settled runtime state (None)"),
-        "{text}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::UnsettledBaseline {
+                    gap: EvidenceGap::BaselineUnconfirmed
+                }
+            )
+        ),
+        "{refused:?}"
     );
     assert!(
         !f.client.status().uncertain,
@@ -1886,11 +1933,18 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
         );
         assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
         assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-        let text =
-            crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+        let refused = refusals(&classify(result.unwrap_err(), &receipt));
         assert!(
-            text.contains("reports no settled runtime state (Some("),
-            "{state:?}: {text}"
+            matches!(
+                refused.as_slice(),
+                [error] if matches!(
+                    error.as_ref(),
+                    RuntimeError::UnsettledBaseline {
+                        gap: EvidenceGap::CoreTransitioning
+                    }
+                )
+            ),
+            "{state:?}: {refused:?}"
         );
         assert!(
             !f.client.status().uncertain,
@@ -2161,21 +2215,26 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
                 stage: super::super::mutation::MutationStage::TryingCritical,
                 message: "briefly unreachable".into(),
             },
+            error: Arc::new(RuntimeError::ShuttingDown),
         }
         .ack(),
-        Ack::Degraded(message) if message == "briefly unreachable"
+        Ack::Degraded(error) if refusal_of("test", &error).to_string()
+            == RuntimeError::ShuttingDown.to_string()
     ));
     assert!(matches!(
         RuntimePrepareOutcome::Rejected {
             cause: ApplyFailure {
                 stage: super::super::mutation::MutationStage::TryingCritical,
                 cause: RefusalCause::Try(TryCauseKind::Deterministic),
-                message: "the core rejected it".into(),
+                error: Arc::new(RuntimeError::Isolated),
             },
             restored: super::super::mutation::KnownRuntimeState::Stopped,
         }
         .ack(),
-        Ack::Rejected(message) if message == "the core rejected it"
+        Ack::Rejected(error) if matches!(
+            refusal_of("test", &error).as_ref(),
+            RuntimeError::Isolated
+        )
     ));
 }
 
@@ -2605,9 +2664,9 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     assert!(client.status().uncertain);
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "an unknown restore retains its lower operation identity: {}",
-        error.message
+        error
     );
     assert!(
         ports.confirmed().is_none(),
@@ -3599,22 +3658,29 @@ struct RefusedInstall;
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for RefusedInstall {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::types::StatusInfo<'static>,
+        crate::core::service::control::ServiceCommandError,
+    > {
         crate::client::tests::IdleServiceAdapter.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
-        Err("the user cancelled the elevation prompt".into())
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        Err(crate::core::service::control::ServiceCommandError::mock(
+            "the user cancelled the elevation prompt",
+        ))
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -3705,7 +3771,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     .await
     .unwrap();
     assert!(built.is_ok());
-    let captured = f.builder.capture_content(&profiles).await.unwrap();
+    let captured = f.builder.capture_content(&profiles).await;
     let mut revisions = runtime::RuntimeRevisionAllocator::new();
     let build = |revision, strict| {
         f.builder.build(
@@ -3724,11 +3790,11 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         )
     };
     assert!(
-        build(revisions.allocate().unwrap(), false).await.is_ok(),
+        build(revisions.allocate(), false).await.is_ok(),
         "ordinary build keeps D7 passthrough"
     );
     assert!(
-        build(revisions.allocate().unwrap(), true).await.is_err(),
+        build(revisions.allocate(), true).await.is_err(),
         "TCC candidate rejects missing transform"
     );
 }
@@ -4231,7 +4297,7 @@ async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
         matches!(
             refusal.report.subscriber_acks.as_slice(),
             [ack] if matches!(&ack.status, AckStatus::Rejected { reason }
-                if reason.contains("nothing was committed"))
+                if matches!(refusal_of("test", reason).as_ref(), RuntimeError::OwnerUnavailable))
         ),
         "{:?}",
         refusal.report
@@ -4277,10 +4343,18 @@ async fn a_failed_save_whose_rollback_fails_reports_both() {
     );
     let receipt = settlement.await.expect("the Runtime settles its Try");
     assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(text.contains("failed to write config"), "{text}");
-    assert!(text.contains("rolling the runtime back failed"), "{text}");
-    assert!(text.contains("recovery required"), "{text}");
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::WriteConfig { runtime, source } = &aborted else {
+        panic!("{aborted:?}");
+    };
+    assert!(
+        matches!(runtime, RuntimeAftermath::RollbackFailed { .. }),
+        "{runtime:?}"
+    );
+    assert!(
+        source.to_string().contains("failed to write config"),
+        "{source}"
+    );
     assert!(f.client.status().uncertain);
 }
 
@@ -4380,5 +4454,8 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
         crate::client::runtime::RuntimeCommitStatus::RecoveryRequired
     );
     assert_eq!(degradations.len(), 1);
-    assert_eq!(degradations[0].code, "runtime_recovery_required");
+    assert!(matches!(
+        degradations[0].reason,
+        crate::client::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
+    ));
 }

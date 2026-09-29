@@ -16,8 +16,8 @@ pub use configs::{
     UpdateConfigOptions, UpdateConfigRequest,
 };
 pub use connections::{
-    Connection, ConnectionMetadata, ConnectionNetwork, ConnectionStreamQuery, ConnectionType,
-    ConnectionsSnapshot, DnsMode,
+    Connection, ConnectionMetadata, ConnectionMetadataFields, ConnectionNetwork,
+    ConnectionStreamQuery, ConnectionType, ConnectionsSnapshot, DnsMode, JsonValue,
 };
 pub use dns::{DnsQuery, DnsQuestion, DnsRecord, DnsRecordType, DnsResponse};
 pub use logs::{LogEntry, LogField, LogLevel, LogQuery, StructuredLogEntry, StructuredLogLevel};

@@ -1,8 +1,8 @@
 import ArrowRightAltRounded from '~icons/material-symbols/arrow-right-alt-rounded'
 import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
+import { isObject } from 'es-toolkit/compat'
 import { filesize } from 'filesize'
-import { isObject } from 'lodash-es'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -23,8 +23,8 @@ import {
   ClashCore,
   ClashCoresDetail,
   UpdaterSummary,
-  useClashConnections,
   useClashCores,
+  useDeleteClashConnections,
   useSetting,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -92,6 +92,7 @@ function useCoreUpdateTask(
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     }
@@ -274,7 +275,7 @@ export default function CoreManagerCard() {
     fetchRemote,
   } = useClashCores()
 
-  const { deleteConnections } = useClashConnections()
+  const deleteConnections = useDeleteClashConnections()
 
   const { value: currentCoreKey } = useSetting('core')
 
@@ -300,6 +301,7 @@ export default function CoreManagerCard() {
           `${m.settings_clash_core_manager_card_loading_error()} \n${formatError(e)}`,
           {
             kind: 'error',
+            error: e,
             title: 'Error',
           },
         )
@@ -323,6 +325,7 @@ export default function CoreManagerCard() {
           `${m.settings_clash_core_manager_card_restart_sidecar_error()} \n${formatError(e)}`,
           {
             kind: 'error',
+            error: e,
             title: 'Error',
           },
         )
@@ -337,6 +340,7 @@ export default function CoreManagerCard() {
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     }

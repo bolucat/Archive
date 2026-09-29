@@ -42,24 +42,24 @@ require (
 	github.com/sagernet/gomobile v0.1.12
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/nftables v0.3.0-mod.4
-	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
-	github.com/sagernet/sing v0.9.7-0.20260927091435-fcc22e2b9f96
-	github.com/sagernet/sing-anytls v0.0.0-20260924021732-7ca72921ac6a
-	github.com/sagernet/sing-cloudflared v0.1.3
-	github.com/sagernet/sing-mux v0.3.9
-	github.com/sagernet/sing-openconnect v0.1.1-0.20260925112412-098ce1337fbe
-	github.com/sagernet/sing-openvpn v0.1.1-0.20260925112415-fe3a4fdc2e64
-	github.com/sagernet/sing-quic v0.7.1
-	github.com/sagernet/sing-shadowsocks v0.2.8
-	github.com/sagernet/sing-shadowsocks2 v0.2.1
-	github.com/sagernet/sing-shadowtls v0.2.1
+	github.com/sagernet/quic-go v0.61.0-sing-box-mod.9
+	github.com/sagernet/sing v0.9.7-0.20260929150544-6f21f2425a95
+	github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
+	github.com/sagernet/sing-cloudflared v0.1.4-0.20260929150702-b3a1e8f3018c
+	github.com/sagernet/sing-mux v0.3.10-0.20260928104022-13d386f5efbd
+	github.com/sagernet/sing-openconnect v0.1.1-0.20260929151226-29757281a247
+	github.com/sagernet/sing-openvpn v0.1.1-0.20260929151220-f330676d6d4a
+	github.com/sagernet/sing-quic v0.7.2-0.20260929152029-258509488380
+	github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929152116-0a3456819ce7
+	github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20260929152114-a69d1086332b
+	github.com/sagernet/sing-shadowtls v0.2.2-0.20260928201441-a9c0127d5c99
 	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
-	github.com/sagernet/sing-tun v0.9.7-0.20260925112405-97d11460f2ea
+	github.com/sagernet/sing-tun v0.9.7-0.20260929152201-837976228ca2
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca
-	github.com/sagernet/sing-vmess v0.2.8
+	github.com/sagernet/sing-vmess v0.2.9-0.20260929152519-9b95ab8c9478
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1
 	github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260925112514-35e61219dedd
-	github.com/sagernet/wireguard-go v0.0.8-0.20260925112423-da3fb928cdc1
+	github.com/sagernet/wireguard-go v0.0.8-0.20260929150556-ca3bc60c4ce7
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.0

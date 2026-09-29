@@ -8,6 +8,7 @@
 
 mod actor;
 pub mod adapters;
+pub(crate) mod error;
 pub mod ports;
 
 #[cfg(test)]
@@ -23,12 +24,16 @@ use nyanpasu_config::{
     },
 };
 use ractor::{Actor, ActorRef, rpc::CallResult};
+use snafu::ResultExt as _;
 use tokio_util::task::TaskTracker;
 
 use self::{
     actor::{HotkeyActor, Message},
+    error::HotkeyEffectError,
     ports::{HotkeyAction, HotkeyBindings},
 };
+use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
+
 use super::{
     NyanpasuClient, Result,
     effects::{
@@ -117,11 +122,7 @@ impl HotkeyClient {
 
 /// Not retryable: an actor that is gone never answers a retry either.
 fn stopped_health() -> EffectHealth {
-    EffectHealth::Degraded {
-        code: "hotkey_stopped",
-        message: "the hotkey actor stopped before answering".to_owned(),
-        retryable: false,
-    }
+    HotkeyEffectError::Stopped.health()
 }
 
 /// Rejects a hotkey list before anything is written.
@@ -132,9 +133,8 @@ fn stopped_health() -> EffectHealth {
 pub(crate) fn validate_bindings(
     raw: &[String],
     accelerators: &dyn ports::AcceleratorValidator,
-) -> Result<()> {
-    HotkeyBindings::parse(raw, accelerators)
-        .map_err(|error| super::ClientError::Anyhow(error.into()))?;
+) -> std::result::Result<(), ConfigError> {
+    HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())
 }
 
@@ -208,7 +208,7 @@ impl NyanpasuClient {
 fn log_degradations(outcome: &MutationOutcome<()>) {
     for degradation in outcome.degradations() {
         tracing::warn!(
-            code = %degradation.code,
+            reason = ?degradation.reason,
             message = %degradation.message,
             "a hotkey action committed with a degraded side effect"
         );

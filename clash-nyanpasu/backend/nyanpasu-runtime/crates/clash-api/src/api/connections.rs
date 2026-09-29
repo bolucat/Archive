@@ -17,8 +17,23 @@ pub struct ConnectionsSnapshot {
     pub memory: Option<u64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+/// Type-only description of an arbitrary JSON value, used to give the `extra`
+/// maps below (see [`Connection::extra`], [`ConnectionMetadata::extra`]) a
+/// named, exportable specta shape. Never constructed or serialized itself;
+/// the actual runtime data stays `serde_json::Value`.
+#[derive(serde::Serialize, specta::Type)]
+#[serde(untagged)]
+pub enum JsonValue {
+    Bool(bool),
+    Number(f64),
+    String(String),
+    Array(Vec<Option<JsonValue>>),
+    Object(indexmap::IndexMap<String, Option<JsonValue>>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+#[serde(from = "ConnectionWire")]
 pub struct Connection {
     pub id: Uuid,
     pub metadata: Option<ConnectionMetadata>,
@@ -30,8 +45,53 @@ pub struct Connection {
     pub provider_chains: Option<Vec<String>>,
     pub rule: String,
     pub rule_payload: String,
-    #[serde(flatten)]
+    /// Fields Mihomo returns that this type does not yet model. Deserializing
+    /// (from Mihomo) collects unknown keys here regardless of direction;
+    /// serializing (for our own IPC) emits them under this named key instead
+    /// of flattening them, so a future Mihomo field literally named `extra`
+    /// cannot collide with it.
+    #[serde(rename = "_extra")]
+    #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
     pub extra: indexmap::IndexMap<String, serde_json::Value>,
+}
+
+/// Deserialize-only mirror of [`Connection`], with unknown fields flattened
+/// the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+/// here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+/// different, named shape for `extra` (see [`Connection::extra`]).
+#[derive(serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct ConnectionWire {
+    id: Uuid,
+    metadata: Option<ConnectionMetadata>,
+    upload: i64,
+    download: i64,
+    start: DateTime<FixedOffset>,
+    chains: Vec<String>,
+    #[serde(default)]
+    provider_chains: Option<Vec<String>>,
+    rule: String,
+    rule_payload: String,
+    #[serde(flatten)]
+    #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
+    extra: indexmap::IndexMap<String, serde_json::Value>,
+}
+
+impl From<ConnectionWire> for Connection {
+    fn from(wire: ConnectionWire) -> Self {
+        Self {
+            id: wire.id,
+            metadata: wire.metadata,
+            upload: wire.upload,
+            download: wire.download,
+            start: wire.start,
+            chains: wire.chains,
+            provider_chains: wire.provider_chains,
+            rule: wire.rule,
+            rule_payload: wire.rule_payload,
+            extra: wire.extra,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
@@ -90,8 +150,11 @@ pub enum DnsMode {
     Unknown,
 }
 
+/// Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+/// (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+/// defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
-pub struct ConnectionMetadata {
+pub struct ConnectionMetadataFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<crate::ConfigEnum<ConnectionNetwork>>,
     #[serde(rename = "type")]
@@ -165,8 +228,36 @@ pub struct ConnectionMetadata {
     #[serde(rename = "sniffHost")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sniff_host: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(from = "ConnectionMetadataWire")]
+pub struct ConnectionMetadata {
     #[serde(flatten)]
+    pub known: ConnectionMetadataFields,
+    /// See [`Connection::extra`].
+    #[serde(rename = "_extra")]
+    #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
     pub extra: indexmap::IndexMap<String, serde_json::Value>,
+}
+
+/// Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`].
+#[derive(serde::Deserialize, specta::Type)]
+struct ConnectionMetadataWire {
+    #[serde(flatten)]
+    known: ConnectionMetadataFields,
+    #[serde(flatten)]
+    #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
+    extra: indexmap::IndexMap<String, serde_json::Value>,
+}
+
+impl From<ConnectionMetadataWire> for ConnectionMetadata {
+    fn from(wire: ConnectionMetadataWire) -> Self {
+        Self {
+            known: wire.known,
+            extra: wire.extra,
+        }
+    }
 }
 
 /// WebSocket sampling interval. Mihomo interprets it as decimal milliseconds.
@@ -298,9 +389,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(metadata.source_port, Some(1234));
-        assert_eq!(metadata.destination_port, Some(443));
-        assert_eq!(metadata.source_geo_ip, None);
+        assert_eq!(metadata.known.source_port, Some(1234));
+        assert_eq!(metadata.known.destination_port, Some(443));
+        assert_eq!(metadata.known.source_geo_ip, None);
     }
 
     #[test]
@@ -312,5 +403,54 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn unknown_fields_deserialize_flattened_and_serialize_under_named_extra() {
+        let connection: Connection = serde_json::from_str(
+            r#"{
+                "id":"550e8400-e29b-41d4-a716-446655440000","upload":1,"download":2,
+                "start":"2026-09-07T12:00:00Z","chains":["DIRECT"],"rule":"Match","rulePayload":"",
+                "metadata":{"extension":{"nested":[1,"two"]}},
+                "newConnectionField":true
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            connection.extra.get("newConnectionField"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            connection.metadata.as_ref().unwrap().extra.get("extension"),
+            Some(&serde_json::json!({"nested": [1, "two"]}))
+        );
+
+        let serialized = serde_json::to_value(&connection).unwrap();
+        assert_eq!(serialized["_extra"]["newConnectionField"], true);
+        assert_eq!(
+            serialized["metadata"]["_extra"]["extension"]["nested"][1],
+            "two"
+        );
+        assert!(serialized.get("newConnectionField").is_none());
+        assert!(serialized["metadata"].get("extension").is_none());
+    }
+
+    #[test]
+    fn a_field_literally_named_extra_does_not_collide_with_the_named_wrapper() {
+        let connection: Connection = serde_json::from_str(
+            r#"{
+                "id":"550e8400-e29b-41d4-a716-446655440000","upload":1,"download":2,
+                "start":"2026-09-07T12:00:00Z","chains":["DIRECT"],"rule":"Match","rulePayload":"",
+                "extra":"mihomo-added-this"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            connection.extra.get("extra"),
+            Some(&serde_json::json!("mihomo-added-this"))
+        );
+
+        let serialized = serde_json::to_value(&connection).unwrap();
+        assert_eq!(serialized["_extra"]["extra"], "mihomo-added-this");
     }
 }

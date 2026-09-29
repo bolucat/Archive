@@ -20,7 +20,9 @@ use indexmap::{IndexMap, IndexSet};
 
 pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, TransformFailure};
 pub use error::RuntimePipelineError;
-pub use ports::{PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner};
+pub use ports::{PortError, ProfileContentSource, ScriptRunner};
+
+use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
 use crate::{
     clash::config::{overrides::ClashGuardOverrides, tun_stack::TunStack},
@@ -126,7 +128,7 @@ impl LogSink {
     fn failed_profile(&mut self, id: &ProfileId, failed: bool) {
         if failed {
             self.failures
-                .push(TransformFailure::Profile(id.to_string()));
+                .push(TransformFailure::Profile { id: id.to_string() });
         }
     }
 
@@ -192,9 +194,7 @@ pub(crate) fn apply_transform(
             }
         },
         TransformDefinition::Script(script) => {
-            let outcome = runner.run(script.runtime, &text, current);
-            entries.extend(outcome.logs);
-            match outcome.result {
+            match runner.run(script.runtime, &text, current, &mut entries) {
                 Ok(next) => (Arc::new(next), kind, entries, false),
                 Err(error) => {
                     // Parity: enhance/utils.rs:118 — error log + passthrough.
@@ -225,13 +225,17 @@ pub fn execute(
             )
         }
         ExecutionTarget::Selected(id) => {
-            let item = inputs
-                .profiles
-                .items
-                .get(id)
-                .ok_or_else(|| RuntimePipelineError::SelectedProfileNotFound(id.clone()))?;
+            let Some(item) = inputs.profiles.items.get(id) else {
+                return Err(SelectedProfileNotFoundSnafu {
+                    profile: id.clone(),
+                }
+                .build());
+            };
             let ProfileDefinition::Config { config } = &item.definition else {
-                return Err(RuntimePipelineError::SelectedProfileNotConfig(id.clone()));
+                return Err(SelectedProfileNotConfigSnafu {
+                    profile: id.clone(),
+                }
+                .build());
             };
             match config {
                 crate::profile::ConfigDefinition::File(_) => {
@@ -308,25 +312,27 @@ pub fn execute(
     )?;
 
     for (index, builtin_transform) in inputs.builtin_transforms.iter().enumerate() {
-        let outcome = runner.run(
+        let mut entries = Vec::new();
+        let result = runner.run(
             builtin_transform.runtime,
             &builtin_transform.source,
             &working,
+            &mut entries,
         );
         let tag = OperatorTag::BuiltinTransform {
             selected_profile_id: selected.clone(),
             name: builtin_transform.name.clone(),
             step_index: index as u32,
         };
-        let mut entries = outcome.logs;
-        let next = match outcome.result {
+        let next = match result {
             Ok(value) => Arc::new(value),
             Err(error) => {
                 // Parity: builtin errors are swallowed with a log (mod.rs:136-141),
                 // now retained instead of discarded (spec §13 #7).
                 entries.push(StepLogEntry::error(error.to_string()));
-                logs.failures
-                    .push(TransformFailure::Builtin(builtin_transform.name.clone()));
+                logs.failures.push(TransformFailure::Builtin {
+                    name: builtin_transform.name.clone(),
+                });
                 working.clone()
             }
         };

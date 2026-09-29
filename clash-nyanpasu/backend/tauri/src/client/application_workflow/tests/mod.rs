@@ -14,15 +14,59 @@ use super::{
     },
     *,
 };
-use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
+use crate::client::core_lifecycle::ports::{
+    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+};
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 use struct_patch::Patch;
 use tokio::sync::Notify;
+
+/// What the source that hit `error` would classify it as, given the Runtime's
+/// receipt for the operation.
+fn classify(
+    error: nyanpasu_core::state::ReplaceIfVersionError,
+    receipt: &super::mutation::MutationReceipt,
+) -> crate::state::mutation::CommitAborted {
+    crate::state::mutation::CommitAborted::classify(error, Some(receipt))
+}
+
+/// The errors a required participant gave for refusing a candidate.
+fn refusals(
+    aborted: &crate::state::mutation::CommitAborted,
+) -> Vec<std::sync::Arc<crate::client::runtime_error::RuntimeError>> {
+    match aborted {
+        crate::state::mutation::CommitAborted::RuntimeRefused { errors, .. } => errors.clone(),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
+
+/// What became of the runtime after the aborted commit.
+fn aftermath(
+    aborted: &crate::state::mutation::CommitAborted,
+) -> &crate::state::mutation::RuntimeAftermath {
+    use crate::state::mutation::CommitAborted::*;
+    match aborted {
+        WriteConfig { runtime, .. }
+        | RecoverAfterWriteFailure { runtime, .. }
+        | RuntimeRefused { runtime, .. }
+        | RuntimeFailed { runtime, .. } => runtime,
+        ValidateState { .. } => panic!("{aborted:?} has no runtime aftermath"),
+    }
+}
+
+/// A publication that fails the way a full disk does.
+pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRuntimeError {
+    crate::client::runtime::PublishRuntimeError::CreateRuntimeDirectory {
+        path: std::path::PathBuf::from("runtime").into(),
+        source: std::io::Error::other("scripted publish failure"),
+    }
+}
 
 struct BlockingBuilder {
     delegate: adapters::FsRuntimeBuildAdapter,
@@ -39,11 +83,15 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::inputs::FrozenProfileContent> {
+    ) -> super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
-    fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    fn core_spec(
+        &self,
+        core: &ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -52,17 +100,22 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
-        anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+        }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
             .await
     }
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
+    async fn publish(
+        &self,
+        snapshot: &runtime::RuntimeSnapshot,
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
         self.delegate.publish(snapshot).await
     }
 }
@@ -661,10 +714,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
             switch.await.unwrap().unwrap(),
             runtime::MutationOutcome::Committed { .. }
         ));
-        assert_eq!(
-            uninstall.await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            uninstall.await.unwrap_err(),
+            RuntimeError::ServiceHostsCore
+        ));
         set_service_mode(&client, false).await.unwrap();
         client.uninstall_service().await.unwrap();
         let calls = calls.lock().unwrap();
@@ -697,7 +750,7 @@ struct Installer {
 
 #[async_trait::async_trait]
 impl BinaryInstaller for Installer {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> anyhow::Result<()> {
+    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.submissions_at_copy
             .store(self.endpoint.submissions(), Ordering::SeqCst);
@@ -705,8 +758,16 @@ impl BinaryInstaller for Installer {
         if self.park {
             self.release.notified().await;
         }
-        anyhow::ensure!(!self.fail, "scripted installation failure");
-        tokio::fs::copy(&artifact.source, &artifact.destination).await?;
+        if self.fail {
+            return Err(InstallCoreBinaryError::ElevatedCopyFailed {
+                core: artifact.target,
+                destination: (&artifact.destination).into(),
+                exit_code: Some(1),
+            });
+        }
+        tokio::fs::copy(&artifact.source, &artifact.destination)
+            .await
+            .unwrap();
         Ok(())
     }
 }
@@ -789,7 +850,7 @@ async fn barrier(client: &ApplicationWorkflowClient) {
 async fn start_replacement(
     f: &Fixture,
 ) -> (
-    tokio::task::JoinHandle<Result<(), CoreError>>,
+    tokio::task::JoinHandle<Result<(), RuntimeError>>,
     std::path::PathBuf,
 ) {
     let target = f.client.get_app_config().await.unwrap().core;
@@ -948,10 +1009,10 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         assert_eq!(f.endpoint.submissions(), 2);
         f.installer.release.notify_one();
         replace.await.unwrap().unwrap();
-        assert_eq!(
-            reconcile.await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            reconcile.await.unwrap_err(),
+            RuntimeError::ShuttingDown
+        ));
         shutdown.await;
         let before = f.endpoint.submissions();
         assert!(f.client.reconcile_core().await.is_err());
@@ -986,13 +1047,13 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
-        assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
         assert!(f.client.inner.application_workflow.status().uncertain);
         assert!(f.client.promoted_runtime().await.is_some());
-        assert_eq!(
-            f.client.stop_core().await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            f.client.stop_core().await.unwrap_err(),
+            RuntimeError::Isolated
+        ));
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }
@@ -1093,7 +1154,10 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "runtime_deferred");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+        ));
         assert_eq!(
             client.configuration_status().runtime.health,
             crate::client::convergence::ConvergenceHealth::RetryScheduled
@@ -1185,29 +1249,50 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
             let error = client
                 .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
                 .await
-                .expect_err("the save failed")
-                .to_string();
+                .expect_err("the save failed");
             let after = client.inner.clash_config.snapshot();
             assert_eq!(after.version, before.version);
             assert_eq!(
                 serde_json::to_value(after.state).unwrap(),
                 serde_json::to_value(before.state).unwrap()
             );
-            assert!(error.contains("failed to persist clash config"), "{error}");
-            assert!(error.contains("failed to write config"), "{error}");
+            let crate::client::ClientError::Config(
+                crate::state::config_error::ConfigError::Commit {
+                    domain: super::mutation::ConfigDomain::Clash,
+                    source: aborted,
+                },
+            ) = &error
+            else {
+                panic!("{error:?}");
+            };
+            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
+                panic!("{aborted:?}");
+            };
+            assert!(
+                source.to_string().contains("failed to write config"),
+                "{source}"
+            );
             assert_eq!(
                 endpoint.submissions(),
                 2,
                 "Try applied and Cancel resubmitted the baseline"
             );
             if restore_lost {
-                assert!(error.contains("rolling the runtime back failed"), "{error}");
-                assert!(error.contains("recovery required"), "{error}");
+                assert!(
+                    matches!(
+                        aftermath(aborted),
+                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
+                    ),
+                    "{aborted:?}"
+                );
                 assert!(client.inner.application_workflow.status().uncertain);
             } else {
                 assert!(
-                    error.contains("the runtime was rolled back to the previous configuration"),
-                    "{error}"
+                    matches!(
+                        aftermath(aborted),
+                        crate::state::mutation::RuntimeAftermath::RolledBack
+                    ),
+                    "{aborted:?}"
                 );
                 assert!(!client.inner.application_workflow.status().uncertain);
             }
@@ -1234,10 +1319,10 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
             .replace_binary(artifact)
             .await
             .unwrap_err();
-        assert!(error.message.contains("was not run"), "{error}");
+        assert!(matches!(error, RuntimeError::ShuttingDown), "{error}");
         let outcomes = terminal.0.lock().unwrap().clone();
         assert_eq!(outcomes.len(), 1, "exactly one terminal notification");
-        assert!(outcomes[0].as_ref().unwrap().contains("was not run"));
+        assert!(outcomes[0].as_ref().unwrap().contains("shutting down"));
         assert_eq!(f.installer.calls.load(Ordering::SeqCst), 0);
 
         // Through the updater, the same refusal ends its task as a failure
@@ -1265,7 +1350,7 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
         .await
         .expect("the updater task ends");
         assert!(
-            matches!(&state, UpdaterState::Failed(reason) if reason.contains("was not run")),
+            matches!(&state, UpdaterState::Failed(reason) if reason.contains("shutting down")),
             "{state:?}"
         );
         assert_ne!(
@@ -1540,7 +1625,7 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 "rejected request must deliver exactly one terminal notification"
             );
             assert!(outcomes[0].as_ref().unwrap().contains(if isolate {
-                "uncertain outcome"
+                "left the runtime unsettled"
             } else {
                 "shutting down"
             }));

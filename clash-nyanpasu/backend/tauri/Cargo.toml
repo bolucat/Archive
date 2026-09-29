@@ -54,6 +54,7 @@ once_cell = '1.19.0'
 async-trait = '0.1.77'
 dyn-clone = '1.0.16'
 thiserror = { workspace = true }
+snafu = { workspace = true }
 parking_lot = { version = '0.12.1' }
 fs-err = { workspace = true }  # for more detailed io error
 itertools = '0.15'  # sweet iterator utilities
@@ -108,7 +109,7 @@ port_scanner = '0.1.5'
 sysproxy = { workspace = true }
 
 # Serialization
-serde = { version = '1.0', features = ['derive'] }
+serde = { version = '1.0', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 # Kept as a direct dependency rather than inherited: Cargo's workspace
 # inheritance does not allow `package` renames at the member site.
@@ -201,8 +202,9 @@ mlua = { version = '0.12', features = [
 ] }
 
 # JavaScript Integration
-boa_utils = { path = '../boa_utils' }  # should be removed when boa support console customize
+boa_utils = { path = '../boa_utils' }
 boa_engine = { workspace = true, features = ['annex-b'] }
+boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
 
 # Tauri Dependencies
 tauri = { version = '2.4', features = [

@@ -1,7 +1,14 @@
 use crate::{
-    client::{ClientError, NyanpasuClient},
+    client::{
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
+    },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
+    state::{
+        config_error::ConfigError,
+        profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
+    },
     utils::{
         candy,
         collect::EnvInfo,
@@ -17,69 +24,123 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 
-#[derive(Debug, thiserror::Error)]
-pub enum IpcError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    SerdeYaml(#[from] serde_yaml::Error),
-    #[error(transparent)]
-    SerdeJson(#[from] serde_json::Error),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
-    #[error(transparent)]
-    Storage(#[from] StorageOperationError),
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
-    #[error(transparent)]
-    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
-    #[error(transparent)]
-    Core(#[from] nyanpasu_core_manager::CoreError),
-    #[error("{0}")]
-    Custom(String),
+/// A failed command as the frontend receives it.
+#[derive(Debug, Serialize, specta::Type)]
+pub struct IpcError {
+    /// The domain failure; the frontend localizes it.
+    kind: IpcErrorKind,
+    /// The error's own message, shown when `kind` cannot be localized.
+    message: String,
+    /// The original error, copied by the user for diagnosis.
+    detail: String,
 }
 
-impl From<String> for IpcError {
-    fn from(s: String) -> Self {
-        IpcError::Custom(s)
+/// The domain a command failed in. A domain joins once its errors are typed.
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(tag = "domain", content = "error", rename_all = "snake_case")]
+pub enum IpcErrorKind {
+    /// Not classified into a domain; only `message` describes it.
+    Unknown,
+    Profiles(Box<ProfilesError>),
+    Runtime(Box<RuntimeError>),
+    Config(Box<ConfigError>),
+    Storage(Box<StorageOperationError>),
+    SystemDns(Box<SystemDnsError>),
+    SystemProxy(Box<OsProxyError>),
+    Effects(Box<EffectsError>),
+}
+
+impl From<EffectsError> for IpcErrorKind {
+    fn from(error: EffectsError) -> Self {
+        Self::Effects(Box::new(error))
     }
 }
 
-impl From<ClientError> for IpcError {
-    fn from(err: ClientError) -> Self {
-        match err {
-            ClientError::Io(err) => IpcError::Io(err),
-            ClientError::SerdeYaml(err) => IpcError::SerdeYaml(err),
-            ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
-            ClientError::Storage(err) => IpcError::Storage(err),
-            ClientError::Anyhow(err) => IpcError::Anyhow(err),
-            ClientError::Profiles(err) => IpcError::Profiles(err),
-            ClientError::Custom(err) => IpcError::Custom(err),
+impl From<OsProxyError> for IpcErrorKind {
+    fn from(error: OsProxyError) -> Self {
+        Self::SystemProxy(Box::new(error))
+    }
+}
+
+impl From<SystemDnsError> for IpcErrorKind {
+    fn from(error: SystemDnsError) -> Self {
+        Self::SystemDns(Box::new(error))
+    }
+}
+
+impl From<StorageOperationError> for IpcErrorKind {
+    fn from(error: StorageOperationError) -> Self {
+        Self::Storage(Box::new(error))
+    }
+}
+
+impl From<ConfigError> for IpcErrorKind {
+    fn from(error: ConfigError) -> Self {
+        Self::Config(Box::new(error))
+    }
+}
+
+impl From<RuntimeError> for IpcErrorKind {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(Box::new(error))
+    }
+}
+
+impl From<ProfilesError> for IpcErrorKind {
+    fn from(error: ProfilesError) -> Self {
+        Self::Profiles(Box::new(error))
+    }
+}
+
+impl From<ClientError> for IpcErrorKind {
+    fn from(error: ClientError) -> Self {
+        match error {
+            ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
+            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
+            ClientError::Config(error) => Self::Config(Box::new(error)),
+            ClientError::Storage(error) => Self::Storage(Box::new(error)),
+            _ => Self::Unknown,
         }
     }
 }
 
-impl serde::Serialize for IpcError {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        serializer.serialize_str(format!("{self:#?}").as_str())
+impl<E> From<E> for IpcError
+where
+    E: std::fmt::Display + std::fmt::Debug,
+    IpcErrorKind: From<E>,
+{
+    fn from(error: E) -> Self {
+        Self {
+            message: error.to_string(),
+            detail: format!("{error:?}"),
+            kind: error.into(),
+        }
     }
 }
 
-impl specta::Type for IpcError {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        let _ = types;
-        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
-    }
+macro_rules! unknown_domain {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for IpcErrorKind {
+            fn from(_: $error) -> Self {
+                Self::Unknown
+            }
+        }
+    )*};
 }
+
+unknown_domain!(
+    String,
+    std::io::Error,
+    serde_yaml::Error,
+    serde_json::Error,
+    tauri::Error,
+    anyhow::Error,
+);
 
 type Result<T = ()> = StdResult<T, IpcError>;
 
@@ -102,7 +163,7 @@ pub struct GetSysProxyResponse {
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles as DomainProfiles,
-    RemoteProfileOptionsPatch,
+    RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[tauri::command]
@@ -139,12 +200,16 @@ pub async fn import_profile(
     url: String,
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
+    transform: Option<TransformKind>,
 ) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
-    let url = url::Url::parse(&url).context("failed to parse the url")?;
+    let url = snafu::ResultExt::context(
+        url::Url::parse(&url),
+        InvalidSubscriptionUrlSnafu { url: &url },
+    )?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client.import_profile(url, name, option).await?)
+    Ok(client.import_profile(url, name, option, transform).await?)
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -297,9 +362,9 @@ pub async fn view_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
 ) -> Result {
-    let path = client.get_profile_materialized_path(uid).await?;
+    let path = client.get_profile_materialized_path(uid.clone()).await?;
     if !path.exists() {
-        return Err(IpcError::Custom("profile file not found".into()));
+        return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
     help::open_file(app_handle, path)?;
     Ok(())
@@ -338,31 +403,16 @@ pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client
 pub async fn get_runtime_config(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let state = client.promoted_runtime().await;
-    match state.as_ref() {
-        Some(state) => {
-            let yaml_value = serde_yaml::to_value(&state.config)?;
-            let json_value = serde_json::to_value(&yaml_value)?;
-            let wrapped: specta_typescript::Any<serde_json::Value> =
-                serde_json::from_value(json_value)?;
-            Ok(Some(wrapped))
-        }
-        None => Ok(None),
-    }
+    Ok(client
+        .runtime_config()
+        .await?
+        .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    let state = client.promoted_runtime().await;
-    let mapping = (state
-        .as_ref()
-        .map(|state| &state.config)
-        .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
-        .and_then(|config| {
-            serde_yaml::to_string(config).context("failed to convert config to yaml")
-        }))?;
-    Ok(mapping)
+    Ok(client.runtime_yaml().await?)
 }
 
 #[tauri::command]
@@ -516,12 +566,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn change_clash_core(
-    client: State<'_, NyanpasuClient>,
-    clash_core: Option<ClashCore>,
-) -> Result {
-    let clash_core =
-        clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
+pub async fn change_clash_core(client: State<'_, NyanpasuClient>, clash_core: ClashCore) -> Result {
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -538,8 +583,8 @@ pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
 /// server field is the combination of host and port
 #[tauri::command]
 #[specta::specta]
-pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
-    let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
+pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
+    let current = client.get_os_proxy().await?;
 
     let server = format!("{}:{}", current.host, current.port);
 
@@ -623,10 +668,10 @@ pub async fn fetch_latest_core_versions(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type).await {
-        Ok(version) => Ok(version),
-        Err(err) => Err(IpcError::from(err)),
-    }
+    Ok(snafu::ResultExt::context(
+        resolve::resolve_core_version(&app_handle, &core_type).await,
+        crate::client::runtime_error::ReadCoreVersionSnafu,
+    )?)
 }
 
 #[tauri::command]
@@ -997,11 +1042,14 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
-    let args = (crate::core::service::control::get_service_install_args().await)?
-        .into_iter()
-        .map(|arg| arg.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let args = snafu::ResultExt::context(
+        crate::core::service::control::get_service_install_args().await,
+        crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
+    )?
+    .into_iter()
+    .map(|arg| arg.to_string_lossy().to_string())
+    .collect::<Vec<_>>()
+    .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");
     if cfg!(not(windows)) {
         prompt = format!("sudo {prompt}");
@@ -1120,14 +1168,6 @@ pub fn clear_storage(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_ws_connections_state(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
-    Ok(client.clash_ws_snapshot().await?.state)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
 ) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
@@ -1151,6 +1191,40 @@ pub async fn clear_clash_ws_history(
     kind: crate::core::clash::ws::ClashWsKind,
 ) -> Result {
     client.clear_clash_ws_history(kind).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn subscribe_clash_connection_details(
+    webview: tauri::Webview,
+    client: tauri::State<'_, NyanpasuClient>,
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+    let receiver = client.subscribe_clash_connection_details();
+    let parent = client.shutdown_child_token();
+    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    client.spawn_tracked(
+        &cancel,
+        crate::core::clash::connection_details::forward_details(receiver, on_frame),
+    );
+    Ok(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unsubscribe_clash_connection_details(
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    id: crate::core::clash::connection_details::SubscriptionId,
+) -> Result {
+    subscriptions.unsubscribe(id);
     Ok(())
 }
 
@@ -1397,7 +1471,232 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::PendingDeepLinks;
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
+    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_core::state::ReplaceIfVersionError;
+    use serde_json::json;
+    use snafu::IntoError;
+
+    use crate::{
+        client::{
+            effects::error::EffectsError, runtime_error::RuntimeError,
+            system_proxy::ports::OsProxyError,
+        },
+        state::{
+            mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+            profiles::{ProfileFileError, SubscriptionFetchError},
+        },
+    };
+
+    fn wire(error: impl Into<ClientError>) -> serde_json::Value {
+        serde_json::to_value(IpcError::from(error.into())).unwrap()
+    }
+
+    #[test]
+    fn a_profiles_error_reaches_the_frontend_as_its_own_domain() {
+        let wire = wire(ProfilesError::ProfileNotFound {
+            uid: ProfileId("p1".into()),
+        });
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "profiles",
+                "error": { "kind": "profile_not_found", "uid": "p1" },
+            })
+        );
+        assert_eq!(wire["message"], "profile not found: p1");
+    }
+
+    #[test]
+    fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
+        let failure = crate::client::runtime_error::ApplyRuntimeSnafu.into_error(
+            nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
+                "the core kept the previous configuration",
+                false,
+            ),
+        );
+        let wire = wire(failure);
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "runtime",
+                "error": {
+                    "kind": "apply_runtime",
+                    "failure": {
+                        "kind": "apply_failed",
+                        "message": "the core kept the previous configuration",
+                        "retryable": false,
+                        "operation_id": null,
+                    },
+                },
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+        );
+    }
+
+    #[test]
+    fn a_dns_flush_failure_names_the_command_and_its_exit_code() {
+        let wire = serde_json::to_value(IpcError::from(SystemDnsError::FlushRejected {
+            command: "ipconfig.exe",
+            code: Some(5),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_dns",
+                "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
+            })
+        );
+    }
+
+    #[test]
+    fn a_stopped_effects_owner_reaches_the_frontend_as_its_own_domain() {
+        let wire = serde_json::to_value(IpcError::from(EffectsError::EffectsStopped)).unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({ "domain": "effects", "error": { "kind": "effects_stopped" } })
+        );
+    }
+
+    #[test]
+    fn a_failed_os_proxy_write_names_where_it_was_going() {
+        let wire = serde_json::to_value(IpcError::from(OsProxyError::WriteOsProxy {
+            enable: true,
+            host: "127.0.0.1".into(),
+            port: 7890,
+            source: "access denied".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_proxy",
+                "error": {
+                    "kind": "write_os_proxy",
+                    "enable": true,
+                    "host": "127.0.0.1",
+                    "port": 7890,
+                },
+            })
+        );
+        assert!(wire["detail"].as_str().unwrap().contains("access denied"));
+    }
+
+    #[test]
+    fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
+        assert_eq!(
+            wire(ProfilesError::ShuttingDown)["kind"],
+            json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
+        );
+        assert_eq!(
+            wire(ClientError::Custom("no domain".into()))["kind"],
+            json!({ "domain": "unknown" })
+        );
+    }
+
+    #[test]
+    fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
+        let fetch = wire(ProfilesError::FetchSubscription {
+            url: "https://sub.example/x".parse().unwrap(),
+            source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },
+        });
+        assert_eq!(
+            fetch["kind"]["error"],
+            json!({
+                "kind": "fetch_subscription",
+                "url": "https://sub.example/x",
+                "source": { "kind": "subscription_http_status", "status": 404 },
+            })
+        );
+
+        let read = wire(ProfilesError::ReadProfileFile {
+            uid: ProfileId("p1".into()),
+            source: ProfileFileError::mock("disk full"),
+        });
+        assert_eq!(
+            read["kind"]["error"],
+            json!({
+                "kind": "read_profile_file",
+                "uid": "p1",
+                "source": { "kind": "write_file", "path": "mock" },
+            }),
+            "the io error stays out of the wire form"
+        );
+        assert!(
+            read["detail"].as_str().unwrap().contains("disk full"),
+            "and reaches the user through the copied detail: {}",
+            read["detail"]
+        );
+    }
+
+    #[test]
+    fn an_aborted_commit_names_what_became_of_the_runtime() {
+        let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
+        let aborted = WriteConfigSnafu {
+            runtime: RuntimeAftermath::RollbackFailed {
+                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
+                    operation_id: "op1".into(),
+                }),
+            },
+        }
+        .into_error(cause);
+        assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
+
+        let wire = wire(ProfilesError::Commit {
+            source: aborted,
+            cleanup_failures: Vec::new(),
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({
+                "kind": "commit",
+                "source": {
+                    "kind": "write_config",
+                    "runtime": {
+                        "kind": "rollback_failed",
+                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
+                    },
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn a_version_conflict_does_not_serialize_its_cleanup_failures() {
+        let wire = wire(ProfilesError::VersionConflict {
+            expected: 3,
+            actual: 4,
+            cleanup_failures: vec![ProfilesError::ShuttingDown],
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({ "kind": "version_conflict", "expected": 3, "actual": 4 })
+        );
+    }
+
+    #[test]
+    fn unclassified_error_serializes_message_and_original_error() {
+        let error = anyhow::anyhow!("disk full").context("failed to save the profile");
+        let wire = serde_json::to_value(IpcError::from(error)).unwrap();
+
+        assert_eq!(wire["kind"], serde_json::json!({ "domain": "unknown" }));
+        assert_eq!(wire["message"], "failed to save the profile");
+        let detail = wire["detail"].as_str().unwrap();
+        assert!(
+            detail.contains("failed to save the profile") && detail.contains("disk full"),
+            "detail keeps the whole source chain: {detail}"
+        );
+    }
 
     #[test]
     fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {

@@ -17,6 +17,7 @@ mod main_thread;
 mod ports;
 pub mod profiles;
 pub mod runtime;
+pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
 mod session_state;
@@ -36,7 +37,9 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
+        CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
+        ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
+        ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
     utils::path::PathResolver,
@@ -48,7 +51,7 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
-        RemoteProfileOptions, RemoteProfileOptionsPatch,
+        RemoteProfileOptions, RemoteProfileOptionsPatch, TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -67,9 +70,10 @@ pub use event_sink::{
 pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
+pub use runtime_error::RuntimeError;
 #[cfg(test)]
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
-pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
+pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
@@ -79,6 +83,7 @@ pub struct ClientSetupArgs {
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
+    pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
@@ -129,21 +134,23 @@ async fn new_typed_config_clients(
     Ok((application, session_state, clash_config))
 }
 
-fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientError {
-    ClientError::Anyhow(anyhow::anyhow!(error))
-}
-
 #[cfg(not(test))]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     crate::core::actor_v2::local_host::core_spec(core)
 }
 
 #[cfg(test)]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
         nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
@@ -195,6 +202,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
+    os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
@@ -217,6 +225,7 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             binary_installer,
             effects,
             window,
@@ -293,6 +302,7 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             binary_installer,
             effects,
             window,
@@ -321,6 +331,7 @@ impl NyanpasuClient {
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -426,6 +437,7 @@ impl NyanpasuClient {
                 streams,
                 updater,
                 system_dns,
+                os_proxy,
                 effects,
                 window,
                 accelerators,
@@ -466,18 +478,14 @@ impl NyanpasuClient {
         self.inner.application.snapshot().state
     }
 
-    pub async fn reconcile_core(
-        &self,
-    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+    pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
         self.inner.application_workflow.reconcile().await
     }
 
     // No UI entry issues an explicit stop yet; this is the facade entry to the
     // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
     #[allow(dead_code)]
-    pub async fn stop_core(
-        &self,
-    ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
+    pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
         self.inner.application_workflow.stop_core().await
     }
 
@@ -502,29 +510,23 @@ impl NyanpasuClient {
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
         self.inner.application_workflow.service_events()
     }
-    pub async fn install_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.install_service().await
     }
 
-    pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.start_service().await
     }
 
-    pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.stop_service().await
     }
 
-    pub async fn restart_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.restart_service().await
     }
 
-    pub async fn uninstall_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.uninstall_service().await
     }
 
@@ -545,12 +547,22 @@ impl NyanpasuClient {
         Ok(self.inner.updater.inspect(id).await?)
     }
 
-    pub async fn flush_system_dns_cache(&self) -> Result<()> {
+    /// The proxy settings the OS holds right now, whoever wrote them.
+    ///
+    /// Read straight from the port rather than through the system proxy
+    /// actor: its mailbox is held for the whole of a PAC download, which
+    /// would stall a status poll behind it.
+    pub async fn get_os_proxy(
+        &self,
+    ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
+    {
+        let os_proxy = self.inner.os_proxy.clone();
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+    }
+
+    pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        tokio::task::spawn_blocking(move || system_dns.flush())
-            .await
-            .context("system DNS cache flush task failed")??;
-        Ok(())
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
     }
 
     pub async fn patch_app_config(
@@ -564,17 +576,15 @@ impl NyanpasuClient {
         Ok(client.patch(patch).await?.outcome())
     }
 
-    pub async fn retry_runtime_now(&self) -> Result<()> {
-        self.inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .map_err(client_error_from_core)
+    pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.retry_runtime().await
     }
 
-    pub fn retry_effect_now(&self, kind: effects::plan::EffectKind) -> Result<()> {
-        self.inner.effects.retry_now(kind)?;
-        Ok(())
+    pub fn retry_effect_now(
+        &self,
+        kind: effects::plan::EffectKind,
+    ) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.retry_now(kind)
     }
 
     pub async fn save_main_window_geometry(
@@ -678,15 +688,21 @@ impl NyanpasuClient {
     /// Public wire for a post-commit auto-activation hard failure. Create/import
     /// already committed the profile, so this must never become `Err` that erases
     /// the `ProfileId`. VersionConflict is not special-cased as success.
-    fn auto_activation_failure_degradation(error: &impl std::fmt::Display) -> runtime::Degradation {
+    fn auto_activation_failure_degradation(
+        profile: ProfileId,
+        error: ProfilesError,
+    ) -> runtime::Degradation {
         tracing::warn!(
             %error,
             "profile auto-activation failed after commit; retaining committed profile id",
         );
         runtime::Degradation {
             phase: runtime::DegradationPhase::SystemEffect,
-            code: "profile_auto_activation_failed".into(),
             message: error.to_string(),
+            reason: runtime::DegradationReason::ProfileAutoActivationFailed {
+                profile,
+                cause: Arc::new(error),
+            },
             // Activation can be retried via activate_profile / set_current; even
             // VersionConflict is a transient CAS race, not a permanent rejection.
             retryable: true,
@@ -700,13 +716,13 @@ impl NyanpasuClient {
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> runtime::MutationOutcome<()> {
         // The conditional stays atomic inside the profiles actor: a facade-level
         // read-then-write could lose a concurrent selection.
-        let report = match self.inner.profiles.set_current_if_none(uid).await {
+        let report = match self.inner.profiles.set_current_if_none(uid.clone()).await {
             Ok(None) => return runtime::MutationOutcome::from_parts((), Vec::new()),
             Ok(Some(report)) => report,
             Err(error) => {
                 return runtime::MutationOutcome::from_parts(
                     (),
-                    vec![Self::auto_activation_failure_degradation(&error)],
+                    vec![Self::auto_activation_failure_degradation(uid, error)],
                 );
             }
         };
@@ -726,15 +742,13 @@ impl NyanpasuClient {
         // unmaterialized (and auto-activation would rebuild against a missing
         // file). Remote subscriptions must use import_profile.
         if matches!(request.definition.source(), Some(source) if source.is_remote()) {
-            return Err(ClientError::Custom(
-                "remote profiles must be created via import_profile".into(),
-            ));
+            return Err(RemoteProfileNeedsImportSnafu.build().into());
         }
         let report = self.inner.profiles.add(request, initial_file).await?;
         let created = report
             .created
             .clone()
-            .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
+            .expect("an add commits the uid it generated");
         Ok(runtime::MutationOutcome::from_parts(
             created,
             self.collect_post_commit_degradations(&report).await,
@@ -765,8 +779,10 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
-    /// Import a remote subscription via actor-owned fetch-before-commit, then
-    /// auto-activate when nothing is current.
+    /// Import a remote subscription via actor-owned fetch-before-commit. A
+    /// `None` `transform` imports a Config File and auto-activates it when
+    /// nothing is current; `Some` imports a Transform of that kind, which is
+    /// never activatable.
     ///
     /// Naming: a non-empty caller-provided `name` (e.g. a deep-link `name=`
     /// parameter) is user intent, so it is pinned (`custom_name = true`) and
@@ -783,6 +799,7 @@ impl NyanpasuClient {
         url: url::Url,
         name: Option<String>,
         options: Option<RemoteProfileOptionsPatch>,
+        transform: Option<TransformKind>,
     ) -> Result<runtime::MutationOutcome<ProfileId>> {
         let update_interval_explicit = options
             .as_ref()
@@ -801,6 +818,7 @@ impl NyanpasuClient {
             .profiles
             .import(
                 url,
+                transform,
                 ProfileMetadata {
                     name,
                     desc: None,
@@ -813,12 +831,15 @@ impl NyanpasuClient {
         let created = report
             .created
             .clone()
-            .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
+            .expect("an import commits the uid it generated");
         let outcome = runtime::MutationOutcome::from_parts(
             created.clone(),
             self.collect_post_commit_degradations(&report).await,
         )
         .with_commit(report.receipt.clone());
+        if transform.is_some() {
+            return Ok(outcome);
+        }
         Ok(outcome.append_commit_result(self.try_auto_activate_if_none(created).await))
     }
 
@@ -917,11 +938,11 @@ impl NyanpasuClient {
         let item = snapshot
             .items
             .get(&uid)
-            .ok_or(ProfilesError::ProfileNotFound(uid))?;
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
         let source = item
             .definition
             .source()
-            .ok_or(ProfilesError::ProfileHasNoFile)?;
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid }.build())?;
         Ok(self
             .inner
             .profiles_dir
@@ -933,21 +954,20 @@ impl NyanpasuClient {
         let item = snapshot
             .items
             .get(&uid)
-            .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
         let source = item
             .definition
             .source()
-            .ok_or(ProfilesError::ProfileHasNoFile)?;
-        let raw = self
-            .inner
-            .fs
-            .read(&source.materialized().file)
-            .map_err(ClientError::Anyhow)?;
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid: uid.clone() }.build())?;
+        let raw = snafu::ResultExt::context(
+            self.inner.fs.read(&source.materialized().file),
+            ReadProfileFileSnafu { uid: uid.clone() },
+        )?;
         match &item.definition {
-            ProfileDefinition::Config { .. } => {
-                crate::service::profile_file::normalize_yaml_document(&raw)
-                    .map_err(ClientError::Anyhow)
-            }
+            ProfileDefinition::Config { .. } => Ok(snafu::ResultExt::context(
+                crate::service::profile_file::normalize_yaml_document(&raw),
+                ProfileFileNotYamlSnafu { uid },
+            )?),
             ProfileDefinition::Transform { .. } => Ok(raw),
         }
     }
@@ -993,11 +1013,15 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 pub(crate) mod tests {
     use super::*;
     use crate::{
+        client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
         core::actor_v2::endpoint::ExecutionHost,
-        state::profiles::ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileMaterializationPort,
+        state::profiles::{
+            error::SubscriptionFetchError,
+            ports::{
+                CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+                MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+                PreparedMaterialization, ProfileMaterializationPort,
+            },
         },
     };
     use camino::Utf8PathBuf;
@@ -1659,7 +1683,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
                     name: "test-service".into(),
@@ -1700,31 +1727,41 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("install");
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("start_daemon");
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(true, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("stop_daemon");
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -1764,7 +1801,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
                 version: std::borrow::Cow::Borrowed("test"),
@@ -1773,23 +1813,33 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -1993,9 +2043,24 @@ pub(crate) mod tests {
         dir: &TempDir,
         system_dns: Arc<dyn SystemDnsCache>,
     ) -> NyanpasuClient {
+        test_client_with_ports(dir, system_dns, Arc::new(MockOsProxyPort::new())).await
+    }
+
+    async fn test_client_with_ports(
+        dir: &TempDir,
+        system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn OsProxyPort>,
+    ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        test_client_from_typed_clients(dir, application, session_state, clash_config, system_dns)
-            .await
+        test_client_from_typed_clients(
+            dir,
+            application,
+            session_state,
+            clash_config,
+            system_dns,
+            os_proxy,
+        )
+        .await
     }
 
     async fn test_client_from_typed_clients(
@@ -2004,6 +2069,7 @@ pub(crate) mod tests {
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2047,6 +2113,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -2197,6 +2264,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(MockOsProxyPort::new()),
         )
         .await;
 
@@ -2243,17 +2311,60 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn get_os_proxy_reads_through_the_injected_port() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Ok(OsProxyConfig {
+                enable: true,
+                host: "127.0.0.1".into(),
+                port: 7890,
+                bypass: "localhost".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let read = client.get_os_proxy().await.expect("the port answers");
+        assert_eq!((read.enable, read.port), (true, 7890));
+    }
+
+    #[tokio::test]
+    async fn get_os_proxy_reports_the_port_failure_as_its_own_error() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Err(OsProxyError::ReadOsProxy {
+                source: "denied".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let error = client.get_os_proxy().await.unwrap_err();
+        assert!(matches!(error, OsProxyError::ReadOsProxy { .. }));
+    }
+
+    #[tokio::test]
     async fn flush_system_dns_cache_propagates_adapter_failure() {
         let dir = tempdir().expect("tempdir should be created");
         let mut system_dns = MockSystemDnsCache::new();
-        system_dns
-            .expect_flush()
-            .times(1)
-            .returning(|| anyhow::bail!("dns flush exploded"));
+        system_dns.expect_flush().times(1).returning(|| {
+            Err(SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5),
+            })
+        });
         let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
 
         let error = client.flush_system_dns_cache().await.unwrap_err();
-        assert!(error.to_string().contains("dns flush exploded"));
+        assert!(matches!(
+            error,
+            SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5)
+            }
+        ));
     }
 
     pub(crate) fn test_client_args_with_endpoint(
@@ -2277,6 +2388,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
@@ -2309,7 +2421,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
                 .and_then(|bytes| serde_yaml::from_slice::<serde_yaml::Value>(&bytes).ok())
@@ -2321,23 +2436,33 @@ pub(crate) mod tests {
             self.delegate.probe().await
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.install().await
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.update().await
         }
 
@@ -2600,6 +2725,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -2711,6 +2837,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
@@ -2771,7 +2898,15 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let client = test_client(&dir).await;
         assert!(client.inspect_runtime().await.is_none());
-        assert!(client.inspect_runtime_node("missing", 0).await.is_err());
+        assert!(matches!(
+            client.runtime_yaml().await,
+            Err(RuntimeError::NoRuntimeConfig)
+        ));
+        assert!(client.runtime_config().await.unwrap().is_none());
+        assert!(matches!(
+            client.inspect_runtime_node("missing", 0).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
         client.reconcile_core().await.unwrap();
         let first = client.inspect_runtime().await.unwrap();
         assert!(!first.nodes.is_empty());
@@ -2803,12 +2938,18 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         let second = client.inspect_runtime().await.unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        assert!(
+        assert!(matches!(
             client
                 .inspect_runtime_node(&first.snapshot_id, first.root_id)
-                .await
-                .is_err()
-        );
+                .await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert!(matches!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, u32::MAX)
+                .await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
         assert!(
             client
                 .inspect_runtime_node(&second.snapshot_id, second.root_id)
@@ -3297,7 +3438,7 @@ pub(crate) mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.with_proxy = Some(false);
             let uid = client
-                .import_profile(url, None, Some(patch))
+                .import_profile(url, None, Some(patch), None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3337,7 +3478,7 @@ pub(crate) mod tests {
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         });
         tauri::async_runtime::block_on(async {
@@ -3349,12 +3490,14 @@ pub(crate) mod tests {
                     url::Url::parse("https://example.com/subs/current.yaml").unwrap(),
                     None,
                     None,
+                    None,
                 )
                 .await
                 .unwrap();
             let uid = client
                 .import_profile(
                     url::Url::parse("https://example.com/subs/other.yaml").unwrap(),
+                    None,
                     None,
                     None,
                 )
@@ -3406,7 +3549,7 @@ pub(crate) mod tests {
             patch.update_interval_minutes = Some(45);
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, Some(patch))
+                .import_profile(url, None, Some(patch), None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3430,7 +3573,12 @@ pub(crate) mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(0);
             let url = url::Url::parse("https://example.com/subs/invalid.yaml").unwrap();
-            assert!(client.import_profile(url, None, Some(patch)).await.is_err());
+            assert!(
+                client
+                    .import_profile(url, None, Some(patch), None)
+                    .await
+                    .is_err()
+            );
             assert!(client.get_profiles().await.unwrap().items.is_empty());
         });
     }
@@ -3488,12 +3636,12 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         // A failed import never reaches core apply, so the bridge expects nothing.
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let result = client.import_profile(url, None, None).await;
+            let result = client.import_profile(url, None, None, None).await;
             assert!(
                 result.is_err(),
                 "import must fail when the first download fails"
@@ -3515,15 +3663,15 @@ pub(crate) mod tests {
 
         tauri::async_runtime::block_on(async {
             let rejected = client.add_profile(remote_config_request(), None).await;
-            match rejected {
-                Err(ClientError::Custom(message)) => {
-                    assert!(
-                        message.contains("import_profile"),
-                        "stable rejection must direct callers to import_profile: {message}"
-                    );
-                }
-                other => panic!("expected Custom(import_profile) rejection, got {other:?}"),
-            }
+            assert!(
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
+                "remote profiles must be rejected before any write, got {rejected:?}"
+            );
             let snapshot = client.get_profiles().await.unwrap();
             assert!(
                 snapshot.items.is_empty(),
@@ -3543,7 +3691,12 @@ pub(crate) mod tests {
             // create_profile shares the public add_profile remote guard.
             let rejected = client.create_profile(remote_config_request(), None).await;
             assert!(
-                matches!(rejected, Err(ClientError::Custom(message)) if message.contains("import_profile")),
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
                 "create must reject remote sources via the add_profile guard"
             );
             assert!(
@@ -3656,6 +3809,7 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
+                Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -3681,14 +3835,13 @@ pub(crate) mod tests {
                 "auto-activation hard failure after commit must be CommittedDegraded"
             );
             let uid = outcome.value().clone();
-            let codes: Vec<_> = outcome
-                .degradations()
-                .iter()
-                .map(|item| item.code.as_str())
-                .collect();
             assert!(
-                codes.contains(&"profile_auto_activation_failed"),
-                "expected profile_auto_activation_failed, got {codes:?}"
+                outcome.degradations().iter().any(|item| matches!(
+                    item.reason,
+                    crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                )),
+                "expected ProfileAutoActivationFailed, got {:?}",
+                outcome.degradations()
             );
             assert!(
                 outcome.degradations().iter().any(|item| {
@@ -3741,7 +3894,7 @@ pub(crate) mod tests {
             // Ok(None) from set_current_if_none remains non-degraded applied.
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
             let outcome = client
-                .import_profile(url, None, None)
+                .import_profile(url, None, None, None)
                 .await
                 .expect("import");
             assert!(
@@ -3804,15 +3957,20 @@ pub(crate) mod tests {
     fn create_import_auto_activation_failure_retains_profile_id_as_committed_degraded() {
         let uid = ProfileId("committed-uid".into());
         for error in [
-            ProfilesError::Persist("disk full".into()),
+            ProfilesError::ProfilesReplyDropped,
             ProfilesError::VersionConflict {
                 expected: 1,
                 actual: 2,
+                cleanup_failures: Vec::new(),
             },
-            ProfilesError::Rpc("actor stopped".into()),
+            ProfilesError::ProfilesActorStopped,
         ] {
-            let degradation = NyanpasuClient::auto_activation_failure_degradation(&error);
-            assert_eq!(degradation.code, "profile_auto_activation_failed");
+            let degradation =
+                NyanpasuClient::auto_activation_failure_degradation(uid.clone(), error);
+            assert!(matches!(
+                degradation.reason,
+                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+            ));
             assert_eq!(
                 degradation.phase,
                 crate::client::runtime::DegradationPhase::SystemEffect
@@ -3823,7 +3981,7 @@ pub(crate) mod tests {
             // Protocol both create and import use after a successful durable commit.
             let prior = vec![crate::client::runtime::Degradation {
                 phase: crate::client::runtime::DegradationPhase::ProfileMaterialization,
-                code: "cleanup_deferred".into(),
+                reason: crate::client::runtime::DegradationReason::CleanupDeferred,
                 message: "materialization cleanup deferred".into(),
                 retryable: true,
             }];
@@ -3837,14 +3995,21 @@ pub(crate) mod tests {
                 "activation hard error after commit must be CommittedDegraded"
             );
             assert_eq!(outcome.value(), &uid);
-            let codes: Vec<_> = outcome
-                .degradations()
-                .iter()
-                .map(|item| item.code.as_str())
-                .collect();
-            assert_eq!(
-                codes,
-                ["cleanup_deferred", "profile_auto_activation_failed"],
+            assert!(
+                matches!(
+                    outcome.degradations(),
+                    [
+                        crate::client::runtime::Degradation {
+                            reason: crate::client::runtime::DegradationReason::CleanupDeferred,
+                            ..
+                        },
+                        crate::client::runtime::Degradation {
+                            reason:
+                                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. },
+                            ..
+                        },
+                    ]
+                ),
                 "prior commit degradations must merge with activation failure"
             );
         }
@@ -3870,7 +4035,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, None)
+                .import_profile(url, None, None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3890,7 +4055,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, Some("My VPN".into()), None)
+                .import_profile(url, Some("My VPN".into()), None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3902,6 +4067,30 @@ pub(crate) mod tests {
             );
         });
     }
+
+    #[test]
+    fn facade_import_transform_creates_remote_transform_without_activating_it() {
+        let dir = tempdir().unwrap();
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
+            let url = url::Url::parse("https://example.com/overlay.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, None, Some(TransformKind::Overlay))
+                .await
+                .expect("import")
+                .into_value();
+            let profiles = client.get_profiles().await.unwrap();
+            let item = &profiles.items[&uid];
+            assert!(matches!(
+                &item.definition,
+                ProfileDefinition::Transform { transform }
+                    if transform.kind() == TransformKind::Overlay
+                        && matches!(transform.source(), nyanpasu_config::profile::ProfileSource::Remote { .. })
+            ));
+            assert_eq!(profiles.current, None, "a transform is never activatable");
+        });
+    }
+
     #[test]
     fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_overwriting_source() {
         let dir = tempdir().unwrap();
