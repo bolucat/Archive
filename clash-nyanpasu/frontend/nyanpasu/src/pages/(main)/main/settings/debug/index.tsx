@@ -12,7 +12,9 @@ import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import ConfigurationStatus from './_modules/configuration-status'
 import { useDebugContext } from './_modules/debug-provider'
+import HttpServer from './_modules/http-server'
 import KVStorage from './_modules/kv-storage'
+import MockConnectionsSwitch from './_modules/mock-connections-switch'
 import PathUtilsCard from './_modules/path-utils-card'
 import WindowDebug from './_modules/window-debug'
 
@@ -52,6 +54,9 @@ const AdvanceToolsSettings = () => {
               <BlockTaskViewer />
 
               <KVStorage />
+
+              <HttpServer />
+              {import.meta.env.DEV && <MockConnectionsSwitch />}
             </>
           )}
         </AnimatePresence>

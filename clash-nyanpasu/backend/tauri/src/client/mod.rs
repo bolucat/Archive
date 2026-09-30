@@ -12,6 +12,7 @@ pub(crate) mod effects;
 mod error;
 mod event_sink;
 pub mod hotkey;
+pub(crate) mod jobs;
 pub mod logs;
 mod main_thread;
 mod ports;
@@ -23,6 +24,7 @@ pub(crate) mod runtime_recovery;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
+mod traffic;
 pub mod ui_effects;
 
 use self::{
@@ -75,8 +77,11 @@ pub use runtime_error::RuntimeError;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
+    pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
+    pub http_frontend: Option<crate::server::debug_http::Frontend>,
+    pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
@@ -88,6 +93,8 @@ pub struct ClientSetupArgs {
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    /// `None` disables traffic recording: the store could not be opened.
+    pub traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -186,8 +193,10 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
+    debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
     app_logs: nyanpasu_logging::LogsClient,
+    jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
     application: ApplicationClient,
     session_state: SessionStateClient,
@@ -200,6 +209,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
+    traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
@@ -217,8 +227,11 @@ struct NyanpasuClientInner {
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
+            jobs,
             bundle_metadata,
             logging,
+            http_frontend,
+            http_routes,
             paths,
             runtime_paths,
             ui_sink,
@@ -230,6 +243,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            traffic_store,
             shutdown,
             tasks,
         } = args;
@@ -238,6 +252,7 @@ impl NyanpasuClient {
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
+        let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         let wiring = mutations.clone();
         let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
@@ -265,9 +280,10 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let profiles = profiles::ProfilesClient::new(
+                let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
                     profiles_path,
+                    jobs_for_setup,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
                     file_service.clone() as Arc<dyn SubscriptionFetcher>,
                     file_service.clone() as Arc<dyn ProfileMaterializationPort>,
@@ -288,6 +304,7 @@ impl NyanpasuClient {
             Some(wiring),
             bundle_metadata,
             logging,
+            jobs,
             application,
             session_state,
             clash_config,
@@ -307,6 +324,9 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            http_frontend,
+            http_routes,
+            traffic_store,
             shutdown,
             tasks,
         ))
@@ -317,6 +337,7 @@ impl NyanpasuClient {
         mutations: Option<crate::state::mutation::MutationCoordinator>,
         bundle_metadata: crate::bundle::BundleMetadata,
         logging: logs::LoggingSetup,
+        jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
@@ -336,9 +357,23 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        http_frontend: Option<crate::server::debug_http::Frontend>,
+        http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
+        traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
+        let debug_http =
+            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
+        tasks.spawn({
+            let (http, token) = (debug_http.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = http.shutdown().await {
+                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+                }
+            }
+        });
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
@@ -419,10 +454,29 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let traffic = match traffic_store {
+            Some(store) => Some(
+                crate::core::traffic::TrafficClient::spawn(
+                    crate::core::traffic::TrafficArgs {
+                        store,
+                        profiles: Arc::new(traffic::SelectedProfile::new(
+                            profiles.snapshot_handle(),
+                        )),
+                        frames: streams.subscribe_connection_frames(),
+                    },
+                    shutdown.child_token(),
+                    &tasks,
+                )
+                .await?,
+            ),
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
+                debug_http,
                 bundle_metadata,
                 app_logs,
+                jobs,
                 service_logs,
                 application,
                 session_state,
@@ -435,6 +489,7 @@ impl NyanpasuClient {
                 core_api: core_v2,
                 proxies,
                 streams,
+                traffic,
                 updater,
                 system_dns,
                 os_proxy,
@@ -447,12 +502,39 @@ impl NyanpasuClient {
         })
     }
 
+    pub async fn debug_http_status(
+        &self,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.status().await
+    }
+    pub async fn set_debug_http_enabled(
+        &self,
+        enabled: bool,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.set_enabled(enabled).await
+    }
+    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
+        self.inner.debug_http.set_enabled(false).await?;
+        Ok(())
+    }
+
     pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
         Ok(self
             .inner
             .bundle_metadata
             .release_channel
             .resolve(self.inner.application.snapshot().state.release_channel))
+    }
+
+    pub(crate) fn update_download_urls(
+        &self,
+        announced: &url::Url,
+    ) -> Result<Vec<(nyanpasu_config::application::UpdateSource, url::Url)>> {
+        let app = self.inner.application.snapshot().state;
+        Ok(crate::bundle::update_download_urls(
+            announced,
+            &app.update_sources,
+        )?)
     }
 
     pub async fn set_release_channel(
@@ -874,7 +956,7 @@ impl NyanpasuClient {
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let report = self.inner.profiles.refresh(uid, patch).await?;
+        let report = self.inner.profiles.sync(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
 
@@ -2095,6 +2177,7 @@ pub(crate) mod tests {
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
+            profiles.jobs(),
             application,
             session_state,
             clash_config,
@@ -2118,6 +2201,9 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2374,14 +2460,31 @@ pub(crate) mod tests {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         seed_test_clash_config(paths.clash_config_path());
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (shutdown, tasks) = (
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
+        );
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {
+            jobs: std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
+                            shutdown.clone(),
+                            &tasks,
+                        ))
+                    })
+                    .join()
+                    .unwrap()
+            }),
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2397,8 +2500,9 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            shutdown: tokio_util::sync::CancellationToken::new(),
-            tasks: tokio_util::task::TaskTracker::new(),
+            traffic_store: None,
+            shutdown,
+            tasks,
         }
     }
 
@@ -2711,6 +2815,7 @@ pub(crate) mod tests {
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
+            profiles.jobs(),
             application,
             session_state,
             clash_config,
@@ -2730,6 +2835,9 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2823,14 +2931,31 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (shutdown, tasks) = (
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
+        );
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            jobs: std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
+                            shutdown.clone(),
+                            &tasks,
+                        ))
+                    })
+                    .join()
+                    .unwrap()
+            }),
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: true,
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2846,8 +2971,9 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            shutdown: tokio_util::sync::CancellationToken::new(),
-            tasks: tokio_util::task::TaskTracker::new(),
+            traffic_store: None,
+            shutdown,
+            tasks,
         })
         .expect("client should construct with typed config actors");
 
@@ -3791,6 +3917,7 @@ pub(crate) mod tests {
                     PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                         .app_logs_dir(),
                 ),
+                profiles.jobs(),
                 application,
                 session_state,
                 clash_config,
@@ -3814,6 +3941,9 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                None,
+                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+                None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),
             )

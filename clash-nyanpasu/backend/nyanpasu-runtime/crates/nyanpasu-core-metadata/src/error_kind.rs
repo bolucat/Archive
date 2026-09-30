@@ -11,6 +11,7 @@ use specta::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Type, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoreErrorKind {
+    NativeStoreUnavailable,
     /// The operation needs a running core and there is none.
     NotStarted,
     /// The operation needs a stopped core and one is running.
@@ -57,6 +58,7 @@ impl CoreErrorKind {
     /// be listed besides the enum itself; `from_wire` and the golden test both
     /// walk it.
     pub const ALL: &'static [Self] = &[
+        Self::NativeStoreUnavailable,
         Self::NotStarted,
         Self::AlreadyRunning,
         Self::RevisionConflict,
@@ -81,6 +83,7 @@ impl CoreErrorKind {
     /// tests, and this one exists because an envelope needs a `&'static str`.
     pub const fn as_str(&self) -> &'static str {
         match self {
+            Self::NativeStoreUnavailable => "native_store_unavailable",
             Self::NotStarted => "not_started",
             Self::AlreadyRunning => "already_running",
             Self::RevisionConflict => "revision_conflict",

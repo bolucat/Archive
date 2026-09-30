@@ -5,6 +5,8 @@ use tracing_panic::panic_hook;
 #[cfg(windows)]
 pub mod acl;
 pub mod dirs;
+#[cfg(unix)]
+pub mod native_store_owner;
 pub mod os;
 pub mod service;
 

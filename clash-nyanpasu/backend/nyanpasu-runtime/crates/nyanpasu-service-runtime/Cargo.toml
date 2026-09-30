@@ -3,7 +3,7 @@ name = "nyanpasu-service-runtime"
 # Must stay equal to the `nyanpasu-service` bin version: `consts::APP_VERSION` is
 # this crate's CARGO_PKG_VERSION and is what `status` reports over IPC.
 # publish.yml bumps every workspace member together, so they stay in lockstep.
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.10"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -98,6 +98,7 @@ rustc_version = "0.4"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"
+tempfile = "3"
 whoami = "2"
 
 [target."cfg(windows)".dependencies]

@@ -88,6 +88,12 @@ impl CoreManager {
             .is_some_and(|active| has_http(&active.plan.effective_document))
             || (self.local_ipc_settings(&spec).keep_http_controller
                 && has_http(snapshot.document()));
+        if self.inner.native_store.is_some() {
+            self.hard_switch(ctrl, spec, snapshot, resolved).await?;
+            return Ok(SwitchOutcome::Hard {
+                reason: DegradeReason::NativeStoreShared,
+            });
+        }
         match graceful_degrade_reason(
             local_controller && !http_listener,
             spec.core.kind,
@@ -369,13 +375,16 @@ impl CoreManager {
         resolved: ResolvedFeatures,
     ) -> Result<EpochPlan, Error> {
         debug_assert_eq!(snapshot.source_path(), spec.config_path);
-        let prepared = snapshot.prepare_full(
+        let mut prepared = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
             self.controller_dir(),
             epoch,
             resolved.runtime,
             Some(self.local_ipc_settings(&spec)),
         )?;
+        if let Some(store) = &self.inner.native_store {
+            prepared.native_paths(spec.core.kind, store.data_dir())?;
+        }
         self.warn_http_fallback(
             &spec,
             resolved.version.as_deref(),
@@ -389,6 +398,9 @@ impl CoreManager {
 
         let runtime_path = self.inner.store.commit_new(staged, epoch).await?;
         let mut effective_spec = spec.clone();
+        if let Some(store) = &self.inner.native_store {
+            effective_spec.working_dir = store.home(spec.core.kind);
+        }
         effective_spec.config_path = runtime_path.clone();
         effective_spec.pid_file = Some(self.inner.store.pid_path(epoch));
         Ok(EpochPlan {
@@ -452,6 +464,9 @@ impl CoreManager {
         let runtime_path = self.inner.store.commit_new(bootstrap_staged, epoch).await?;
 
         let mut effective_spec = spec.clone();
+        if let Some(store) = &self.inner.native_store {
+            effective_spec.working_dir = store.home(spec.core.kind);
+        }
         effective_spec.config_path = runtime_path.clone();
         effective_spec.pid_file = Some(self.inner.store.pid_path(epoch));
         Ok(PreparedGraceful {

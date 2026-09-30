@@ -10,8 +10,11 @@ use std::sync::Arc;
 use consts::RuntimeInfos;
 pub use events::EventHub;
 pub use logger::Logger;
-pub use manager_bridge::{CoreManagerService as CoreManager, ServiceDirs};
-use nyanpasu_core_manager::{ExecutorExit, LocalIpcPolicy};
+pub use manager_bridge::CoreManagerService as CoreManager;
+use nyanpasu_core_manager::{
+    ExecutorExit, LocalIpcPolicy,
+    native_store::{FsNativeStore, StoreOwner, legacy_kind},
+};
 use nyanpasu_ipc::{SERVICE_PLACEHOLDER, server::create_server};
 use routing::{AppState, create_router};
 use tokio_util::sync::CancellationToken;
@@ -30,18 +33,15 @@ pub async fn run(
     let runtime_dir =
         camino::Utf8PathBuf::from_path_buf(crate::utils::dirs::service_core_runtime_dir())
             .map_err(|path| anyhow::anyhow!("core runtime dir is not UTF-8: {}", path.display()))?;
-    let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
-        .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
+    let native_store = Arc::new(native_store_for_host(&runtime)?);
     let (controller_dir, access): (_, Arc<dyn nyanpasu_core_manager::ControllerAccess>) =
         controller_access_for_host(sids)?;
     let core_manager = CoreManager::with_controller_access(
-        ServiceDirs {
-            runtime: runtime_dir,
-            data: data_dir,
-        },
+        runtime_dir,
         local_ipc_policy,
         controller_dir,
         access,
+        native_store,
     )
     .await?;
     let hub = EventHub::new();
@@ -111,6 +111,34 @@ pub async fn run(
     Ok(())
 }
 
+fn native_store_for_host(runtime: &RuntimeInfos) -> anyhow::Result<FsNativeStore> {
+    let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
+        .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
+    #[cfg(unix)]
+    let owner = crate::utils::native_store_owner::FsOwnerBindingStore::new(
+        &runtime.service_config_dir,
+        &runtime.nyanpasu_data_dir,
+    )
+    .load()?
+    .map_or(StoreOwner::Missing, |owner| StoreOwner::Unix {
+        uid: owner.uid,
+        gid: owner.gid,
+    });
+    #[cfg(windows)]
+    let owner = StoreOwner::current();
+    let config_path = runtime.nyanpasu_config_dir.join("application.yaml");
+    let config_path = if config_path.try_exists()? {
+        config_path
+    } else {
+        runtime.nyanpasu_config_dir.join("nyanpasu-config.yaml")
+    };
+    Ok(FsNativeStore::new(
+        data_dir,
+        owner,
+        legacy_kind(&config_path)?,
+    ))
+}
+
 async fn drain<E: std::error::Error + Send + Sync + 'static>(
     server: impl std::future::Future<Output = Result<(), E>> + Unpin,
 ) -> Result<(), anyhow::Error> {
@@ -174,4 +202,81 @@ fn controller_access_for_host(
         None,
         Arc::new(controller_access::UnavailableControllerAccess),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(unix)]
+    use nyanpasu_core_manager::{
+        CoreKind,
+        native_store::{NativeStore, StoreError},
+    };
+
+    fn runtime(root: &std::path::Path) -> RuntimeInfos {
+        RuntimeInfos {
+            service_data_dir: root.join("service-data"),
+            service_config_dir: root.join("service-config"),
+            nyanpasu_config_dir: root.join("config"),
+            nyanpasu_data_dir: root.join("data"),
+            nyanpasu_app_dir: root.join("app"),
+        }
+    }
+
+    #[test]
+    fn prefers_the_typed_config_over_the_legacy_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime(dir.path());
+        std::fs::create_dir(&runtime.nyanpasu_config_dir).unwrap();
+        let typed = runtime.nyanpasu_config_dir.join("application.yaml");
+        std::fs::write(&typed, "core: mihomo\n").unwrap();
+        std::fs::write(
+            runtime.nyanpasu_config_dir.join("nyanpasu-config.yaml"),
+            "invalid: [",
+        )
+        .unwrap();
+        assert!(native_store_for_host(&runtime).is_ok());
+        std::fs::remove_file(typed).unwrap();
+        assert!(native_store_for_host(&runtime).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unbound_service_can_check_but_cannot_start_a_native_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime(dir.path());
+        std::fs::create_dir(&runtime.nyanpasu_data_dir).unwrap();
+        let store = native_store_for_host(&runtime).unwrap();
+        assert!(store.check_home().is_ok());
+        assert!(matches!(
+            store.acquire(CoreKind::Mihomo),
+            Err(StoreError::OwnerMissing)
+        ));
+        assert!(!runtime.nyanpasu_data_dir.join("native-store").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "requires UID 0; can run inside a private user namespace"]
+    fn privileged_service_loads_its_binding_and_preserves_legacy_data() {
+        assert_eq!(unsafe { libc::geteuid() }, 0);
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime(dir.path());
+        std::fs::create_dir(&runtime.nyanpasu_data_dir).unwrap();
+        let legacy = runtime.nyanpasu_data_dir.join("cache.db");
+        std::fs::write(&legacy, "selected: {proxy: DIRECT}\n").unwrap();
+        crate::utils::native_store_owner::FsOwnerBindingStore::new(
+            &runtime.service_config_dir,
+            &runtime.nyanpasu_data_dir,
+        )
+        .save("root")
+        .unwrap();
+        let store = native_store_for_host(&runtime).unwrap();
+        let lease = store.acquire(CoreKind::ClashRust).unwrap();
+        assert_eq!(
+            std::fs::read(store.home(CoreKind::ClashRust).join("cache.db")).unwrap(),
+            std::fs::read(&legacy).unwrap()
+        );
+        lease.confirm_stopped().unwrap();
+    }
 }

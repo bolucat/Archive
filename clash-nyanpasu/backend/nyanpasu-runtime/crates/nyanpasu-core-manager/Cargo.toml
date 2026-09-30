@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.7"
+version = "1.0.0-rc.8"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -29,6 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
 specta = { version = "^2.0.0-rc.25", features = ["derive"] }
+tempfile = "3"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
@@ -38,14 +39,16 @@ zerocopy = { version = "0.8", features = ["derive", "simd"] }
 
 [dev-dependencies]
 nyanpasu-core-manager = { path = ".", features = ["test-hooks"] }
-tempfile = "3"
 
 [features]
 default = []
 test-hooks = []
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_Security_Authorization"] }
+windows = { workspace = true, features = ["Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(windows)'.dev-dependencies]
 futures-util.workspace = true

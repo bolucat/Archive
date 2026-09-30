@@ -35,6 +35,19 @@ pub(crate) struct PreparedConfig {
     pub effective_hash: String,
 }
 
+impl PreparedConfig {
+    pub(crate) fn native_paths(
+        &mut self,
+        kind: crate::CoreKind,
+        source: &Utf8Path,
+    ) -> Result<(), Error> {
+        crate::native_store::rewrite_paths(kind, &mut self.document, source);
+        self.bytes = serialize_mapping(&self.document)?;
+        self.effective_hash = semantic_hash(&self.document)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ConfigInfo {
     pub controller: Option<RawController>,
@@ -468,6 +481,34 @@ mod tests {
             prepared.document.keys().next(),
             Some(&Value::String("mode".into()))
         );
+    }
+
+    #[test]
+    fn native_paths_preserve_mapping_order_and_refresh_the_semantic_hash() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Utf8PathBuf::from_path_buf(root.path().canonicalize().unwrap()).unwrap();
+        let source = snapshot(
+            "mode: rule\nexternal-controller: 127.0.0.1:9090\nexternal-ui: ui\ndns:\n  nameserver-policy:\n    www.example.com: 1.1.1.1\n    geosite:cn: 223.5.5.5\n  enable: true\n",
+        );
+        let mut prepared = source
+            .prepare_full(None, &runtime, epoch(1), EnumSet::new(), None)
+            .unwrap();
+        let original_hash = prepared.effective_hash.clone();
+
+        prepared
+            .native_paths(crate::CoreKind::Mihomo, &runtime)
+            .unwrap();
+
+        let text = std::str::from_utf8(&prepared.bytes).unwrap();
+        let position = |needle: &str| text.find(needle).unwrap();
+        assert!(position("mode:") < position("dns:"));
+        assert!(position("nameserver-policy:") < position("enable:"));
+        assert!(position("www.example.com:") < position("geosite:cn:"));
+        let written = snapshot(text);
+        assert_eq!(written.document["external-ui"], runtime.join("ui").as_str());
+        assert_eq!(prepared.effective_hash, written.source_hash);
+        assert_ne!(prepared.effective_hash, original_hash);
+        assert_eq!(prepared.source_hash, source.source_hash);
     }
 
     #[test]

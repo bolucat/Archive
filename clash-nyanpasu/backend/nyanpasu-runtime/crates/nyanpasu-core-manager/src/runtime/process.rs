@@ -30,13 +30,19 @@ pub(crate) struct ProbePlan {
 pub(crate) struct ProcessRuntimeBackend {
     probes: ProbePlan,
     cancel_token: CancellationToken,
+    native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
 }
 
 impl ProcessRuntimeBackend {
-    pub(crate) fn new(probes: ProbePlan, cancel_token: CancellationToken) -> Self {
+    pub(crate) fn new(
+        probes: ProbePlan,
+        cancel_token: CancellationToken,
+        native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
+    ) -> Self {
         Self {
             probes,
             cancel_token,
+            native_store,
         }
     }
 }
@@ -65,6 +71,11 @@ impl RuntimeBackend for ProcessRuntimeBackend {
             } else {
                 None
             };
+            let lease = self
+                .native_store
+                .as_ref()
+                .map(|store| store.acquire(effective_spec.core.kind))
+                .transpose()?;
             let mode = if descriptor.is_some() {
                 crate::ControllerAuthorization::Core
             } else {
@@ -77,7 +88,13 @@ impl RuntimeBackend for ProcessRuntimeBackend {
                 self.cancel_token.clone(),
             )
             .log_sender(log_tx)
-            .pipe_security_descriptor(descriptor);
+            .pipe_security_descriptor(descriptor)
+            .native_store(
+                lease,
+                self.native_store
+                    .as_ref()
+                    .map(|store| store.data_dir().to_owned()),
+            );
             if let Some(access) = &self.probes.controller_access {
                 let readiness = match self.probes.readiness.clone() {
                     Some(probe) => probe,
@@ -123,7 +140,24 @@ impl RuntimeBackend for ProcessRuntimeBackend {
     }
 
     fn check_config<'a>(&'a self, spec: &'a InstanceSpec) -> BoxFuture<'a, Result<(), Error>> {
-        Box::pin(crate::kind::check_config(spec))
+        Box::pin(async move {
+            if let Some(store) = &self.native_store {
+                let home = store.check_home()?;
+                let mut isolated = spec.clone();
+                isolated.working_dir =
+                    camino::Utf8PathBuf::from_path_buf(home.path().to_owned())
+                        .map_err(|_| Error::InvalidConfig("temporary path is not UTF-8".into()))?;
+                let mut document: serde_yaml_ng::Mapping =
+                    serde_yaml_ng::from_slice(&tokio::fs::read(&spec.config_path).await?)?;
+                crate::native_store::rewrite_paths(spec.core.kind, &mut document, store.data_dir());
+                isolated.config_path = isolated.working_dir.join("check.yaml");
+                tokio::fs::write(&isolated.config_path, serde_yaml_ng::to_string(&document)?)
+                    .await?;
+                crate::kind::check_config_with_source(&isolated, store.data_dir()).await
+            } else {
+                crate::kind::check_config(spec).await
+            }
+        })
     }
 }
 

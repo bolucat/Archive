@@ -222,24 +222,28 @@ async fn readiness_is_not_starved_by_continuous_output() {
     let output_count_for_ready = output_count.clone();
     let ready_output_count_for_hook = ready_output_count.clone();
 
-    let supervisor = Supervisor::builder(|| Command::new(child()).args(["spam-stdout", "200000"]))
-        .readiness(ReadinessProbe::AliveAfter(Duration::from_millis(100)))
-        .on_process_event(move |event| {
-            if matches!(event, ProcessEvent::Stdout(_)) {
-                output_count_for_process.fetch_add(1, Ordering::Relaxed);
-            }
-        })
-        .on_event(move |event| {
-            if matches!(event, SupervisorEvent::Ready) {
-                ready_output_count_for_hook.store(
-                    output_count_for_ready.load(Ordering::Relaxed),
-                    Ordering::Relaxed,
-                );
-            }
-        })
-        .spawn()
-        .await
-        .unwrap();
+    // Keep the child alive until stop: a fixed output count can finish before
+    // the readiness delay and turn this scheduling test into an exit-time race.
+    let supervisor = Supervisor::builder(|| {
+        Command::new(child()).args(["spam-stdout".to_owned(), usize::MAX.to_string()])
+    })
+    .readiness(ReadinessProbe::AliveAfter(Duration::from_millis(100)))
+    .on_process_event(move |event| {
+        if matches!(event, ProcessEvent::Stdout(_)) {
+            output_count_for_process.fetch_add(1, Ordering::Relaxed);
+        }
+    })
+    .on_event(move |event| {
+        if matches!(event, SupervisorEvent::Ready) {
+            ready_output_count_for_hook.store(
+                output_count_for_ready.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+        }
+    })
+    .spawn()
+    .await
+    .unwrap();
 
     let count_at_ready = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
@@ -276,6 +280,7 @@ async fn cancelled_token_prevents_first_spawn() {
         Command::new(child()).args(["sleep-forever"])
     })
     .cancel_token(token)
+    .before_spawn(|| panic!("cancelled supervisor must not prepare resources"))
     .spawn()
     .await
     .err()
@@ -287,4 +292,74 @@ async fn cancelled_token_prevents_first_spawn() {
             if message == "supervisor started with cancelled token"
     ));
     assert_eq!(factory_calls.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn preparation_failure_prevents_first_spawn() {
+    let result = Supervisor::builder(|| panic!("must not build an unauthorized child"))
+        .before_spawn(|| Err(ProcessError::Engine("store inaccessible".into())))
+        .spawn()
+        .await;
+    assert!(
+        matches!(result, Err(ProcessError::Engine(message)) if message == "store inaccessible")
+    );
+}
+
+#[tokio::test]
+async fn preparation_runs_again_and_can_reject_respawn() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let sup = Supervisor::builder(|| Command::new(child()).args(["exit-with", "1"]))
+        .backoff(Backoff::exponential(BackoffRange {
+            initial: Duration::ZERO,
+            max: Duration::ZERO,
+        }))
+        .before_spawn(move || {
+            if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                Ok(())
+            } else {
+                Err(ProcessError::Engine("store changed".into()))
+            }
+        })
+        .on_event(move |event| {
+            let _ = tx.send(event);
+        })
+        .spawn()
+        .await
+        .unwrap();
+    let mut starts = 0;
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            SupervisorEvent::Started { .. } => starts += 1,
+            SupervisorEvent::PreparationFailed { detail } => {
+                assert!(detail.contains("store changed"));
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(starts, 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    sup.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_during_preparation_prevents_first_spawn() {
+    let cancel = CancellationToken::new();
+    let result = Supervisor::builder(|| panic!("cancelled preparation must not spawn"))
+        .cancel_token(cancel.clone())
+        .before_spawn(move || {
+            cancel.cancel();
+            Ok(())
+        })
+        .spawn()
+        .await;
+    assert!(
+        matches!(result, Err(ProcessError::Engine(message)) if message == "spawn preparation cancelled")
+    );
 }

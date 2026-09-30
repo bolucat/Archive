@@ -1,5 +1,6 @@
 import { m } from '@/paraglide/messages'
-import { isIpcError } from '@nyanpasu/interface'
+import { commands, isIpcError, unwrapResult } from '@nyanpasu/interface'
+import { isTauri } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   MessageDialogOptions,
@@ -11,6 +12,8 @@ import {
   requestPermission,
   sendNotification,
 } from '@tauri-apps/plugin-notification'
+import { formatError } from './index'
+import { profileDialogLabel, profileMessageParts } from './profile-label'
 
 let permissionGranted: boolean | null = null
 
@@ -46,6 +49,10 @@ export const notification = async ({
   if (!title) {
     throw new Error('missing message argument!')
   }
+  if (!isTauri()) {
+    window.alert(body ? `${title}: ${body}` : title)
+    return
+  }
   const permissionGranted = WIN_PORTABLE || (await checkPermission())
   if (WIN_PORTABLE || !permissionGranted) {
     await tauriMessage(body ? `${title}: ${body}` : title, {
@@ -70,8 +77,28 @@ export const message = async (
   value: string,
   options?: string | MessageOptions | undefined,
 ) => {
+  if (!isTauri()) {
+    window.alert(value)
+    return
+  }
   if (typeof options === 'object') {
     const { error, ...dialog } = options
+    if (isIpcError(error)) {
+      const parts = profileMessageParts((label) => formatError(error, label))
+      if (parts.some((part) => typeof part !== 'string')) {
+        try {
+          const profiles = unwrapResult(await commands.getProfiles())
+          const lookup = new Map(
+            profiles.items.map((profile) => [profile.uid, profile]),
+          )
+          value = value.replace(formatError(error), () =>
+            formatError(error, (id) => profileDialogLabel(lookup, id)),
+          )
+        } catch {
+          // A failed name lookup must not hide the original command failure.
+        }
+      }
+    }
     const copyLabel = m.common_copy_error_details()
     const result = await tauriMessage(value, {
       ...dialog,

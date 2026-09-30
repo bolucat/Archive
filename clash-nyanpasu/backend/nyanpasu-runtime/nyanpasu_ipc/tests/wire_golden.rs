@@ -711,6 +711,10 @@ fn the_error_kind_strings_are_pinned() {
     // These are protocol: a caller branches on them. The enum lives in
     // nyanpasu-core-metadata now, so this pins what actually reaches the wire.
     for (kind, expected) in [
+        (
+            CoreErrorKind::NativeStoreUnavailable,
+            r#""native_store_unavailable""#,
+        ),
         (CoreErrorKind::NotStarted, r#""not_started""#),
         (CoreErrorKind::AlreadyRunning, r#""already_running""#),
         (CoreErrorKind::RevisionConflict, r#""revision_conflict""#),
@@ -739,7 +743,7 @@ fn the_error_kind_strings_are_pinned() {
         assert_eq!(serde_json::to_string(&kind).unwrap(), expected);
     }
     // Every kind is covered above; a new one must be added here too.
-    assert_eq!(CoreErrorKind::ALL.len(), 17);
+    assert_eq!(CoreErrorKind::ALL.len(), 18);
 }
 
 /// The new field is appended, so no existing key moves; the absent case is

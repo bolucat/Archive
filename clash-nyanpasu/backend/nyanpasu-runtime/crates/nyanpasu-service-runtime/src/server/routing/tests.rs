@@ -11,7 +11,10 @@ use axum::{
     response::Response,
 };
 use camino::Utf8PathBuf;
-use nyanpasu_core_manager::LocalIpcPolicy;
+use nyanpasu_core_manager::{
+    LocalIpcPolicy,
+    native_store::{FsNativeStore, StoreOwner},
+};
 use nyanpasu_ipc::api::{
     ResponseCode,
     contract::{
@@ -31,7 +34,7 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::{AppState, create_router};
-use crate::server::{CoreManager, EventHub, Logger, ServiceDirs, consts::RuntimeInfos};
+use crate::server::{CoreManager, EventHub, Logger, consts::RuntimeInfos};
 
 struct TestEnv {
     state: AppState,
@@ -47,11 +50,9 @@ impl TestEnv {
         let data_dir =
             Utf8PathBuf::from_path_buf(root.join("nyanpasu-data")).expect("temp path is UTF-8");
         let core_manager = CoreManager::new(
-            ServiceDirs {
-                runtime: runtime_dir,
-                data: data_dir,
-            },
+            runtime_dir,
             LocalIpcPolicy::Disable,
+            Arc::new(FsNativeStore::new(data_dir, StoreOwner::current(), None)),
         )
         .await
         .unwrap();

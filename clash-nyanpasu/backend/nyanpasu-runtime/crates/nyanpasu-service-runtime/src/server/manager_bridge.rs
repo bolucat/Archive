@@ -11,7 +11,7 @@ use nyanpasu_core_manager::{
     CoreSpec, CoreState as ManagerCoreState, CoreStatus, Epoch, Error as ManagerError,
     ExecutorExit, HealthState, HealthStatus, Host, InstanceOptions, InstanceSpec, LocalIpcPolicy,
     LogFrame, LogLevel, ManagerOptions, OperationHandle, OperationId, OperationOutput,
-    OperationState, ReconcileRequest, RevisionId,
+    OperationState, ReconcileRequest, RevisionId, native_store::NativeStore,
 };
 use nyanpasu_ipc::api::{
     R, RBuilder,
@@ -170,56 +170,51 @@ pub struct CoreManagerService {
     inner: Arc<Inner>,
 }
 
-/// The two directories the service runs out of. They are both `Utf8PathBuf`
-/// and were passed on either side of the IPC policy, so only a name says
-/// which root the manager owns and which one belongs to the application.
-pub struct ServiceDirs {
-    /// Where the core manager keeps its runtime state and staged sources.
-    pub runtime: Utf8PathBuf,
-    /// The Nyanpasu application data directory.
-    pub data: Utf8PathBuf,
-}
-
 impl CoreManagerService {
     #[cfg(test)]
     pub async fn new(
-        dirs: ServiceDirs,
+        runtime_dir: Utf8PathBuf,
         local_ipc_policy: LocalIpcPolicy,
+        native_store: Arc<dyn NativeStore>,
     ) -> Result<Self, anyhow::Error> {
         Self::with_controller_access(
-            dirs,
+            runtime_dir,
             local_ipc_policy,
             None,
             Arc::new(super::controller_access::UnavailableControllerAccess),
+            native_store,
         )
         .await
     }
 
     pub async fn with_controller_access(
-        dirs: ServiceDirs,
+        runtime_dir: Utf8PathBuf,
         local_ipc_policy: LocalIpcPolicy,
         controller_dir: Option<Utf8PathBuf>,
         access: Arc<dyn nyanpasu_core_manager::ControllerAccess>,
+        native_store: Arc<dyn NativeStore>,
     ) -> Result<Self, anyhow::Error> {
-        let digest = nyanpasu_core_manager::payload_digest(dirs.runtime.as_str().as_bytes());
+        let digest = nyanpasu_core_manager::payload_digest(runtime_dir.as_str().as_bytes());
         // Leave room for the directory and epoch within sockaddr_un on macOS.
         let namespace = &digest[..16];
-        let source_dir = dirs.runtime.join("v2-sources");
+        let source_dir = runtime_dir.join("v2-sources");
+        let data_dir = native_store.data_dir().to_owned();
         let manager = Manager::builder(ManagerOptions {
             controller_dir,
             #[cfg(unix)]
             controller_template: Some(format!("core-{namespace}-{{epoch}}.sock")),
             #[cfg(windows)]
             controller_template: Some(format!(r"\\.\pipe\nyanpasu-service-{namespace}-{{epoch}}")),
-            runtime_dir: Some(dirs.runtime),
+            runtime_dir: Some(runtime_dir),
             local_ipc_policy,
             ..ManagerOptions::default()
         })
         .controller_access(access)
+        .native_store(native_store)
         .build()
         .await?;
         let core_control =
-            CoreControl::spawn(manager.clone(), ControlOptions::new(source_dir, dirs.data));
+            CoreControl::spawn(manager.clone(), ControlOptions::new(source_dir, data_dir));
         Ok(Self {
             inner: Arc::new(Inner {
                 manager,
@@ -1593,11 +1588,13 @@ mod tests {
         let data_dir = Utf8PathBuf::from_path_buf(dir.path().join("nyanpasu-data"))
             .expect("temp path is UTF-8");
         let service = CoreManagerService::new(
-            ServiceDirs {
-                runtime: runtime_dir,
-                data: data_dir,
-            },
+            runtime_dir,
             LocalIpcPolicy::Disable,
+            Arc::new(nyanpasu_core_manager::native_store::FsNativeStore::new(
+                data_dir,
+                nyanpasu_core_manager::native_store::StoreOwner::current(),
+                None,
+            )),
         )
         .await
         .expect("the manager builds on a fresh runtime dir");

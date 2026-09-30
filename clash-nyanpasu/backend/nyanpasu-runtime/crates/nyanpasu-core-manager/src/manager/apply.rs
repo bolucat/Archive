@@ -142,13 +142,16 @@ impl CoreManager {
         self.validate_launchable(&input).await?;
         let resolved = self.resolve_features(&input).await?;
         let epoch = current.plan.revision.epoch;
-        let prepared = snapshot.prepare_full(
+        let mut prepared = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
             self.controller_dir(),
             epoch,
             resolved.runtime,
             Some(self.local_ipc_settings(&input)),
         )?;
+        if let Some(store) = &self.inner.native_store {
+            prepared.native_paths(input.core.kind, store.data_dir())?;
+        }
         self.warn_http_fallback(
             &input,
             resolved.version.as_deref(),
@@ -161,6 +164,9 @@ impl CoreManager {
 
         let runtime_path = current.plan.revision.runtime_path.clone();
         let mut effective_spec = input.clone();
+        if let Some(store) = &self.inner.native_store {
+            effective_spec.working_dir = store.home(input.core.kind);
+        }
         effective_spec.config_path = runtime_path.clone();
         effective_spec.pid_file = Some(self.inner.store.pid_path(epoch));
         Ok(PreparedApply {

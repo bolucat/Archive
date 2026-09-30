@@ -17,6 +17,7 @@ pub mod kind;
 mod log;
 mod log_sink;
 pub mod manager;
+pub mod native_store;
 pub mod runtime;
 pub mod snapshot;
 pub mod spec;

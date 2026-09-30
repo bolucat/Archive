@@ -48,6 +48,10 @@ pub struct Instance {
 }
 
 struct Shared {
+    native_store: Option<Arc<dyn crate::native_store::StoreLease>>,
+    core_kind: crate::CoreKind,
+    // Output callbacks and health publication share only this sticky diagnostic.
+    persistence_error: parking_lot::Mutex<Option<String>>,
     state_tx: watch::Sender<InstanceStatus>,
     user_stop: AtomicBool,
     probe_timeout: AtomicBool,
@@ -72,7 +76,13 @@ impl Shared {
         });
     }
 
-    fn publish_status(&self, status: InstanceStatus) {
+    fn publish_status(&self, mut status: InstanceStatus) {
+        if let (Some(health), Some(error)) =
+            (&mut status.health, self.persistence_error.lock().as_ref())
+        {
+            health.state = HealthState::Unhealthy;
+            health.last_error = Some(error.clone());
+        }
         let _ = self.state_tx.send(status);
     }
 
@@ -97,6 +107,13 @@ impl Shared {
     fn publish_log_frame(&self, frame: LogFrame) {
         // Shared once, here: the tail and every subscriber hold the same
         // allocation, so fan-out costs a refcount rather than a 16 KiB clone.
+        if self.native_store.is_some()
+            && crate::native_store::cache_failure(self.core_kind, &frame.message)
+        {
+            *self.persistence_error.lock() = Some(format!("native store: {}", frame.message));
+            let status = self.state_tx.borrow().clone();
+            self.publish_status(status);
+        }
         let frame = Arc::new(frame);
         let mut tail = self.log_tail.lock();
         if tail.len() == LOG_TAIL_FRAMES {
@@ -128,7 +145,10 @@ impl Shared {
     /// The lifecycle text already carries the raw tail, so it stands in when the
     /// core logged nothing above `Info`.
     fn failure_summary(&self, lifecycle: &str) -> String {
-        error_summary(&self.diagnostic_frames()).unwrap_or_else(|| lifecycle.to_owned())
+        let persistence_error = self.persistence_error.lock().clone();
+        persistence_error.unwrap_or_else(|| {
+            error_summary(&self.diagnostic_frames()).unwrap_or_else(|| lifecycle.to_owned())
+        })
     }
 }
 
@@ -146,6 +166,8 @@ pub struct InstanceBuilder {
     liveness_with_readiness: bool,
     log_tx: Option<broadcast::Sender<Arc<LogFrame>>>,
     pipe_security_descriptor: Option<String>,
+    native_store: Option<Arc<dyn crate::native_store::StoreLease>>,
+    source_data_dir: Option<camino::Utf8PathBuf>,
 }
 
 impl Instance {
@@ -165,6 +187,8 @@ impl Instance {
             liveness_with_readiness: false,
             log_tx: None,
             pipe_security_descriptor: None,
+            native_store: None,
+            source_data_dir: None,
         }
     }
 
@@ -188,6 +212,8 @@ impl Instance {
             liveness_with_readiness,
             log_tx,
             pipe_security_descriptor,
+            native_store,
+            source_data_dir,
         } = builder;
         if tokio::fs::metadata(&spec.config_path).await.is_err() {
             return Err(Error::ConfigNotFound(spec.config_path.clone()));
@@ -217,6 +243,9 @@ impl Instance {
         let probe_cancel = CancellationToken::new();
         let (probe_request_tx, probe_request_rx) = mpsc::unbounded_channel();
         let shared = Arc::new(Shared {
+            native_store,
+            core_kind: spec.core.kind,
+            persistence_error: parking_lot::Mutex::new(None),
             state_tx,
             user_stop: AtomicBool::new(false),
             probe_timeout: AtomicBool::new(false),
@@ -240,6 +269,7 @@ impl Instance {
                     epoch,
                     &controller,
                     pipe_security_descriptor.as_deref(),
+                    source_data_dir.as_deref(),
                 )
             }
         })
@@ -247,8 +277,21 @@ impl Instance {
         .backoff(spec.options.backoff)
         .readiness(ReadinessProbe::Acknowledged)
         .cancel_token(cancel.clone())
-        .on_event(move |event| {
-            let _ = event_tx.send(event);
+        .on_event({
+            let shared = shared.clone();
+            let pid_file = epoch_pid_path(&spec, epoch).map(ToOwned::to_owned);
+            move |event| {
+                // Record this process before the supervisor can start another run.
+                if matches!(event, SupervisorEvent::Started { .. }) {
+                    if let (Some(store), Some(path)) = (&shared.native_store, &pid_file) {
+                        if let Err(error) = store.record_started(path) {
+                            *shared.persistence_error.lock() = Some(error.to_string());
+                            shared.cancel.cancel();
+                        }
+                    }
+                }
+                let _ = event_tx.send(event);
+            }
         })
         .on_process_event({
             let shared = shared.clone();
@@ -267,9 +310,37 @@ impl Instance {
                     shared.publish_log_frame(frame);
                 }
             }
-        })
-        .spawn()
-        .await?;
+        });
+        let supervisor = if let Some(store) = shared.native_store.clone() {
+            let shared = shared.clone();
+            supervisor.before_spawn(move || {
+                *shared.persistence_error.lock() = None;
+                store
+                    .prepare_spawn()
+                    .map_err(|error| ProcessError::Engine(error.to_string()))
+            })
+        } else {
+            supervisor
+        };
+        let supervisor = match supervisor.spawn().await {
+            Ok(supervisor) => supervisor,
+            Err(error) => {
+                if let Some(store) = &shared.native_store {
+                    if let Some(pid_file) = epoch_pid_path(&spec, epoch) {
+                        reap_epoch_pid_file(
+                            pid_file.as_std_path(),
+                            spec.config_path.parent().unwrap().as_std_path(),
+                        )
+                        .await
+                        .map_err(|reap_error| {
+                            Error::StopUnconfirmed(format!("{error}; {reap_error}"))
+                        })?;
+                    }
+                    store.confirm_stopped()?;
+                }
+                return Err(error.into());
+            }
+        };
         *shared.supervisor.lock().await = Some(supervisor);
 
         let monitor = tokio::spawn(monitor_loop(MonitorLoopArgs {
@@ -385,17 +456,11 @@ impl Instance {
     /// If normal supervisor termination is uncertain, the structured epoch pid
     /// record is the only authority used for the fallback kill.
     pub async fn stop_and_confirm_dead(self, timeout: std::time::Duration) -> Result<(), Error> {
-        if self.state_rx.borrow().state.is_terminal() {
-            self.reap_epoch_record_if_present().await.map_err(|error| {
-                Error::StopUnconfirmed(format!(
-                    "terminal instance identity verification failed: {error}"
-                ))
-            })?;
-            return Ok(());
-        }
         self.shared.user_stop.store(true, Ordering::SeqCst);
         self.shared.probe_cancel.cancel();
-        self.shared.publish(InstanceState::Stopping);
+        if !self.state_rx.borrow().state.is_terminal() {
+            self.shared.publish(InstanceState::Stopping);
+        }
         let supervisor = self.shared.supervisor.lock().await.take();
         let stop_result = match supervisor {
             Some(supervisor) => match tokio::time::timeout(timeout, supervisor.stop()).await {
@@ -423,6 +488,9 @@ impl Instance {
                     "stopped instance identity verification failed: {error}"
                 ))
             })?;
+            if let Some(store) = &self.shared.native_store {
+                store.confirm_stopped()?;
+            }
             return Ok(());
         }
         let stop_error = stop_result
@@ -451,6 +519,9 @@ impl Instance {
                 self.shared
                     .publish(InstanceState::Stopped(StopReason::User));
             }
+            if let Some(store) = &self.shared.native_store {
+                store.confirm_stopped()?;
+            }
             return Ok(());
         }
         Err(Error::StopUnconfirmed(stop_error))
@@ -472,6 +543,16 @@ impl Instance {
 }
 
 impl InstanceBuilder {
+    pub(crate) fn native_store(
+        mut self,
+        lease: Option<Arc<dyn crate::native_store::StoreLease>>,
+        source: Option<camino::Utf8PathBuf>,
+    ) -> Self {
+        self.native_store = lease;
+        self.source_data_dir = source;
+        self
+    }
+
     pub(crate) fn pipe_security_descriptor(mut self, descriptor: Option<String>) -> Self {
         self.pipe_security_descriptor = descriptor;
         self
@@ -521,6 +602,7 @@ fn build_command(
     epoch: Epoch,
     controller: &ResolvedController,
     pipe_security_descriptor: Option<&str>,
+    source_data_dir: Option<&camino::Utf8Path>,
 ) -> Command {
     let mut args = kind::run_args(spec.core.kind, spec.core_paths())
         .expect("kind validated in Instance::spawn");
@@ -533,7 +615,7 @@ fn build_command(
         .args(args)
         .env(
             MIHOMO_SAFE_PATHS_ENV_NAME,
-            kind::mihomo_safe_paths(&spec.working_dir, config_dir),
+            kind::safe_paths_with_source(&spec.working_dir, config_dir, source_data_dir),
         )
         .env(CLICOLOR_FORCE_ENV_NAME, "0")
         .current_dir(spec.working_dir.as_str());
@@ -668,6 +750,11 @@ async fn monitor_loop(args: MonitorLoopArgs) {
                     current = None;
                     respawn_deadline = None;
                     last_exit = Some(payload);
+                }
+                Some(SupervisorEvent::PreparationFailed { detail }) => {
+                    stop_probe_driver(&mut driver).await;
+                    shared.publish(InstanceState::Stopped(StopReason::Error(detail)));
+                    return;
                 }
                 Some(SupervisorEvent::GaveUp) => {
                     stop_probe_driver(&mut driver).await;
@@ -989,6 +1076,9 @@ mod tests {
         let (probe_request_tx, _probe_request_rx) = mpsc::unbounded_channel();
         let (log_tx, mut logs) = broadcast::channel(LOG_CHANNEL_CAPACITY);
         let shared = Shared {
+            native_store: None,
+            core_kind: crate::CoreKind::Mihomo,
+            persistence_error: parking_lot::Mutex::new(None),
             state_tx,
             user_stop: AtomicBool::new(true),
             probe_timeout: AtomicBool::new(false),
@@ -1075,6 +1165,9 @@ mod tests {
         let (state_tx, state_rx) = watch::channel(InstanceStatus::initial());
         let (probe_request_tx, _probe_request_rx) = mpsc::unbounded_channel();
         let shared = Shared {
+            native_store: None,
+            core_kind: crate::CoreKind::Mihomo,
+            persistence_error: parking_lot::Mutex::new(None),
             state_tx,
             user_stop: AtomicBool::new(false),
             probe_timeout: AtomicBool::new(false),

@@ -6,6 +6,8 @@ use crate::{Epoch, kind::CoreKind, state::RevisionId};
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error(transparent)]
+    NativeStore(#[from] crate::native_store::StoreError),
     #[error("core is already running")]
     AlreadyRunning,
     #[error("core is not running")]
@@ -86,6 +88,7 @@ impl Error {
     /// answering `None`. Do not collapse the unclassified arms into a wildcard.
     pub fn kind(&self) -> Option<CoreErrorKind> {
         match self {
+            Self::NativeStore(_) => Some(CoreErrorKind::NativeStoreUnavailable),
             Self::AlreadyRunning => Some(CoreErrorKind::AlreadyRunning),
             Self::NotStarted => Some(CoreErrorKind::NotStarted),
             Self::ConfigNotFound(_) => Some(CoreErrorKind::ConfigNotFound),

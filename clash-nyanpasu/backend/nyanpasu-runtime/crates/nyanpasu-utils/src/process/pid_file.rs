@@ -217,6 +217,16 @@ pub async fn read_epoch_pid_file(
     parse_epoch_record(&raw).map(Some)
 }
 
+/// Read-only identity check for a copied epoch record. A missing/reused PID is
+/// dead; inability to inspect it is an error, never proof of death. This does
+/// not authorize killing a process using a record in a user-owned directory.
+pub fn recorded_process_is_alive(raw: &str) -> std::io::Result<bool> {
+    let record = parse_epoch_record(raw)?;
+    Ok(process_identity(record.pid)?
+        .as_ref()
+        .is_some_and(|identity| record_matches_identity(&record, identity)))
+}
+
 /// Kills the orphan in `path` only after validating the full epoch record and
 /// proving that both pid and runtime config are contained by `runtime_dir`.
 ///
@@ -1164,6 +1174,23 @@ fn identity_error(message: impl Into<String>) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copied_record_checks_identity_without_killing_the_process() {
+        let pid = std::process::id();
+        let identity = process_identity(pid).unwrap().unwrap();
+        let mut record = EpochPidRecord {
+            pid,
+            epoch: 1,
+            executable: identity.executable,
+            start_token: identity.start_token,
+            runtime_config: PathBuf::from("config-1.yaml"),
+        };
+        assert!(recorded_process_is_alive(&serialize_epoch_record(&record).unwrap()).unwrap());
+        record.start_token = record.start_token.wrapping_add(1);
+        assert!(!recorded_process_is_alive(&serialize_epoch_record(&record).unwrap()).unwrap());
+        assert!(recorded_process_is_alive("incomplete").is_err());
+    }
 
     #[test]
     fn epoch_record_round_trips() {

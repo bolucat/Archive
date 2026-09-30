@@ -16,6 +16,8 @@ use super::{
     handle::ProcessHandle,
 };
 
+type PrepareHook = Arc<dyn Fn() -> Result<(), ProcessError> + Send + Sync>;
+
 type Factory = Arc<dyn Fn() -> Command + Send + Sync>;
 type EventHook = Arc<dyn Fn(SupervisorEvent) + Send + Sync>;
 type ProcessEventHook = Arc<dyn Fn(ProcessEvent) + Send + Sync>;
@@ -145,11 +147,13 @@ pub enum SupervisorEvent {
     Exited(TerminatedPayload),
     Restarting { attempt: u32, delay: Duration },
     GaveUp,
+    PreparationFailed { detail: String },
     Stopped,
 }
 
 pub struct SupervisorBuilder {
     factory: Factory,
+    preparation: Option<PrepareHook>,
     policy: RestartPolicy,
     backoff: Backoff,
     readiness: ReadinessProbe,
@@ -190,6 +194,7 @@ impl Supervisor {
     {
         SupervisorBuilder {
             factory: Arc::new(factory),
+            preparation: None,
             policy: RestartPolicy::OnFailure { max_restarts: 5 },
             backoff: Backoff::exponential(BackoffRange {
                 initial: Duration::from_secs(1),
@@ -299,6 +304,19 @@ impl SupervisorBuilder {
         self
     }
 
+    /// Prepares external resources before EVERY process start, including respawns.
+    /// A failed preparation is terminal: retrying a permission or ownership error
+    /// must not launch a child against resources the host could not authorize.
+    /// The hook runs synchronously and should complete promptly. Cancellation
+    /// is checked again after it returns, before a child is spawned.
+    pub fn before_spawn<F>(mut self, prepare: F) -> Self
+    where
+        F: Fn() -> Result<(), ProcessError> + Send + Sync + 'static,
+    {
+        self.preparation = Some(Arc::new(prepare));
+        self
+    }
+
     /// Starts the supervision loop.
     ///
     /// The first spawn happens before this method returns, so its failure is
@@ -334,6 +352,12 @@ impl SupervisorBuilder {
             }
         };
 
+        if let Some(prepare) = &self.preparation {
+            prepare()?;
+        }
+        if token.is_cancelled() {
+            return Err(ProcessError::Engine("spawn preparation cancelled".into()));
+        }
         let (first_handle, first_rx) = (self.factory)().spawn().await?;
         let first_pid = first_handle.pid();
         if matches!(self.readiness, ReadinessProbe::Acknowledged) {
@@ -342,6 +366,7 @@ impl SupervisorBuilder {
         emit(SupervisorEvent::Started { pid: first_pid });
         *current.lock().await = Some(first_handle);
 
+        let preparation = self.preparation;
         let factory = self.factory;
         let policy = self.policy;
         let backoff = self.backoff;
@@ -487,6 +512,22 @@ impl SupervisorBuilder {
                     return;
                 }
 
+                if let Some(prepare) = &preparation
+                    && let Err(error) = prepare()
+                {
+                    if token_.is_cancelled() {
+                        emit(SupervisorEvent::Stopped);
+                    } else {
+                        emit(SupervisorEvent::PreparationFailed {
+                            detail: error.to_string(),
+                        });
+                    }
+                    return;
+                }
+                if token_.is_cancelled() {
+                    emit(SupervisorEvent::Stopped);
+                    return;
+                }
                 match (factory)().spawn().await {
                     Ok((handle, rx)) => {
                         let pid = handle.pid();

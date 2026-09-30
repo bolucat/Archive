@@ -511,6 +511,20 @@ mod tests {
         assert!(unprivileged(&["nyanpasu-service", "rpc", "stop-core"]));
         assert!(unprivileged(&["nyanpasu-service", "completions", "bash"]));
         assert!(unprivileged(&["nyanpasu-service", "update", "--check"]));
+        #[cfg(unix)]
+        {
+            let mut args = vec![
+                "nyanpasu-service",
+                "update",
+                "--user",
+                "alice",
+                "--nyanpasu-data-dir",
+                "data",
+            ];
+            assert!(!unprivileged(&args));
+            args.push("--check");
+            assert!(unprivileged(&args));
+        }
         assert!(unprivileged(&["nyanpasu-service", "-V"]));
 
         assert!(!unprivileged(&["nyanpasu-service", "update"]));

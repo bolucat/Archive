@@ -4,7 +4,7 @@ use nyanpasu_ipc::client::shortcuts;
 use semver::Version;
 use tokio::task::spawn_blocking;
 
-use crate::consts::{APP_NAME, APP_VERSION};
+use crate::consts::APP_VERSION;
 
 use super::CommandError;
 
@@ -18,6 +18,15 @@ pub struct UpdateCommand {
     /// The version comparison still uses the running binary's version.
     #[clap(long, value_name = "PATH")]
     from: Option<PathBuf>,
+
+    /// Bind native core data to this desktop user when upgrading an older installation
+    #[cfg(unix)]
+    #[clap(long, requires = "nyanpasu_data_dir")]
+    user: Option<String>,
+    /// The desktop data directory belonging to --user
+    #[cfg(unix)]
+    #[clap(long, requires = "user")]
+    nyanpasu_data_dir: Option<PathBuf>,
 }
 
 /// What `update` would do. Split out of [`update`] so the branch table can be
@@ -30,6 +39,8 @@ enum UpdatePlan {
     ReplaceOffline,
     /// The installed service is older: stop, overwrite, start again.
     StopReplaceStart,
+    /// The binary is current, but the service must reload its owner binding.
+    Restart,
     /// The installed service is not older than the source: do nothing.
     UpToDate,
 }
@@ -43,6 +54,7 @@ impl UpdatePlan {
             UpdatePlan::StopReplaceStart => {
                 "would update: stop the service, replace the binary, start it again"
             }
+            UpdatePlan::Restart => "would restart: reload the native store owner binding",
             UpdatePlan::UpToDate => {
                 "up to date: the installed service is not older than the running binary"
             }
@@ -50,13 +62,19 @@ impl UpdatePlan {
     }
 }
 
-fn plan_update(binary_exists: bool, source: &Version, installed: Option<&Version>) -> UpdatePlan {
+fn plan_update(
+    binary_exists: bool,
+    source: &Version,
+    installed: Option<&Version>,
+    refresh_owner: bool,
+) -> UpdatePlan {
     if !binary_exists {
         return UpdatePlan::Seed;
     }
     match installed {
         None => UpdatePlan::ReplaceOffline,
         Some(installed) if source > installed => UpdatePlan::StopReplaceStart,
+        Some(_) if refresh_owner => UpdatePlan::Restart,
         Some(_) => UpdatePlan::UpToDate,
     }
 }
@@ -90,8 +108,7 @@ pub async fn update(ctx: UpdateCommand) -> Result<(), CommandError> {
     let service_data_dir = crate::utils::dirs::service_data_dir();
     tracing::info!("Service data dir: {:?}", service_data_dir);
     tracing::info!("Client version: {}", APP_VERSION);
-    let service_binary =
-        service_data_dir.join(format!("{}{}", APP_NAME, std::env::consts::EXE_SUFFIX));
+    let service_binary = crate::utils::dirs::service_binary_path();
     let binary_exists = service_binary.exists();
     let client_version = Version::parse(APP_VERSION).unwrap();
     // Only ask the running service for its version when there is a binary to
@@ -107,7 +124,16 @@ pub async fn update(ctx: UpdateCommand) -> Result<(), CommandError> {
     } else {
         None
     };
-    let plan = plan_update(binary_exists, &client_version, installed.as_ref());
+    #[cfg(unix)]
+    let refresh_owner = ctx.user.is_some();
+    #[cfg(not(unix))]
+    let refresh_owner = false;
+    let plan = plan_update(
+        binary_exists,
+        &client_version,
+        installed.as_ref(),
+        refresh_owner,
+    );
 
     if ctx.check {
         let source = source_path(&explicit_source)?;
@@ -118,10 +144,22 @@ pub async fn update(ctx: UpdateCommand) -> Result<(), CommandError> {
             Some(installed) => println!("installed version: {installed}"),
             None => println!("installed version: unknown (the service did not answer)"),
         }
+        #[cfg(unix)]
+        if let (Some(user), Some(data)) = (&ctx.user, &ctx.nyanpasu_data_dir) {
+            println!("would bind native store owner: {user} ({})", data.display());
+        }
         println!("{}", plan.summary());
         return Ok(());
     }
 
+    #[cfg(unix)]
+    if let (Some(user), Some(data)) = (&ctx.user, &ctx.nyanpasu_data_dir) {
+        crate::utils::native_store_owner::FsOwnerBindingStore::new(
+            crate::utils::dirs::service_config_dir(),
+            data,
+        )
+        .save(user)?;
+    }
     match plan {
         UpdatePlan::Seed => {
             tracing::info!("Service binary not found, copying from current binary directly...");
@@ -140,6 +178,10 @@ pub async fn update(ctx: UpdateCommand) -> Result<(), CommandError> {
             tracing::info!("Service binary updated, starting the service...");
             spawn_blocking(super::start::start).await??; // start the service after updating
         }
+        UpdatePlan::Restart => {
+            spawn_blocking(super::stop::stop).await??;
+            spawn_blocking(super::start::start).await??;
+        }
         UpdatePlan::UpToDate => {
             tracing::info!("Client version is the same as server version, no need to update.");
         }
@@ -155,26 +197,80 @@ mod tests {
         Version::parse(raw).unwrap()
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn owner_binding_arguments_must_be_supplied_together() {
+        use crate::cmds::Cli;
+        use clap::Parser;
+
+        for args in [
+            vec!["nyanpasu-service", "update", "--user", "alice"],
+            vec!["nyanpasu-service", "update", "--nyanpasu-data-dir", "data"],
+        ] {
+            let error = Cli::try_parse_from(args).err().unwrap();
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument
+            );
+        }
+        for check in [false, true] {
+            let mut args = vec![
+                "nyanpasu-service",
+                "update",
+                "--user",
+                "alice",
+                "--nyanpasu-data-dir",
+                "data",
+            ];
+            if check {
+                args.push("--check");
+            }
+            assert!(Cli::try_parse_from(args).is_ok());
+        }
+    }
+
     #[test]
     fn the_update_plan_reproduces_the_legacy_branches() {
         let source = version("1.4.5");
-        assert_eq!(plan_update(false, &source, None), UpdatePlan::Seed);
+        assert_eq!(plan_update(false, &source, None, false), UpdatePlan::Seed);
         assert_eq!(
-            plan_update(false, &source, Some(&version("1.4.5"))),
+            plan_update(false, &source, Some(&version("1.4.5")), false),
             UpdatePlan::Seed
         );
-        assert_eq!(plan_update(true, &source, None), UpdatePlan::ReplaceOffline);
         assert_eq!(
-            plan_update(true, &source, Some(&version("1.4.4"))),
+            plan_update(true, &source, None, false),
+            UpdatePlan::ReplaceOffline
+        );
+        assert_eq!(
+            plan_update(true, &source, Some(&version("1.4.4")), false),
             UpdatePlan::StopReplaceStart
         );
         assert_eq!(
-            plan_update(true, &source, Some(&version("1.4.5"))),
+            plan_update(true, &source, Some(&version("1.4.5")), false),
             UpdatePlan::UpToDate
         );
         assert_eq!(
-            plan_update(true, &source, Some(&version("1.5.0"))),
+            plan_update(true, &source, Some(&version("1.5.0")), false),
             UpdatePlan::UpToDate
         );
+    }
+
+    #[test]
+    fn updating_the_owner_restarts_a_current_binary_without_downgrading_it() {
+        let source = version("1.4.5");
+        assert_eq!(plan_update(false, &source, None, true), UpdatePlan::Seed);
+        assert_eq!(
+            plan_update(true, &source, None, true),
+            UpdatePlan::ReplaceOffline
+        );
+        assert_eq!(
+            plan_update(true, &source, Some(&version("1.4.4")), true),
+            UpdatePlan::StopReplaceStart
+        );
+        for installed in [version("1.4.5"), version("1.5.0")] {
+            let plan = plan_update(true, &source, Some(&installed), true);
+            assert_eq!(plan, UpdatePlan::Restart);
+            assert!(plan.summary().contains("would restart"));
+        }
     }
 }

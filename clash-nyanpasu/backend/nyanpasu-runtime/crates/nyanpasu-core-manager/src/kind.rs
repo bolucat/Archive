@@ -99,7 +99,7 @@ pub const CHECK_CONFIG_TIMEOUT: Duration = Duration::from_secs(30);
 /// A non-zero exit becomes [`Error::ConfigCheckFailed`] with a condensed message,
 /// and so does a run that exceeds [`CHECK_CONFIG_TIMEOUT`].
 pub async fn check_config(spec: &crate::spec::InstanceSpec) -> Result<(), Error> {
-    run_check(spec, CHECK_CONFIG_TIMEOUT).await
+    run_check(spec, CHECK_CONFIG_TIMEOUT, None).await
 }
 
 /// [`check_config`] with an explicit bound. Public only under `test-hooks`:
@@ -110,10 +110,34 @@ pub async fn check_config_within(
     spec: &crate::spec::InstanceSpec,
     timeout: Duration,
 ) -> Result<(), Error> {
-    run_check(spec, timeout).await
+    run_check(spec, timeout, None).await
 }
 
-async fn run_check(spec: &crate::spec::InstanceSpec, timeout: Duration) -> Result<(), Error> {
+pub(crate) async fn check_config_with_source(
+    spec: &crate::spec::InstanceSpec,
+    source: &Utf8Path,
+) -> Result<(), Error> {
+    run_check(spec, CHECK_CONFIG_TIMEOUT, Some(source)).await
+}
+
+pub(crate) fn safe_paths_with_source(
+    working: &Utf8Path,
+    config: &Utf8Path,
+    source: Option<&Utf8Path>,
+) -> String {
+    let mut paths = mihomo_safe_paths(working, config);
+    if let Some(source) = source {
+        paths.push_str(SAFE_PATHS_SEPARATOR);
+        paths.push_str(source.as_str());
+    }
+    paths
+}
+
+async fn run_check(
+    spec: &crate::spec::InstanceSpec,
+    timeout: Duration,
+    source: Option<&Utf8Path>,
+) -> Result<(), Error> {
     let config_dir = spec
         .config_path
         .parent()
@@ -122,7 +146,7 @@ async fn run_check(spec: &crate::spec::InstanceSpec, timeout: Duration) -> Resul
         .args(check_args(spec.core_paths()))
         .env(
             MIHOMO_SAFE_PATHS_ENV_NAME,
-            mihomo_safe_paths(&spec.working_dir, config_dir),
+            safe_paths_with_source(&spec.working_dir, config_dir, source),
         )
         .env(CLICOLOR_FORCE_ENV_NAME, "0")
         .timeout(timeout)

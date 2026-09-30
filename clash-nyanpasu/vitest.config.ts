@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
@@ -19,27 +19,56 @@ export default defineConfig({
       {
         plugins: [react()],
         resolve: {
-          // The app's aliases, for the nyanpasu modules a browser test loads.
           alias: [
-            {
-              find: '@',
-              replacement: fileURLToPath(
-                new URL('frontend/nyanpasu/src', import.meta.url),
+            ...Object.entries({
+              '@': path.resolve('frontend/nyanpasu/src'),
+              '@root': path.resolve('.'),
+              '@interface': path.resolve('frontend/interface/src'),
+              '@nyanpasu/interface': path.resolve(
+                'frontend/interface/src/index.ts',
               ),
-            },
-            {
-              find: '@interface',
-              replacement: fileURLToPath(
-                new URL('frontend/interface/src', import.meta.url),
+              '@nyanpasu/utils': path.resolve('frontend/utils/src/index.ts'),
+              '@tauri-apps/api': path.resolve(
+                'frontend/interface/node_modules/@tauri-apps/api',
               ),
-            },
+              '@tanstack/react-query': path.resolve(
+                'frontend/interface/node_modules/@tanstack/react-query',
+              ),
+              clsx: path.resolve('frontend/utils/node_modules/clsx'),
+              'react-use': path.resolve(
+                'frontend/interface/node_modules/react-use',
+              ),
+              'tailwind-merge': path.resolve(
+                'frontend/utils/node_modules/tailwind-merge',
+              ),
+              'vitest-browser-react': path.resolve(
+                'frontend/interface/node_modules/vitest-browser-react',
+              ),
+            }).map(([find, replacement]) => ({ find, replacement })),
             {
-              find: '@nyanpasu/interface',
-              replacement: fileURLToPath(
-                new URL('frontend/interface/src', import.meta.url),
+              find: /^~icons\/.*$/,
+              replacement: path.resolve(
+                'frontend/nyanpasu/tests/icon-stub.tsx',
               ),
             },
           ],
+        },
+        optimizeDeps: {
+          include: [
+            'react',
+            'react-dom/client',
+            'react/jsx-runtime',
+            '@tanstack/react-query',
+            '@tauri-apps/api/core',
+            '@tauri-apps/api/event',
+            '@tauri-apps/api/webviewWindow',
+            'clsx',
+            'react-use/esm/factory/createBreakpoint',
+            'react-use/esm/useUpdateEffect',
+            'tailwind-merge',
+            'vitest-browser-react',
+          ],
+          exclude: ['@nyanpasu/interface', '@nyanpasu/utils'],
         },
         test: {
           name: 'browser',

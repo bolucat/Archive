@@ -4,7 +4,9 @@ import {
   createRootRoute,
   ErrorComponentProps,
   Outlet,
+  redirect,
 } from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import 'dayjs/locale/ko'
 import 'dayjs/locale/ru'
@@ -13,6 +15,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
+import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
@@ -23,9 +26,10 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
+import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
 import {
-  events,
   NyanpasuProvider,
+  rpc,
   setMutationDegradationHandler,
   useSettings,
   type Degradation,
@@ -35,7 +39,7 @@ import {
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export const Catch = ({ error }: ErrorComponentProps) => {
   return (
@@ -70,7 +74,7 @@ export const Catch = ({ error }: ErrorComponentProps) => {
 
         <button
           className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
-          onClick={() => appWindow.close()}
+          onClick={() => appWindow?.close()}
         >
           Close Window
         </button>
@@ -93,6 +97,11 @@ const TanStackRouterDevtools = import.meta.env.PROD
     )
 
 export const Route = createRootRoute({
+  beforeLoad: ({ location }) => {
+    if (!isTauri() && location.pathname === '/') {
+      throw redirect({ to: '/main/dashboard' })
+    }
+  },
   component: App,
   errorComponent: Catch,
   pendingComponent: Pending,
@@ -113,14 +122,20 @@ function WindowReveal() {
   }, [])
 
   useEffect(() => {
-    if ((query.isSuccess || query.isError) && !hasRevealed.current) {
+    if (
+      appWindow &&
+      (query.isSuccess || query.isError) &&
+      !hasRevealed.current
+    ) {
       hasRevealed.current = true
       Promise.all([
-        appWindow.show(),
-        appWindow.unminimize(),
-        appWindow.setFocus(),
+        appWindow?.show(),
+        appWindow?.unminimize(),
+        appWindow?.setFocus(),
       ]).finally(() => {
-        events.windowReadyEvent.emit({ label: appWindow.label })
+        rpc.events.windowReadyEvent.emit({
+          label: appWindow?.label ?? 'browser',
+        })
       })
     }
   }, [query.isSuccess, query.isError])
@@ -155,14 +170,18 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
   }
 }
 
-function formatDegradationItem(degradation: Degradation): string {
+function formatDegradationItem(
+  degradation: Degradation,
+  profileLabel: ProfileLabel,
+): string {
   return m.mutation_degraded_item({
     phase: localizeDegradationPhase(degradation.phase),
-    detail: degradationReasonMessage(degradation.reason),
+    detail: degradationReasonMessage(degradation.reason, profileLabel),
   })
 }
 
 function MutationDegradationNotifier() {
+  const profiles = useProfileLookup()
   useEffect(
     () =>
       // setMutationDegradationHandler returns a disposer; useEffect cleanup
@@ -182,7 +201,13 @@ function MutationDegradationNotifier() {
           })
         }
 
-        const items = degradations.map(formatDegradationItem).join('; ')
+        const items = degradations
+          .map((degradation) =>
+            formatDegradationItem(degradation, (id) =>
+              profileDialogLabel(profiles, id),
+            ),
+          )
+          .join('; ')
         message(m.mutation_degraded_summary({ items }), {
           title: m.mutation_degraded_title(),
           kind: 'warning',
@@ -190,7 +215,7 @@ function MutationDegradationNotifier() {
           console.error('[mutation-degradation] failed to show warning', error)
         })
       }),
-    [],
+    [profiles],
   )
   return null
 }
@@ -210,8 +235,7 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <MutationDegradationNotifier />
-                {/* Taking a link consumes it, and every link opens the main window. */}
-                {appWindow.label === 'main' && <DeepLinkImport />}
+                {appWindow?.label === 'main' && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

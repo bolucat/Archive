@@ -49,7 +49,7 @@ pub use event::{ProcessEvent, TerminatedPayload};
 pub use handle::{Containment, ProcessHandle};
 pub use pid_file::{
     EpochPidFile, EpochPidFileSpec, EpochPidRecord, OrphanReapOutcome, read_epoch_pid_file,
-    reap_epoch_pid_file,
+    reap_epoch_pid_file, recorded_process_is_alive,
 };
 pub use supervisor::{
     Backoff, BackoffRange, ReadinessProbe, RestartPolicy, RestartStormPolicy, Supervisor,
