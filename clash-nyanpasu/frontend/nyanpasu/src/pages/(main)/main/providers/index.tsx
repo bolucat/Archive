@@ -1,6 +1,5 @@
 import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import dayjs from 'dayjs'
 import { filesize } from 'filesize'
 import { ComponentProps, PropsWithChildren } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -10,13 +9,17 @@ import { LinearProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
+import { formatRelativeTime } from '@/utils/date'
 import { message } from '@/utils/notification'
 import {
   ClashProxiesProviderQueryItem,
   ClashRulesProviderQueryItem,
   useClashProxiesProvider,
   useClashRulesProvider,
+  useUpdateClashProxiesProvider,
+  useUpdateClashRulesProvider,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link } from '@tanstack/react-router'
@@ -115,7 +118,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
           <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
-            {dayjs(data.updatedAt).fromNow()}
+            {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 
@@ -145,7 +148,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
         <div className="flex items-center justify-between">
           <div className="bg-surface-variant text-secondary rounded-full px-2 py-1 text-[10px]">
             {m.providers_proxies_proxy_count_label({
-              count: data.proxies.length,
+              count: data.proxyCount,
             })}
           </div>
 
@@ -184,7 +187,7 @@ const Rules = ({ data }: { data: ClashRulesProviderQueryItem }) => {
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
           <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
-            {dayjs(data.updatedAt).fromNow()}
+            {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 
@@ -224,13 +227,17 @@ function RouteComponent() {
     ? Object.entries(proxiesProvider.data)
     : null
 
+  const updateProxies = useUpdateClashProxiesProvider()
+
   const proxiesBlockTask = useBlockTask('update-proxies-provider', async () => {
     if (!proxies) {
       return
     }
 
     try {
-      await Promise.all(proxies.map(([_, data]) => data.mutate()))
+      await Promise.all(
+        proxies.map(([_, data]) => updateProxies.mutateAsync(data.name)),
+      )
     } catch (error) {
       console.error('Failed to update proxies provider', error)
       message(`Update provider failed: \n ${formatError(error)}`, {
@@ -247,13 +254,17 @@ function RouteComponent() {
 
   const rules = rulesProvider.data ? Object.entries(rulesProvider.data) : null
 
+  const updateRules = useUpdateClashRulesProvider()
+
   const rulesBlockTask = useBlockTask('update-rules-provider', async () => {
     if (!rules) {
       return
     }
 
     try {
-      await Promise.all(rules.map(([_, data]) => data.mutate()))
+      await Promise.all(
+        rules.map(([_, data]) => updateRules.mutateAsync(data.name)),
+      )
     } catch (error) {
       console.error('Failed to update rules provider', error)
       message(`Update provider failed: \n ${formatError(error)}`, {

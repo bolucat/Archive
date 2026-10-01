@@ -39,6 +39,7 @@ nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-panics = { path = '../nyanpasu-panics' }
 
 # Common Utilities
 tokio = { workspace = true, features = ['test-util'] }
@@ -96,7 +97,7 @@ rust-i18n = '4'
 
 # Networking Libraries
 axum = { version = '0.8', features = ['ws'] }
-tokio-tungstenite = '0.29'
+tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }

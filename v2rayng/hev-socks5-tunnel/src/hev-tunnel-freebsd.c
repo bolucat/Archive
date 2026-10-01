@@ -30,10 +30,11 @@
 static char tun_name[IFNAMSIZ];
 
 int
-hev_tunnel_open (const char *name, int multi_queue)
+hev_tunnel_open (const char *name, int multi_queue, const char *guid)
 {
     struct ifreq ifr;
     char buf[256];
+    int one = 1;
     int res;
     int sfd;
     int tfd;
@@ -41,7 +42,7 @@ hev_tunnel_open (const char *name, int multi_queue)
     snprintf (buf, sizeof (buf), "/dev/%s", name);
     tfd = hev_task_io_open (buf, O_RDWR);
     if (tfd >= 0)
-        goto succ;
+        goto found;
 
     tfd = hev_task_io_open ("/dev/tun", O_RDWR);
     if (tfd < 0)
@@ -62,7 +63,11 @@ hev_tunnel_open (const char *name, int multi_queue)
     if (res < 0)
         goto fail_close;
 
-succ:
+found:
+    res = ioctl (tfd, TUNSIFHEAD, &one);
+    if (res < 0)
+        goto fail_close;
+
     strncpy (tun_name, name, IFNAMSIZ - 1);
     return tfd;
 

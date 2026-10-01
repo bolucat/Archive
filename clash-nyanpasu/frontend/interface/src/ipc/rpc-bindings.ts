@@ -4,6 +4,7 @@
 
 /** Tanstack Query */
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
+import type { Channel } from '@tauri-apps/api/core'
 import { invokeRpcCommand as __RPC_INVOKE } from './command-transport'
 import {
   emitHttpEvent,
@@ -184,13 +185,29 @@ export const commands = {
     ),
   getTrafficSummary: () =>
     typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
-  queryTrafficUsage: (groupBy: GroupBy, limit: number) =>
-    typedError<Usage, IpcError>(
-      __RPC_INVOKE('query_traffic_usage', { groupBy, limit }),
+  queryTrafficReport: (request: ReportRequest) =>
+    typedError<TrafficReport, IpcError>(
+      __RPC_INVOKE('query_traffic_report', { request }),
     ),
-  queryTrafficTopology: (limit: number) =>
-    typedError<Topology, IpcError>(
-      __RPC_INVOKE('query_traffic_topology', { limit }),
+  queryTrafficUsage: (
+    query: TrafficQuery,
+    groupBy: Dimension,
+    after: {
+      bytes: Bytes
+      key: string
+    } | null,
+    limit: number,
+  ) =>
+    typedError<UsagePage, IpcError>(
+      __RPC_INVOKE('query_traffic_usage', { query, groupBy, after, limit }),
+    ),
+  queryTrafficUsageByKeys: (
+    query: TrafficQuery,
+    groupBy: Dimension,
+    keys: string[],
+  ) =>
+    typedError<UsageGroup[], IpcError>(
+      __RPC_INVOKE('query_traffic_usage_by_keys', { query, groupBy, keys }),
     ),
   queryTrafficClosedConnections: (
     before: {
@@ -216,7 +233,9 @@ export const commands = {
       IpcError
     >(__RPC_INVOKE('check_update')),
   getReleaseChannel: () =>
-    typedError<ReleaseChannel, IpcError>(__RPC_INVOKE('get_release_channel')),
+    typedError<ReleaseChannelInfo, IpcError>(
+      __RPC_INVOKE('get_release_channel'),
+    ),
   getSystemAccentColor: () =>
     typedError<string | null, IpcError>(
       __RPC_INVOKE('get_system_accent_color'),
@@ -237,6 +256,16 @@ export const commands = {
     typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('set_release_channel', { channel }),
     ),
+  subscribeClashConnectionDetails: (
+    onFrame: Channel<ClashConnectionDetails_Deserialize>,
+  ) =>
+    typedError<SubscriptionId, IpcError>(
+      __RPC_INVOKE('subscribe_clash_connection_details', { onFrame }),
+    ),
+  unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
+    typedError<null, IpcError>(
+      __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
+    ),
   openLogSession: (source: LogSource, request: OpenLogs) =>
     typedError<LogSession, LogError>(
       __RPC_INVOKE('open_log_session', { source, request }),
@@ -255,6 +284,12 @@ export const commands = {
     typedError<null, IpcError>(__RPC_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>
     typedError<null, IpcError>(__RPC_INVOKE('open_app_data_dir')),
+  openBackupsDir: () =>
+    typedError<null, IpcError>(__RPC_INVOKE('open_backups_dir')),
+  createConfigBackup: () =>
+    typedError<ConfigBackupInfo, IpcError>(
+      __RPC_INVOKE('create_config_backup'),
+    ),
   openLogsDir: () => typedError<null, IpcError>(__RPC_INVOKE('open_logs_dir')),
   openWebUrl: (url: string) =>
     typedError<null, IpcError>(__RPC_INVOKE('open_web_url', { url })),
@@ -617,6 +652,67 @@ export type ClashConfigPatch_Serialize = {
   tun_stack?: TunStack | null
 }
 
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection =
+  ClashConnection_Serialize | ClashConnection_Deserialize
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails =
+  ClashConnectionDetails_Serialize | ClashConnectionDetails_Deserialize
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails_Deserialize = {
+  /**
+   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
+   *  the same sample, so a subscriber can align the two.
+   */
+  sequence: number
+  connections: ClashConnection_Deserialize[]
+}
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails_Serialize = {
+  /**
+   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
+   *  the same sample, so a subscriber can align the two.
+   */
+  sequence: number
+  connections: ClashConnection_Serialize[]
+}
+
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection_Deserialize = {
+  downloadSpeed: number
+  uploadSpeed: number
+} & Connection_Deserialize
+
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection_Serialize = {
+  downloadSpeed: number
+  uploadSpeed: number
+} & Connection_Serialize
+
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
 
@@ -856,6 +952,11 @@ export type CompositionConfig_Serialize = {
 
 export type CompositionMemberRole = 'base' | 'contributor'
 
+export type ConfigBackupInfo = {
+  name: string
+  path: string
+}
+
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition =
   ConfigDefinition_Serialize | ConfigDefinition_Deserialize
@@ -894,6 +995,9 @@ export type ConfigDefinition_Serialize =
 
 /**  Which source domain a mutation belongs to. */
 export type ConfigDomain = 'application' | 'clash' | 'profiles'
+
+/**  Open response value; mutation and subscription enums remain closed. */
+export type ConfigEnum<T> = T | string
 
 export type ConfigError =
   /**  A nightly build keeps its channel. */
@@ -965,6 +1069,197 @@ export type ConfigurationStatus = {
 }
 
 export type ConfigurationStatusChanged = ConfigurationStatus
+
+export type Connection = Connection_Serialize | Connection_Deserialize
+
+export type ConnectionMetadata =
+  ConnectionMetadata_Serialize | ConnectionMetadata_Deserialize
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields =
+  ConnectionMetadataFields_Serialize | ConnectionMetadataFields_Deserialize
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields_Deserialize = {
+  network?: ConfigEnum<ConnectionNetwork> | null
+  type?: ConfigEnum<ConnectionType> | null
+  sourceIP?: string | null
+  destinationIP?: string | null
+  sourceGeoIP?: string[] | null
+  destinationGeoIP?: string[] | null
+  sourceIPASN?: string | null
+  destinationIPASN?: string | null
+  sourcePort?: string | null
+  destinationPort?: string | null
+  inboundIP?: string | null
+  inboundPort?: string | null
+  inboundName?: string | null
+  inboundUser?: string | null
+  rematchName?: string | null
+  host?: string | null
+  dnsMode?: ConfigEnum<DnsMode> | null
+  uid?: number | null
+  process?: string | null
+  processPath?: string | null
+  specialProxy?: string | null
+  specialRules?: string | null
+  remoteDestination?: string | null
+  dscp?: number | null
+  sniffHost?: string | null
+}
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields_Serialize = {
+  network?: ConfigEnum<ConnectionNetwork> | null
+  type?: ConfigEnum<ConnectionType> | null
+  sourceIP?: string | null
+  destinationIP?: string | null
+  sourceGeoIP?: string[] | null
+  destinationGeoIP?: string[] | null
+  sourceIPASN?: string | null
+  destinationIPASN?: string | null
+  sourcePort?: string | null
+  destinationPort?: string | null
+  inboundIP?: string | null
+  inboundPort?: string | null
+  inboundName?: string | null
+  inboundUser?: string | null
+  rematchName?: string | null
+  host?: string | null
+  dnsMode?: ConfigEnum<DnsMode> | null
+  uid?: number | null
+  process?: string | null
+  processPath?: string | null
+  specialProxy?: string | null
+  specialRules?: string | null
+  remoteDestination?: string | null
+  dscp?: number | null
+  sniffHost?: string | null
+}
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire =
+  ConnectionMetadataWire_Serialize | ConnectionMetadataWire_Deserialize
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire_Deserialize =
+  ConnectionMetadataFields_Deserialize & { [key in string]: JsonValue | null }
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire_Serialize =
+  ConnectionMetadataFields_Serialize & { [key in string]: JsonValue | null }
+
+export type ConnectionMetadata_Deserialize = ConnectionMetadataWire_Deserialize
+
+export type ConnectionMetadata_Serialize = {
+  /**  See [`Connection::extra`]. */
+  _extra: { [key in string]: JsonValue | null }
+} & ConnectionMetadataFields_Serialize
+
+export type ConnectionNetwork = 'tcp' | 'udp' | 'all' | 'invalid'
+
+export type ConnectionType =
+  | 'HTTP'
+  | 'HTTPS'
+  | 'Socks4'
+  | 'Socks5'
+  | 'ShadowSocks'
+  | 'Snell'
+  | 'Vmess'
+  | 'Vless'
+  | 'Redir'
+  | 'TProxy'
+  | 'Trojan'
+  | 'Tunnel'
+  | 'Tun'
+  | 'Tuic'
+  | 'Hysteria2'
+  | 'AnyTLS'
+  | 'Mieru'
+  | 'Sudoku'
+  | 'TrustTunnel'
+  | 'ShadowQuic'
+  | 'Inner'
+  | 'Unknown'
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire =
+  ConnectionWire_Serialize | ConnectionWire_Deserialize
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire_Deserialize = {
+  id: string
+  metadata: ConnectionMetadata_Deserialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains?: string[] | null
+  rule: string
+  rulePayload: string
+} & { [key in string]: JsonValue | null }
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire_Serialize = {
+  id: string
+  metadata: ConnectionMetadata_Serialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains: string[] | null
+  rule: string
+  rulePayload: string
+} & { [key in string]: JsonValue | null }
+
+export type Connection_Deserialize = ConnectionWire_Deserialize
+
+export type Connection_Serialize = {
+  id: string
+  metadata: ConnectionMetadata_Serialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains?: string[] | null
+  rule: string
+  rulePayload: string
+  /**
+   *  Fields Mihomo returns that this type does not yet model. Deserializing
+   *  (from Mihomo) collects unknown keys here regardless of direction;
+   *  serializing (for our own IPC) emits them under this named key instead
+   *  of flattening them, so a future Mihomo field literally named `extra`
+   *  cannot collide with it.
+   */
+  _extra: { [key in string]: JsonValue | null }
+}
 
 export type ConvergenceHealth =
   | 'healthy'
@@ -1288,19 +1583,45 @@ export type DeviceInfo = {
   memory: string
 }
 
+/**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
+export type Dimension =
+  /**  Derived: the process when known, else the source. */
+  | 'origin'
+  | 'process'
+  | 'source'
+  | 'inbound'
+  | 'target'
+  | 'protocol'
+  | 'rule'
+  /**  The strategy groups without the exit, outermost first; empty without groups. */
+  | 'chain'
+  | 'exit'
+  | 'profile'
+  | 'source_region'
+  | 'destination_region'
+
 export type Dimensions = {
   /**  Process path or name. */
   process: string
   source: string
+  /**  `inbound_user`, else `inbound_name`. */
+  inbound?: string
   /**  Host, else destination IP. */
   target: string
   protocol: string
   rule: RuleKey
   /**  Clash wire order: exit first, outermost group last. */
   chains: string[]
+  /**  The profile that was current when the connection first appeared; never rewritten. */
+  profile?: string | null
+  /**  Normalized GeoIP region, see `normalize_region`. */
+  source_region?: string
+  destination_region?: string
 }
 
 export type Direction = 'latest' | 'before' | 'after'
+
+export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
 
 /**  A snapshot of a download session's progress, polled by IPC. */
 export type DownloadStatus = {
@@ -1520,9 +1841,6 @@ export type GetSysProxyResponse = {
   server: string
 }
 
-export type GroupBy =
-  'process' | 'source' | 'target' | 'protocol' | 'rule' | 'exit' | 'chain'
-
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
  *  they are fixed by the configurations users already have.
@@ -1570,8 +1888,8 @@ export type HotkeyParseError =
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
@@ -1581,8 +1899,8 @@ export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Deserialize =
@@ -1593,8 +1911,8 @@ export type I18nLanguage_Deserialize =
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
@@ -1639,6 +1957,20 @@ export type IpcErrorKind =
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
+
+/**
+ *  Type-only description of an arbitrary JSON value, used to give the `extra`
+ *  maps below (see [`Connection::extra`], [`ConnectionMetadata::extra`]) a
+ *  named, exportable specta shape. Never constructed or serialized itself;
+ *  the actual runtime data stays `serde_json::Value`.
+ */
+export type JsonValue =
+  | boolean
+  | number
+  | null
+  | string
+  | (JsonValue | null)[]
+  | { [key in string]: JsonValue | null }
 
 export type Level =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
@@ -1873,6 +2205,9 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+/**  What a topology orders and merges its nodes by. */
+export type Metric = 'bytes' | 'connections'
+
 export type Mode = 'rule' | 'global' | 'direct' | 'script'
 
 export type MutationOutcome<T> =
@@ -1944,6 +2279,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       tray_menu_mode?: TrayMenuMode | null
       tray_menu_close_behavior?: TrayMenuCloseBehavior | null
       network_statistic_widget?: NetworkStatisticWidgetConfig | null
+      traffic_retention?: TrafficRetention | null
       pac_url?: string | null
       enable_tray_text?: boolean | null
       enable_tray_traffic?: boolean | null
@@ -1996,6 +2332,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   tray_menu_mode?: TrayMenuMode | null
   tray_menu_close_behavior?: TrayMenuCloseBehavior | null
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  traffic_retention?: TrafficRetention | null
   pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
@@ -2072,6 +2409,8 @@ export type NyanpasuAppConfig_Deserialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  How long recorded traffic is kept */
+  traffic_retention?: TrafficRetention
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -2165,6 +2504,8 @@ export type NyanpasuAppConfig_Serialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  How long recorded traffic is kept */
+  traffic_retention: TrafficRetention
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -3079,6 +3420,16 @@ export type QueryLogs = {
   limit: number
 }
 
+export type Ranking = {
+  dimension: Dimension
+  /**  Distinct values of the dimension among the filtered rows. */
+  distinct: number
+  /**  Heaviest first. */
+  groups: UsageGroup[]
+  /**  The groups ranked after `groups`. */
+  other: Usage
+}
+
 /**  Whole bytes per second, rounded down. */
 export type Rate = {
   upload: number
@@ -3086,6 +3437,13 @@ export type Rate = {
 }
 
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
+
+export type ReleaseChannelInfo = {
+  /**  The feed update checks follow. */
+  current: ReleaseChannel
+  /**  The channel of the installed build; a nightly build cannot leave Nightly. */
+  installed: ReleaseChannel
+}
 
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
@@ -3102,6 +3460,15 @@ export type RemoteProfileOptionsPatch_Serialize = {
   with_proxy?: boolean | null
   self_proxy?: boolean | null
   update_interval_minutes?: number | null
+}
+
+export type ReportRequest = {
+  query: TrafficQuery
+  /**  One ranking per dimension. */
+  rankings: Dimension[]
+  /**  Groups per ranking, capped at `MAX_LIMIT`. */
+  ranking_limit: number
+  topology: TopologyRequest | null
 }
 
 /**  Why the runtime baseline could not be put back. */
@@ -3685,6 +4052,12 @@ export type SubscriptionFetchError =
   | { kind: 'subscription_http_status'; status: number }
   | { kind: 'read_subscription_body' }
 
+/**
+ *  Identifies one `subscribe_clash_connection_details` call, for a later
+ *  `unsubscribe_clash_connection_details`.
+ */
+export type SubscriptionId = number
+
 export type SubscriptionInfo =
   SubscriptionInfo_Serialize | SubscriptionInfo_Deserialize
 
@@ -3738,51 +4111,78 @@ export type SystemDnsError =
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type Topology = {
-  paths: TopologyPath[]
+  /**  By layer, heaviest first, the merged node last. */
   nodes: TopologyNode[]
   edges: TopologyEdge[]
-  other: Bytes
 }
 
 export type TopologyEdge = {
   source: string
   target: string
-  bytes: Bytes
-}
-
-export type TopologyKey = {
-  /**  Process, or the source IP when the process is unknown. */
-  source: string
-  rule: RuleKey
-  /**  Outermost group first, exit excluded. */
-  groups: string[]
-  exit: string
+  usage: Usage
 }
 
 export type TopologyNode = {
+  /**  Unique over layer and key, see `node_id`. */
   id: string
+  /**  Index into the requested layers. */
   layer: number
-  label: string
-  bytes: Bytes
+  /**  The dimension value; `None` for the node that merges the layer's remaining nodes. */
+  key: string | null
+  usage: Usage
 }
 
-export type TopologyPath = {
-  key: TopologyKey
-  bytes: Bytes
+export type TopologyRequest = {
+  /**  Two to five distinct dimensions, from the first column to the last. */
+  layers: Dimension[]
+  metric: Metric
+  /**  Nodes beyond this many per layer merge into one "other" node; `None` keeps them all. */
+  limit_per_layer: number | null
 }
+
+export type TrafficFilter = {
+  dimension: Dimension
+  value: string
+}
+
+/**  Filters on different dimensions combine with AND; a dimension holds at most one value. */
+export type TrafficQuery = {
+  range: TrafficRange
+  scope: TrafficScope
+  filters: TrafficFilter[]
+}
+
+/**  How far back a query looks; always ends now. */
+export type TrafficRange =
+  | 'last_hour'
+  | 'last6_hours'
+  | 'last24_hours'
+  | 'last7_days'
+  | 'last30_days'
+  | 'all'
 
 export type TrafficRate = {
   download: number
   upload: number
 }
 
+export type TrafficReport = {
+  total: Usage
+  current_rate: Rate | null
+  rankings: Ranking[]
+  topology: Topology | null
+}
+
+/**  How long recorded traffic is kept. */
+export type TrafficRetention = '1d' | '7d' | '30d' | '90d' | 'forever'
+
+/**  Which connections a query counts: `All` is `Active` plus `Closed`. */
+export type TrafficScope = 'all' | 'active' | 'closed'
+
 export type TrafficSummary = {
-  profile: string | null
-  started_at: number
   last_sample_at: number | null
-  core_bytes: Bytes
   active_connections: number
-  /**  Closed in this session, including those not flushed yet. */
+  /**  Closed connections within the retention, including those not flushed yet. */
   closed_connections: number
   current_rate: Rate | null
 }
@@ -3867,15 +4267,28 @@ export type UpdaterSummary = {
 }
 
 export type Usage = {
-  total: Bytes
-  groups: UsageGroup[]
-  other: Bytes
+  bytes: Bytes
+  connections: number
+}
+
+/**  Exclusive position for heaviest-first paging of grouped usage: the last group of a page. */
+export type UsageCursor = {
+  bytes: Bytes
+  key: string
 }
 
 export type UsageGroup = {
   key: string
-  bytes: Bytes
+  usage: Usage
   current_rate: Rate | null
+}
+
+export type UsagePage = {
+  total: Usage
+  groups: UsageGroup[]
+  /**  Groups ranked after this page. */
+  other: Usage
+  next: UsageCursor | null
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
@@ -4211,17 +4624,24 @@ export const queries = {
       queryKey: ['getTrafficSummary', ...args],
       queryFn: () => commands.getTrafficSummary(...args),
     }),
+  queryTrafficReport: (
+    ...args: Parameters<typeof commands.queryTrafficReport>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficReport', ...args],
+      queryFn: () => commands.queryTrafficReport(...args),
+    }),
   queryTrafficUsage: (...args: Parameters<typeof commands.queryTrafficUsage>) =>
     queryOptions({
       queryKey: ['queryTrafficUsage', ...args],
       queryFn: () => commands.queryTrafficUsage(...args),
     }),
-  queryTrafficTopology: (
-    ...args: Parameters<typeof commands.queryTrafficTopology>
+  queryTrafficUsageByKeys: (
+    ...args: Parameters<typeof commands.queryTrafficUsageByKeys>
   ) =>
     queryOptions({
-      queryKey: ['queryTrafficTopology', ...args],
-      queryFn: () => commands.queryTrafficTopology(...args),
+      queryKey: ['queryTrafficUsageByKeys', ...args],
+      queryFn: () => commands.queryTrafficUsageByKeys(...args),
     }),
   queryTrafficClosedConnections: (
     ...args: Parameters<typeof commands.queryTrafficClosedConnections>
@@ -4275,6 +4695,18 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>
       commands.setReleaseChannel(...input),
   }),
+  subscribeClashConnectionDetails: mutationOptions({
+    mutationKey: ['subscribeClashConnectionDetails'],
+    mutationFn: (
+      input: Parameters<typeof commands.subscribeClashConnectionDetails>,
+    ) => commands.subscribeClashConnectionDetails(...input),
+  }),
+  unsubscribeClashConnectionDetails: mutationOptions({
+    mutationKey: ['unsubscribeClashConnectionDetails'],
+    mutationFn: (
+      input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
+    ) => commands.unsubscribeClashConnectionDetails(...input),
+  }),
   openLogSession: mutationOptions({
     mutationKey: ['openLogSession'],
     mutationFn: (input: Parameters<typeof commands.openLogSession>) =>
@@ -4304,6 +4736,16 @@ export const mutations = {
     mutationKey: ['openAppDataDir'],
     mutationFn: (input: Parameters<typeof commands.openAppDataDir>) =>
       commands.openAppDataDir(...input),
+  }),
+  openBackupsDir: mutationOptions({
+    mutationKey: ['openBackupsDir'],
+    mutationFn: (input: Parameters<typeof commands.openBackupsDir>) =>
+      commands.openBackupsDir(...input),
+  }),
+  createConfigBackup: mutationOptions({
+    mutationKey: ['createConfigBackup'],
+    mutationFn: (input: Parameters<typeof commands.createConfigBackup>) =>
+      commands.createConfigBackup(...input),
   }),
   openLogsDir: mutationOptions({
     mutationKey: ['openLogsDir'],

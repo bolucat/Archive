@@ -17,7 +17,7 @@ use std::{
 	net::SocketAddr,
 	sync::{
 		Arc,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU32, Ordering},
 	},
 	time::Duration,
 };
@@ -154,6 +154,9 @@ struct InboundCtx<C: QuicConnection> {
 	auth_notify: Arc<Notify>,
 	users: Arc<HashMap<Uuid, String>>,
 	auth_timeout: Duration,
+	/// Number of `Authenticate` commands accepted for processing on this
+	/// connection, bounded by [`MAX_AUTH_ATTEMPTS`].
+	auth_attempts: AtomicU32,
 	udp_sessions: Cache<u16, UdpSession<C>>,
 	/// Parent of every per-UDP-session cancel token. Cancelling this tears down
 	/// all live bridge tasks at once (used when the parent connection
@@ -179,6 +182,20 @@ impl<C: QuicConnection> InboundCtx<C> {
 	/// The authenticated user's identity, if the connection has authenticated.
 	fn user(&self) -> Option<UserId> {
 		self.auth.load().as_ref().map(|a| a.user.clone())
+	}
+
+	/// Reserve this connection's `Authenticate` slot. `false` means the budget
+	/// is exhausted: the caller must refuse the attempt without any credential
+	/// work.
+	fn reserve_auth_attempt(&self) -> bool {
+		self.auth_attempts.fetch_add(1, Ordering::SeqCst) < MAX_AUTH_ATTEMPTS
+	}
+
+	/// Terminate a connection whose authentication failed or which exceeded its
+	/// attempt budget (SPEC §5.1.3, §7.5): sends an application
+	/// `CONNECTION_CLOSE` (`code = 0`). Repeat calls are harmless.
+	fn close_auth_failed(&self, reason: &[u8]) {
+		self.conn.close(0, reason);
 	}
 }
 
@@ -207,6 +224,26 @@ impl<C: QuicConnection> Clone for UdpSession<C> {
 /// memory: each session spawns three tasks plus channels, so an unbounded space
 /// would let one authenticated peer pin a large amount of background work.
 const MAX_UDP_SESSIONS_PER_CONN: u64 = 1024;
+
+/// Per-connection ceiling on processed `Authenticate` commands.
+///
+/// SPEC §5.1.3/§7.5 require terminating the connection when the token fails,
+/// and §9.1 requires rate limiting authentication attempts. A TUIC client sends
+/// `Authenticate` exactly once per QUIC connection (a reconnect opens a fresh
+/// connection), so a second attempt is a protocol violation or deliberate work
+/// amplification. Refusing it before the credential lookup and the HKDF export
+/// bounds the per-connection cost to a single authentication.
+const MAX_AUTH_ATTEMPTS: u32 = 1;
+
+/// How often a UDP session sweeps its fragment reassembly buffer.
+///
+/// The server has no GC configuration knob (unlike both client outbounds), so
+/// this is a fixed period; the lifetime that actually decides eviction is
+/// [`DEFAULT_FRAGMENT_TIMEOUT`](crate::udp::DEFAULT_FRAGMENT_TIMEOUT) (30 s),
+/// measured per group from its last fragment. Without a tick the buffer would
+/// only ever shrink under capacity pressure, so an incomplete group would stay
+/// pinned for the association's lifetime.
+const UDP_FRAGMENT_GC_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Per-connection senders for the lazily-started HTTP/3 masquerade. The
 /// per-stream router pushes streams it classified as h3 here; `run_masquerade`
@@ -371,6 +408,7 @@ pub async fn serve_connection<C, CB>(
 		auth_notify: Arc::new(Notify::new()),
 		users,
 		auth_timeout,
+		auth_attempts: AtomicU32::new(0),
 		udp_sessions,
 		udp_root_cancel,
 		hooks,
@@ -655,7 +693,11 @@ async fn handle_uni_stream<C: QuicConnection, CB: InboundCallback + Clone>(
 				.map_err(|e| eyre::eyre!("Failed to read auth body: {}", e))?;
 			let cmd = crate::proto::decode_command(CmdType::Auth, &mut &body[..], "uni stream")?;
 			if let Command::Auth { uuid, token } = cmd {
-				handle_auth(&ctx, uuid, token).await?;
+				// A failed authentication now terminates the connection, so it
+				// is a connection-lifecycle event, not a stream-level error.
+				if let Err(e) = handle_auth(&ctx, uuid, token).await {
+					warn!("Authentication failed: {e}");
+				}
 			}
 		}
 		cmd_type => {
@@ -859,7 +901,22 @@ async fn handle_datagram<C: QuicConnection, CB: InboundCallback + Clone>(
 	Ok(())
 }
 
+/// Validate one `Authenticate` command.
+///
+/// Enforces the per-connection attempt budget ([`MAX_AUTH_ATTEMPTS`]) and
+/// terminates the connection on any failure (SPEC §5.1.3, §7.5, §9.1). All
+/// errors are deliberately generic: they never reveal whether the UUID exists.
 async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, token: [u8; 32]) -> eyre::Result<()> {
+	// Rate limiting (SPEC §9.1): only the first `Authenticate` on a connection
+	// may reach the credential lookup and the keying-material export. Refuse
+	// anything beyond it — and terminate the connection — without doing that
+	// work, so a peer cannot amplify a single connection into unbounded lookups
+	// and HKDF exports.
+	if !connection.reserve_auth_attempt() {
+		connection.close_auth_failed(b"too many auth attempts");
+		return Err(eyre::eyre!("too many authentication attempts"));
+	}
+
 	// Resolve the user's identity + password material via the auth hook,
 	// falling back to the static user map when no hook is set. Never
 	// short-circuit on an unknown UUID — that would give an attacker both a
@@ -887,6 +944,7 @@ async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, 
 	// resolves immediately. A failed handshake is reported as a generic auth
 	// failure so it does not leak whether the UUID exists.
 	if connection.conn.authenticated().await.is_err() {
+		connection.close_auth_failed(b"auth failed");
 		return Err(eyre::eyre!("Invalid authentication"));
 	}
 
@@ -906,7 +964,9 @@ async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, 
 
 	if !(user_known && export_ok && token_ok) {
 		// Single generic error for "unknown user", "bad token", and "export
-		// failed" — do not leak which one triggered.
+		// failed" — do not leak which one triggered. The connection is
+		// terminated as the spec requires (SPEC §5.1.3, §7.5, §9.1).
+		connection.close_auth_failed(b"auth failed");
 		return Err(eyre::eyre!("Invalid authentication"));
 	}
 	let user = user.expect("user_known implies Some(user)");
@@ -983,6 +1043,38 @@ async fn handle_udp_packet<C: QuicConnection, CB: InboundCallback + Clone>(
 	Ok(())
 }
 
+/// Drive one UDP session's fragment-reassembly GC.
+///
+/// Runs until `cancel` fires (the session's own token, so it always dies with
+/// the session) or the session's `UdpStream` is gone. The weak handle matters:
+/// if the session-creation future is cancelled before moka admits the entry,
+/// nothing else holds the session's cancel token, and a strong handle would
+/// keep both the stream and this task alive forever.
+///
+/// `interval` is a parameter rather than the constant directly so the
+/// regression test can exercise eviction without a multi-second wait.
+async fn run_udp_fragment_gc<C: QuicConnection>(
+	stream: std::sync::Weak<UdpStream<C>>,
+	cancel: CancellationToken,
+	interval: Duration,
+) {
+	let mut gc_interval = tokio::time::interval(interval);
+	gc_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+	gc_interval.tick().await; // The first tick resolves immediately.
+	loop {
+		tokio::select! {
+			biased;
+			_ = cancel.cancelled() => break,
+			_ = gc_interval.tick() => {
+				match stream.upgrade() {
+					Some(stream) => stream.collect_garbage().await,
+					None => break,
+				}
+			},
+		}
+	}
+}
+
 /// Get an existing UDP session for `assoc_id` or create a new one.
 async fn get_or_create_session<C: QuicConnection, CB: InboundCallback + Clone>(
 	ctx: &Arc<InboundCtx<C>>,
@@ -1028,6 +1120,11 @@ async fn get_or_create_session<C: QuicConnection, CB: InboundCallback + Clone>(
 			let (to_outbound_tx, to_outbound_rx) = mpsc::channel::<UdpPacket>(100);
 			let (from_outbound_tx, mut from_outbound_rx) = mpsc::channel::<UdpPacket>(100);
 
+			// The reply transport is not negotiated on the wire: `UdpStream`
+			// keeps the datagram path only while the peer advertises DATAGRAM
+			// support and otherwise falls back to one uni stream per packet, so
+			// a client on stream relay (`udp_relay_mode = "quic"`) still
+			// receives its replies.
 			let tuic_stream = Arc::new(UdpStream::new(conn, assoc_id, reassembled_tx));
 
 			let outbound_stream = CoreUdpStream {
@@ -1065,6 +1162,15 @@ async fn get_or_create_session<C: QuicConnection, CB: InboundCallback + Clone>(
 					}
 				}
 				.in_current_span(),
+			);
+
+			// Fragment-reassembly GC for this session. Without it the buffer
+			// only ever shrinks under capacity pressure, so an incomplete group
+			// stays pinned for the association's lifetime. A weak handle keeps
+			// the task from pinning the session if this insert is cancelled.
+			tokio::spawn(
+				run_udp_fragment_gc(Arc::downgrade(&tuic_stream), session_cancel.clone(), UDP_FRAGMENT_GC_INTERVAL)
+					.in_current_span(),
 			);
 
 			{
@@ -1194,16 +1300,19 @@ async fn handle_dissociate<C: QuicConnection>(connection: &InboundCtx<C>, assoc_
 mod tests {
 	use std::{
 		future, io,
+		net::Ipv4Addr,
 		pin::Pin,
 		sync::{
-			Arc,
-			atomic::{AtomicBool, AtomicUsize},
+			Arc, Mutex,
+			atomic::{AtomicBool, AtomicU32, AtomicUsize},
 		},
 		task::{Context, Poll},
 	};
 
+	use bytes::Bytes;
 	use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-	use wind_core::{InboundCallback, udp::UdpStream as CoreUdpStream};
+	use uuid::Uuid;
+	use wind_core::{InboundCallback, TuicAuthenticator, UserId, udp::UdpStream as CoreUdpStream};
 	use wind_quic::{QuicRecvStream, QuicSendStream};
 
 	// Brings in Arc, Duration, Ordering, CancellationToken, QuicError, CmdType,
@@ -1260,8 +1369,37 @@ mod tests {
 		}
 	}
 
-	#[derive(Clone)]
-	struct DummyConn;
+	/// What a [`DummyConn`] observed, for tests that need to assert on the
+	/// connection-lifecycle calls the server makes.
+	#[derive(Default)]
+	struct ConnObservations {
+		closes: Mutex<Vec<(u32, Vec<u8>)>>,
+		exports: AtomicUsize,
+		handshake_fails: AtomicBool,
+	}
+
+	#[derive(Clone, Default)]
+	struct DummyConn {
+		obs: Option<Arc<ConnObservations>>,
+	}
+
+	impl DummyConn {
+		/// A connection whose `close`/`export_keying_material` calls are
+		/// recorded. The exporter yields a fixed `0xAB` token so a test can
+		/// present the value the server expects.
+		fn observed() -> (Self, Arc<ConnObservations>) {
+			let obs = Arc::new(ConnObservations::default());
+			(Self { obs: Some(obs.clone()) }, obs)
+		}
+
+		/// Like [`DummyConn::observed`], but the TLS handshake never completes
+		/// (the 0.5-RTT case `handle_auth` waits for).
+		fn observed_with_failed_handshake() -> (Self, Arc<ConnObservations>) {
+			let (conn, obs) = Self::observed();
+			obs.handshake_fails.store(true, Ordering::SeqCst);
+			(conn, obs)
+		}
+	}
 
 	impl QuicConnection for DummyConn {
 		type RecvStream = DummyQuicStream;
@@ -1295,11 +1433,29 @@ mod tests {
 			Some(1200)
 		}
 
-		async fn export_keying_material(&self, _out: &mut [u8], _label: &[u8], _context: &[u8]) -> Result<(), QuicError> {
+		async fn export_keying_material(&self, out: &mut [u8], _label: &[u8], _context: &[u8]) -> Result<(), QuicError> {
+			if let Some(obs) = &self.obs {
+				obs.exports.fetch_add(1, Ordering::SeqCst);
+			}
+			out.fill(0xAB);
 			Ok(())
 		}
 
-		fn close(&self, _code: u32, _reason: &[u8]) {}
+		async fn authenticated(&self) -> Result<(), QuicError> {
+			match &self.obs {
+				Some(obs) if obs.handshake_fails.load(Ordering::SeqCst) => Err(QuicError::TimedOut),
+				_ => Ok(()),
+			}
+		}
+
+		fn close(&self, code: u32, reason: &[u8]) {
+			if let Some(obs) = &self.obs {
+				obs.closes
+					.lock()
+					.expect("close recorder poisoned")
+					.push((code, reason.to_vec()));
+			}
+		}
 
 		async fn closed(&self) {
 			future::pending::<()>().await;
@@ -1399,7 +1555,7 @@ mod tests {
 			})
 		};
 		let ctx = Arc::new(InboundCtx {
-			conn: DummyConn,
+			conn: DummyConn::default(),
 			conn_span: tracing::Span::none(),
 			auth: ArcSwapOption::from(Some(Arc::new(AuthState {
 				user: UserId::from("test-user"),
@@ -1407,6 +1563,7 @@ mod tests {
 			auth_notify: Arc::new(Notify::new()),
 			users: Arc::new(HashMap::new()),
 			auth_timeout: Duration::from_secs(1),
+			auth_attempts: AtomicU32::new(0),
 			udp_sessions: Cache::builder()
 				.max_capacity(MAX_UDP_SESSIONS_PER_CONN)
 				.async_eviction_listener(eviction_cancel)
@@ -1437,6 +1594,51 @@ mod tests {
 			.await
 			.expect("UDP callback future was not dropped after teardown");
 		assert!(was_dropped.load(Ordering::SeqCst));
+	}
+
+	/// F17/W10: the session GC task must actually evict a group that outlived
+	/// the fragment lifetime. Before this, the server never ticked
+	/// `collect_garbage` at all, so `DEFAULT_FRAGMENT_TIMEOUT` was dead on the
+	/// server side and an incomplete group stayed pinned until the association
+	/// was dissociated.
+	#[tokio::test]
+	async fn udp_fragment_gc_evicts_groups_past_the_fragment_lifetime() {
+		let lifetime = Duration::from_millis(50);
+		let (tx, _rx) = crossfire::mpmc::bounded_async::<UdpPacket>(8);
+		let stream = Arc::new(UdpStream::new(DummyConn::default(), 7, tx).with_gc_lifetime(lifetime));
+		let target = wind_core::types::TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 8080);
+
+		// One fragment of two: tracked, but never completed.
+		let incomplete = stream
+			.process_fragment(7, 1, 2, 0, Bytes::from_static(b"AA"), None, target)
+			.await;
+		assert!(incomplete.is_none());
+		assert_eq!(
+			stream.incomplete_group_count_without_cleanup(),
+			1,
+			"the incomplete group must be tracked"
+		);
+
+		// Only the periodic task may evict it: the polling below never calls
+		// cleanup itself, so an expired group can only disappear if the tick
+		// fired.
+		let cancel = CancellationToken::new();
+		let gc = tokio::spawn(run_udp_fragment_gc(
+			Arc::downgrade(&stream),
+			cancel.clone(),
+			Duration::from_millis(10),
+		));
+
+		let evicted = tokio::time::timeout(Duration::from_secs(5), async {
+			while stream.incomplete_group_count_without_cleanup() != 0 {
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await;
+		cancel.cancel();
+		gc.await.expect("GC task panicked");
+
+		evicted.expect("the server-side GC never evicted a stale fragment group");
 	}
 
 	/// Cancellation must interrupt an accept that is parked forever. This is
@@ -1630,5 +1832,198 @@ mod tests {
 
 		let mut empty: &[u8] = &[];
 		assert_eq!(read_prefix(&mut empty).await, None);
+	}
+
+	/// Counting [`TuicAuthenticator`] that records the credential lookups the
+	/// server performs and whether the UUID was known.
+	struct CountingAuth {
+		known: Option<Uuid>,
+		password: Arc<[u8]>,
+		lookups: AtomicUsize,
+	}
+
+	#[async_trait::async_trait]
+	impl TuicAuthenticator for CountingAuth {
+		async fn lookup(&self, uuid: &Uuid) -> Option<(UserId, Arc<[u8]>)> {
+			self.lookups.fetch_add(1, Ordering::SeqCst);
+			self.known
+				.filter(|known| known == uuid)
+				.map(|_| (UserId::from(*uuid), self.password.clone()))
+		}
+	}
+
+	/// An unauthenticated connection context over `conn`, wired to `auth`, with
+	/// a pristine auth state and attempt budget.
+	fn auth_test_ctx(conn: DummyConn, auth: Arc<dyn TuicAuthenticator>) -> Arc<InboundCtx<DummyConn>> {
+		Arc::new(InboundCtx {
+			conn,
+			conn_span: tracing::Span::none(),
+			auth: ArcSwapOption::empty(),
+			auth_notify: Arc::new(Notify::new()),
+			users: Arc::new(HashMap::new()),
+			auth_timeout: Duration::from_secs(1),
+			auth_attempts: AtomicU32::new(0),
+			udp_sessions: Cache::builder().max_capacity(MAX_UDP_SESSIONS_PER_CONN).build(),
+			udp_root_cancel: CancellationToken::new(),
+			hooks: InboundHooks {
+				tuic_auth: Some(auth),
+				..InboundHooks::default()
+			},
+			conn_info: ConnInfo {
+				remote_addr: "127.0.0.1:12345".parse().unwrap(),
+				protocol: Protocol::Tuic,
+				conn_id: 1,
+			},
+			inbound_tag: Arc::from("test-tuic"),
+			active: None,
+			conn_cancel: CancellationToken::new(),
+		})
+	}
+
+	/// F20: a failed `Auth` must terminate the connection (SPEC §5.1.3, §7.5,
+	/// §9.1) instead of leaving it established for another attempt.
+	#[tokio::test]
+	async fn failed_auth_closes_the_connection_and_publishes_no_identity() {
+		let (conn, obs) = DummyConn::observed();
+		let auth = Arc::new(CountingAuth {
+			known: None,
+			password: Arc::from(&b"pw"[..]),
+			lookups: AtomicUsize::new(0),
+		});
+		let ctx = auth_test_ctx(conn, auth.clone());
+
+		let err = handle_auth(&ctx, Uuid::new_v4(), [0xFF; 32])
+			.await
+			.expect_err("a bad token must fail");
+		assert_eq!(err.to_string(), "Invalid authentication");
+		assert!(ctx.auth.load().is_none(), "a failed auth must not publish an identity");
+		assert_eq!(auth.lookups.load(Ordering::SeqCst), 1, "exactly one credential lookup");
+		assert_eq!(
+			obs.exports.load(Ordering::SeqCst),
+			1,
+			"an unknown UUID must still run the keying-material export (no timing oracle)"
+		);
+
+		let closes = obs.closes.lock().expect("close recorder poisoned");
+		assert_eq!(closes.len(), 1, "the connection must be closed exactly once");
+		assert_eq!(closes[0], (0, b"auth failed".to_vec()));
+	}
+
+	/// F20: a known user whose token does not match is terminated as well — the
+	/// generic error must not change how the connection is treated.
+	#[tokio::test]
+	async fn wrong_token_for_a_known_user_also_closes_the_connection() {
+		let (conn, obs) = DummyConn::observed();
+		let uuid = Uuid::new_v4();
+		let auth = Arc::new(CountingAuth {
+			known: Some(uuid),
+			password: Arc::from(&b"pw"[..]),
+			lookups: AtomicUsize::new(0),
+		});
+		let ctx = auth_test_ctx(conn, auth.clone());
+
+		let err = handle_auth(&ctx, uuid, [0xFF; 32]).await.expect_err("a bad token must fail");
+		assert_eq!(err.to_string(), "Invalid authentication");
+		assert!(ctx.auth.load().is_none());
+		assert_eq!(auth.lookups.load(Ordering::SeqCst), 1);
+		assert_eq!(obs.exports.load(Ordering::SeqCst), 1);
+
+		let closes = obs.closes.lock().expect("close recorder poisoned");
+		assert_eq!(closes.len(), 1);
+		assert_eq!(closes[0], (0, b"auth failed".to_vec()));
+	}
+
+	/// F20 regression: the original reproduction was "5 failures → 5 lookups, 0
+	/// closes". A connection may now reach the authenticator exactly once;
+	/// every further attempt is refused without any credential work and
+	/// still terminates the connection.
+	#[tokio::test]
+	async fn auth_attempt_budget_bounds_lookups_per_connection() {
+		let (conn, obs) = DummyConn::observed();
+		let auth = Arc::new(CountingAuth {
+			known: None,
+			password: Arc::from(&b"pw"[..]),
+			lookups: AtomicUsize::new(0),
+		});
+		let ctx = auth_test_ctx(conn, auth.clone());
+		let uuid = Uuid::new_v4();
+
+		for _ in 0..5 {
+			assert!(handle_auth(&ctx, uuid, [0xFF; 32]).await.is_err());
+		}
+
+		assert_eq!(
+			auth.lookups.load(Ordering::SeqCst),
+			1,
+			"only the first attempt may reach the authenticator"
+		);
+		assert_eq!(
+			obs.exports.load(Ordering::SeqCst),
+			1,
+			"only the first attempt may run the keying-material export"
+		);
+		assert!(ctx.auth.load().is_none());
+
+		let closes = obs.closes.lock().expect("close recorder poisoned");
+		assert_eq!(closes.len(), 5, "every refused attempt terminates the connection");
+		assert_eq!(closes[0], (0, b"auth failed".to_vec()));
+		for (code, reason) in &closes[1..] {
+			assert_eq!(*code, 0);
+			assert_eq!(reason.as_slice(), b"too many auth attempts".as_slice());
+		}
+	}
+
+	/// A connection that reaches `handle_auth` without a completed TLS
+	/// handshake (accepted at 0.5-RTT) is reported as a generic auth
+	/// failure *and* terminated, exactly like a bad token.
+	#[tokio::test]
+	async fn auth_before_the_handshake_completes_closes_the_connection() {
+		let (conn, obs) = DummyConn::observed_with_failed_handshake();
+		let uuid = Uuid::new_v4();
+		let auth = Arc::new(CountingAuth {
+			known: Some(uuid),
+			password: Arc::from(&b"pw"[..]),
+			lookups: AtomicUsize::new(0),
+		});
+		let ctx = auth_test_ctx(conn, auth.clone());
+
+		// The lookup still happens (it precedes the handshake wait), and the
+		// error stays generic so it does not reveal whether the UUID exists.
+		let err = handle_auth(&ctx, uuid, [0xAB; 32])
+			.await
+			.expect_err("an incomplete handshake must fail auth");
+		assert_eq!(err.to_string(), "Invalid authentication");
+		assert!(ctx.auth.load().is_none(), "a failed handshake must not publish an identity");
+		assert_eq!(auth.lookups.load(Ordering::SeqCst), 1);
+
+		let closes = obs.closes.lock().expect("close recorder poisoned");
+		assert_eq!(closes.len(), 1, "the connection must be closed exactly once");
+		assert_eq!(closes[0], (0, b"auth failed".to_vec()));
+	}
+
+	/// A correct token must still authenticate on its first attempt and must
+	/// not trip the new terminal paths.
+	#[tokio::test]
+	async fn successful_auth_publishes_identity_and_does_not_close() {
+		let (conn, obs) = DummyConn::observed();
+		let uuid = Uuid::new_v4();
+		let auth = Arc::new(CountingAuth {
+			known: Some(uuid),
+			password: Arc::from(&b"pw"[..]),
+			lookups: AtomicUsize::new(0),
+		});
+		let ctx = auth_test_ctx(conn, auth.clone());
+
+		// `DummyConn::observed` exports a fixed `0xAB` token.
+		handle_auth(&ctx, uuid, [0xAB; 32])
+			.await
+			.expect("the token must match the mock exporter");
+
+		assert!(ctx.auth.load().is_some(), "a successful auth publishes the identity");
+		assert_eq!(auth.lookups.load(Ordering::SeqCst), 1);
+		assert!(
+			obs.closes.lock().expect("close recorder poisoned").is_empty(),
+			"a successful auth must not close the connection"
+		);
 	}
 }

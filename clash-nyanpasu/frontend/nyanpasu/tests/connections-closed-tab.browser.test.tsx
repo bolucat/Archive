@@ -1,8 +1,7 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import type { ClosedConnection, ClosedCursor } from '@nyanpasu/interface'
@@ -13,8 +12,6 @@ import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-v
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
-
-dayjs.extend(relativeTime)
 
 const closed = (
   id: string,
@@ -55,7 +52,9 @@ function render(
   })
   root.render(
     <QueryClientProvider client={queries}>
-      <ScrollArea className="h-96">{node}</ScrollArea>
+      <ContextMenuProvider>
+        <ScrollArea className="h-96">{node}</ScrollArea>
+      </ContextMenuProvider>
     </QueryClientProvider>,
   )
   return container

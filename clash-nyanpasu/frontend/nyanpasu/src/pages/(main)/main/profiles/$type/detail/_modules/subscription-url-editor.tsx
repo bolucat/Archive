@@ -19,14 +19,15 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   getRemoteSource,
-  useProfile,
+  useProfileMutations,
   type ProfileDefinition_Deserialize,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
+import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
 
 const formSchema = z.object({
-  url: z.httpUrl(),
+  url: subscriptionUrlSchema,
 })
 
 /** The definition with its remote source pointed at `url`. */
@@ -50,7 +51,7 @@ export default function SubscriptionUrlEditor({
 }: ComponentProps<typeof ModalTrigger> & {
   profile: ProfileItem_Serialize
 }) {
-  const { replaceDefinition, update } = useProfile()
+  const { replaceDefinition, update } = useProfileMutations()
 
   const [open, setOpen] = useState(false)
 

@@ -23,6 +23,10 @@ where
             types: PhantomData,
         })
     }
+    pub fn with_log_capture(mut self, mode: LogCaptureMode) -> Self {
+        self.job = self.job.with_log_capture(mode);
+        self
+    }
     pub fn registration(&self) -> Job {
         self.job.clone()
     }

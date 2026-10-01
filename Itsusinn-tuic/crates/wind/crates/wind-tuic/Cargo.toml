@@ -122,4 +122,5 @@ eyre = "0.6"
 color-eyre = { version = "0.6", default-features = false }
 hex = { package = "const-hex", version = "1" }
 rcgen = "0.14.7"
+tempfile = "3"
 test-log = { version = "0.2", features = ["trace"] }

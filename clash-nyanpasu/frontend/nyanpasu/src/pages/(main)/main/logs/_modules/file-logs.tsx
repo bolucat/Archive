@@ -1,6 +1,23 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Modal,
@@ -14,21 +31,16 @@ import {
   useScrollArea,
   useScrollAreaViewport,
 } from '@/components/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import {
   useFileLogs,
   type Filter,
   type Level,
   type LogError,
+  type LogRow,
   type LogSource,
 } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Route } from '../route'
 import {
@@ -56,6 +68,34 @@ function errorMessage(error: LogError) {
   }
 }
 const DateTimeField = lazy(() => import('@/components/ui/date-time-field'))
+
+// A row formats its time once when it mounts, not on every list render.
+const FileLogRecord = memo(function FileLogRecord({
+  row,
+  search,
+  onInspect,
+}: {
+  row: LogRow
+  search: string
+  onInspect: () => void
+}) {
+  const time = row.timestamp
+    ? new Date(Number(row.timestamp)).toLocaleString()
+    : undefined
+  return (
+    <LogRecord
+      time={time ?? '—'}
+      timeTitle={time}
+      level={row.level}
+      target={row.target}
+      message={row.message}
+      raw={row.raw}
+      search={search}
+      incomplete={row.unparsed || row.truncated}
+      onInspect={onInspect}
+    />
+  )
+})
 
 export default function FileLogs({ source }: { source: LogSource }) {
   const { level } = Route.useSearch()
@@ -87,44 +127,63 @@ export default function FileLogs({ source }: { source: LogSource }) {
   useEffect(() => setFollowing(true), [file, filter])
   const logs = useFileLogs(source, file, filter)
   const filterCount = [target, from, to].filter(Boolean).length
+  const fileName = file
+    ? (logs.files.find((entry) => entry.id === file)?.name ?? file)
+    : m.logs_current_file()
+  const selectFile = (value: string | null) => {
+    setFollowing(true)
+    setFile(value)
+  }
   return (
     <LogsLayout
       source={source}
+      search={
+        <LogSearch
+          value={search}
+          onChange={(value) => {
+            setSearch(value)
+            setFollowing(true)
+          }}
+          placeholder={m.logs_filter_placeholder()}
+        />
+      }
       actions={
         <>
-          <div className="max-w-72 min-w-0 flex-1">
-            <Select
-              variant="outlined"
-              value={file ?? 'current'}
-              onValueChange={(value) => {
-                setFollowing(true)
-                setFile(value === 'current' ? null : value)
-              }}
-            >
-              <SelectTrigger
-                className="h-10 min-w-0 py-2"
-                aria-label={m.logs_file_label()}
+          <DropdownMenu align="end">
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={`${m.logs_file_label()}: ${fileName}`}
+                title={fileName}
+                className={cn(
+                  'bg-surface-variant dark:bg-surface-variant/30',
+                  'text-on-surface dark:text-on-surface',
+                  'flex w-40 min-w-28 shrink items-center gap-2 rounded-full pr-2 pl-4 lg:w-56',
+                )}
               >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.logs_file_label()}
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {fileName}
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuCheckboxItem
+                checked={file === null}
+                onSelect={() => selectFile(null)}
+              >
+                {m.logs_current_file()}
+              </DropdownMenuCheckboxItem>
+              {logs.files.map((entry) => (
+                <DropdownMenuCheckboxItem
+                  key={entry.id}
+                  checked={file === entry.id}
+                  onSelect={() => selectFile(entry.id)}
                 >
-                  {file
-                    ? (logs.files.find((entry) => entry.id === file)?.name ??
-                      file)
-                    : m.logs_current_file()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">{m.logs_current_file()}</SelectItem>
-                {logs.files.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                  {entry.name}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Modal
             open={filterOpen}
             onOpenChange={(open) => {
@@ -230,77 +289,62 @@ export default function FileLogs({ source }: { source: LogSource }) {
         </>
       }
     >
-      <div
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
-        data-slot="file-logs"
-      >
-        <LogSearch
-          value={search}
-          onChange={(value) => {
-            setSearch(value)
-            setFollowing(true)
-          }}
-          placeholder={m.logs_filter_placeholder()}
-        />
-        <div className={logPanelClass}>
-          {(logs.loading ||
-            logs.loadingOlder ||
-            logs.error ||
-            logs.page?.partial ||
-            (logs.page &&
-              (logs.page.malformed !== '0' ||
-                logs.page.truncated !== '0'))) && (
-            <div
-              className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
-              role="status"
-            >
-              {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
-              {logs.loading && (
+      <div className={logPanelClass} data-slot="file-logs">
+        {(logs.loading ||
+          logs.loadingOlder ||
+          logs.error ||
+          logs.page?.partial ||
+          (logs.page &&
+            (logs.page.malformed !== '0' || logs.page.truncated !== '0'))) && (
+          <div
+            className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
+            role="status"
+          >
+            {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
+            {logs.loading && (
+              <span>
+                {m.logs_loading()}
+                {logs.page &&
+                  ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} MiB`}
+              </span>
+            )}
+            {logs.error && (
+              <>
+                <span className="text-error">{errorMessage(logs.error)}</span>
+                <Button onClick={() => logs.retry()}>{m.logs_retry()}</Button>
+              </>
+            )}
+            {logs.page?.partial && <span>{m.logs_partial_coverage()}</span>}
+            {logs.page &&
+              (logs.page.malformed !== '0' || logs.page.truncated !== '0') && (
                 <span>
-                  {m.logs_loading()}
-                  {logs.page &&
-                    ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} MiB`}
+                  {m.logs_parse_diagnostics({
+                    malformed: logs.page.malformed,
+                    truncated: logs.page.truncated,
+                  })}
                 </span>
               )}
-              {logs.error && (
-                <>
-                  <span className="text-error">{errorMessage(logs.error)}</span>
-                  <Button onClick={() => logs.retry()}>{m.logs_retry()}</Button>
-                </>
-              )}
-              {logs.page?.partial && <span>{m.logs_partial_coverage()}</span>}
-              {logs.page &&
-                (logs.page.malformed !== '0' ||
-                  logs.page.truncated !== '0') && (
-                  <span>
-                    {m.logs_parse_diagnostics({
-                      malformed: logs.page.malformed,
-                      truncated: logs.page.truncated,
-                    })}
-                  </span>
-                )}
-            </div>
-          )}
-          <ScrollArea className="min-h-0 flex-1">
-            <FileRows
-              key={`${file}:${JSON.stringify(filter)}`}
-              logs={logs}
-              search={debounced}
-              following={following}
-              setFollowing={setFollowing}
-              setUnseen={setUnseen}
-            />
-          </ScrollArea>
-          {!following && (
-            <LogFollowButton
-              unseen={unseen}
-              onClick={() => {
-                setFollowing(true)
-                logs.latest()
-              }}
-            />
-          )}
-        </div>
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <FileRows
+            key={`${file}:${JSON.stringify(filter)}`}
+            logs={logs}
+            search={debounced}
+            following={following}
+            setFollowing={setFollowing}
+            setUnseen={setUnseen}
+          />
+        </ScrollArea>
+        {!following && (
+          <LogFollowButton
+            unseen={unseen}
+            onClick={() => {
+              setFollowing(true)
+              logs.latest()
+            }}
+          />
+        )}
       </div>
     </LogsLayout>
   )
@@ -321,6 +365,14 @@ function FileRows({
 }) {
   const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
+  // A page from IPC, or a tail poll, mounts and measures new rows; deferring
+  // the rows keeps that render from blocking scrolling and input. Everything
+  // indexing the virtual list reads this one array so the indexes agree.
+  const rows = useDeferredValue(logs.rows)
+  // Rows mount in a deferred render, so a remount for another file or
+  // filter commits at once instead of rendering the previous rows first.
+  const showRows = useDeferredValue(true, false)
+  const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
     id: string
@@ -328,13 +380,13 @@ function FileRows({
     firstId: string | undefined
   } | null>(null)
   const virtualizer = useVirtualizer({
-    count: logs.rows.length,
+    count: rows.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => 110,
     overscan: 5,
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
-    getItemKey: (index) => logs.rows[index]?.id ?? index,
+    getItemKey: (index) => rows[index]?.id ?? index,
   })
   const totalSize = virtualizer.getTotalSize()
   useEffect(() => {
@@ -348,40 +400,40 @@ function FileRows({
     const frame = requestAnimationFrame(() => {
       if (following) anchor.current = null
       if (anchor.current) {
-        if (logs.rows[0]?.id === anchor.current.firstId && logs.more) return
-        const index = logs.rows.findIndex(
-          (row) => row.id === anchor.current?.id,
-        )
+        if (rows[0]?.id === anchor.current.firstId && logs.more) return
+        const index = rows.findIndex((row) => row.id === anchor.current?.id)
         if (index >= 0) {
           const offset = virtualizer.getOffsetForIndex(index, 'start')
           if (offset)
             virtualizer.scrollToOffset(offset[0] + anchor.current.delta)
         }
         anchor.current = null
-      } else if (following && logs.rows.length) {
-        virtualizer.scrollToIndex(logs.rows.length - 1, { align: 'end' })
+      } else if (following && rows.length) {
+        virtualizer.scrollToIndex(rows.length - 1, { align: 'end' })
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [logs.rows, logs.more, following, virtualizer, totalSize])
+  }, [rows, logs.more, following, virtualizer, totalSize])
   useEffect(() => {
-    const latest = logs.rows.at(-1)?.id
+    const latest = rows.at(-1)?.id
     if (!following && latest && lastId.current && latest !== lastId.current) {
-      const previous = logs.rows.findIndex((row) => row.id === lastId.current)
+      const previous = rows.findIndex((row) => row.id === lastId.current)
       setUnseen(
-        (count) => count + (previous < 0 ? 1 : logs.rows.length - previous - 1),
+        (count) => count + (previous < 0 ? 1 : rows.length - previous - 1),
       )
     }
     lastId.current = latest
     if (following) setUnseen(0)
-  }, [logs.rows, following, setUnseen])
+  }, [rows, following, setUnseen])
   useEffect(() => {
     if (logs.loading || logs.loadingOlder || logs.error || !logs.more) return
+    // Judge the page by rows on screen, not ones still rendering.
+    if (rows !== logs.rows) return
     const viewport = viewportRef.current
     const fitsViewport =
       viewport && viewport.scrollHeight <= viewport.clientHeight
     if (
-      logs.rows.length &&
+      rows.length &&
       !fitsViewport &&
       (following || !isTop || (viewportRef.current?.scrollTop ?? 0) > 0)
     )
@@ -391,18 +443,18 @@ function FileRows({
       const first = virtualizer
         .getVirtualItems()
         .find((item) => item.end > (viewportRef.current?.scrollTop ?? 0))
-      const row = first && logs.rows[first.index]
+      const row = first && rows[first.index]
       if (row && first)
         anchor.current = {
           id: row.id,
           delta: (viewportRef.current?.scrollTop ?? 0) - first.start,
-          firstId: logs.rows[0]?.id,
+          firstId: rows[0]?.id,
         }
       setFollowing(false)
       logs.loadOlder()
     }, 100)
     return () => clearTimeout(timer)
-  }, [logs, following, isTop, virtualizer, viewportRef, setFollowing])
+  }, [logs, rows, following, isTop, virtualizer, viewportRef, setFollowing])
   return (
     <div>
       {!logs.rows.length && !logs.loading && !logs.error && (
@@ -411,34 +463,29 @@ function FileRows({
         </LogEmptyState>
       )}
       <div className="relative" style={{ height: totalSize }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const row = logs.rows[item.index]
-          if (!row) return null
-          const date = row.timestamp ? new Date(Number(row.timestamp)) : null
-          return (
-            <div
-              key={row.id}
-              ref={virtualizer.measureElement}
-              data-index={item.index}
-              className="absolute top-0 left-0 w-full select-text"
-              style={{
-                transform: `translateY(${item.start}px)`,
-              }}
-            >
-              <LogRecord
-                time={date?.toLocaleString() ?? '—'}
-                timeTitle={date?.toLocaleString()}
-                level={row.level}
-                target={row.target}
-                message={row.message}
-                raw={row.raw}
-                search={search}
-                incomplete={row.unparsed || row.truncated}
-                onInspect={() => setFollowing(false)}
-              />
-            </div>
-          )
-        })}
+        {showRows &&
+          virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index]
+            if (!row) return null
+            return (
+              <div
+                key={row.id}
+                ref={virtualizer.measureElement}
+                data-index={item.index}
+                data-slot="logs-virtual-item"
+                className="absolute top-0 left-0 w-full select-text"
+                style={{
+                  transform: `translateY(${item.start}px)`,
+                }}
+              >
+                <FileLogRecord
+                  row={row}
+                  search={search}
+                  onInspect={stopFollowing}
+                />
+              </div>
+            )
+          })}
       </div>
     </div>
   )

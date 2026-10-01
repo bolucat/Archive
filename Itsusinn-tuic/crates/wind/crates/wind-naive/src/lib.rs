@@ -494,14 +494,18 @@ fn load_cronet(path: Option<String>) -> eyre::Result<()> {
 fn load_cronet_dynamic(path: Option<String>) -> eyre::Result<()> {
 	use cronet_rs::sys::load_library;
 
-	let paths: Vec<&str> = if let Some(ref p) = path {
-		let mut v = vec![p.as_str()];
-		v.extend(CRONET_SEARCH_PATHS);
-		v
-	} else {
-		CRONET_SEARCH_PATHS.to_vec()
-	};
-
+	// Candidate order: an explicit `cronet_lib_path` wins, then the prebuilt
+	// fetched by `cronet-sys`'s build script under `--features download`, then
+	// the implicit system search paths.
+	let mut paths: Vec<String> = Vec::new();
+	if let Some(p) = path {
+		paths.push(p);
+	}
+	#[cfg(feature = "download")]
+	if let Some(p) = cronet_rs::sys::downloaded_library_path() {
+		paths.push(p.to_string());
+	}
+	paths.extend(CRONET_SEARCH_PATHS.iter().map(|s| (*s).to_string()));
 
 	for lib_path in &paths {
 		match unsafe { load_library(lib_path) } {
@@ -520,11 +524,19 @@ fn load_cronet_dynamic(path: Option<String>) -> eyre::Result<()> {
 		}
 	}
 
-	Err(eyre::eyre!(
+	let mut msg = format!(
 		"Cannot load libcronet. Tried: {}. Please install libcronet and set `cronet_lib_path` in config, or place \
 		 libcronet.so in LD_LIBRARY_PATH.",
 		paths.join(", "),
-	))
+	);
+	#[cfg(feature = "download")]
+	msg.push_str(
+		" The `download` feature was enabled but no verified prebuilt was available; check the build output for the \
+		 download/checksum error.",
+	);
+	#[cfg(not(feature = "download"))]
+	msg.push_str(" Rebuild with `--features download` to fetch and SHA-256-verify a prebuilt libcronet.");
+	Err(eyre::eyre!("{msg}"))
 }
 
 #[cfg(test)]
@@ -601,5 +613,17 @@ mod tests {
 			..Default::default()
 		};
 		assert_eq!(opts.extra_headers.get("X-Custom").unwrap(), "value");
+	}
+
+	/// With `download` enabled, `cronet-sys`'s build script must have fetched a
+	/// prebuilt and exposed a real, existing path that the loader will try.
+	#[cfg(feature = "download")]
+	#[test]
+	fn download_feature_exposes_a_prebuilt_library() {
+		let path = cronet_rs::sys::downloaded_library_path().expect("`download` feature should expose a prebuilt library path");
+		assert!(
+			std::path::Path::new(path).exists(),
+			"downloaded libcronet should exist on disk: {path}"
+		);
 	}
 }

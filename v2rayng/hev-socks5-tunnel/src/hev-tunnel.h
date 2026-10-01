@@ -10,6 +10,8 @@
 #ifndef __HEV_TUNNEL_H__
 #define __HEV_TUNNEL_H__
 
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <lwip/pbuf.h>
 
 #if defined(__linux__)
@@ -32,7 +34,69 @@
 #include "hev-tunnel-windows.h"
 #endif /* __MSYS__ */
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#if defined(HEV_TUNNEL_GENERIC_HEAD)
+static inline struct pbuf *
+hev_tunnel_read (int fd, int mtu, HevTaskIOYielder yielder, void *yielder_data)
+{
+    struct iovec iov[2];
+    struct pbuf *buf;
+    uint32_t type;
+    ssize_t s;
+
+    buf = pbuf_alloc (PBUF_RAW, mtu, PBUF_RAM);
+    if (!buf)
+        return NULL;
+
+    iov[0].iov_base = &type;
+    iov[0].iov_len = sizeof (type);
+    iov[1].iov_base = buf->payload;
+    iov[1].iov_len = buf->len;
+
+    s = hev_task_io_readv (fd, iov, 2, yielder, yielder_data);
+    if (s <= (ssize_t)sizeof (type)) {
+        pbuf_free (buf);
+        return NULL;
+    }
+
+    buf->tot_len = s - sizeof (type);
+    buf->len = s - sizeof (type);
+
+    return buf;
+}
+
+static inline ssize_t
+hev_tunnel_write (int fd, struct pbuf *buf)
+{
+    struct iovec iov[512];
+    struct pbuf *p = buf;
+    uint32_t type = 0;
+    ssize_t res;
+    int i;
+
+    iov[0].iov_base = &type;
+    iov[0].iov_len = sizeof (type);
+
+    for (i = 1; p && (i < 512); p = p->next) {
+        iov[i].iov_base = p->payload;
+        iov[i].iov_len = p->len;
+        i++;
+
+        if (!type && p->len) {
+            if (((*(uint8_t *)p->payload >> 4) & 0xF) == 4)
+                type = htonl (AF_INET);
+            else
+                type = htonl (AF_INET6);
+        }
+    }
+
+    res = writev (fd, iov, i);
+    if (res <= (ssize_t)sizeof (type))
+        return -1;
+
+    return res;
+}
+
+#elif defined(HEV_TUNNEL_GENERIC)
 static inline struct pbuf *
 hev_tunnel_read (int fd, int mtu, HevTaskIOYielder yielder, void *yielder_data)
 {
@@ -73,9 +137,9 @@ hev_tunnel_write (int fd, struct pbuf *buf)
 
     return writev (fd, iov, i);
 }
-#endif /* defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) */
+#endif /* HEV_TUNNEL_GENERIC */
 
-int hev_tunnel_open (const char *name, int multi_queue);
+int hev_tunnel_open (const char *name, int multi_queue, const char *guid);
 void hev_tunnel_close (int fd);
 
 int hev_tunnel_set_mtu (int mtu);

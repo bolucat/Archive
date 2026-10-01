@@ -106,7 +106,7 @@ jobs:
       - name: Build ${{ matrix.name }}
         run: |
           sudo mkdir -p /opt/x-tools
-          wget https://github.com/cross-tools/musl-cross/releases/download/20260515/${{ matrix.tool }}.tar.xz
+          wget https://github.com/cross-tools/musl-cross/releases/download/20260823/${{ matrix.tool }}.tar.xz
           sudo tar xf ${{ matrix.tool }}.tar.xz -C /opt/x-tools
           make CROSS_PREFIX=/opt/x-tools/${{ matrix.tool }}/bin/${{ matrix.tool }}- CFLAGS=${{ matrix.env.CFLAGS }} ENABLE_STATIC=1 -j`nproc`
           cp bin/hev-socks5-tunnel hev-socks5-tunnel-linux-${{ matrix.name }}
@@ -251,6 +251,44 @@ jobs:
             hev-socks5-tunnel-android-arm64-v8a
             hev-socks5-tunnel-android-x86
             hev-socks5-tunnel-android-x86_64
+          if-no-files-found: error
+          retention-days: 1
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Build android-aar
+        run: |
+          # Built with the default JNI contract (natives register to
+          # hev.htproxy.TProxyService), and that binding class is bundled in the
+          # AAR itself, so consumers call it directly instead of adding a shim
+          # class; see README "Prebuilt Android AAR".
+          ./android-ndk-r27d/ndk-build clean
+          ./android-ndk-r27d/ndk-build APP_MODULES=hev-socks5-tunnel -j$(nproc)
+          mkdir -p aar/jni
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            mkdir -p aar/jni/$abi
+            cp libs/$abi/libhev-socks5-tunnel.so aar/jni/$abi/
+          done
+          javac --release 8 -Xlint:-options -d classes android/hev/htproxy/TProxyService.java
+          (cd classes && jar cf ../aar/classes.jar .)
+          rm -rf classes
+          cat > aar/proguard.txt <<'EOF'
+          -keep class hev.htproxy.** { *; }
+          EOF
+          cat > aar/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="hev.socks5.tunnel">
+            <uses-sdk android:minSdkVersion="29"/>
+          </manifest>
+          EOF
+          (cd aar && zip -q -r ../hev-socks5-tunnel.aar .)
+      - name: Upload aar
+        uses: actions/upload-artifact@v7
+        with:
+          name: hev-socks5-tunnel.aar
+          path: hev-socks5-tunnel.aar
           if-no-files-found: error
           retention-days: 1
 

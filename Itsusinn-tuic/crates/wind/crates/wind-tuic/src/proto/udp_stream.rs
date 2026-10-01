@@ -28,12 +28,10 @@ pub struct UdpStream<C: QuicConnection> {
 	assoc_id: u16,
 	receive_tx: UdpPacketTx,
 	next_pkt_id: AtomicU16,
-	// Fragment reassembly state machine (backend-agnostic).
+	/// Fragment reassembly state machine (backend-agnostic).
 	fragment_buffer: FragmentReassemblyBuffer,
 	/// How outgoing `Packet` commands are carried (datagrams or uni streams).
 	relay_mode: UdpRelayMode,
-	/// Lifetime after which incomplete fragment groups are evicted.
-	gc_lifetime: Duration,
 }
 
 impl<C: QuicConnection> UdpStream<C> {
@@ -43,23 +41,42 @@ impl<C: QuicConnection> UdpStream<C> {
 			assoc_id,
 			receive_tx,
 			next_pkt_id: AtomicU16::new(0),
-			fragment_buffer: FragmentReassemblyBuffer::new(),
+			fragment_buffer: FragmentReassemblyBuffer::new(DEFAULT_FRAGMENT_TIMEOUT),
 			relay_mode: UdpRelayMode::Native,
-			gc_lifetime: DEFAULT_FRAGMENT_TIMEOUT,
 		}
 	}
 
 	/// Select how outgoing packets are relayed: `Native` (the default) sends
-	/// QUIC datagrams, `Quic` opens one unidirectional stream per packet.
+	/// QUIC datagrams when the peer supports them, `Quic` opens one
+	/// unidirectional stream per packet.
 	pub fn with_relay_mode(mut self, mode: UdpRelayMode) -> Self {
 		self.relay_mode = mode;
 		self
 	}
 
+	/// Whether outgoing `Packet` commands can travel as QUIC DATAGRAM frames.
+	///
+	/// `Native` is a *preference*: the peer must also advertise DATAGRAM
+	/// support. quiche rejects `dgram_send` without the peer's
+	/// `max_datagram_frame_size` (and closes the connection on a DATAGRAM frame
+	/// it did not enable), while quinn fails `send_datagram` outright.
+	/// `max_datagram_size` is the backend-neutral capability probe, so a peer
+	/// that reports `None` gets one unidirectional stream per packet instead —
+	/// otherwise every reply to a peer configured for stream relay
+	/// (`udp_relay_mode = "quic"`) is silently discarded.
+	fn datagram_relay_available(&self) -> bool {
+		self.relay_mode == UdpRelayMode::Native && self.connection.max_datagram_size().is_some()
+	}
+
 	/// Configure how long incomplete fragment groups are retained before
 	/// [`collect_garbage`](Self::collect_garbage) evicts them.
+	///
+	/// The lifetime is applied by rebuilding the reassembly buffer: it is fixed
+	/// when the buffer is created, so a lifetime that only reached
+	/// `collect_garbage` could never take effect. Callers set it during
+	/// construction, before any fragment arrives.
 	pub fn with_gc_lifetime(mut self, lifetime: Duration) -> Self {
-		self.gc_lifetime = lifetime;
+		self.fragment_buffer = FragmentReassemblyBuffer::new(lifetime);
 		self
 	}
 
@@ -73,9 +90,10 @@ impl<C: QuicConnection> UdpStream<C> {
 			return Err(eyre::eyre!("TUIC packet exceeds UDP size limit"));
 		}
 
-		// QUIC relay mode: one unidirectional stream per packet, no
-		// fragmentation (streams are flow-controlled, not MTU-bounded).
-		if self.relay_mode == UdpRelayMode::Quic {
+		// QUIC relay mode — or a peer that cannot receive DATAGRAM frames —
+		// carries one unidirectional stream per packet, no fragmentation
+		// (streams are flow-controlled, not MTU-bounded).
+		if !self.datagram_relay_available() {
 			let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::Relaxed);
 			self.connection
 				.send_udp(self.assoc_id, pkt_id, &packet.target, packet.payload, false)
@@ -299,7 +317,24 @@ impl<C: QuicConnection> UdpStream<C> {
 	}
 
 	pub async fn collect_garbage(&self) {
-		self.fragment_buffer.cleanup_expired(self.gc_lifetime).await;
+		self.fragment_buffer.cleanup_expired().await;
+	}
+
+	/// Number of incomplete fragment groups this session is tracking.
+	///
+	/// Test-only: how many groups a peer can pin is a resource-exhaustion
+	/// property, and the tests assert it directly rather than through logs.
+	#[cfg(test)]
+	pub(crate) async fn incomplete_group_count(&self) -> usize {
+		self.fragment_buffer.incomplete_group_count().await
+	}
+
+	/// As [`incomplete_group_count`](Self::incomplete_group_count), but without
+	/// running eviction first — lets a test observe what the periodic GC alone
+	/// achieved. Test-only.
+	#[cfg(test)]
+	pub(crate) fn incomplete_group_count_without_cleanup(&self) -> usize {
+		self.fragment_buffer.incomplete_group_count_without_cleanup()
 	}
 
 	pub async fn close(&mut self) -> Result<(), crate::Error> {
@@ -309,7 +344,15 @@ impl<C: QuicConnection> UdpStream<C> {
 
 #[cfg(test)]
 mod tests {
-	use std::net::Ipv4Addr;
+	use std::{
+		net::Ipv4Addr,
+		pin::Pin,
+		sync::{Arc, Mutex},
+		task::{Context as TaskContext, Poll},
+	};
+
+	use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+	use wind_quic::{QuicConnection, QuicError, QuicRecvStream, QuicSendStream};
 
 	use super::*;
 
@@ -415,5 +458,317 @@ mod tests {
 
 		// Normal subtraction would panic in debug mode or wrap in release
 		// This test verifies the implementation advice from SPEC.md Section 8.7
+	}
+
+	// -----------------------------------------------------------------------
+	// Send-path transport selection (F18): a peer that does not advertise
+	// DATAGRAM support must receive `Packet` commands on unidirectional
+	// streams, because `send_datagram` is rejected by the transport and the
+	// frame is discarded — silently losing every UDP reply.
+	// -----------------------------------------------------------------------
+
+	/// A [`QuicConnection`] double that records the two UDP send paths so a
+	/// test can assert which one a `Packet` took.
+	#[derive(Clone)]
+	struct RecordingConn {
+		max_datagram: Option<usize>,
+		datagrams: Arc<Mutex<Vec<Bytes>>>,
+		uni_streams: Arc<Mutex<Vec<Vec<u8>>>>,
+	}
+
+	impl RecordingConn {
+		fn new(max_datagram: Option<usize>) -> Self {
+			Self {
+				max_datagram,
+				datagrams: Arc::new(Mutex::new(Vec::new())),
+				uni_streams: Arc::new(Mutex::new(Vec::new())),
+			}
+		}
+
+		fn datagrams(&self) -> Vec<Bytes> {
+			self.datagrams.lock().unwrap().clone()
+		}
+
+		fn uni_streams(&self) -> Vec<Vec<u8>> {
+			self.uni_streams.lock().unwrap().clone()
+		}
+	}
+
+	/// Records everything written to one locally-opened unidirectional stream.
+	/// `send_udp` writes the header+command+address and (in stream relay mode)
+	/// the payload as separate `write_all` calls before `finish`, so the buffer
+	/// is accumulated locally and published on `finish`.
+	struct RecordingSend {
+		sink: Arc<Mutex<Vec<Vec<u8>>>>,
+		buf: Vec<u8>,
+	}
+
+	impl AsyncWrite for RecordingSend {
+		fn poll_write(mut self: Pin<&mut Self>, _cx: &mut TaskContext<'_>, data: &[u8]) -> Poll<std::io::Result<usize>> {
+			self.buf.extend_from_slice(data);
+			Poll::Ready(Ok(data.len()))
+		}
+
+		fn poll_flush(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<std::io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+
+		fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<std::io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+	}
+
+	impl QuicSendStream for RecordingSend {
+		fn finish(&mut self) -> Result<(), QuicError> {
+			self.sink.lock().unwrap().push(std::mem::take(&mut self.buf));
+			Ok(())
+		}
+
+		fn reset(&mut self, _code: u64) {}
+
+		fn id(&self) -> u64 {
+			0
+		}
+	}
+
+	/// Receive half placeholder: the send path never accepts streams.
+	struct StubRecv;
+
+	impl AsyncRead for StubRecv {
+		fn poll_read(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>, _buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+	}
+
+	impl QuicRecvStream for StubRecv {
+		fn stop(&mut self, _code: u64) {}
+
+		fn id(&self) -> u64 {
+			0
+		}
+	}
+
+	impl QuicConnection for RecordingConn {
+		type RecvStream = StubRecv;
+		type SendStream = RecordingSend;
+
+		async fn open_bi(&self) -> Result<(Self::SendStream, Self::RecvStream), QuicError> {
+			Err(QuicError::Other("open_bi is not part of the UDP send path".into()))
+		}
+
+		async fn accept_bi(&self) -> Result<(Self::SendStream, Self::RecvStream), QuicError> {
+			Err(QuicError::Other("accept_bi is not part of the UDP send path".into()))
+		}
+
+		async fn open_uni(&self) -> Result<Self::SendStream, QuicError> {
+			Ok(RecordingSend {
+				sink: self.uni_streams.clone(),
+				buf: Vec::new(),
+			})
+		}
+
+		async fn accept_uni(&self) -> Result<Self::RecvStream, QuicError> {
+			Err(QuicError::Other("accept_uni is not part of the UDP send path".into()))
+		}
+
+		fn send_datagram(&self, data: Bytes) -> Result<(), QuicError> {
+			self.datagrams.lock().unwrap().push(data);
+			Ok(())
+		}
+
+		async fn read_datagram(&self) -> Result<Bytes, QuicError> {
+			Err(QuicError::Other("read_datagram is not part of the UDP send path".into()))
+		}
+
+		fn max_datagram_size(&self) -> Option<usize> {
+			self.max_datagram
+		}
+
+		async fn export_keying_material(&self, _out: &mut [u8], _label: &[u8], _context: &[u8]) -> Result<(), QuicError> {
+			Ok(())
+		}
+
+		fn close(&self, _code: u32, _reason: &[u8]) {}
+
+		async fn closed(&self) {
+			std::future::pending::<()>().await;
+		}
+	}
+
+	const TEST_ASSOC_ID: u16 = 0x1234;
+
+	/// Build a `UdpStream` over `conn` with `mode` and a live receive channel.
+	fn recording_stream(conn: &RecordingConn, mode: UdpRelayMode) -> UdpStream<RecordingConn> {
+		let (tx, _rx) = crossfire::mpmc::bounded_async::<UdpPacket>(8);
+		UdpStream::new(conn.clone(), TEST_ASSOC_ID, tx).with_relay_mode(mode)
+	}
+
+	/// F17 regression on the wiring layer: `with_gc_lifetime` must actually
+	/// reach the reassembly buffer's per-group lifetime, otherwise
+	/// `collect_garbage` is a no-op and incomplete groups are pinned for the
+	/// association's lifetime.
+	#[tokio::test]
+	async fn collect_garbage_evicts_groups_past_the_configured_lifetime() {
+		let conn = RecordingConn::new(Some(1200));
+		let (tx, _rx) = crossfire::mpmc::bounded_async::<UdpPacket>(8);
+		let lifetime = Duration::from_millis(100);
+		let stream = UdpStream::new(conn, TEST_ASSOC_ID, tx).with_gc_lifetime(lifetime);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+
+		let incomplete = stream
+			.process_fragment(TEST_ASSOC_ID, 7, 3, 0, Bytes::from_static(b"partial"), None, target)
+			.await;
+		assert!(incomplete.is_none(), "one fragment of three must not complete");
+		assert_eq!(stream.incomplete_group_count().await, 1, "the incomplete group is tracked");
+
+		tokio::time::sleep(lifetime * 2).await;
+		stream.collect_garbage().await;
+
+		assert_eq!(
+			stream.incomplete_group_count().await,
+			0,
+			"collect_garbage must evict a group past its configured lifetime"
+		);
+	}
+
+	/// Decode a wire `Packet` frame as produced by `send_udp` /
+	/// `send_fragmented_packet` into its command, target, and trailing payload.
+	fn decode_packet_frame(frame: &[u8]) -> (Command, TargetAddr, Bytes) {
+		let mut buf = frame;
+		let header = crate::proto::decode_header(&mut buf, "test").unwrap();
+		assert_eq!(header.command, CmdType::Packet);
+		let cmd = crate::proto::decode_command(CmdType::Packet, &mut buf, "test").unwrap();
+		let addr = crate::proto::decode_address(&mut buf, "test").unwrap();
+		let target = crate::proto::address_to_target(addr).unwrap();
+		(cmd, target, Bytes::copy_from_slice(buf))
+	}
+
+	fn probe_packet(target: &TargetAddr, payload: &'static [u8]) -> UdpPacket {
+		UdpPacket {
+			source: None,
+			target: target.clone(),
+			payload: Bytes::from_static(payload),
+		}
+	}
+
+	/// Control: a peer that advertises DATAGRAM support keeps the datagram path
+	/// (one frame per packet, address + payload inline).
+	#[tokio::test]
+	async fn datagram_relay_used_when_peer_advertises() {
+		let conn = RecordingConn::new(Some(1200));
+		let stream = recording_stream(&conn, UdpRelayMode::Native);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+		let payload = b"datagram-probe";
+
+		stream
+			.send_packet(probe_packet(&target, payload))
+			.await
+			.expect("datagram send");
+
+		let datagrams = conn.datagrams();
+		assert_eq!(
+			datagrams.len(),
+			1,
+			"peer advertises DATAGRAM support: one datagram per packet"
+		);
+		assert!(conn.uni_streams().is_empty(), "datagram path must not open uni streams");
+
+		let (cmd, decoded_target, decoded_payload) = decode_packet_frame(&datagrams[0]);
+		assert_eq!(decoded_target, target);
+		assert_eq!(
+			cmd,
+			Command::Packet {
+				assoc_id: TEST_ASSOC_ID,
+				pkt_id: 0,
+				frag_total: 1,
+				frag_id: 0,
+				size: payload.len() as u16,
+			}
+		);
+		assert_eq!(decoded_payload, &payload[..]);
+	}
+
+	/// F18 regression: a peer that does not advertise DATAGRAM support (e.g. a
+	/// quiche client configured `udp_relay_mode = "quic"`) must receive every
+	/// reply on a unidirectional stream. Before the fix the packet took the
+	/// datagram branch, quiche rejected it (`InvalidState`), and the reply was
+	/// dropped — a silent, total loss of server-to-client UDP.
+	#[tokio::test]
+	async fn peer_without_datagram_support_falls_back_to_uni_stream() {
+		let conn = RecordingConn::new(None);
+		let stream = recording_stream(&conn, UdpRelayMode::Native);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+
+		// A single-datagram-sized payload and one that would have to be
+		// fragmented: stream relay mode never fragments (streams are
+		// flow-controlled), so each packet is exactly one uni stream.
+		let small = b"small";
+		let large = vec![0xABu8; 4 * 1024];
+		stream
+			.send_packet(probe_packet(&target, small))
+			.await
+			.expect("stream send (small)");
+		stream
+			.send_packet(UdpPacket {
+				source: None,
+				target: target.clone(),
+				payload: Bytes::from(large.clone()),
+			})
+			.await
+			.expect("stream send (large)");
+
+		assert!(
+			conn.datagrams().is_empty(),
+			"a peer without DATAGRAM support must never be sent a datagram"
+		);
+		let streams = conn.uni_streams();
+		assert_eq!(streams.len(), 2, "one uni stream per reply, no fragmentation");
+
+		let (cmd, decoded_target, decoded_payload) = decode_packet_frame(&streams[0]);
+		assert_eq!(decoded_target, target);
+		assert_eq!(
+			cmd,
+			Command::Packet {
+				assoc_id: TEST_ASSOC_ID,
+				pkt_id: 0,
+				frag_total: 1,
+				frag_id: 0,
+				size: small.len() as u16,
+			}
+		);
+		assert_eq!(decoded_payload, &small[..]);
+
+		let (cmd, decoded_target, decoded_payload) = decode_packet_frame(&streams[1]);
+		assert_eq!(decoded_target, target);
+		assert_eq!(
+			cmd,
+			Command::Packet {
+				assoc_id: TEST_ASSOC_ID,
+				pkt_id: 1,
+				frag_total: 1,
+				frag_id: 0,
+				size: large.len() as u16,
+			}
+		);
+		assert_eq!(decoded_payload, &large[..]);
+	}
+
+	/// An explicit `Quic` relay mode keeps using uni streams even when the peer
+	/// does advertise DATAGRAM support.
+	#[tokio::test]
+	async fn explicit_quic_relay_mode_uses_uni_streams() {
+		let conn = RecordingConn::new(Some(1200));
+		let stream = recording_stream(&conn, UdpRelayMode::Quic);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+		let payload = b"quic-relay-probe";
+
+		stream.send_packet(probe_packet(&target, payload)).await.expect("stream send");
+
+		assert!(conn.datagrams().is_empty(), "Quic relay mode must not send datagrams");
+		let streams = conn.uni_streams();
+		assert_eq!(streams.len(), 1);
+		let (_, decoded_target, decoded_payload) = decode_packet_frame(&streams[0]);
+		assert_eq!(decoded_target, target);
+		assert_eq!(decoded_payload, &payload[..]);
 	}
 }

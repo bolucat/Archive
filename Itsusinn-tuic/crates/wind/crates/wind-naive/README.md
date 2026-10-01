@@ -9,9 +9,10 @@ establish HTTP/2 or QUIC CONNECT tunnels with NaiveProxy padding protocol.
 
 ```toml
 [dependencies]
-wind-naive = "0.1"
+wind-naive = "0.2"
 # feature "dynamic" (default): load libcronet at runtime via dlopen
 # feature "static-link":      link libcronet.a at compile time
+# feature "download":         fetch + SHA-256-verify a prebuilt libcronet
 ```
 
 ```rust
@@ -65,7 +66,9 @@ outbounds:
 
 ## libcronet
 
-`wind-naive` requires the **Chromium Cronet** C shared library at runtime.
+`wind-naive` requires the **Chromium Cronet** C shared library at runtime,
+unless built with `--features download` (see [Auto-downloading
+libcronet](#auto-downloading-libcronet)).
 
 ### Quick start (Linux)
 
@@ -77,9 +80,11 @@ outbounds:
 
 ### Search order
 
-When `cronet_lib_path` is `None`, the loader tries (in order):
+When `cronet_lib_path` is `None`, the loader tries (in order; the build-time
+downloaded library, when the `download` feature is enabled, comes first):
 
 ```
+0. <OUT_DIR>/libcronet-<platform>.so   ← only with `--features download`
 1. libcronet.so            ← LD_LIBRARY_PATH / system default
 2. ./libcronet.so          ← CWD
 3. /usr/local/lib/libcronet.so
@@ -153,15 +158,25 @@ UdpStream ◀─packet── [downlink chan] ◀─┤  write_all(frame) / read_
 ## Building
 
 ```bash
-# Default (dynamic loading)
+# Default (dynamic loading; needs a system/installed libcronet)
 cargo build
 
-# With wind CLI integration
-cargo build --features naive -p wind
+# Wind CLI with the naive outbound and a build-time auto-downloaded libcronet
+cargo build -p wind --features download
 
 # Static link (macOS/iOS recommended)
 cargo build --no-default-features --features static-link
 ```
+
+### Auto-downloading libcronet
+
+The `download` feature delegates to `cronet-sys`'s build script, which fetches
+the prebuilt library matching the target from
+[rust-proxy/cronet-binaries](https://github.com/rust-proxy/cronet-binaries/releases)
+into `OUT_DIR` and verifies its **SHA-256** against a pinned checksum. No network
+is touched unless the feature is enabled. In dynamic mode the downloaded path is
+tried automatically (after an explicit `cronet_lib_path`, before the system
+search paths); in static mode the archive is staged and linked automatically.
 
 ## License
 

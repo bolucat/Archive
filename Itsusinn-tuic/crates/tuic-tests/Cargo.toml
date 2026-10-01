@@ -35,6 +35,13 @@ uuid = "1"
 serde_json = { version = "1", default-features = false, features = ["std"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
+[dev-dependencies]
+# `tests/tls_options.rs`: a recording `ResolvesServerCert` needs rustls' server
+# and signing traits, and `tempfile`/`rustls-pemfile` cover the certificate
+# plumbing the test builds.
+rustls-pemfile = { version = "2", default-features = false, features = ["std"] }
+tempfile = "3"
+
 # HTTP/3 client for the masquerade e2e test (tests/masquerade.rs).
 reqwest = { version = "0.12", default-features = false, features = ["http3", "rustls-tls"] }
 http = { version = "1" }
@@ -52,6 +59,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(reqwest_unstable)'] }
 # Keep this predicate in sync with the crate-level cfg in the quiche test files.
 [target.'cfg(all(target_pointer_width = "64", not(any(target_os = "android", target_os = "freebsd", target_arch = "loongarch64"))))'.dependencies]
 tuic-server = { path = "../tuic-server", default-features = false, features = ["quiche"] }
+tuic-client = { path = "../tuic-client", default-features = false, features = ["quiche"] }
 wind-tuic = { path = "../wind/crates/wind-tuic", default-features = false, features = ["quiche"] }
 quinn = { workspace = true, default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }

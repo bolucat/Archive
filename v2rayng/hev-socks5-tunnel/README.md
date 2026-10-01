@@ -88,6 +88,8 @@ make shared
 tunnel:
   # Interface name
   name: tun0
+  # Interface GUID (Windows)
+# guid: 12345678-9abc-def0-1234-56789abcdef0
   # Interface MTU
   mtu: 8500
   # Multi-queue
@@ -383,11 +385,52 @@ public class TProxyService {
 }
 ```
 
+### Kotlin
+```kt
+object TProxyService {
+    private external fun TProxyStartService(config_path: String, fd: Int): Boolean
+    private external fun TProxyStopService(): Boolean
+    private external fun TProxyIsRunning(): Boolean
+    private external fun TProxyGetStats(): LongArray
+
+    init {
+        System.loadLibrary("hev-socks5-tunnel")
+    }
+}
+```
+
 Allow overriding the package and class names in `Application.mk`[^2].
 
 ```makefile
 APP_CFLAGS := -DPKGNAME=hev/sockstun -DCLSNAME=TProxyService
 ```
+
+### Prebuilt Android AAR
+
+The Android CI job also produces an AAR (`hev-socks5-tunnel.aar`, containing all four ABIs)
+built with the default JNI contract — no `PKGNAME`/`CLSNAME` overrides — so its natives
+register to `hev.htproxy.TProxyService`. The AAR is self-contained: the binding class below
+is bundled in it (`classes.jar`, plus a `proguard.txt` that keeps it), so it is called
+directly and no shim class has to be added to the app:
+
+```java
+package hev.htproxy;
+
+public final class TProxyService {
+    public static native boolean TProxyStartService(String config_path, int fd);
+    public static native boolean TProxyStopService();
+    public static native boolean TProxyIsRunning();
+    public static native long[] TProxyGetStats();
+
+    static {
+        System.loadLibrary("hev-socks5-tunnel");
+    }
+}
+```
+
+Then call these methods from your own code; no per-package rebuild is required. The AAR is
+also attached to tagged releases. Consumers that need a custom package or class name can
+still override `PKGNAME`/`CLSNAME` in `Application.mk` as shown above and build themselves.
 
 ## Use Cases
 
@@ -395,6 +438,7 @@ APP_CFLAGS := -DPKGNAME=hev/sockstun -DCLSNAME=TProxyService
 
 * [SocksTun](https://github.com/heiher/sockstun)
 * [Orbot](https://github.com/guardianproject/orbot-android)
+* [EasyssTun](https://github.com/nange/EasyssTun)
 
 ### iOS
 
@@ -407,10 +451,13 @@ APP_CFLAGS := -DPKGNAME=hev/sockstun -DCLSNAME=TProxyService
 * **codewithtamim** - https://github.com/codewithtamim
 * **dovecoteescapee** - https://github.com/dovecoteescapee
 * **ebrahimtahernejad** - https://github.com/ebrahimtahernejad
+* **egavr** - https://github.com/egavr
 * **heiby** - https://github.com/heiby
 * **hev** - https://hev.cc
 * **ihipop** - https://ihipop.com
 * **katana** - https://github.com/officialkatana
+* **nange** - https://github.com/nange
+* **plangto** - https://github.com/plangto
 * **pronebird** - https://github.com/pronebird
 * **saeeddev94** - https://github.com/saeeddev94
 * **sskaje** - https://github.com/sskaje

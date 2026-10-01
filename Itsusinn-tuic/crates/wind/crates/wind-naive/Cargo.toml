@@ -10,6 +10,10 @@ default = ["dynamic"]
 dynamic = ["cronet-rs/dynamic"]
 # Static link mode: link libcronet.a at compile time (required on macOS/iOS).
 static-link = ["cronet-rs/static-link"]
+# Build-time auto-download: have `cronet-sys`'s build script fetch and
+# SHA-256-verify the matching prebuilt libcronet into OUT_DIR, so no manual
+# `libcronet` install is required.
+download = ["cronet-rs/download"]
 
 [dependencies]
 # Cronet-based networking

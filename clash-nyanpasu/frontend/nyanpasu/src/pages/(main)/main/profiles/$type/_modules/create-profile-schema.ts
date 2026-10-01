@@ -1,6 +1,6 @@
-import dayjs from 'dayjs'
 import z from 'zod'
 import { m } from '@/paraglide/messages'
+import { formatDate } from '@/utils/date'
 import {
   ProfileTemplate,
   type ProfileDefinition_Deserialize,
@@ -8,6 +8,7 @@ import {
   type TransformKind,
 } from '@nyanpasu/interface'
 import { ProfileType } from '../../_modules/consts'
+import { subscriptionUrlSchema } from '../../_modules/subscription-url-schema'
 
 export const CONFIG_KINDS = ['file', 'composition'] as const
 
@@ -59,7 +60,7 @@ export const formSchema = z
     }
 
     if (data.source === 'remote') {
-      const url = z.httpUrl().safeParse(data.url)
+      const url = subscriptionUrlSchema.safeParse(data.url)
       if (!url.success) {
         ctx.addIssue({
           code: 'custom',
@@ -172,6 +173,6 @@ export const fallbackName = (values: FormValues) => {
   return (
     values.name.trim() ||
     (picked && baseName(picked)) ||
-    `${KIND_LABELS[values.kind]()} - ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`
+    `${KIND_LABELS[values.kind]()} - ${formatDate(new Date())}`
   )
 }

@@ -39,6 +39,12 @@ function RouteComponent() {
   // stays responsive while the table catches up with the latest term.
   const deferredSearch = useDeferredValue(search)
 
+  // Building the table from every connection and mounting its rows is the
+  // bulk of opening the page. Router updates render synchronously, so the
+  // table mounts in a deferred render instead: the page commits at once and
+  // the rows render right after.
+  const showTable = useDeferredValue(true, false)
+
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const deleteConnections = useDeleteClashConnections()
@@ -51,25 +57,32 @@ function RouteComponent() {
   const scrollArea = (
     <ScrollArea
       key={status}
-      className="min-h-0 flex-1"
+      className={cn(
+        'min-h-0 flex-1',
+        // Start the vertical scrollbar below the sticky h-9 table header;
+        // Radix pins it to the top with an inline style.
+        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:top-9!',
+        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:h-auto',
+      )}
       scrollbars="both"
       type="hover"
     >
-      {status === 'closed' ? (
-        <ClosedViewer
-          search={deferredSearch}
-          proxy={proxy}
-          settingsOpen={settingsOpen}
-          onSettingsOpenChange={setSettingsOpen}
-        />
-      ) : (
-        <ActiveViewer
-          search={deferredSearch}
-          proxy={proxy}
-          settingsOpen={settingsOpen}
-          onSettingsOpenChange={setSettingsOpen}
-        />
-      )}
+      {showTable &&
+        (status === 'closed' ? (
+          <ClosedViewer
+            search={deferredSearch}
+            proxy={proxy}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+        ) : (
+          <ActiveViewer
+            search={deferredSearch}
+            proxy={proxy}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+        ))}
     </ScrollArea>
   )
 

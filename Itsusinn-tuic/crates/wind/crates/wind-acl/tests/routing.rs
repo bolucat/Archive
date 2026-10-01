@@ -9,7 +9,7 @@ use std::{
 
 use wind_acl::AclEngine;
 use wind_core::{FlowContext, RouteAction, Router, hooks::Protocol, types::TargetAddr};
-use wind_rule::NetworkType;
+use wind_rule::{NetworkType, RuleParseError};
 
 fn ipv4(addr: &str, port: u16) -> TargetAddr {
 	TargetAddr::IPv4(addr.parse::<Ipv4Addr>().unwrap(), port)
@@ -135,4 +135,60 @@ async fn apernet_rules_precede_clash_rules() {
 
 	let action = engine.route(&fc(&ipv4("1.1.1.1", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&action), Some("aclwin"));
+}
+
+/// F13 end-to-end regression: these exact rule pairs used to build an engine
+/// whose empty domain needle silently swallowed the following `REJECT` (the
+/// keyword form matched every domain; the suffix form caught trailing-dot
+/// hosts). The engine must now refuse to build them at all.
+#[test]
+fn empty_domain_needles_are_rejected_by_the_engine() {
+	// Slices so a case may carry one or two rule lines.
+	let cases: &[&[&str]] = &[
+		&["DOMAIN-KEYWORD,,DIRECT", "DOMAIN-SUFFIX,evil.test,REJECT"],
+		&["DOMAIN-KEYWORD,,REJECT"],
+		&["DOMAIN-SUFFIX,,proxy", "DOMAIN-SUFFIX,evil.test,REJECT"],
+		&["DOMAIN,,proxy"],
+	];
+
+	for rules in cases {
+		let err = match AclEngine::builder("direct").clash_rules(*rules) {
+			Ok(_) => panic!("an empty domain needle must make the engine build fail: {rules:?}"),
+			Err(err) => err,
+		};
+		assert!(
+			err.to_string().contains("non-empty"),
+			"error should name the empty value: {err} (rules: {rules:?})"
+		);
+	}
+}
+
+/// The guard must not change matching for valid domain rules: the keyword
+/// still rejects only the domains it names, and everything else falls through
+/// to the default outbound.
+#[tokio::test]
+async fn non_empty_keyword_still_rejects_only_its_domains() {
+	let engine = AclEngine::builder("direct")
+		.clash_rules(["DOMAIN-KEYWORD,ads,REJECT"])
+		.unwrap()
+		.build()
+		.unwrap();
+
+	let blocked = engine
+		.route(&fc(&domain("tracker.ads.example.com", 443), true))
+		.await
+		.unwrap();
+	assert!(matches!(blocked, RouteAction::Reject(_)), "keyword 'ads' should reject");
+
+	let allowed = engine.route(&fc(&domain("good.test", 443), true)).await.unwrap();
+	assert_eq!(forwarded(&allowed), Some("direct"));
+}
+
+/// Parse-level twin of the engine regression: the error must name the rule
+/// type so a config author can find the offending line.
+#[test]
+fn empty_domain_needle_error_names_the_rule_type() {
+	let err = wind_acl::syntax::metacubex::parse_rule("DOMAIN-KEYWORD,,REJECT").unwrap_err();
+	assert!(matches!(err, RuleParseError::InvalidFormat(_)), "got {err:?}");
+	assert!(err.to_string().contains("DOMAIN-KEYWORD"), "got {err}");
 }

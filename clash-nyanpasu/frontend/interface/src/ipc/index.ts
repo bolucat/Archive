@@ -31,7 +31,9 @@ export * from './use-system-accent-color'
 export * from './use-file-logs'
 export { rpc } from './rpc'
 export * from './use-traffic-closed-connections'
+export * from './use-traffic-report'
 export * from './use-traffic-summary'
+export * from './use-traffic-usage'
 
 export type * from './rpc-bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
@@ -63,4 +65,4 @@ export type {
   Connection_Serialize,
   Connection_Deserialize,
   ConnectionMetadataFields_Serialize,
-} from './bindings'
+} from './rpc-bindings'

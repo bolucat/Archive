@@ -160,3 +160,105 @@ async fn blocked_log_flush_does_not_block_business_and_reports_finalization_degr
     assert_eq!(run.wait().await.unwrap().journal, JournalState::Durable);
     assert!(service.shutdown().await.unwrap().closed);
 }
+
+#[tokio::test]
+async fn disabled_capture_preserves_logging_context_children_and_history() {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::Context;
+
+    struct OrdinaryLogs(Arc<AtomicUsize>);
+    impl<S: Subscriber> Layer<S> for OrdinaryLogs {
+        fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+            if event.metadata().target() == "safe_job" {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+    let ordinary = Arc::new(AtomicUsize::new(0));
+    let capture = LogCapture::new(policy());
+    let subscriber = tracing_subscriber::registry()
+        .with(OrdinaryLogs(ordinary.clone()))
+        .with(capture.layer());
+    let (_dir, mut service, _) = service(Limits::default(), capture)
+        .with_subscriber(subscriber)
+        .await;
+    let client = service.client();
+    let (send, receive) = tokio::sync::oneshot::channel();
+    let send = Arc::new(Mutex::new(Some(send)));
+    let disabled = Job::new(JobDefinition::manual("disabled"), (), move |ctx, ()| {
+        let send = send.clone();
+        async move {
+            tracing::info!(target:"safe_job",code="disabled");
+            let child = ctx.clone();
+            ctx.spawn(async move {
+                child
+                    .instrument(async {
+                        tracing::info!(target:"safe_job",code="disabled_child");
+                    })
+                    .await;
+            })
+            .unwrap();
+            send.lock().unwrap().take().unwrap().send(ctx).ok();
+            Ok(42)
+        }
+    })
+    .unwrap()
+    .with_log_capture(LogCaptureMode::Disabled);
+    let disabled_for_reconcile = disabled.clone();
+    let blocking = Job::blocking(JobDefinition::manual("disabled_blocking"), (), |_, ()| {
+        tracing::info!(target:"safe_job",code="disabled_blocking");
+        Ok(())
+    })
+    .unwrap()
+    .with_log_capture(LogCaptureMode::Disabled);
+    // Keep the enabled run alive while using the disabled run's context inside it.
+    let receive = Arc::new(tokio::sync::Mutex::new(Some(receive)));
+    let enabled = Job::new(JobDefinition::manual("enabled"), (), move |_, ()| {
+        let receive = receive.clone();
+        async move {
+            let disabled_context = receive.lock().await.take().unwrap().await.unwrap();
+            disabled_context
+                .instrument(async {
+                    tracing::info!(target:"safe_job",code="nested_disabled");
+                })
+                .await;
+            tracing::info!(target:"safe_job",code="enabled");
+            Ok(())
+        }
+    })
+    .unwrap();
+    let registrations = vec![enabled, disabled, blocking];
+    client
+        .reconcile("default", 1, registrations.clone())
+        .await
+        .unwrap();
+    let enabled_run = client.run_now("enabled").await.unwrap();
+    let disabled_run = client.run_now("disabled").await.unwrap();
+    assert_eq!(disabled_run.wait_output::<u32>().await.unwrap(), 42);
+    enabled_run.wait().await.unwrap();
+    let blocking_run = client.run_now("disabled_blocking").await.unwrap();
+    blocking_run.wait().await.unwrap();
+    assert_eq!(ordinary.load(Ordering::SeqCst), 5);
+    for id in [disabled_run.id, blocking_run.id] {
+        let record = client.get_run(id).await.unwrap();
+        assert_eq!(record.last_log_sequence, 0);
+        assert_eq!(record.dropped_log_count, 0);
+        assert_eq!(record.completion().unwrap().journal, JournalState::Durable);
+        assert!(client.logs(id, 0, 50).await.unwrap().items.is_empty());
+    }
+    let logs = client.logs(enabled_run.id, 0, 50).await.unwrap();
+    assert_eq!(logs.items.len(), 1);
+    assert_eq!(logs.items[0].fields["code"], "\"enabled\"");
+    let mut changed = registrations;
+    changed[1] = disabled_for_reconcile.with_log_capture(LogCaptureMode::Inherit);
+    assert!(matches!(
+        client.reconcile("default", 1, changed.clone()).await,
+        Err(Error::Invalid(_))
+    ));
+    client.reconcile("default", 2, changed).await.unwrap();
+    assert!(service.shutdown().await.unwrap().closed);
+}

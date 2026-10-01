@@ -10,4 +10,6 @@
 #ifndef __HEV_TUNNEL_NETBSD_H__
 #define __HEV_TUNNEL_NETBSD_H__
 
+#define HEV_TUNNEL_GENERIC_HEAD
+
 #endif /* __HEV_TUNNEL_NETBSD_H__ */

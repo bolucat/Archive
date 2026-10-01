@@ -483,7 +483,21 @@ impl Rule {
 	}
 
 	fn parse_type(type_str: &str, value: &str) -> Result<RuleType, RuleParseError> {
-		match type_str.to_ascii_uppercase().as_str() {
+		// An empty domain needle is not a harmless no-op: the keyword form
+		// degenerates into a catch-all (`ascii_ci_contains` returns true for an
+		// empty needle) and the suffix form degenerates into a near
+		// never-match. Either way one mis-authored line (typically a stray
+		// comma) silently neutralises every rule after it — including the
+		// `REJECT` rules an operator relies on — so reject it at parse time
+		// exactly like the existing empty `AND`/`OR`/`NOT` groups below.
+		let upper = type_str.to_ascii_uppercase();
+		if value.is_empty() && matches!(upper.as_str(), "DOMAIN" | "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD") {
+			return Err(RuleParseError::InvalidFormat(format!(
+				"{upper} rule requires a non-empty value"
+			)));
+		}
+
+		match upper.as_str() {
 			"DOMAIN" => Ok(RuleType::Domain(value.to_string())),
 			// DOMAIN-SUFFIX / DOMAIN-KEYWORD values are stored in lower-case
 			// ASCII at parse time, so the per-match hot path can compare
@@ -1712,6 +1726,46 @@ mod tests {
 			RuleType::DomainKeyword(s) => assert_eq!(s, "bing"),
 			other => panic!("expected DomainKeyword, got {other:?}"),
 		}
+	}
+
+	/// F13: an empty `DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` needle was
+	/// accepted and then degenerated at match time — the keyword form matched
+	/// every domain (swallowing every later rule, `REJECT` included) and the
+	/// suffix form matched only `""` / trailing-dot hosts. Reject it at parse
+	/// time like the empty `AND`/`OR` groups.
+	#[test]
+	fn empty_domain_rule_values_rejected() {
+		for line in ["DOMAIN,,DIRECT", "DOMAIN-SUFFIX,,DIRECT", "DOMAIN-KEYWORD,,DIRECT"] {
+			let err = Rule::parse(line).unwrap_err();
+			assert!(
+				matches!(err, RuleParseError::InvalidFormat(_)),
+				"{line} must be rejected as a format error, got {err:?}"
+			);
+			assert!(
+				err.to_string().contains("non-empty"),
+				"error should explain the empty value: {err}"
+			);
+		}
+	}
+
+	/// The guard also covers lowercase keywords and whitespace-only values
+	/// (the value is `trim()`-ed by `Rule::parse` before `parse_type`).
+	#[test]
+	fn empty_domain_rule_values_rejected_case_and_whitespace() {
+		for line in ["domain-suffix,,DIRECT", "domain-keyword, ,DIRECT", "DOMAIN,  ,DIRECT"] {
+			assert!(
+				matches!(Rule::parse(line).unwrap_err(), RuleParseError::InvalidFormat(_)),
+				"{line} must be rejected"
+			);
+		}
+	}
+
+	/// Compound rules recurse through `Rule::parse`, so the guard applies
+	/// inside `AND`/`OR`/`NOT` too.
+	#[test]
+	fn empty_domain_rule_value_rejected_inside_compound() {
+		let err = Rule::parse("AND,((DOMAIN-KEYWORD,),(DST-PORT,443)),proxy").unwrap_err();
+		assert!(matches!(err, RuleParseError::InvalidFormat(_)), "got {err:?}");
 	}
 
 	/// PR4-G: SUB-RULE used to keep only the first parsed sub-rule and drop

@@ -3,6 +3,8 @@
 tunnel:
   # Interface name
   name: tun0
+  # Interface GUID (Windows)
+# guid: 12345678-9abc-def0-1234-56789abcdef0
   # Interface MTU
   mtu: 8500
   # Multi-queue

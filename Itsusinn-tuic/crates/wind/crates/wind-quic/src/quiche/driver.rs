@@ -46,7 +46,7 @@ use tokio_quiche::{
 	quic::{HandshakeInfo, QuicheConnection},
 	quiche::{self, Shutdown},
 };
-use tracing::{Span, debug, trace};
+use tracing::{Span, debug, trace, warn};
 
 use crate::quiche::{
 	conn::QuicheConnection as Handle,
@@ -246,6 +246,9 @@ pub(crate) struct BridgeDriver {
 	dgram_in_tx: DgramInTx,
 
 	out_datagrams: VecDeque<Bytes>,
+	/// Whether an unsendable datagram has already been reported at `warn` for
+	/// this connection (subsequent drops stay at `trace` to avoid log spam).
+	dgram_drop_warned: bool,
 	pending_opens: VecDeque<PendingOpen>,
 	pending_exports: VecDeque<ExportReq>,
 	pending_sessions: VecDeque<oneshot::Sender<Option<Vec<u8>>>>,
@@ -297,6 +300,7 @@ impl BridgeDriver {
 			accept_uni_tx,
 			dgram_in_tx,
 			out_datagrams: VecDeque::new(),
+			dgram_drop_warned: false,
 			pending_opens: VecDeque::new(),
 			pending_exports: VecDeque::new(),
 			pending_sessions: VecDeque::new(),
@@ -796,7 +800,19 @@ impl ApplicationOverQuic for BridgeDriver {
 				}
 				Err(quiche::Error::Done) => break,
 				Err(e) => {
-					trace!("dgram_send error: {e}");
+					// The frame can never be delivered (the peer never
+					// advertised DATAGRAM support, or the payload exceeds the
+					// negotiated maximum), so drop it — but make the loss
+					// visible. Silence here previously hid a total loss of
+					// server→client UDP replies; only the first drop per
+					// connection is reported at `warn` so a peer that keeps
+					// failing cannot spam the log.
+					if self.dgram_drop_warned {
+						trace!("dgram_send error: {e}");
+					} else {
+						self.dgram_drop_warned = true;
+						warn!("dropping unsendable QUIC datagram ({e}); further drops at trace level");
+					}
 					self.out_datagrams.pop_front();
 				}
 			}

@@ -1,6 +1,6 @@
 use crate::{
     actor::Msg,
-    job::{Job, JobContext},
+    job::{Job, JobContext, LogCaptureMode},
     journal::Journal,
     logging::LogCapture,
     model::*,
@@ -122,7 +122,7 @@ impl RunExecution {
         if let Some(reply) = reply.take() {
             let _ = reply.send(Ok(()));
         }
-        let buffer = logs.register(id);
+        let buffer = (job.log_capture == LogCaptureMode::Inherit).then(|| logs.register(id));
         let context = JobContext::new(id, record.trigger.clone(), cancel);
         let mut pending_logs = Vec::new();
         let mut append: Option<futures_util::future::BoxFuture<'static, Result<(), Error>>> = None;
@@ -166,8 +166,8 @@ impl RunExecution {
                         append=None;
                         match result {Ok(())=>pending_logs.clear(),Err(_)=>{append_failed=true;fault(&myself,id).await;}}
                     }
-                    _=tokio::time::sleep(Duration::from_millis(100)),if append.is_none()&&!append_failed=>{
-                        pending_logs.extend(buffer.lock().unwrap().drain());
+                    _=tokio::time::sleep(Duration::from_millis(100)),if buffer.is_some()&&append.is_none()&&!append_failed=>{
+                        pending_logs.extend(buffer.as_ref().unwrap().lock().unwrap().drain());
                         if !pending_logs.is_empty(){
                             let batch=pending_logs.clone();let journal=journal.clone();
                             append_deadline=Instant::now()+limits.finalization_timeout;append_timed_out=false;
@@ -180,7 +180,9 @@ impl RunExecution {
         context.drain().await;
         record.state = RunState::Finalizing;
         let _ = myself.cast(Msg::Progress(id, record.clone(), false));
-        let (tail, sequence, dropped) = buffer.lock().unwrap().seal();
+        let (tail, sequence, dropped) = buffer
+            .map(|buffer| buffer.lock().unwrap().seal())
+            .unwrap_or_default();
         pending_logs.extend(tail);
         record.last_log_sequence = sequence;
         record.dropped_log_count = dropped;

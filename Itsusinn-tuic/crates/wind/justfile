@@ -5,6 +5,10 @@ run:
 test:
     cargo test -- --ignored
 
+# Build the wind binary with the naive outbound, auto-downloading libcronet.
+build-naive:
+    cargo build --package wind --features download
+
 fast-release:
     cross build --profile fast-release
 

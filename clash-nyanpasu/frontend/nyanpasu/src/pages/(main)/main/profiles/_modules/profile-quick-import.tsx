@@ -8,15 +8,16 @@ import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useProfile } from '@nyanpasu/interface'
+import { useProfileMutations } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import { subscriptionUrlSchema } from './subscription-url-schema'
 
 const formSchema = z.object({
-  url: z.httpUrl(),
+  url: subscriptionUrlSchema,
 })
 
 export default function ProfileQuickImport() {
-  const { create } = useProfile()
+  const { create } = useProfileMutations()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

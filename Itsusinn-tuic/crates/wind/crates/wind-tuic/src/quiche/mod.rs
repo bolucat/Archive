@@ -22,4 +22,4 @@ pub mod outbound;
 #[cfg(feature = "server")]
 pub use inbound::{TuicheInbound, TuicheInboundBuilder};
 #[cfg(feature = "client")]
-pub use outbound::{TuicheOutbound, TuicheOutboundBuilder};
+pub use outbound::{ReconnectConfig, TuicheOutbound, TuicheOutboundBuilder, TuicheOutboundOpts};

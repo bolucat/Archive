@@ -2,7 +2,15 @@ import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
-import { ComponentProps, RefObject, useEffect, useRef, useState } from 'react'
+import {
+  ComponentProps,
+  memo,
+  RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -64,7 +72,63 @@ const sourceLabelOf = (profile: ProfileItem_Serialize) => {
     : m.profile_source_local()
 }
 
-const GridViewProfile = ({
+/**
+ * The active card's backdrop. It stays still and animates only while the card
+ * is hovered or focused: an animated shader redraws the whole card every frame.
+ */
+const ActiveGradient = ({
+  cardRef,
+}: {
+  cardRef: RefObject<HTMLDivElement | null>
+}) => {
+  const { themePalette } = useExperimentalThemeContext()
+
+  const colors = useMemo(
+    () =>
+      Object.values(themePalette.schemes.light).map((color) =>
+        hexFromArgb(color),
+      ),
+    [themePalette],
+  )
+
+  const [animated, setAnimated] = useState(false)
+
+  useEffect(() => {
+    const card = cardRef.current
+
+    if (!card) {
+      return
+    }
+
+    const update = () =>
+      setAnimated(card.matches(':hover') || card.matches(':focus-within'))
+    const events = ['pointerenter', 'pointerleave', 'focusin', 'focusout']
+
+    for (const event of events) {
+      card.addEventListener(event, update)
+    }
+
+    return () => {
+      for (const event of events) {
+        card.removeEventListener(event, update)
+      }
+    }
+  }, [cardRef])
+
+  return (
+    <MeshGradient
+      className="absolute inset-0 size-full opacity-30"
+      colors={colors}
+      distortion={0.5}
+      swirl={0.1}
+      grainMixer={0}
+      grainOverlay={0}
+      speed={animated ? 1 / 3 : 0}
+    />
+  )
+}
+
+const GridViewProfile = memo(function GridViewProfile({
   profile,
   index,
   isGlobal,
@@ -72,15 +136,13 @@ const GridViewProfile = ({
   profile: ProfileItem_Serialize
   index: number
   isGlobal: boolean
-}) => {
+}) {
   const { type } = IndexRoute.useParams()
 
   const activeProfile = useActiveProfile(profile)
   const deleteProfile = useDeleteProfile(profile)
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
-
-  const { themePalette } = useExperimentalThemeContext()
 
   const cardRef = useRef<HTMLDivElement>(null)
 
@@ -120,19 +182,7 @@ const GridViewProfile = ({
               )}
             </AnimatePresence>
 
-            {activeProfile.isActive && (
-              <MeshGradient
-                className="absolute inset-0 size-full opacity-30"
-                colors={Object.values(themePalette.schemes.light).map((color) =>
-                  hexFromArgb(color),
-                )}
-                distortion={0.5}
-                swirl={0.1}
-                grainMixer={0}
-                grainOverlay={0}
-                speed={1 / 3}
-              />
-            )}
+            {activeProfile.isActive && <ActiveGradient cardRef={cardRef} />}
 
             <CardHeader
               className="flex items-center justify-between gap-2"
@@ -193,7 +243,7 @@ const GridViewProfile = ({
       </RegisterContextMenuContent>
     </RegisterContextMenu>
   )
-}
+})
 
 const EmptyList = () => {
   return (

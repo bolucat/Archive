@@ -15,7 +15,7 @@ mod schedule;
 pub mod storage;
 
 pub use actor::{Inspection, JobSnapshot, ScopeSnapshot};
-pub use job::{Job, JobContext, JobDefinition};
+pub use job::{Job, JobContext, JobDefinition, LogCaptureMode};
 pub use logging::{JobJournalLayer, LogCapture, LogPolicy};
 pub use model::*;
 pub use schedule::Schedule;

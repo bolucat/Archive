@@ -1,9 +1,9 @@
-import dayjs from 'dayjs'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ErrorMessage } from '@/components/error-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { m } from '@/paraglide/messages'
+import { formatDate } from '@/utils/date'
 import {
   useProfileSyncLogs,
   useProfileSyncRuns,
@@ -11,6 +11,7 @@ import {
   type RunDto,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import { useQueryClient } from '@tanstack/react-query'
 import LogLevelBadge from '../../../../logs/_modules/log-level-badge'
 
 function stateLabel(run: RunDto) {
@@ -101,7 +102,26 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
     BigInt(a.admission_sequence) > BigInt(b.admission_sequence) ? -1 : 1,
   )
   const selected = runs.find((run) => run.id === selection) ?? runs[0]
-  const logs = useProfileSyncLogs(uid, selected?.id ?? null)
+  const activeIds = status.data?.active.map((run) => run.id) ?? []
+  const logs = useProfileSyncLogs(
+    uid,
+    selected?.id ?? null,
+    selected !== undefined && activeIds.includes(selected.id),
+  )
+
+  // The history and logs are not polled. A run entering or leaving the active
+  // set is what changes them, so refresh both then (the logs once more to pick
+  // up the lines written after the last poll).
+  const queryClient = useQueryClient()
+  const activeKey = status.data ? activeIds.join() : undefined
+  const previousActiveKey = useRef(activeKey)
+  useEffect(() => {
+    const previous = previousActiveKey.current
+    previousActiveKey.current = activeKey
+    if (previous === undefined || previous === activeKey) return
+    queryClient.invalidateQueries({ queryKey: ['profile-sync-runs', uid] })
+    queryClient.invalidateQueries({ queryKey: ['profile-sync-logs', uid] })
+  }, [activeKey, queryClient, uid])
   const error = status.error ?? history.error ?? logs.error
   const detail = selected ? completionDetail(selected) : null
 
@@ -130,9 +150,7 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
             {status.data.next_run_at && (
               <span className="tabular-nums">
                 {m.profile_sync_next_run({
-                  time: dayjs(status.data.next_run_at).format(
-                    'YYYY-MM-DD HH:mm:ss',
-                  ),
+                  time: formatDate(status.data.next_run_at),
                 })}
               </span>
             )}
@@ -192,9 +210,9 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
                       dateTime={run.admitted_at}
                       className="text-sm leading-snug tabular-nums"
                     >
-                      {dayjs(run.admitted_at).format('YYYY-MM-DD')}
+                      {formatDate(run.admitted_at, 'yyyy-MM-dd')}
                       <span className="ml-2 inline-block">
-                        {dayjs(run.admitted_at).format('HH:mm:ss')}
+                        {formatDate(run.admitted_at, 'HH:mm:ss')}
                       </span>
                     </time>
                     <span className="text-on-surface-variant text-xs font-normal">
@@ -223,9 +241,7 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
                       dateTime={selected.admitted_at}
                       className="text-on-surface-variant text-xs tabular-nums"
                     >
-                      {dayjs(selected.admitted_at).format(
-                        'YYYY-MM-DD HH:mm:ss',
-                      )}
+                      {formatDate(selected.admitted_at)}
                     </time>
                   </div>
                   {detail && (
@@ -262,7 +278,7 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
                             dateTime={entry.time}
                             className="text-on-surface-variant pt-1 font-mono text-[11px] leading-none tabular-nums"
                           >
-                            {dayjs(entry.time).format('HH:mm:ss')}
+                            {formatDate(entry.time, 'HH:mm:ss')}
                           </time>
                           <LogLevelBadge>{entry.level}</LogLevelBadge>
                           <span className="min-w-0 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">

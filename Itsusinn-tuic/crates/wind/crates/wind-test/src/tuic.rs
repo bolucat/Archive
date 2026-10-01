@@ -467,9 +467,10 @@ mod tests {
 	}
 
 	/// The QUIC transport layer must accept a connection even when the
-	/// application-level password is wrong.  The server validates the Auth
-	/// unidirectional stream asynchronously and will close the connection after
-	/// the auth timeout.
+	/// application-level password is wrong. `send_auth` only writes the Auth
+	/// frame locally and does not wait for a verdict, so the handshake still
+	/// succeeds; the server then terminates the connection as soon as it
+	/// rejects the token (SPEC §5.1.3/§7.5).
 	#[tokio::test]
 	async fn test_tuic_auth_wrong_password() {
 		let setup = setup_tuic_server().await.expect("Failed to start TUIC server");
@@ -505,8 +506,9 @@ mod tests {
 	}
 
 	/// Connecting with an unknown UUID should still establish the QUIC
-	/// connection; the server will reject the Auth stream and close the
-	/// connection after the auth timeout.
+	/// connection; the server closes it immediately after rejecting the Auth
+	/// (the auth-timeout guard is only a backstop for peers that never
+	/// authenticate at all).
 	#[tokio::test]
 	async fn test_tuic_auth_unknown_user() {
 		let setup = setup_tuic_server().await.expect("Failed to start TUIC server");

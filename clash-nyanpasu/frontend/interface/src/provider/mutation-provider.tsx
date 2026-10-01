@@ -45,15 +45,39 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
   const queryClient = useQueryClient()
 
+  // Invalidation refetches only mounted queries and marks the rest stale for
+  // their next mount. Refetching unmounted ones too (the `proxies` event fires
+  // every few seconds while delays change) kept every query ever visited
+  // fetching in the background and never let it be garbage collected.
   const refetchQueries = (keys: readonly QueryKey[]) => {
     Promise.all(
       keys.map((queryKey) =>
-        queryClient.refetchQueries({
+        queryClient.invalidateQueries({
           queryKey,
         }),
       ),
     ).catch((e) => console.error(e))
   }
+
+  // Which host runs the core, and why not the service, change without any
+  // mutation: a startup or explicit start that falls back to Local (#5443).
+  useEffect(() => {
+    const unlisteners = [
+      rpc.events.coreStatusChangedEvent.listen(() =>
+        refetchQueries([rpc.queries.getCoreStatus().queryKey]),
+      ),
+      rpc.events.serviceStatusChangedEvent.listen(() =>
+        refetchQueries([rpc.queries.statusService().queryKey]),
+      ),
+    ]
+
+    return () => {
+      unlisteners.forEach((unlisten) =>
+        unlisten.then((fn) => fn()).catch(console.error),
+      )
+    }
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let disposed = false

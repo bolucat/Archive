@@ -10,4 +10,6 @@
 #ifndef __HEV_TUNNEL_LINUX_H__
 #define __HEV_TUNNEL_LINUX_H__
 
+#define HEV_TUNNEL_GENERIC
+
 #endif /* __HEV_TUNNEL_LINUX_H__ */

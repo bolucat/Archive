@@ -109,4 +109,15 @@ mod tests {
 		let rules = parse_lines(["DOMAIN,a.com,proxy", "# skip", "DST-PORT,443,direct"]).unwrap();
 		assert_eq!(rules.len(), 2);
 	}
+
+	/// F13: a rule line with an empty domain needle must fail with the line
+	/// number so a config author can find the stray comma.
+	#[test]
+	fn multiline_reports_empty_domain_needle_by_line() {
+		let err = parse_multiline("DOMAIN,a.com,proxy\nDOMAIN-KEYWORD,,REJECT")
+			.unwrap_err()
+			.to_string();
+		assert!(err.contains("line 2"), "error should name line 2: {err}");
+		assert!(err.contains("DOMAIN-KEYWORD"), "error should name the rule type: {err}");
+	}
 }

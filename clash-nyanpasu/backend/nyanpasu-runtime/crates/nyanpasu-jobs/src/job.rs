@@ -125,9 +125,19 @@ impl JobDefinition {
 pub(crate) type Execution = Pin<Box<dyn Future<Output = Completion> + Send>>;
 type Validator = Arc<dyn Fn(&str) -> Result<(), Error> + Send + Sync>;
 type Handler = Arc<dyn Fn(JobContext, String, usize) -> Execution + Send + Sync>;
+/// Per-job journal capture; ordinary tracing subscribers remain unaffected.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LogCaptureMode {
+    /// Use the injected LogCapture allowlist and limits.
+    #[default]
+    Inherit,
+    /// Retain run history and context without capturing tracing events.
+    Disabled,
+}
 #[derive(Clone)]
 pub struct Job {
     pub definition: JobDefinition,
+    pub(crate) log_capture: LogCaptureMode,
     pub(crate) input: String,
     pub(crate) validate: Validator,
     pub(crate) handler: Handler,
@@ -149,6 +159,7 @@ impl Job {
         let handler = Arc::new(handler);
         Ok(Self {
             definition,
+            log_capture: LogCaptureMode::default(),
             input,
             validate: Arc::new(|text| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -195,6 +206,10 @@ impl Job {
             }),
         })
     }
+    pub fn with_log_capture(mut self, mode: LogCaptureMode) -> Self {
+        self.log_capture = mode;
+        self
+    }
     pub fn blocking<I, O, F>(
         definition: JobDefinition,
         default_input: I,
@@ -237,6 +252,8 @@ impl Job {
         self.definition.schedule.validate(now)
     }
     pub(crate) fn same(&self, other: &Self) -> bool {
-        self.definition == other.definition && self.input == other.input
+        self.definition == other.definition
+            && self.input == other.input
+            && self.log_capture == other.log_capture
     }
 }

@@ -8,6 +8,7 @@
  */
 
 #include <errno.h>
+#include <assert.h>
 #include <signal.h>
 #include <string.h>
 #include <stdatomic.h>
@@ -368,7 +369,7 @@ lwip_timer_task_entry (void *data)
 static int
 tunnel_init (int extern_tun_fd)
 {
-    const char *script_path, *name, *ipv4, *ipv6;
+    const char *script_path, *name, *guid, *ipv4, *ipv6;
     int multi_queue, res;
     unsigned int mtu;
 
@@ -388,7 +389,8 @@ tunnel_init (int extern_tun_fd)
     tun_fd_local = 1;
     name = hev_config_get_tunnel_name ();
     multi_queue = hev_config_get_tunnel_multi_queue ();
-    tun_fd = hev_tunnel_open (name, multi_queue);
+    guid = hev_config_get_tunnel_guid ();
+    tun_fd = hev_tunnel_open (name, multi_queue, guid);
     if (tun_fd < 0) {
         LOG_E ("socks5 tunnel open (%s)", strerror (errno));
         return -1;
@@ -756,8 +758,10 @@ retry:
 
     if (res & SYNC_SEND) {
         res = atomic_fetch_or (&tsync, SYNC_SENT);
-        if (!(res & SYNC_SENT))
-            write (event_fds[1], &res, 1);
+        if (!(res & SYNC_SENT)) {
+            res = write (event_fds[1], &res, 1);
+            assert (res > 0 && "socks5 tunnel write event");
+        }
     } else {
         atomic_fetch_or (&tsync, SYNC_STOP);
     }

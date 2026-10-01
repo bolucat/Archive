@@ -147,6 +147,7 @@ unknown_domain!(
     serde_json::Error,
     tauri::Error,
     anyhow::Error,
+    backup::BackupError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -414,16 +415,12 @@ pub async fn replace_profile_definition(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn view_profile(
-    app_handle: tauri::AppHandle,
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result {
+pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
     let path = client.get_profile_materialized_path(uid.clone()).await?;
     if !path.exists() {
         return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
-    help::open_file(app_handle, path)?;
+    help::open_file(&path)?;
     Ok(())
 }
 
@@ -699,6 +696,31 @@ pub fn open_app_config_dir() -> Result<()> {
 pub fn open_app_data_dir() -> Result<()> {
     let data_dir = (dirs::app_data_dir())?;
     (crate::utils::open::that(data_dir))?;
+    Ok(())
+}
+
+#[derive(specta::Type, serde::Serialize)]
+pub struct ConfigBackupInfo {
+    pub name: String,
+    pub path: String,
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn create_config_backup(client: State<'_, NyanpasuClient>) -> Result<ConfigBackupInfo> {
+    let backup = client.create_config_backup().await?;
+    Ok(ConfigBackupInfo {
+        name: backup.name,
+        path: backup.path.to_string_lossy().into_owned(),
+    })
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
+    (crate::utils::open::that(client.backups_dir()?))?;
     Ok(())
 }
 
@@ -1323,22 +1345,40 @@ pub async fn get_traffic_summary(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn query_traffic_usage(
+pub async fn query_traffic_report(
     client: tauri::State<'_, NyanpasuClient>,
-    group_by: nyanpasu_traffic::GroupBy,
-    limit: usize,
-) -> Result<nyanpasu_traffic::Usage> {
-    Ok(client.query_traffic_usage(group_by, limit).await?)
+    request: nyanpasu_traffic::ReportRequest,
+) -> Result<nyanpasu_traffic::TrafficReport> {
+    Ok(client.query_traffic_report(request).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn query_traffic_topology(
+pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
+    query: nyanpasu_traffic::TrafficQuery,
+    group_by: nyanpasu_traffic::Dimension,
+    after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
-) -> Result<nyanpasu_traffic::Topology> {
-    Ok(client.query_traffic_topology(limit).await?)
+) -> Result<nyanpasu_traffic::UsagePage> {
+    Ok(client
+        .query_traffic_usage(query, group_by, after, limit)
+        .await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_usage_by_keys(
+    client: tauri::State<'_, NyanpasuClient>,
+    query: nyanpasu_traffic::TrafficQuery,
+    group_by: nyanpasu_traffic::Dimension,
+    keys: Vec<String>,
+) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
+    Ok(client
+        .query_traffic_usage_by_keys(query, group_by, keys)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1376,10 +1416,13 @@ pub async fn clear_clash_ws_history(
     Ok(())
 }
 
+// Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
+// HTTP consumers use the dedicated SSE adapter instead of a webview channel.
+#[nyanpasu_macro::rpc(owner)]
 #[tauri::command]
 #[specta::specta]
 pub async fn subscribe_clash_connection_details(
-    webview: tauri::Webview,
+    window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
     subscriptions: tauri::State<
         '_,
@@ -1389,7 +1432,7 @@ pub async fn subscribe_clash_connection_details(
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details();
     let parent = client.shutdown_child_token();
-    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
     client.spawn_tracked(
         &cancel,
         crate::core::clash::connection_details::forward_details(receiver, on_frame),
@@ -1397,16 +1440,18 @@ pub async fn subscribe_clash_connection_details(
     Ok(id)
 }
 
+#[nyanpasu_macro::rpc(owner)]
 #[tauri::command]
 #[specta::specta]
 pub fn unsubscribe_clash_connection_details(
+    window: tauri::Window,
     subscriptions: tauri::State<
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
     >,
     id: crate::core::clash::connection_details::SubscriptionId,
 ) -> Result {
-    subscriptions.unsubscribe(id);
+    subscriptions.unsubscribe(id, window.label())?;
     Ok(())
 }
 
@@ -1481,13 +1526,22 @@ pub struct UpdateWrapper {
     raw_json: serde_json::Value,
 }
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct ReleaseChannelInfo {
+    /// The feed update checks follow.
+    current: crate::bundle::Channel,
+    /// The channel of the installed build; a nightly build cannot leave Nightly.
+    installed: crate::bundle::Channel,
+}
+
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_release_channel(
-    client: State<'_, NyanpasuClient>,
-) -> Result<crate::bundle::Channel> {
-    Ok(client.release_channel().await?)
+pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<ReleaseChannelInfo> {
+    Ok(ReleaseChannelInfo {
+        current: client.release_channel().await?,
+        installed: client.installed_release_channel(),
+    })
 }
 
 #[nyanpasu_macro::rpc]

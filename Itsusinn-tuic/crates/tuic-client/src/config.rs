@@ -172,6 +172,37 @@ pub struct QuinnConfig {
 	pub pmtu: bool,
 }
 
+/// Transport tuning for the tokio-quiche backend. Mirrors tuic-server's
+/// `[backend.quiche]`; the shared `[tls]`, `udp_relay_mode`, heartbeat, GC, and
+/// reconnect fields still apply to both backends.
+#[derive(Debug, Clone, Deserialize, serde::Serialize, Educe)]
+#[educe(Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct QuicheConfig {
+	pub congestion_control: CongestionControlConfig,
+
+	#[serde(with = "humantime_serde")]
+	#[educe(Default(expression = Duration::from_secs(30)))]
+	pub max_idle_time: Duration,
+
+	#[educe(Default = 100)]
+	pub max_concurrent_bi_streams: u64,
+
+	#[educe(Default = 100)]
+	pub max_concurrent_uni_streams: u64,
+
+	#[educe(Default = 16777216)]
+	pub send_window: u64,
+
+	#[educe(Default = 8388608)]
+	pub receive_window: u64,
+
+	/// Enable 0-RTT early data, in addition to the shared
+	/// `zero_rtt_handshake` flag.
+	#[educe(Default = false)]
+	pub zero_rtt: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, serde::Serialize, Educe)]
 #[educe(Default)]
 #[serde(default, deny_unknown_fields)]
@@ -186,14 +217,20 @@ pub struct CongestionControlConfig {
 pub struct BackendConfig {
 	pub mode: BackendMode,
 	pub quinn: QuinnConfig,
+	pub quiche: QuicheConfig,
 }
 
-/// The client currently supports only the quinn backend.
-#[derive(Debug, Clone, Copy, Default, Deserialize, serde::Serialize)]
+/// Selects the QUIC implementation.
+///
+/// `Quiche` requires the `quiche` cargo feature (64-bit targets only). Config
+/// parsing accepts it unconditionally so a config file is portable; the plugin
+/// rejects it at startup when the feature isn't compiled in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BackendMode {
 	#[default]
 	Quinn,
+	Quiche,
 }
 
 impl From<ConfigFile> for Config {
@@ -210,6 +247,8 @@ impl From<ConfigFile> for Config {
 				certificates: file.tls.certificates,
 				udp_relay_mode: file.udp_relay_mode,
 				congestion_control: file.backend.quinn.congestion_control.controller,
+				backend_mode: file.backend.mode,
+				quiche: file.backend.quiche,
 				alpn: file.tls.alpn,
 				zero_rtt_handshake: file.zero_rtt_handshake,
 				disable_sni: file.tls.disable_sni,
@@ -267,7 +306,7 @@ impl From<Config> for ConfigFile {
 				skip_cert_verify: relay.skip_cert_verify,
 			},
 			backend: BackendConfig {
-				mode: BackendMode::Quinn,
+				mode: relay.backend_mode,
 				quinn: QuinnConfig {
 					congestion_control: CongestionControlConfig {
 						controller: relay.congestion_control,
@@ -279,6 +318,7 @@ impl From<Config> for ConfigFile {
 					gso: relay.gso,
 					pmtu: relay.pmtu,
 				},
+				quiche: relay.quiche,
 			},
 		}
 	}
@@ -415,6 +455,13 @@ pub struct Relay {
 	#[educe(Default = true)]
 	#[serde(default)]
 	pub lazy: bool,
+
+	/// Selected QUIC backend. Mirrors `backend.mode`.
+	#[educe(Default(expression = BackendMode::Quinn))]
+	pub backend_mode: BackendMode,
+
+	/// Transport tuning for the quiche backend. Mirrors `backend.quiche`.
+	pub quiche: QuicheConfig,
 }
 
 #[derive(Debug, Deserialize, serde::Serialize, Educe, Clone, PartialEq, Eq)]
@@ -546,6 +593,14 @@ enum ConfigFormat {
 
 /// Move explicitly supplied legacy fields before merging defaults, so modern
 /// fields (including explicit default values) always take precedence.
+///
+/// Transport tuning follows the **selected** backend: `congestion_control`,
+/// `send_window`, and `receive_window` have a quiche counterpart, so they land
+/// in `[backend.quiche]` when `backend.mode = "quiche"` picks that backend
+/// (previously they were always written to `[backend.quinn]` and silently
+/// discarded). `initial_mtu`, `min_mtu`, `gso`, and `pmtu` have no quiche
+/// equivalent, so they keep their historical `[backend.quinn]` destination and
+/// a warning names them when they cannot take effect.
 fn migrate_relay(values: &mut figment::value::Dict) -> eyre::Result<()> {
 	use figment::value::Value;
 	let Some(legacy) = values.remove("relay") else {
@@ -557,13 +612,40 @@ fn migrate_relay(values: &mut figment::value::Dict) -> eyre::Result<()> {
 	// Validate the entire old section, including fields shadowed by modern
 	// ones.
 	let _: Relay = Figment::from(Serialized::defaults(legacy.clone())).extract()?;
+	// Which backend the file selects. Read from the surviving top-level
+	// `[backend]` table (default `quinn`, matching `BackendMode`); an unknown
+	// value is left for the modern deserializer to reject.
+	let selected_mode: Option<String> = values
+		.get("backend")
+		.and_then(Value::as_dict)
+		.and_then(|backend| backend.get("mode"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let quiche_selected = selected_mode.as_deref() == Some("quiche");
+	let mut ignored_quinn_only: Vec<String> = Vec::new();
 	for (key, value) in legacy {
-		let path: &[&str] = match key.as_str() {
-			"certificates" | "alpn" | "disable_sni" | "sni" | "disable_native_certs" | "skip_cert_verify" => &["tls"],
-			"congestion_control" => &["backend", "quinn", "congestion_control"],
-			"send_window" | "receive_window" | "initial_mtu" | "min_mtu" | "gso" | "pmtu" => &["backend", "quinn"],
-			_ => &[],
+		let to_quiche = quiche_selected && matches!(key.as_str(), "congestion_control" | "send_window" | "receive_window");
+		// Legacy `[relay]` keys are full paths; `backend` is the top-level
+		// section, not a destination path.
+		let path: &[&str] = if to_quiche {
+			// `congestion_control` keeps its nested `controller` sub-table in
+			// both backends; the sibling window keys are flat.
+			if key == "congestion_control" {
+				&["backend", "quiche", "congestion_control"]
+			} else {
+				&["backend", "quiche"]
+			}
+		} else {
+			match key.as_str() {
+				"certificates" | "alpn" | "disable_sni" | "sni" | "disable_native_certs" | "skip_cert_verify" => &["tls"],
+				"congestion_control" => &["backend", "quinn", "congestion_control"],
+				"send_window" | "receive_window" | "initial_mtu" | "min_mtu" | "gso" | "pmtu" => &["backend", "quinn"],
+				_ => &[],
+			}
 		};
+		if quiche_selected && matches!(key.as_str(), "initial_mtu" | "min_mtu" | "gso" | "pmtu") {
+			ignored_quinn_only.push(key.clone());
+		}
 		let mut target = &mut *values;
 		for section in path {
 			let entry = target
@@ -574,6 +656,10 @@ fn migrate_relay(values: &mut figment::value::Dict) -> eyre::Result<()> {
 			};
 			target = dict;
 		}
+		// Only the quinn table nests the controller under a
+		// `congestion_control` sub-table; the quiche table does the same
+		// (`QuicheConfig::congestion_control.controller`), but its sibling
+		// transport keys are flat.
 		let key = if key == "congestion_control" {
 			"controller".to_owned()
 		} else {
@@ -594,7 +680,16 @@ fn migrate_relay(values: &mut figment::value::Dict) -> eyre::Result<()> {
 			}
 		}
 	}
-	tracing::warn!("The [relay] section is deprecated; use top-level connection fields, [tls] and [backend.quinn]");
+	tracing::warn!(
+		"The [relay] section is deprecated; use top-level connection fields, [tls], and [backend.quinn]/[backend.quiche]"
+	);
+	if !ignored_quinn_only.is_empty() {
+		tracing::warn!(
+			"legacy [relay] transport keys {} have no quiche equivalent and were kept under [backend.quinn]; they take effect \
+			 only with `backend.mode = \"quinn\"`",
+			ignored_quinn_only.join(", ")
+		);
+	}
 	Ok(())
 }
 
@@ -805,15 +900,139 @@ username = "legacy_user"
 		for content in [
 			"typo = true",
 			"[tls]\nskip_cert_verfy = true",
-			"[backend]\nmode = 'quiche'",
+			"[backend]\nmode = 'quic'",
 			"[backend.quinn]\nsend_windw = 10",
 			"[backend.quinn.congestion_control]\ncontroller = 'invalid'",
+			"[backend.quiche]\nunknown_knob = 1",
 			"[relay]\ntypo = true",
 			"relay = false",
 			"tls = false\n[relay]\nalpn = ['h3']",
 		] {
 			assert!(test_parse_config(content, ".toml").is_err(), "accepted {content}");
 		}
+	}
+
+	#[test]
+	fn test_backend_mode_quiche_and_subsections() {
+		let config = r#"
+server = "127.0.0.1:8443"
+password = "test"
+
+[backend]
+mode = "quiche"
+
+[backend.quinn]
+initial_mtu = 1400
+
+[backend.quiche]
+max_concurrent_bi_streams = 50
+zero_rtt = true
+max_idle_time = "45s"
+"#;
+		let parsed = test_parse_config(config, ".toml").unwrap();
+		assert_eq!(parsed.relay.backend_mode, BackendMode::Quiche);
+		assert_eq!(parsed.relay.initial_mtu, 1400);
+		assert_eq!(parsed.relay.quiche.max_concurrent_bi_streams, 50);
+		assert!(parsed.relay.quiche.zero_rtt);
+		assert_eq!(parsed.relay.quiche.max_idle_time, Duration::from_secs(45));
+	}
+
+	#[test]
+	fn test_backend_mode_defaults_to_quinn() {
+		let parsed = test_parse_config("server = \"127.0.0.1:8443\"\n", ".toml").unwrap();
+		assert_eq!(parsed.relay.backend_mode, BackendMode::Quinn);
+	}
+
+	#[test]
+	fn legacy_transport_fields_follow_the_selected_quiche_backend() {
+		let config = r#"
+server = "127.0.0.1:8443"
+password = "test"
+
+[backend]
+mode = "quiche"
+
+[relay]
+congestion_control = "cubic"
+send_window = 111
+receive_window = 222
+initial_mtu = 1400
+pmtu = false
+"#;
+		let parsed = test_parse_config(config, ".toml").unwrap();
+		// The three keys with a quiche counterpart must reach the backend that
+		// is actually built, not the quinn table the quiche builder never
+		// reads.
+		assert_eq!(parsed.relay.quiche.congestion_control.controller, CongestionControl::Cubic);
+		assert_eq!(parsed.relay.quiche.send_window, 111);
+		assert_eq!(parsed.relay.quiche.receive_window, 222);
+		// The unchanged quinn table still absorbs the modern `[backend.quinn]`
+		// contract, but the quiche path must take its tuning from `quiche`.
+		assert_ne!(parsed.relay.send_window, 111);
+		assert_ne!(parsed.relay.receive_window, 222);
+		// Keys without a quiche equivalent keep their legacy destination.
+		assert_eq!(parsed.relay.initial_mtu, 1400);
+		assert!(!parsed.relay.pmtu);
+
+		let serialized = toml::to_string_pretty(&parsed).unwrap();
+		let reparsed: Config = toml::from_str(&serialized).unwrap();
+		assert_eq!(reparsed.relay.quiche.congestion_control.controller, CongestionControl::Cubic);
+		assert_eq!(reparsed.relay.quiche.send_window, 111);
+		assert_eq!(reparsed.relay.quiche.receive_window, 222);
+		assert_eq!(reparsed.relay.initial_mtu, 1400);
+	}
+
+	#[test]
+	fn legacy_transport_fields_stay_on_quinn_by_default() {
+		let config = r#"
+server = "127.0.0.1:8443"
+password = "test"
+
+[relay]
+congestion_control = "cubic"
+send_window = 111
+receive_window = 222
+initial_mtu = 1400
+"#;
+		let parsed = test_parse_config(config, ".toml").unwrap();
+		// Without an explicit `backend.mode`, quinn remains selected and the
+		// historical destinations are unchanged.
+		assert_eq!(parsed.relay.backend_mode, BackendMode::Quinn);
+		assert_eq!(parsed.relay.congestion_control, CongestionControl::Cubic);
+		assert_eq!(parsed.relay.send_window, 111);
+		assert_eq!(parsed.relay.receive_window, 222);
+		assert_eq!(parsed.relay.initial_mtu, 1400);
+		// The untouched quiche table keeps its own defaults.
+		assert_eq!(parsed.relay.quiche.congestion_control.controller, CongestionControl::Bbr);
+		assert_eq!(parsed.relay.quiche.send_window, 16777216);
+	}
+
+	#[test]
+	fn modern_quiche_values_win_over_legacy_transport_fields() {
+		let config = r#"
+server = "127.0.0.1:8443"
+password = "test"
+
+[backend]
+mode = "quiche"
+
+[backend.quiche]
+send_window = 555
+
+[backend.quiche.congestion_control]
+controller = "newreno"
+
+[relay]
+congestion_control = "cubic"
+send_window = 111
+receive_window = 222
+"#;
+		let parsed = test_parse_config(config, ".toml").unwrap();
+		assert_eq!(parsed.relay.quiche.send_window, 555);
+		assert_eq!(parsed.relay.quiche.congestion_control.controller, CongestionControl::NewReno);
+		// Keys the modern table leaves unspecified still inherit the legacy
+		// value.
+		assert_eq!(parsed.relay.quiche.receive_window, 222);
 	}
 
 	#[test]
@@ -839,6 +1058,7 @@ username = "legacy_user"
 		assert!(!output.contains("[relay"));
 		assert!(output.contains("[tls]"));
 		assert!(output.contains("[backend.quinn.congestion_control]"));
+		assert!(output.contains("[backend.quiche]"));
 		assert!(output.contains("[::1]:8443"));
 		let reparsed: Config = toml::from_str(&output).unwrap();
 		assert_eq!(output, toml::to_string_pretty(&reparsed).unwrap());

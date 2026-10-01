@@ -1,5 +1,7 @@
-import { Fragment } from 'react'
+import { createContext, Fragment, useContext } from 'react'
 import HighlightText from '@/components/ui/highlight-text'
+import { getLocale } from '@/paraglide/runtime'
+import { formatDate, formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { cn } from '@nyanpasu/utils'
 
@@ -99,6 +101,23 @@ export function TrafficCell({
     >
       {parseTraffic(value).join(' ')}
       {rate && '/s'}
+    </span>
+  )
+}
+
+/**
+ * The table's current data. Rows skip re-rendering while their values stay
+ * the same, so relative times subscribe to it to move on with every sample.
+ */
+export const RowsTickContext = createContext<unknown>(null)
+
+/** A time as "x ago", with the exact time on hover. */
+export function RelativeTimeCell({ ms }: { ms: number }) {
+  useContext(RowsTickContext)
+
+  return (
+    <span title={formatDate(ms)}>
+      {formatRelativeTime(ms, Date.now(), getLocale())}
     </span>
   )
 }

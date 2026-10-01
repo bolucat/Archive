@@ -72,6 +72,8 @@ Cron uses jiff-cron 0.3.0 and jiff 0.2, with five or six fields, an explicit IAN
 
 Create `LogCapture` early and install its layer explicitly. File/console filters should be per-layer; an outer global EnvFilter can discard spans/events before this layer sees them. The service captures the current tracing dispatcher at startup and propagates it through managed futures/blocking work. Across actor messages, carry `JobContext` and instrument the actual processing future.
 
+Jobs default to `LogCaptureMode::Inherit`, which uses the injected capture policy. Opt out with `job.with_log_capture(LogCaptureMode::Disabled)` (also available on `TypedJob`). Disabled jobs still emit ordinary tracing events to file/console layers, retain run IDs and propagated context, wait for children/delegations, and persist durable outcome/output history. They register no capture buffer and run no 100 ms log drain; captured logs and dropped-log counts stay empty/zero. A disabled context nested inside another run does not attribute its events to that outer run. Changing capture mode participates in scope reconciliation.
+
 The default policy denies every target. Configure exact target/field allowlists. Arbitrary messages, URLs, tokens, and config bodies are not automatically safe: allow `message` only for audited safe text. The layer does not log its own storage failures. It performs bounded capture only; the owner drains batches and seals the Run before finalization. Late events cannot mutate sealed history. Dropped events consume sequence numbers and increment the final dropped count.
 
 Defaults:

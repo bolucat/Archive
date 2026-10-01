@@ -42,6 +42,7 @@ $(SHARED_TARGET) : LDFLAGS+=-shared -pthread
 
 -include build.mk
 CCFLAGS+=$(VERSION_CFLAGS)
+TPFLAGS=ENABLE_STACK_OVERFLOW_DETECTOR=1
 CCSRCS=$(filter %.c,$(SRCFILES))
 ASSRCS=$(filter %.S,$(SRCFILES))
 LDOBJS=$(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(CCSRCS)) \
@@ -85,10 +86,10 @@ static : $(STATIC_TARGET)
 shared : $(SHARED_TARGET)
 
 tp-static : $(THIRDPARTS)
-	@$(foreach dir,$^,$(MAKE) --no-print-directory -C $(dir) static;)
+	@$(foreach dir,$^,$(MAKE) --no-print-directory -C $(dir) $(TPFLAGS) static;)
 
 tp-shared : $(THIRDPARTS)
-	@$(foreach dir,$^,$(MAKE) --no-print-directory -C $(dir) shared;)
+	@$(foreach dir,$^,$(MAKE) --no-print-directory -C $(dir) $(TPFLAGS) shared;)
 
 tp-clean : $(THIRDPARTS)
 	@$(foreach dir,$^,$(MAKE) --no-print-directory -C $(dir) clean;)

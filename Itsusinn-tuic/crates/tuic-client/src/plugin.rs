@@ -12,7 +12,8 @@ use wind_socks::inbound::{AuthMode, SocksInbound, SocksInboundOpt};
 use wind_tuic::quinn::outbound::{ReconnectConfig, TuicOutbound, TuicOutboundOpts};
 
 use crate::{
-	config::Relay,
+	config::{BackendMode, Relay},
+	tls::{TlsConfigError, build_client_config},
 	tunnel::{TunnelTcpInbound, TunnelUdpInbound},
 };
 
@@ -29,11 +30,13 @@ impl wind_core::Router for ClientRouter {
 	}
 }
 
-/// Build a [`TuicOutbound`] from the relay configuration.
+/// Resolve the server's socket address and derive the TLS SNI.
 ///
-/// Resolves the server address (IP literal or DNS), derives the SNI, and
-/// translates the relay config into [`TuicOutboundOpts`].
-async fn build_tuic_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result<TuicOutbound> {
+/// Shared by both backends: an explicit `ip` short-circuits DNS, and an
+/// IP-literal server without a configured `sni` falls back to a placeholder
+/// (with a warning) so certificate verification fails loudly rather than
+/// silently accepting the wrong name.
+async fn resolve_peer(relay: &Relay) -> eyre::Result<(SocketAddr, String)> {
 	let server_addr = if let Some(ip) = relay.ip {
 		SocketAddr::new(ip, relay.server.1)
 	} else {
@@ -43,8 +46,6 @@ async fn build_tuic_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result
 			.next()
 			.ok_or_else(|| eyre::eyre!("Failed to resolve server address"))?
 	};
-
-	let password: Arc<[u8]> = relay.password.clone();
 
 	let sni = match relay.sni.clone() {
 		Some(s) => s,
@@ -63,11 +64,61 @@ async fn build_tuic_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result
 		}
 	};
 
+	Ok((server_addr, sni))
+}
+
+/// Build the outbound selected by `backend.mode`.
+async fn build_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result<Arc<dyn Outbound>> {
+	match relay.backend_mode {
+		BackendMode::Quinn => build_quinn_outbound(ctx, relay).await,
+		BackendMode::Quiche => build_quiche_outbound(ctx, relay).await,
+	}
+}
+
+/// Install the process-wide rustls crypto provider exactly once. Mirrors
+/// `wind-tuic`'s own installation so library users (integration tests, other
+/// binaries) get a working provider even when `main` never ran.
+fn install_crypto_provider() {
+	static PROVIDER_INSTALLED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+	PROVIDER_INSTALLED.get_or_init(|| {
+		#[cfg(feature = "aws-lc-rs")]
+		let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+		#[cfg(feature = "ring")]
+		let _ = rustls::crypto::ring::default_provider().install_default();
+	});
+}
+
+/// Build a [`TuicOutbound`] (quinn backend) from the relay configuration.
+///
+/// Public so integration tests can exercise the real configuration path
+/// (including `crate::tls` and the rustls client configuration it builds)
+/// without duplicating it.
+pub async fn build_quinn_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result<Arc<dyn Outbound>> {
+	install_crypto_provider();
+	let (server_addr, sni) = resolve_peer(&relay).await?;
+
+	let password: Arc<[u8]> = relay.password.clone();
+
 	let reconnect = ReconnectConfig {
 		enabled: relay.reconnect,
 		initial_backoff: relay.reconnect_initial_backoff,
 		max_backoff: relay.reconnect_max_backoff,
 	};
+
+	// The whole rustls configuration is built here, because `[tls]
+	// disable_sni`, `disable_native_certs`, and `certificates` have no
+	// counterpart in wind's built-in configuration. `TuicOutboundOpts` uses a
+	// supplied `client_config` verbatim, so the ALPN list, the 0-RTT flag, and
+	// the skip-verify branch are reproduced by `crate::tls` (see its module
+	// docs and tests).
+	let client_config = build_client_config(&relay).map_err(|source| match source {
+		err @ (TlsConfigError::CertificateIo { .. }
+		| TlsConfigError::NoCertificate { .. }
+		| TlsConfigError::NoUsableCertificate { .. }) => {
+			eyre::Report::new(err).wrap_err("invalid `[tls] certificates` configuration")
+		}
+		err => eyre::Report::new(err),
+	})?;
 
 	let opts = TuicOutboundOpts {
 		peer_addr: server_addr,
@@ -85,7 +136,7 @@ async fn build_tuic_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result
 			.map(|v| String::from_utf8_lossy(&v).to_string())
 			.collect(),
 		reconnect,
-		client_config: None,
+		client_config: Some(Arc::new(client_config)),
 		congestion_control: relay.congestion_control,
 		max_concurrent_bi_streams: None,
 		max_concurrent_uni_streams: None,
@@ -100,7 +151,83 @@ async fn build_tuic_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result
 
 	outbound.start_poll().await?;
 
-	Ok(outbound)
+	Ok(Arc::new(outbound) as Arc<dyn Outbound>)
+}
+
+/// Build a `wind-tuic` quiche-backend outbound.
+///
+/// The quiche client consumes the `backend.quiche` transport tuning plus the
+/// shared `[tls]`/relay fields. `[tls] disable_sni`, `[tls]
+/// disable_native_certs`, and the `[tls] certificates` list have no counterpart
+/// in the quiche TLS settings, so they are named in a warning instead of being
+/// ignored silently (they do work on the quinn backend).
+#[cfg(feature = "quiche")]
+async fn build_quiche_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result<Arc<dyn Outbound>> {
+	use wind_tuic::quiche::{
+		CongestionControl as QuicheCongestionControl, ConnectionOpts, ReconnectConfig as QuicheReconnect, TuicheOutbound,
+		TuicheOutboundOpts, UdpRelayMode as QuicheUdpRelayMode,
+	};
+
+	use crate::utils::{CongestionControl, UdpRelayMode};
+
+	let (peer_addr, sni) = resolve_peer(&relay).await?;
+
+	if relay.disable_sni || relay.disable_native_certs || !relay.certificates.is_empty() {
+		tracing::warn!(
+			"the quiche backend cannot honour `[tls] disable_sni`, `[tls] disable_native_certs`, or `[tls] certificates`; \
+			 they only take effect on the quinn backend (the default)"
+		);
+	}
+
+	let congestion_control = match relay.quiche.congestion_control.controller {
+		CongestionControl::Cubic => QuicheCongestionControl::Cubic,
+		CongestionControl::Bbr | CongestionControl::Bbr3 => QuicheCongestionControl::Bbr,
+		CongestionControl::NewReno => QuicheCongestionControl::Reno,
+	};
+
+	let connection = ConnectionOpts {
+		max_idle_timeout: relay.quiche.max_idle_time,
+		max_concurrent_bi_streams: relay.quiche.max_concurrent_bi_streams,
+		max_concurrent_uni_streams: relay.quiche.max_concurrent_uni_streams,
+		send_window: relay.quiche.send_window,
+		receive_window: relay.quiche.receive_window,
+		congestion_control,
+		udp_relay_mode: match relay.udp_relay_mode {
+			UdpRelayMode::Native => QuicheUdpRelayMode::Datagram,
+			UdpRelayMode::Quic => QuicheUdpRelayMode::Stream,
+		},
+		enable_0rtt: relay.zero_rtt_handshake || relay.quiche.zero_rtt,
+		..Default::default()
+	};
+
+	let opts = TuicheOutboundOpts {
+		peer_addr,
+		sni,
+		auth: (relay.uuid, relay.password.clone()),
+		verify_certificate: !relay.skip_cert_verify,
+		alpn: relay.alpn.clone(),
+		heartbeat: relay.heartbeat,
+		gc_interval: relay.gc_interval,
+		gc_lifetime: relay.gc_lifetime,
+		reconnect: QuicheReconnect {
+			enabled: relay.reconnect,
+			initial_backoff: relay.reconnect_initial_backoff,
+			max_backoff: relay.reconnect_max_backoff,
+		},
+		connection,
+	};
+
+	let outbound = TuicheOutbound::new(ctx, opts).await?;
+	outbound.start_poll().await?;
+
+	Ok(Arc::new(outbound) as Arc<dyn Outbound>)
+}
+
+/// Mirror of `build_quiche_outbound` for builds without the `quiche` feature:
+/// selecting the backend in config is always valid, but starting requires it.
+#[cfg(not(feature = "quiche"))]
+async fn build_quiche_outbound(_ctx: Arc<AppContext>, _relay: Relay) -> eyre::Result<Arc<dyn Outbound>> {
+	Err(eyre::eyre!("backend.mode = \"quiche\" requires the `quiche` feature"))
 }
 
 /// Wind framework plugin that wires a TUIC client's full runtime.
@@ -131,16 +258,14 @@ impl Plugin<ClientRouter> for TuicClientPlugin {
 		let handler: Arc<dyn Outbound> = if lazy {
 			// Lazy mode: defer QUIC connection until first traffic.
 			let setup_ctx = ctx.clone();
-			Arc::new(LazyOutbound::new(Box::pin(async move {
-				let outbound = build_tuic_outbound(setup_ctx, relay).await?;
-				Ok(Arc::new(outbound) as Arc<dyn Outbound>)
-			})))
+			Arc::new(LazyOutbound::new(Box::pin(
+				async move { build_outbound(setup_ctx, relay).await },
+			)))
 		} else {
 			// Eager mode: establish the QUIC connection immediately.
-			let outbound = build_tuic_outbound(ctx.clone(), relay)
+			build_outbound(ctx.clone(), relay)
 				.await
-				.expect("TUIC outbound setup failed in eager mode");
-			Arc::new(outbound)
+				.expect("TUIC outbound setup failed in eager mode")
 		};
 
 		let app = app.add_outbound("default", handler);

@@ -32,10 +32,17 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    core::actor_v2::{
-        CoreClient as CoreClientV2, CoreStatusProjection,
-        facade::{ReconcileReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
+    core::{
+        actor_v2::{
+            CoreClient as CoreClientV2, CoreStatusProjection,
+            facade::{ReconcileReport, StopReport},
+            service_actor::{ServiceClient, ServiceHostStatus},
+        },
+        backup::{
+            self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
+            MANUAL_PREFIX, StorageSource,
+        },
+        storage::Storage,
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::profiles::{
@@ -83,6 +90,9 @@ pub struct ClientSetupArgs {
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
+    /// Opened by the composition root, which also manages the same instance
+    /// for the storage commands.
+    pub storage: Storage,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core_v2: CoreClientV2,
@@ -205,6 +215,8 @@ struct NyanpasuClientInner {
     fs: Arc<dyn ProfileFsPort>,
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
+    paths: PathResolver,
+    storage: Storage,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
@@ -233,6 +245,7 @@ impl NyanpasuClient {
             http_frontend,
             http_routes,
             paths,
+            storage,
             runtime_paths,
             ui_sink,
             core_v2,
@@ -248,6 +261,7 @@ impl NyanpasuClient {
             tasks,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
+        let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().to_path_buf();
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -313,6 +327,8 @@ impl NyanpasuClient {
             ports,
             profiles_dir,
             instance_config_dir,
+            backup_paths,
+            storage,
             runtime_paths,
             script_dirs,
             ui_sink,
@@ -346,6 +362,8 @@ impl NyanpasuClient {
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
         instance_config_dir: PathBuf,
+        paths: PathResolver,
+        storage: Storage,
         runtime_paths: RuntimePaths,
         script_dirs: crate::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
@@ -455,20 +473,32 @@ impl NyanpasuClient {
         )
         .await?;
         let traffic = match traffic_store {
-            Some(store) => Some(
-                crate::core::traffic::TrafficClient::spawn(
+            Some(store) => {
+                match crate::core::traffic::TrafficClient::spawn(
                     crate::core::traffic::TrafficArgs {
                         store,
                         profiles: Arc::new(traffic::SelectedProfile::new(
                             profiles.snapshot_handle(),
                         )),
+                        retention: Arc::new(traffic::SettingsRetention::new(
+                            application.snapshot_handle(),
+                        )),
+                        clock: Arc::new(traffic::SystemClock),
                         frames: streams.subscribe_connection_frames(),
                     },
                     shutdown.child_token(),
                     &tasks,
                 )
-                .await?,
-            ),
+                .await
+                {
+                    Ok(client) => Some(client),
+                    // Recording is a side feature: an unreadable store disables it, not the app.
+                    Err(error) => {
+                        tracing::warn!("traffic recording is disabled: {error:#}");
+                        None
+                    }
+                }
+            }
             None => None,
         };
         Ok(Self {
@@ -485,6 +515,8 @@ impl NyanpasuClient {
                 fs,
                 ports,
                 profiles_dir,
+                paths,
+                storage,
                 application_workflow,
                 core_api: core_v2,
                 proxies,
@@ -526,6 +558,10 @@ impl NyanpasuClient {
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
+    pub fn installed_release_channel(&self) -> crate::bundle::Channel {
+        self.inner.bundle_metadata.release_channel
+    }
+
     pub(crate) fn update_download_urls(
         &self,
         announced: &url::Url,
@@ -544,6 +580,36 @@ impl NyanpasuClient {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(channel));
         self.patch_app_config(patch).await
+    }
+
+    /// Creates a manual backup and keeps the newest `KEEP_MANUAL_BACKUPS` of them.
+    /// A failed prune is logged and does not fail the backup it follows.
+    pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
+        let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                let info = backup::create_backup(&BackupRequest {
+                    paths: &paths,
+                    storage: StorageSource::Live(&storage),
+                    kind: BackupKind::Manual,
+                    now: time::OffsetDateTime::now_utc(),
+                })?;
+                if let Err(error) =
+                    backup::prune_backups(&paths.backups_dir(), MANUAL_PREFIX, KEEP_MANUAL_BACKUPS)
+                {
+                    tracing::warn!(%error, "failed to prune old manual backups");
+                }
+                Ok(info)
+            })
+            .await,
+        )
+    }
+
+    /// `<data>/backups`, created when it does not exist yet.
+    pub fn backups_dir(&self) -> std::io::Result<PathBuf> {
+        let dir = self.inner.paths.backups_dir();
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 
     pub fn is_portable(&self) -> bool {
@@ -1988,6 +2054,13 @@ pub(crate) mod tests {
 
     /// Seeds `path` with [`test_clash_config`], which the clash config client
     /// then loads instead of creating the default.
+    fn test_backup_deps(dir: &TempDir) -> (PathResolver, Storage) {
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        std::fs::create_dir_all(paths.app_data_dir()).unwrap();
+        let storage = Storage::try_new(&paths.storage_path()).unwrap();
+        (paths, storage)
+    }
+
     fn seed_test_clash_config(path: impl AsRef<std::path::Path>) {
         std::fs::write(path, serde_yaml::to_string(&test_clash_config()).unwrap()).unwrap();
     }
@@ -2166,6 +2239,7 @@ pub(crate) mod tests {
         .expect("profiles client should be created");
         let ports = Arc::new(SessionPortResolver::default());
         let (core_v2, service) = test_v2_clients();
+        let (backup_paths, storage) = test_backup_deps(&dir);
         NyanpasuClient::with_parts(
             None,
             crate::bundle::BundleMetadata {
@@ -2186,6 +2260,8 @@ pub(crate) mod tests {
             ports,
             dir.path().join("profiles"),
             PathBuf::new(),
+            backup_paths,
+            storage,
             RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
                 dir.path().into(),
                 dir.path().join("data"),
@@ -2323,6 +2399,7 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
+            crate::bundle::Channel::Stable,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -2457,7 +2534,7 @@ pub(crate) mod tests {
         dir: &TempDir,
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
     ) -> ClientSetupArgs {
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let (paths, storage) = test_backup_deps(dir);
         seed_test_clash_config(paths.clash_config_path());
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (shutdown, tasks) = (
@@ -2486,6 +2563,7 @@ pub(crate) mod tests {
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
+            storage,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
@@ -2804,6 +2882,7 @@ pub(crate) mod tests {
         .await
         .expect("profiles client should be created");
         let (core_v2, service) = test_v2_clients();
+        let (backup_paths, storage) = test_backup_deps(&dir);
         let client = NyanpasuClient::with_parts(
             None,
             crate::bundle::BundleMetadata {
@@ -2824,6 +2903,8 @@ pub(crate) mod tests {
             ports,
             paths.app_profiles_dir(),
             PathBuf::new(),
+            backup_paths,
+            storage,
             RuntimePaths::from_resolver(&paths).unwrap(),
             crate::enhance::ScriptDirs::from_resolver(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2854,6 +2935,35 @@ pub(crate) mod tests {
             let client = test_client(&dir).await;
             let _ = client.clone();
         });
+    }
+
+    #[test]
+    fn manual_backups_keep_the_newest_three_and_leave_migration_backups() {
+        let dir = tempdir().expect("tempdir should be created");
+        let backups = dir.path().join("data").join("backups");
+        let migration = backups.join("migration-20250101T000000Z-1.0.0-to-2.0.0");
+        std::fs::create_dir_all(&migration).unwrap();
+
+        let names = tauri::async_runtime::block_on(async {
+            let client = test_client(&dir).await;
+            let mut names = Vec::new();
+            for _ in 0..4 {
+                names.push(client.create_config_backup().await.unwrap().name);
+            }
+            assert_eq!(client.backups_dir().unwrap(), backups);
+            names
+        });
+
+        let mut kept: Vec<_> = std::fs::read_dir(&backups)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("manual-"))
+            .collect();
+        kept.sort();
+        let mut expected = names[1..].to_vec();
+        expected.sort();
+        assert_eq!(kept, expected);
+        assert!(migration.exists());
     }
 
     #[test]
@@ -2929,7 +3039,7 @@ pub(crate) mod tests {
     #[test]
     fn try_new_with_args_constructs_typed_config_facade() {
         let dir = tempdir().expect("tempdir should be created");
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let (paths, storage) = test_backup_deps(&dir);
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (shutdown, tasks) = (
             tokio_util::sync::CancellationToken::new(),
@@ -2957,6 +3067,7 @@ pub(crate) mod tests {
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
+            storage,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
@@ -3289,13 +3400,13 @@ pub(crate) mod tests {
         );
     }
 
-    /// S8 (leader ruling R8): ...and only by adopting a daemon that is
-    /// already up. Converging one would install and start the service,
-    /// raising a UAC prompt at every launch for a user who merely left the
-    /// setting on, and starting the core locally instead would silently run
-    /// it on a host nobody asked for. Startup waits for the daemon.
+    /// S8 (#5443, supersedes leader ruling R8): ...and only by adopting a
+    /// daemon that is already up. Converging one would install and start the
+    /// service, raising a UAC prompt at every launch for a user who merely
+    /// left the setting on. Service mode is a preference, so the core runs
+    /// locally instead.
     #[test]
-    fn startup_neither_converges_an_absent_daemon_nor_falls_back_to_local() {
+    fn startup_never_converges_an_absent_daemon_and_runs_the_core_locally() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         endpoint.set_status(
@@ -3316,14 +3427,9 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;
 
-            assert!(
-                matches!(
-                    report.outcome,
-                    application_workflow::startup::StartupOutcome::ReadyDegraded {
-                        health: crate::client::convergence::ConvergenceHealth::WaitingDependency,
-                        ..
-                    }
-                ),
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(
@@ -3331,10 +3437,10 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by startup"
             );
-            assert_eq!(endpoint.submissions(), 0, "nothing started locally instead");
+            assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
-                crate::client::convergence::ConvergenceHealth::WaitingDependency
+                crate::client::convergence::ConvergenceHealth::Healthy
             );
         });
     }
@@ -3906,6 +4012,7 @@ pub(crate) mod tests {
             .expect("profiles client");
             let ports = Arc::new(SessionPortResolver::default());
             let (core_v2, service) = test_v2_clients();
+            let (backup_paths, storage) = test_backup_deps(&dir);
             let client = NyanpasuClient::with_parts(
                 None,
                 crate::bundle::BundleMetadata {
@@ -3926,6 +4033,8 @@ pub(crate) mod tests {
                 ports,
                 dir.path().join("profiles"),
                 PathBuf::new(),
+                backup_paths,
+                storage,
                 RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
                     dir.path().into(),
                     dir.path().join("data"),

@@ -158,6 +158,16 @@ impl TuicOutbound {
 			let _ = rustls::crypto::ring::default_provider().install_default();
 		});
 		info!(target: "tuic_out", "Creating a new outbound");
+		// `gc_interval`/`gc_lifetime` feed `tokio::time::interval` and the
+		// fragment buffer's per-group lifetime. A zero interval would panic on
+		// construction and a zero lifetime would expire every incomplete group
+		// before it can be reassembled, so both are rejected up front.
+		if opts.gc_interval.is_zero() {
+			return Err(eyre::eyre!("TUIC GC interval must be positive"));
+		}
+		if opts.gc_lifetime.is_zero() {
+			return Err(eyre::eyre!("TUIC GC lifetime must be positive"));
+		}
 		let client_config = {
 			// A caller-supplied config wins: it may carry a custom verifier,
 			// mTLS material, ALPN list, or SNI policy the built-in config

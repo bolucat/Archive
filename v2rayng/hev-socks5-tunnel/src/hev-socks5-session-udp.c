@@ -135,8 +135,12 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
         err_t err;
         int ret;
 
+        if (!msgv[i].addr || msgv[i].len == 0)
+            continue;
+
         if (self->addr && self->port) {
             ip_2_ip4 (&saddr)->addr = self->addr;
+            saddr.type = IPADDR_TYPE_V4;
             port = self->port;
         } else {
             ret = hev_socks5_addr_into_lwip (msgv[i].addr, &saddr, &port);
