@@ -4,7 +4,7 @@ This repository is migrating away from `::global()` singletons and Tauri-coupled
 
 ## Mandatory Reading: Development Standards
 
-Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), and [TypeScript and React code style](docs/development/typescript.md).
+Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), [TypeScript and React code style](docs/development/typescript.md), and [repository scripts](docs/development/scripts.md).
 
 Agents MUST strictly follow these development standards together with the instructions below. Reading this file alone is insufficient. The guides are mandatory project requirements, not optional background or suggestions. If a guide is unavailable or the current requirements conflict, report the issue and resolve it before proceeding with affected work.
 
@@ -431,7 +431,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
-- Frontend application calls use `frontend/interface/src/ipc/rpc.ts`, generated `rpc-bindings.ts`, and the shared query/mutation helpers. Transport selection belongs in `command-transport.ts`. Do not call raw Tauri `invoke`, import legacy transport `bindings.ts` for application commands, or add ad hoc HTTP fetches in pages/hooks.
+- Frontend application calls use `@nyanpasu/rpc` generated bindings and transport adapters, then `@nyanpasu/query` for query/mutation hooks. RPC has no React Query dependency; query receives its RPC client/context explicitly. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
 - Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
 
 ### Declare capabilities and preserve transport semantics
@@ -480,11 +480,26 @@ pub trait ConfigStore: Send + Sync + 'static {
 
 - Rust follows the existing nightly Rustfmt configuration and Clippy checks; see [Rust code style](docs/development/rust.md). Do not introduce a stricter Rust lint profile as incidental cleanup.
 - TS/TSX follows Prettier, Oxlint, and package TypeScript checks; see [TypeScript and React code style](docs/development/typescript.md).
+- Frontend code is split into the nine private source packages documented in [Frontend package boundaries](docs/development/frontend-packages.md). Shared packages expose their public API through `src/index.ts`, retain source subpaths where useful, and typecheck with `noEmit`; do not add an interface `dist` build prerequisite. The root TypeScript project is a reference index, while `pnpm typecheck` checks each package and then Node configuration/perf/tests. Each package includes only its own `src`; tests live in `frontend/<package>/tests/`.
+- Keep package direction explicit: `rpc` has no React Query dependency; `query` depends on RPC and receives its client/context explicitly; `ui` has no app, platform, RPC, or query imports. The app alone owns routes and Paraglide. Tailwind scans shared packages that produce UI classes; the data-slot generator scans `frontend/*/src/**/*.tsx`. Platform-dependent behavior is injected through lazy adapters, and providers receive callbacks such as `onDegraded` as parameters rather than using globals.
+- Use the existing feature/component namespace for i18n message keys. Dashboard widget text, including configuration controls, uses `dashboard_widget_*`, not a parallel `dashboard_config_*` prefix. Place new keys beside related messages in every locale file, preserving logical groups and order across locales; do not append unrelated keys at the end. Update locale sources and regenerate Paraglide output through its existing workflow; do not hand-edit generated message modules.
+- Include the owning component's name for messages used only by that component: `core_service`-exclusive messages carry a `core_service` segment under their feature namespace. Dashboard options exclusive to `ProxyShortcutsWidget` or `CoreShortcutsWidget` use `dashboard_widget_proxy_shortcuts_*` or `dashboard_widget_core_shortcuts_*`; shared messages belong to the smallest common scope, such as `dashboard_widget_config_*` for shared configuration UI.
 - Prefer descriptive, stable `data-slot` names on React component DOM roots and meaningful parts for readability and custom CSS. Preserve existing slots and forward data attributes; do not add DOM wrappers solely for a slot.
 - Before adding constants or environment predicates, search for existing definitions. Reuse equivalent ones or promote genuinely shared local definitions to the smallest common scope; keep one-use details local and distinguish Tauri execution, OS identity, and viewport size.
 - Separate different responsibilities with one blank line, especially query-client access, queries, mutations, derived values, handlers, and the final return. Keep related statements together.
-- Prefer `frontend/nyanpasu/src/components/ui/` components. For missing controls, check Radix primitives and add styled, accessible wrappers there before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
+- Prefer `@nyanpasu/ui` components. For missing controls, check Radix primitives and add styled, accessible wrappers in `frontend/ui/` before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
 - Semantic naming, reuse, grouping, and visual consistency remain mandatory review requirements even when formatting and lint pass.
+
+### Repository scripts
+
+- Repository automation uses Deno TypeScript, with source grouped by responsibility under `scripts/src/` and co-located `*_test.ts` files. Keep configuration, lockfile, documentation and editor settings at `scripts/`; put non-source fixtures in `scripts/fixtures/`. The upstream runtime submodule owns its own tooling.
+- The root `deno.jsonc` is the only task catalog; `scripts/deno.jsonc` and `scripts/deno.lock` own runtime configuration and locked dependencies separately from pnpm. Every public CLI has a named task and description. Reuse the package scripts' colon-separated operation names.
+- External callers (CI, package scripts, hooks, current docs and application tests) use `deno task <name>`. Existing pnpm commands may delegate to tasks. Do not add direct `deno run`, `node`, `tsx` or script-file calls outside the task catalog. External tool invocations inside scripts and fixture-only subprocesses in script unit tests are implementation details; historical reports retain their original commands.
+- Split CLI orchestration, pure computation and infrastructure by concrete responsibility. Imported library modules must not run a CLI, download files or launch processes. Avoid broad `utils/` buckets, generic frameworks and old-path compatibility wrappers or exports.
+- Tasks run at the repository root, with arguments forwarded without an extra `--`. Use `shared/repo-paths.ts` for repository paths and explicit parameters for alternate workspaces. Preserve parameters, environment variables, permissions and exit status; never store credentials in tasks.
+- Use Deno-compatible `jsr:`, `npm:` or supported `node:` imports, pin new npm imports/types and update the Deno lockfile. Playwright scripts run through Deno but still require Chromium; the external Tauri signing CLI may use Node.
+- Run `deno task lint:deno`, `deno task test:scripts` and the architecture gate as relevant; compare behavior before/after reorganizing, check arguments and paths, and verify migrated generator/browser behavior. Do not publish, upload or send notifications merely to verify a refactor. Document checks that require unavailable platforms or environments.
+- Follow [Repository scripts](docs/development/scripts.md) for the category layout and verification commands; update that guide alongside shared rule changes.
 
 ### GitHub workflow names
 
@@ -554,24 +569,23 @@ When the user chooses a worktree, its location is the developer's choice (any pa
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                    |
-| -------------------------- | ------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                     |
-| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                       |
-| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                             |
-| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                |
+| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                         |
+| -------------------------- | ------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
+| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
+| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                                  |
+| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
 
 Only `sidecar/` and `resources/` are symlink candidates.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
-- **`frontend/interface/dist`** — `@nyanpasu/interface` (`main` → `./dist/index.js`) is consumed by `@nyanpasu/nyanpasu`. Produce with `pnpm -F interface build`.
 - **`backend/tauri/tmp/dist`** — `backend/tauri/build.rs` calls `tauri_build::build()`, which validates `frontendDist: ./tmp/dist` **at compile time**. When missing, every `cargo build` / `clippy` / `cargo test --all-features` / rust-analyzer run on the tauri crate fails. Resolve one of:
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
-  - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
+  - Runnable UI → `pnpm web:build` (workspace packages resolve from source; this clears and refills `tmp/dist`).
 
-`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `pnpm generate:git-info` only if accurate commit metadata must be baked in.
+`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
 
 ### Create a worktree
 
@@ -587,12 +601,11 @@ New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/t
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
 
 pnpm install
-pnpm -F interface build                               # -> frontend/interface/dist (gitignored)
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
 Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
-# pnpm web:build                                      # B) real UI (replaces tmp/dist)
+# pnpm web:build                                      # B) real UI (builds app and replaces tmp/dist)
 ```
 
 ### Remove a worktree

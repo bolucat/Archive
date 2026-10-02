@@ -43,7 +43,6 @@ type DNSTransport struct {
 	acceptDefaultResolvers bool
 	acceptSearchDomain     bool
 	endpointManager        adapter.EndpointManager
-	endpoint               *ClientEndpoint
 	dialer                 N.Dialer
 	updateAccess           sync.Mutex
 	access                 sync.RWMutex
@@ -52,6 +51,7 @@ type DNSTransport struct {
 	searchDomains          []string
 	serverAddresses        []netip.Addr
 	defaultResolvers       []adapter.DNSTransport
+	resolverScope          *adapter.Scope
 }
 
 func NewDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.OpenVPNDNSServerOptions) (adapter.DNSTransport, error) {
@@ -69,7 +69,7 @@ func NewDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, 
 	}, nil
 }
 
-func (t *DNSTransport) Start(stage adapter.StartStage) error {
+func (t *DNSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateInitialize {
 		return nil
 	}
@@ -81,14 +81,32 @@ func (t *DNSTransport) Start(stage adapter.StartStage) error {
 	if !isOpenVPN {
 		return E.New("endpoint is not an OpenVPN client: ", t.endpointTag)
 	}
-	t.endpoint = endpoint
 	t.dialer = endpoint
+	scope.Add(func() error {
+		t.updateAccess.Lock()
+		t.access.Lock()
+		resolverScope := t.resolverScope
+		t.closed = true
+		t.routes = nil
+		t.searchDomains = nil
+		t.serverAddresses = nil
+		t.defaultResolvers = nil
+		t.resolverScope = nil
+		t.access.Unlock()
+		t.updateAccess.Unlock()
+		if resolverScope != nil {
+			return resolverScope.Close()
+		}
+		return nil
+	})
 	err := endpoint.installDNSTransport(t)
 	if err != nil {
-		t.endpoint = nil
-		t.dialer = nil
 		return err
 	}
+	scope.Add(func() error {
+		endpoint.uninstallDNSTransport(t)
+		return nil
+	})
 	return nil
 }
 
@@ -111,7 +129,7 @@ func (t *DNSTransport) updateResolvers(configuration ovpntransport.Configuration
 	routes := make(map[string][]adapter.DNSTransport)
 	searchDomains := normalizeOpenVPNDomains(configuration.SearchDomains)
 	var defaultResolvers []adapter.DNSTransport
-	var newResolvers []adapter.DNSTransport
+	resolverScope := adapter.NewScope(t.ctx, t.logger)
 	servers := slices.Clone(configuration.DNSServers)
 	slices.SortFunc(servers, func(left ovpntransport.DNSServer, right ovpntransport.DNSServer) int {
 		return left.Priority - right.Priority
@@ -121,19 +139,22 @@ func (t *DNSTransport) updateResolvers(configuration ovpntransport.Configuration
 	if len(servers) > 0 {
 		server := servers[0]
 		if server.DNSSEC == "yes" {
-			return t.failResolverUpdate(newResolvers, E.New("DNSSEC validation is required but is not supported"))
+			return t.failResolverUpdate(resolverScope, E.New("DNSSEC validation is required but is not supported"))
 		}
 		for _, address := range server.Addresses {
 			resolver, err := t.createResolver(server, address)
 			if err != nil {
-				return t.failResolverUpdate(newResolvers, err)
+				return t.failResolverUpdate(resolverScope, err)
+			}
+			err = resolver.Start(adapter.StartStateStart, resolverScope)
+			if err != nil {
+				return t.failResolverUpdate(resolverScope, err)
 			}
 			selectedResolvers = append(selectedResolvers, resolver)
-			newResolvers = append(newResolvers, resolver)
 			serverAddresses = append(serverAddresses, address.Addr())
 		}
 		if len(selectedResolvers) == 0 {
-			return t.failResolverUpdate(newResolvers, E.New("DNS server ", server.Priority, " has no addresses"))
+			return t.failResolverUpdate(resolverScope, E.New("DNS server ", server.Priority, " has no addresses"))
 		}
 		if len(server.ResolveDomains) == 0 {
 			defaultResolvers = slices.Clone(selectedResolvers)
@@ -148,13 +169,16 @@ func (t *DNSTransport) updateResolvers(configuration ovpntransport.Configuration
 	} else {
 		for _, address := range configuration.DNS {
 			resolver := dnsTransport.NewUDPRaw(t.logger, t.TransportAdapter, t.dialer, M.SocksaddrFrom(address, 53))
+			err := resolver.Start(adapter.StartStateStart, resolverScope)
+			if err != nil {
+				return t.failResolverUpdate(resolverScope, err)
+			}
 			selectedResolvers = append(selectedResolvers, resolver)
-			newResolvers = append(newResolvers, resolver)
 			serverAddresses = append(serverAddresses, address)
 		}
 		if len(configuration.DNSRoutes) > 0 {
 			if len(selectedResolvers) == 0 {
-				return t.failResolverUpdate(newResolvers, E.New("DOMAIN-ROUTE requires traditional pushed DNS servers"))
+				return t.failResolverUpdate(resolverScope, E.New("DOMAIN-ROUTE requires traditional pushed DNS servers"))
 			}
 			for _, domain := range configuration.DNSRoutes {
 				normalizedDomain := normalizeOpenVPNDomain(domain)
@@ -167,34 +191,42 @@ func (t *DNSTransport) updateResolvers(configuration ovpntransport.Configuration
 		}
 	}
 	if len(searchDomains) > 0 && len(selectedResolvers) == 0 {
-		return t.failResolverUpdate(newResolvers, E.New("search domains require pushed DNS servers"))
+		return t.failResolverUpdate(resolverScope, E.New("search domains require pushed DNS servers"))
 	}
 	for _, searchDomain := range searchDomains {
 		routes[searchDomain] = slices.Clone(selectedResolvers)
 	}
 
 	t.access.Lock()
-	oldResolvers := t.collectResolversLocked()
+	oldResolverScope := t.resolverScope
 	t.routes = routes
 	t.searchDomains = searchDomains
 	t.serverAddresses = serverAddresses
 	t.defaultResolvers = defaultResolvers
+	t.resolverScope = resolverScope
 	t.access.Unlock()
-	closeErr := closeDNSTransports(oldResolvers)
+	var closeErr error
+	if oldResolverScope != nil {
+		closeErr = oldResolverScope.Close()
+	}
 	t.logger.Info("updated ", len(routes), " DNS routes, ", len(searchDomains), " search domains and ", len(defaultResolvers), " default resolvers")
 	return closeErr
 }
 
-func (t *DNSTransport) failResolverUpdate(newResolvers []adapter.DNSTransport, updateErr error) error {
-	newCloseErr := closeDNSTransports(newResolvers)
+func (t *DNSTransport) failResolverUpdate(resolverScope *adapter.Scope, updateErr error) error {
+	newCloseErr := resolverScope.Close()
 	t.access.Lock()
-	oldResolvers := t.collectResolversLocked()
+	oldResolverScope := t.resolverScope
 	t.routes = nil
 	t.searchDomains = nil
 	t.serverAddresses = nil
 	t.defaultResolvers = nil
+	t.resolverScope = nil
 	t.access.Unlock()
-	oldCloseErr := closeDNSTransports(oldResolvers)
+	var oldCloseErr error
+	if oldResolverScope != nil {
+		oldCloseErr = oldResolverScope.Close()
+	}
 	return E.Errors(updateErr, newCloseErr, oldCloseErr)
 }
 
@@ -259,25 +291,6 @@ func (t *DNSTransport) Reset() {
 	for _, resolver := range resolvers {
 		resolver.Reset()
 	}
-}
-
-func (t *DNSTransport) Close() error {
-	if t.endpoint != nil {
-		t.endpoint.uninstallDNSTransport(t)
-	}
-	t.updateAccess.Lock()
-	t.access.Lock()
-	resolvers := t.collectResolversLocked()
-	t.closed = true
-	t.routes = nil
-	t.searchDomains = nil
-	t.serverAddresses = nil
-	t.defaultResolvers = nil
-	t.access.Unlock()
-	t.endpoint = nil
-	t.dialer = nil
-	t.updateAccess.Unlock()
-	return closeDNSTransports(resolvers)
 }
 
 func (t *DNSTransport) Raw() bool {
@@ -401,16 +414,6 @@ func (t *DNSTransport) collectResolversLocked() []adapter.DNSTransport {
 	}
 	resolvers = append(resolvers, t.defaultResolvers...)
 	return common.Uniq(resolvers)
-}
-
-func closeDNSTransports(resolvers []adapter.DNSTransport) error {
-	var err error
-	for _, resolver := range common.Uniq(resolvers) {
-		err = E.Append(err, resolver.Close(), func(closeErr error) error {
-			return E.Cause(closeErr, "close DNS resolver")
-		})
-	}
-	return err
 }
 
 func normalizeOpenVPNDomain(domain string) string {

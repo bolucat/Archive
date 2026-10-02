@@ -1,7 +1,14 @@
 export default {
   'scripts/**/*.{ts,tsx}': [
-    'deno fmt --config scripts/deno.jsonc',
-    'deno check --config scripts/deno.jsonc',
+    (filenames) => {
+      const files = filenames
+        .map((file) => `'${file.replaceAll("'", "'\\''")}'`)
+        .join(' ')
+      return [
+        `deno task fmt:scripts-files ${files}`,
+        `deno task check:scripts-files ${files}`,
+      ]
+    },
   ],
   '*.{js,cjs,.mjs,jsx}': (filenames) => {
     const configFiles = [
@@ -20,20 +27,11 @@ export default {
       `oxlint --fix --no-error-on-unmatched-pattern ${files}`,
     ]
   },
-  'frontend/interface/**/*.{ts,tsx}': [
+  'frontend/**/*.{ts,tsx}': [
     'prettier --write',
     'oxlint --fix',
-    () => 'tsc -p frontend/interface/tsconfig.json --noEmit',
-  ],
-  'frontend/utils/**/*.{ts,tsx}': [
-    'prettier --write',
-    'oxlint --fix',
-    () => 'tsc -p frontend/utils/tsconfig.json --noEmit',
-  ],
-  'frontend/nyanpasu/**/*.{ts,tsx}': [
-    'prettier --write',
-    'oxlint --fix',
-    () => 'tsc -p frontend/nyanpasu/tsconfig.json --noEmit',
+    () => 'pnpm typecheck',
+    () => 'deno task lint:frontend-boundaries',
   ],
   'backend/**/*.{rs,toml}': [
     () =>

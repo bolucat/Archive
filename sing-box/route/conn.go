@@ -44,7 +44,14 @@ func NewConnectionManager(logger logger.ContextLogger) *ConnectionManager {
 	}
 }
 
-func (m *ConnectionManager) Start(stage adapter.StartStage) error {
+func (m *ConnectionManager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		m.CloseAll()
+		return nil
+	})
 	return nil
 }
 
@@ -67,11 +74,6 @@ func (m *ConnectionManager) CloseAll() {
 	for _, closer := range closers {
 		common.Close(closer)
 	}
-}
-
-func (m *ConnectionManager) Close() error {
-	m.CloseAll()
-	return nil
 }
 
 func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {

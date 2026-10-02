@@ -1911,7 +1911,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 dependencies = [
  "backon",
  "chrono",
@@ -1984,6 +1984,7 @@ dependencies = [
  "itertools 0.15.0",
  "log",
  "md-5",
+ "memmap2",
  "mime",
  "mlua",
  "mockall",
@@ -1995,6 +1996,7 @@ dependencies = [
  "nyanpasu-core",
  "nyanpasu-core-manager",
  "nyanpasu-egui",
+ "nyanpasu-geodata",
  "nyanpasu-ipc",
  "nyanpasu-jobs",
  "nyanpasu-logging",
@@ -3832,6 +3834,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fst"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5268,6 +5276,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipnetwork"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
+
+[[package]]
 name = "iptools"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5924,6 +5938,18 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "maxminddb"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b43d2458d977b610b04a3858e6504f06133663d303a1a0606601b530bfc9bc6"
+dependencies = [
+ "ipnetwork",
+ "memchr",
+ "serde",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "maybe-rayon"
@@ -6600,7 +6626,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 dependencies = [
  "camino",
  "chrono",
@@ -6627,7 +6653,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 dependencies = [
  "constcat",
  "enumset",
@@ -6661,6 +6687,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-geodata"
+version = "0.1.0"
+dependencies = [
+ "aho-corasick",
+ "bytemuck",
+ "crc32fast",
+ "fst",
+ "maxminddb",
+ "memmap2",
+ "regex",
+ "regex-automata",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "nyanpasu-helper"
 version = "0.1.0"
 dependencies = [
@@ -6671,7 +6714,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.8"
+version = "2.0.0-rc.9"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6696,7 +6739,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.1-rc.2"
+version = "0.1.1-rc.3"
 dependencies = [
  "futures-util",
  "jiff",
@@ -6716,7 +6759,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.1-rc.4"
+version = "0.1.1-rc.5"
 dependencies = [
  "chrono",
  "file-id",
@@ -6795,7 +6838,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.1-rc.3"
+version = "0.1.1-rc.4"
 dependencies = [
  "anyhow",
  "windows 0.62.2",

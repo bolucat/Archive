@@ -11,7 +11,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/observable"
-	"github.com/sagernet/sing/common/x/list"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/pause"
 )
@@ -27,7 +26,6 @@ type ReferenceManager struct {
 	staticTransports       []string
 	subscriber             *observable.Subscriber[struct{}]
 	pauseManager           pause.Manager
-	pauseCallback          *list.Element[pause.Callback]
 	devicePaused           atomic.Bool
 	keepIdle               map[any]bool
 	unreferencedTransports map[string]bool
@@ -84,11 +82,12 @@ func (m *ReferenceManager) Name() string {
 	return "reference manager"
 }
 
-func (m *ReferenceManager) Start(stage adapter.StartStage) error {
+func (m *ReferenceManager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStarted {
 		return nil
 	}
 	m.subscriber = observable.NewSubscriber[struct{}](1)
+	scope.Add(m.subscriber.Close)
 	history := service.PtrFromContext[urltest.HistoryStorage](m.ctx)
 	if history != nil {
 		history.AddUpdateHook(m.subscriber)
@@ -103,7 +102,7 @@ func (m *ReferenceManager) Start(stage adapter.StartStage) error {
 	m.update()
 	go m.loop()
 	if m.pauseManager != nil {
-		m.pauseCallback = m.pauseManager.RegisterCallback(func(event int) {
+		pauseCallback := m.pauseManager.RegisterCallback(func(event int) {
 			switch event {
 			case pause.EventDevicePaused:
 				m.devicePaused.Store(true)
@@ -114,17 +113,10 @@ func (m *ReferenceManager) Start(stage adapter.StartStage) error {
 			}
 			m.subscriber.Emit(struct{}{})
 		})
-	}
-	return nil
-}
-
-func (m *ReferenceManager) Close() error {
-	if m.pauseCallback != nil {
-		m.pauseManager.UnregisterCallback(m.pauseCallback)
-		m.pauseCallback = nil
-	}
-	if m.subscriber != nil {
-		m.subscriber.Close()
+		scope.Add(func() error {
+			m.pauseManager.UnregisterCallback(pauseCallback)
+			return nil
+		})
 	}
 	return nil
 }

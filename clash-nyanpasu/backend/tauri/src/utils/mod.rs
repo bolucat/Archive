@@ -1,3 +1,4 @@
+pub mod app_update;
 pub mod blocking;
 pub mod candy;
 pub mod color;
@@ -7,6 +8,7 @@ pub mod dirs;
 pub mod exit;
 pub mod help;
 pub mod init;
+pub mod main_thread;
 pub mod path;
 pub mod proxy_env;
 pub mod resolve;

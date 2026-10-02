@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        TauriMainThread, TauriUiEventSink,
+        ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
+        OsSystemDnsCache, RuntimePaths, TauriMainThread, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -51,8 +51,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let rpc_events = crate::unified_rpc::EventBus::new();
     crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
     app.manage(rpc_events);
-    let main_thread: Arc<dyn MainThreadExecutor> =
-        Arc::new(TauriMainThread::new(app_handle.clone()));
+    // Shared with the panic hook, which takes the main thread's work over
+    // once the event loop is gone.
+    let main_thread_handoff = Arc::new(crate::client::MainThreadHandoff::default());
+    app.manage(main_thread_handoff.clone());
+    let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
+        app_handle.clone(),
+        main_thread_handoff,
+    ));
     // The root of the shutdown. Created here rather than in the client: the
     // system proxy, hotkey and widget owners are built outside it.
     let shutdown = CancellationToken::new();
@@ -141,12 +147,27 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let storage = crate::core::storage::Storage::try_new(&paths.storage_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
+    // The core runs with the app data dir as its home, where its geo databases live.
+    let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
+        paths.app_data_dir().to_owned(),
+        paths.cache_dir().join("geodata"),
+    ));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
         http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
+            core: match crate::core::logs::RedbCoreLogStore::open(paths.app_logs_dir().join("core"))
+            {
+                Ok(store) => Box::new(store),
+                Err(error) => {
+                    tracing::warn!(%error, "Core log storage unavailable");
+                    Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
+                        "{error:#}"
+                    )))
+                }
+            },
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),
                 "clash-nyanpasu".into(),
@@ -161,6 +182,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
+        direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
+        geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,
@@ -200,9 +223,15 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
-    // Picked last, so the server binds it soon after setup returns.
+    // Picked last, so the server binds it soon after.
     let server_port = port_scanner::request_open_port()
         .context("Failed to find a free port for the internal server")?;
+    // Dropped on the cancel rather than drained: an icon request in flight
+    // must not hold the shutdown up, and nothing it does needs finishing.
+    let server = crate::server::run(server_port, client.clone());
+    tauri::async_runtime::spawn(track_until_shutdown(&tasks, &shutdown, async move {
+        server.await.expect("failed to start server");
+    }));
     app.manage(crate::server::ServerPort(server_port));
     app.manage(client);
 

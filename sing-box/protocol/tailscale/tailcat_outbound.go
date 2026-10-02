@@ -55,10 +55,10 @@ type TailcatOutbound struct {
 	presharedKey    device.NoisePresharedKey
 	derp            *tailcatDERP
 	access          sync.Mutex
+	nodeContext     context.Context
 	node            *tailcatNode
 	active          int
 	idle            bool
-	closed          bool
 }
 
 func NewTailcatOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TailcatOutboundOptions) (adapter.Outbound, error) {
@@ -116,18 +116,21 @@ func NewTailcatOutbound(ctx context.Context, router adapter.Router, logger log.C
 	}, nil
 }
 
-func (o *TailcatOutbound) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStatePostStart {
-		return nil
+func (o *TailcatOutbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		o.access.Lock()
+		o.nodeContext = scope.Context()
+		o.access.Unlock()
+		scope.Add(func() error {
+			o.access.Lock()
+			o.closeNodeLocked()
+			o.access.Unlock()
+			return nil
+		})
+	case adapter.StartStatePostStart:
+		return o.derp.start(o.ctx, o.logger)
 	}
-	return o.derp.start(o.ctx, o.logger)
-}
-
-func (o *TailcatOutbound) Close() error {
-	o.access.Lock()
-	defer o.access.Unlock()
-	o.closed = true
-	o.closeNodeLocked()
 	return nil
 }
 
@@ -143,7 +146,7 @@ func (o *TailcatOutbound) closeNodeLocked() {
 func (o *TailcatOutbound) acquire(ctx context.Context) (*tailcatNode, func(), error) {
 	o.access.Lock()
 	defer o.access.Unlock()
-	if o.closed {
+	if o.nodeContext.Err() != nil {
 		return nil, nil, net.ErrClosed
 	}
 	node, err := o.ensureLocked(ctx)
@@ -175,7 +178,7 @@ func (o *TailcatOutbound) ensureLocked(ctx context.Context) (*tailcatNode, error
 		return nil, err
 	}
 	node, err := newTailcatNode(tailcatNodeOptions{
-		Context:      o.ctx,
+		Context:      o.nodeContext,
 		Logger:       o.logger,
 		PrivateKey:   o.privateKey,
 		PresharedKey: o.presharedKey,

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import TextMarquee from '@/components/ui/text-marquee'
+import { TextMarquee } from '@nyanpasu/ui'
 
 const LONG = 'a marquee text that is far wider than its container'
 
@@ -84,10 +84,14 @@ test('parent re-renders do not re-measure an unchanged text', async ({
       </TextMarquee>
     )
   }
-  root.render(<Parent />)
-  await expect.poll(() => content(container)?.textContent).toBe('short')
   const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
   onTestFinished(() => scrollWidth.mockRestore())
+  root.render(<Parent />)
+  await expect.poll(() => content(container)?.textContent).toBe('short')
+  // Mounting measures twice: once in the text effect and once when the
+  // ResizeObserver delivers its initial size in a later frame.
+  await expect.poll(() => scrollWidth.mock.calls.length).toBe(2)
+  scrollWidth.mockClear()
   observe.mockClear()
 
   for (let i = 0; i < 5; i++) {

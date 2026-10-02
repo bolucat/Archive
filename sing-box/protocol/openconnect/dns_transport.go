@@ -30,12 +30,12 @@ func RegisterDNSTransport(registry *dns.TransportRegistry) {
 
 type DNSTransport struct {
 	dns.TransportAdapter
+	ctx                    context.Context
 	logger                 logger.ContextLogger
 	endpointTag            string
 	acceptDefaultResolvers bool
 	acceptSearchDomain     bool
 	endpointManager        adapter.EndpointManager
-	endpoint               *Endpoint
 	dialer                 N.Dialer
 	access                 sync.RWMutex
 	closed                 bool
@@ -43,6 +43,7 @@ type DNSTransport struct {
 	searchDomains          []string
 	serverAddresses        []netip.Addr
 	defaultResolvers       []adapter.DNSTransport
+	resolverScope          *adapter.Scope
 }
 
 type openConnectDNSRoute struct {
@@ -56,6 +57,7 @@ func NewDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, 
 	}
 	return &DNSTransport{
 		TransportAdapter:       dns.NewTransportAdapter(C.DNSTypeOpenConnect, tag, nil),
+		ctx:                    ctx,
 		logger:                 logger,
 		endpointTag:            options.Endpoint,
 		acceptDefaultResolvers: options.AcceptDefaultResolvers,
@@ -64,7 +66,7 @@ func NewDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, 
 	}, nil
 }
 
-func (t *DNSTransport) Start(stage adapter.StartStage) error {
+func (t *DNSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateInitialize {
 		return nil
 	}
@@ -76,13 +78,35 @@ func (t *DNSTransport) Start(stage adapter.StartStage) error {
 	if !isOpenConnect {
 		return E.New("endpoint is not OpenConnect: ", t.endpointTag)
 	}
+	scope.Add(func() error {
+		t.access.Lock()
+		resolverScope := t.resolverScope
+		t.closed = true
+		t.routes = nil
+		t.searchDomains = nil
+		t.serverAddresses = nil
+		t.defaultResolvers = nil
+		t.resolverScope = nil
+		t.access.Unlock()
+		if resolverScope != nil {
+			return resolverScope.Close()
+		}
+		return nil
+	})
 	openConnectEndpoint.dnsTransportAccess.Lock()
 	if openConnectEndpoint.dnsTransport != nil && openConnectEndpoint.dnsTransport.Tag() != t.Tag() {
 		openConnectEndpoint.dnsTransportAccess.Unlock()
 		return E.New("only one DNS server is allowed for an endpoint")
 	}
 	openConnectEndpoint.dnsTransport = t
-	t.endpoint = openConnectEndpoint
+	scope.Add(func() error {
+		openConnectEndpoint.dnsTransportAccess.Lock()
+		if openConnectEndpoint.dnsTransport == t {
+			openConnectEndpoint.dnsTransport = nil
+		}
+		openConnectEndpoint.dnsTransportAccess.Unlock()
+		return nil
+	})
 	t.dialer = openConnectEndpoint
 	state := openConnectEndpoint.state.Load()
 	if state.started && state.tunnelConfigured && openConnectEndpoint.client.Ready() {
@@ -179,33 +203,30 @@ func (t *DNSTransport) updateConfiguration(configuration openconnecttransport.Co
 		defaultResolvers = nil
 	}
 
+	resolverScope := adapter.NewScope(t.ctx, t.logger)
+	for _, resolver := range resolverByAddress {
+		err := resolver.Start(adapter.StartStateStart, resolverScope)
+		if err != nil {
+			resolverScope.Close()
+			t.logger.Error(E.Cause(err, "start DNS resolver"))
+			return
+		}
+	}
 	t.access.Lock()
 	if t.closed {
 		t.access.Unlock()
-		for _, resolver := range resolverByAddress {
-			_ = resolver.Close()
-		}
+		resolverScope.Close()
 		return
 	}
-	oldResolvers := t.collectResolversLocked()
+	oldResolverScope := t.resolverScope
 	t.routes = routes
 	t.searchDomains = searchDomains
 	t.serverAddresses = serverAddresses
 	t.defaultResolvers = defaultResolvers
-	activeResolvers := t.collectResolversLocked()
+	t.resolverScope = resolverScope
 	t.access.Unlock()
-
-	for _, resolver := range oldResolvers {
-		_ = resolver.Close()
-	}
-	activeResolverSet := make(map[adapter.DNSTransport]bool, len(activeResolvers))
-	for _, resolver := range activeResolvers {
-		activeResolverSet[resolver] = true
-	}
-	for _, resolver := range resolverByAddress {
-		if !activeResolverSet[resolver] {
-			_ = resolver.Close()
-		}
+	if oldResolverScope != nil {
+		oldResolverScope.Close()
 	}
 	if len(resolverByAddress) > 0 {
 		t.logger.Info("updated ", len(routes), " DNS routes and ", len(resolverByAddress), " resolvers")
@@ -221,29 +242,6 @@ func (t *DNSTransport) Reset() {
 	for _, resolver := range resolvers {
 		resolver.Reset()
 	}
-}
-
-func (t *DNSTransport) Close() error {
-	if t.endpoint != nil {
-		t.endpoint.dnsTransportAccess.Lock()
-		if t.endpoint.dnsTransport == t {
-			t.endpoint.dnsTransport = nil
-		}
-		t.endpoint.dnsTransportAccess.Unlock()
-	}
-	t.access.Lock()
-	resolvers := t.collectResolversLocked()
-	t.closed = true
-	t.routes = nil
-	t.searchDomains = nil
-	t.serverAddresses = nil
-	t.defaultResolvers = nil
-	t.access.Unlock()
-	var closeErr error
-	for _, resolver := range resolvers {
-		closeErr = E.Errors(closeErr, resolver.Close())
-	}
-	return closeErr
 }
 
 func (t *DNSTransport) ServerAddresses() []netip.Addr {

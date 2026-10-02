@@ -123,7 +123,7 @@ func (i *TailcatInbound) References() []string {
 	return []string{i.detour}
 }
 
-func (i *TailcatInbound) Start(stage adapter.StartStage) error {
+func (i *TailcatInbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
@@ -140,7 +140,7 @@ func (i *TailcatInbound) Start(stage adapter.StartStage) error {
 		return err
 	}
 	node, err := newTailcatNode(tailcatNodeOptions{
-		Context:      i.ctx,
+		Context:      scope.Context(),
 		Logger:       i.logger,
 		PrivateKey:   i.privateKey,
 		PresharedKey: i.presharedKey,
@@ -156,20 +156,15 @@ func (i *TailcatInbound) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return err
 	}
+	scope.Add(func() error {
+		node.close()
+		return nil
+	})
 	err = node.start()
 	if err != nil {
-		node.close()
 		return err
 	}
 	i.node = node
-	return nil
-}
-
-func (i *TailcatInbound) Close() error {
-	if i.node != nil {
-		i.node.close()
-		i.node = nil
-	}
 	return nil
 }
 

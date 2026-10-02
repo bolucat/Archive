@@ -149,7 +149,7 @@ jobs:
           pnpm build:packages
 
       - name: Test Windows bundle layout
-        run: deno test --config scripts/deno.jsonc -A scripts/windows-bundle_test.ts
+        run: deno task test:windows-bundle
 
       - name: Set file server folder path
         if: ${{ inputs.nightly == true }}
@@ -177,7 +177,7 @@ jobs:
           pnpm tauri bundle --bundles nsis ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }}
           if ($LASTEXITCODE -ne 0) { throw 'Failed to bundle NSIS installer' }
           if ('${{ inputs.nightly }}' -eq 'true') {
-            deno run -A scripts/sign-nightly-updater.ts
+            deno task sign-nightly-updater
             if ($LASTEXITCODE -ne 0) { throw 'Failed to sign nightly updater' }
           }
 
@@ -212,7 +212,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno run -A scripts/upload-build-artifacts.ts \
+          deno task upload-build-artifacts \
             "backend/target/**/bundle/nsis/*.exe" \
             "*_portable.zip"
         env:
@@ -227,6 +227,14 @@ jobs:
           path: ./upload-results.json
           if-no-files-found: ignore
 
+      - name: Upload file server diagnostics
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-windows-${{ inputs.arch }}-standard
+          path: ./upload-report.json
+          if-no-files-found: error
+
       - name: Clean standard bundle outputs
         if: ${{ inputs.bundle-type == 'both' }}
         run: |
@@ -234,6 +242,7 @@ jobs:
           Get-ChildItem -Path "." -Filter "*_portable.zip" -ErrorAction SilentlyContinue |
             Remove-Item -Force
           Remove-Item -Path "./upload-results.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "./upload-report.json" -Force -ErrorAction SilentlyContinue
 
       - name: Download fixed WebView
         if: ${{ inputs.bundle-type != 'standard' }}
@@ -271,7 +280,7 @@ jobs:
           pnpm tauri bundle --bundles nsis ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }} -c ./backend/tauri/overrides/fixed-webview2.conf.json
           if ($LASTEXITCODE -ne 0) { throw 'Failed to bundle NSIS installer' }
           if ('${{ inputs.nightly }}' -eq 'true') {
-            deno run -A scripts/sign-nightly-updater.ts
+            deno task sign-nightly-updater
             if ($LASTEXITCODE -ne 0) { throw 'Failed to sign nightly updater' }
           }
 
@@ -326,7 +335,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno run -A scripts/upload-build-artifacts.ts \
+          deno task upload-build-artifacts \
             "backend/target/**/bundle/nsis/*.exe" \
             "*_portable.zip"
         env:
@@ -340,3 +349,11 @@ jobs:
           name: upload-results-windows-${{ inputs.arch }}-fixed-webview
           path: ./upload-results.json
           if-no-files-found: ignore
+
+      - name: Upload file server diagnostics with fixed WebView
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-windows-${{ inputs.arch }}-fixed-webview
+          path: ./upload-report.json
+          if-no-files-found: error

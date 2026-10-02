@@ -8,6 +8,7 @@ mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
+mod direct_egress;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
@@ -70,11 +71,13 @@ use struct_patch::Patch as _;
 pub(crate) use app_lifecycle::drain_on_shutdown;
 pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
+pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{
-    STATE_CHANGED_URI, StateChanged, TauriMainThread, TauriUiEventSink, UiEventSink,
+    MainThreadHandoff, MainThreadWork, STATE_CHANGED_URI, StateChanged, TauriMainThread,
+    TauriUiEventSink, UiEventSink,
 };
 pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
@@ -98,6 +101,8 @@ pub struct ClientSetupArgs {
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
+    pub direct_egress: Arc<dyn DirectEgressProbe>,
+    pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
@@ -205,6 +210,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
+    core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -224,6 +230,10 @@ struct NyanpasuClientInner {
     traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
+    direct_egress: Arc<dyn DirectEgressProbe>,
+    /// Held for its actor, which stops with the last handle; the traffic pump only holds the
+    /// index it publishes.
+    _geo_index: crate::core::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -251,6 +261,8 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            direct_egress,
+            geo_index,
             os_proxy,
             binary_installer,
             effects,
@@ -335,6 +347,8 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            direct_egress,
+            geo_index,
             os_proxy,
             binary_installer,
             effects,
@@ -370,6 +384,8 @@ impl NyanpasuClient {
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        direct_egress: Arc<dyn DirectEgressProbe>,
+        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
@@ -392,6 +408,9 @@ impl NyanpasuClient {
                 }
             }
         });
+        let core_logs =
+            crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
+                .await?;
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
@@ -468,6 +487,16 @@ impl NyanpasuClient {
         .await?;
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
+            core_logs.clone(),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
+        let geo_index = crate::core::geo::GeoIndexClient::spawn(
+            crate::core::geo::GeoIndexArgs {
+                source: geo_index,
+                core: core_v2.clone(),
+            },
             shutdown.child_token(),
             &tasks,
         )
@@ -485,6 +514,7 @@ impl NyanpasuClient {
                         )),
                         clock: Arc::new(traffic::SystemClock),
                         frames: streams.subscribe_connection_frames(),
+                        geo: geo_index.subscribe(),
                     },
                     shutdown.child_token(),
                     &tasks,
@@ -505,6 +535,7 @@ impl NyanpasuClient {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
                 bundle_metadata,
+                core_logs,
                 app_logs,
                 jobs,
                 service_logs,
@@ -524,6 +555,8 @@ impl NyanpasuClient {
                 traffic,
                 updater,
                 system_dns,
+                direct_egress,
+                _geo_index: geo_index,
                 os_proxy,
                 effects,
                 window,
@@ -711,6 +744,18 @@ impl NyanpasuClient {
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
         crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+    }
+
+    /// The public addresses the core's DIRECT outbound leaves from. The TUN
+    /// check reads the setting: a TUN that failed to start is still refused,
+    /// which costs an answer rather than risking a proxy exit's address.
+    pub async fn probe_direct_egress(&self) -> DirectEgress {
+        if self.inner.clash_config.snapshot().state.enable_tun_mode {
+            return DirectEgress::TunEnabled;
+        }
+        let probe = &self.inner.direct_egress;
+        let (ipv4, ipv6) = tokio::join!(probe.ipv4(), probe.ipv6());
+        DirectEgress::Probed { ipv4, ipv6 }
     }
 
     pub async fn patch_app_config(
@@ -2213,6 +2258,8 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             system_dns,
+            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy,
         )
         .await
@@ -2224,6 +2271,8 @@ pub(crate) mod tests {
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        direct_egress: Arc<dyn DirectEgressProbe>,
+        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
@@ -2272,6 +2321,8 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
+            direct_egress,
+            geo_index,
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
@@ -2427,6 +2478,8 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -2530,6 +2583,62 @@ pub(crate) mod tests {
         ));
     }
 
+    async fn test_client_with_direct_egress(
+        dir: &TempDir,
+        direct_egress: direct_egress::MockDirectEgressProbe,
+    ) -> NyanpasuClient {
+        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        test_client_from_typed_clients(
+            dir,
+            application,
+            session_state,
+            clash_config,
+            Arc::new(NoopSystemDnsCache),
+            Arc::new(direct_egress),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
+            Arc::new(MockOsProxyPort::new()),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn probe_direct_egress_reports_each_family_from_the_injected_probe() {
+        let dir = tempdir().expect("tempdir should be created");
+        let address = std::net::Ipv4Addr::new(203, 0, 113, 7);
+        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        probe
+            .expect_ipv4()
+            .times(1)
+            .returning(move || Some(address));
+        probe.expect_ipv6().times(1).returning(|| None);
+        let client = test_client_with_direct_egress(&dir, probe).await;
+
+        assert_eq!(
+            client.probe_direct_egress().await,
+            DirectEgress::Probed {
+                ipv4: Some(address),
+                ipv6: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_direct_egress_does_not_probe_while_tun_mode_is_enabled() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        probe.expect_ipv4().never();
+        probe.expect_ipv6().never();
+        let client = test_client_with_direct_egress(&dir, probe).await;
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.enable_tun_mode = Some(true);
+        client
+            .patch_clash_config(patch)
+            .await
+            .expect("clash patch should succeed");
+
+        assert_eq!(client.probe_direct_egress().await, DirectEgress::TunEnabled);
+    }
+
     pub(crate) fn test_client_args_with_endpoint(
         dir: &TempDir,
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
@@ -2569,6 +2678,8 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
@@ -2911,6 +3022,8 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
@@ -3073,6 +3186,8 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
@@ -4045,6 +4160,8 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
+                Arc::new(direct_egress::MockDirectEgressProbe::new()),
+                Arc::new(crate::core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),

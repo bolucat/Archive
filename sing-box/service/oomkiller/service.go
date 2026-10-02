@@ -75,10 +75,7 @@ func (s *Service) startTimer() error {
 }
 
 func (s *Service) stopTimer() {
-	var state timerState
-	if s.adaptiveTimer != nil {
-		state = s.adaptiveTimer.stop()
-	}
+	state := s.adaptiveTimer.stop()
 	s.pressure.Store(uint32(tun.MemoryPressureNone))
 	if s.recorder != nil {
 		s.recorder.instanceStopped(state)

@@ -2,6 +2,8 @@ pub mod actor_v2;
 pub mod backup;
 pub mod clash;
 pub mod download;
+pub mod geo;
+pub mod logs;
 pub mod manager;
 pub mod service;
 pub mod storage;

@@ -1,6 +1,7 @@
 package cachefile
 
 import (
+	"context"
 	"encoding/binary"
 	"net/netip"
 	"time"
@@ -49,10 +50,10 @@ func (c *CacheFile) enqueueLocked(added bool, sizeDelta int) {
 	}
 }
 
-func (c *CacheFile) loopFlush() {
+func (c *CacheFile) loopFlush(ctx context.Context) {
 	for {
 		select {
-		case <-c.done:
+		case <-ctx.Done():
 			return
 		case <-c.flushTimer.C:
 		case <-c.flushSignal:

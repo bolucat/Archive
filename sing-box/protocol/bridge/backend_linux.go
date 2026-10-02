@@ -42,10 +42,7 @@ type backendLinux struct {
 
 func newBackend(ctx context.Context, logger logger.ContextLogger, networkManager adapter.NetworkManager, tag string, options option.BridgeOutboundOptions) (Backend, error) {
 	instance := &backendLinux{}
-	err := instance.init(ctx, logger, networkManager, tag, options)
-	if err != nil {
-		return nil, err
-	}
+	instance.init(ctx, logger, networkManager, tag, options)
 	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	if platformInterface != nil && platformInterface.UsePlatformBridge() {
 		instance.platform = platformInterface
@@ -55,30 +52,36 @@ func newBackend(ctx context.Context, logger logger.ContextLogger, networkManager
 		instance.ruleIndex = defaultBridgeRuleIndex
 	}
 	instance.routeTable = options.IPRoute2TableIndex
-	if instance.routeTable == 0 {
-		instance.routeTable = defaultBridgeTableIndexBase + int(instance.index)
-	}
 	return instance, nil
 }
 
-func (b *backendLinux) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
-		return nil
-	}
-	err := b.start()
-	if err != nil {
-		b.Close()
-		return err
+func (b *backendLinux) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		err := b.allocateIndex(scope)
+		if err != nil {
+			return err
+		}
+		if b.routeTable == 0 {
+			b.routeTable = defaultBridgeTableIndexBase + int(b.index)
+		}
+	case adapter.StartStateStart:
+		b.closed = scope.Context().Done()
+		if b.platform != nil {
+			return b.startPlatform(scope)
+		}
+		return b.start(scope)
 	}
 	return nil
 }
 
-func (b *backendLinux) start() error {
-	if b.platform != nil {
-		return b.startPlatform()
-	}
+func (b *backendLinux) start(scope *adapter.Scope) error {
 	b.tunName = tun.CalculateInterfaceName(b.bridgeName)
 	b.nftTableName = "sing-box-" + b.tunName
+	scope.Add(func() error {
+		b.readGroup.Wait()
+		return nil
+	})
 	tunInterface, err := tun.New(tun.Options{
 		Name:                      b.tunName,
 		MTU:                       bridgeTunMTU,
@@ -90,6 +93,7 @@ func (b *backendLinux) start() error {
 	if err != nil {
 		return E.Cause(err, "create bridge tun")
 	}
+	scope.Add(tunInterface.Close)
 	b.tunInterface = tunInterface
 	err = tunInterface.Start()
 	if err != nil {
@@ -111,12 +115,35 @@ func (b *backendLinux) start() error {
 	if err != nil {
 		return E.Cause(err, "set up bridge netfilter")
 	}
+	scope.Add(func() error {
+		b.egressAccess.Lock()
+		cleanupBridgeNetfilter(b.nftTableName)
+		b.egressAccess.Unlock()
+		return nil
+	})
 	if !inet6Active {
 		b.inet6Port = netip.Addr{}
 	}
-	b.forwardingRestore = enableBridgeForwarding(b.logger, b.tunName, b.inet4Port.IsValid(), b.inet6Port.IsValid())
+	forwardingRestore := enableBridgeForwarding(b.logger, b.tunName, b.inet4Port.IsValid(), b.inet6Port.IsValid())
+	scope.Add(func() error {
+		restoreBridgeForwarding(forwardingRestore)
+		return nil
+	})
+	scope.Add(func() error {
+		b.egressAccess.Lock()
+		flushBridgeRouteTable(b.routeTable)
+		b.egressAccess.Unlock()
+		return nil
+	})
 	b.syncEgress()
 	preferMainTable := b.boundInterface == ""
+	scope.Add(func() error {
+		b.egressAccess.Lock()
+		removeBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET, b.inet4Port)
+		removeBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET6, b.inet6Port)
+		b.egressAccess.Unlock()
+		return nil
+	})
 	err = setupBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET, b.inet4Port)
 	if err != nil {
 		return E.Cause(err, "set up bridge routing")
@@ -127,18 +154,16 @@ func (b *backendLinux) start() error {
 		removeBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET6, b.inet6Port)
 		b.inet6Port = netip.Addr{}
 	}
-	b.closed = make(chan struct{})
-	b.readDone = make(chan struct{})
 	if b.batchTUN != nil {
-		go b.batchReadLoop()
+		b.readGroup.Go(b.batchReadLoop)
 	} else {
-		go b.readLoop()
+		b.readGroup.Go(b.readLoop)
 	}
 	egress := "auto"
 	if b.boundInterface != "" {
 		egress = b.boundInterface
 	}
-	b.registerMonitors(b.syncEgress)
+	b.registerMonitors(scope, b.syncEgress)
 	b.syncEgress()
 	natMode := "masquerade"
 	if fullConeSupported() {
@@ -148,7 +173,7 @@ func (b *backendLinux) start() error {
 	return nil
 }
 
-func (b *backendLinux) startPlatform() error {
+func (b *backendLinux) startPlatform(scope *adapter.Scope) error {
 	session, err := b.platform.CreateBridge(adapter.BridgeOptions{
 		BridgeName: b.bridgeName,
 		MTU:        bridgeTunMTU,
@@ -160,12 +185,17 @@ func (b *backendLinux) startPlatform() error {
 	if err != nil {
 		return E.Cause(err, "create bridge")
 	}
+	scope.Add(session.Close)
 	b.session = session
 	b.tunName = session.Name()
 	b.networkManager.RegisterBridgeInterface(b.tunName)
 	if !session.Inet6Active() {
 		b.inet6Port = netip.Addr{}
 	}
+	scope.Add(func() error {
+		b.readGroup.Wait()
+		return nil
+	})
 	tunInterface, err := tun.New(tun.Options{
 		Name:           b.tunName,
 		MTU:            bridgeTunMTU,
@@ -176,6 +206,7 @@ func (b *backendLinux) startPlatform() error {
 	if err != nil {
 		return E.Cause(err, "create bridge tun")
 	}
+	scope.Add(tunInterface.Close)
 	b.tunInterface = tunInterface
 	err = tunInterface.Start()
 	if err != nil {
@@ -190,17 +221,18 @@ func (b *backendLinux) startPlatform() error {
 			b.writeBuffers[i] = make([]byte, b.writeHeadroom+maxPacketLength)
 		}
 	}
-	b.closed = make(chan struct{})
-	b.readDone = make(chan struct{})
 	if b.batchTUN != nil {
-		go b.batchReadLoop()
+		b.readGroup.Go(b.batchReadLoop)
 	} else {
-		go b.readLoop()
+		b.readGroup.Go(b.readLoop)
 	}
 	monitor := b.networkManager.InterfaceMonitor()
 	if monitor != nil {
 		element := monitor.RegisterCallback(func(_ *control.Interface, _ int) { b.syncSessionEgress() })
-		b.unregister = func() { monitor.UnregisterCallback(element) }
+		scope.Add(func() error {
+			monitor.UnregisterCallback(element)
+			return nil
+		})
 	}
 	b.syncSessionEgress()
 	egress := "auto"
@@ -208,40 +240,6 @@ func (b *backendLinux) startPlatform() error {
 		egress = b.boundInterface
 	}
 	b.logger.Info("bridge started at ", b.tunName, " (platform, egress ", egress, ")")
-	return nil
-}
-
-func (b *backendLinux) Close() error {
-	b.closeOnce.Do(func() {
-		if b.closed != nil {
-			close(b.closed)
-		}
-		if b.unregister != nil {
-			b.unregister()
-		}
-		if b.tunInterface != nil {
-			b.tunInterface.Close()
-		}
-		if b.readDone != nil {
-			<-b.readDone
-		}
-		if b.session != nil {
-			_ = b.session.Close()
-		} else {
-			b.egressAccess.Lock()
-			if b.tunName != "" {
-				cleanupBridgeNetfilter(b.nftTableName)
-				preferMainTable := b.boundInterface == ""
-				removeBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET, b.inet4Port)
-				removeBridgeFamily(b.tunName, b.ruleIndex, b.routeTable, preferMainTable, unix.AF_INET6, b.inet6Port)
-				flushBridgeRouteTable(b.routeTable)
-			}
-			b.egressAccess.Unlock()
-			restoreBridgeForwarding(b.forwardingRestore)
-			b.forwardingRestore = nil
-		}
-		releaseBridgeIndex(b.index)
-	})
 	return nil
 }
 
@@ -293,7 +291,6 @@ func (b *backendLinux) WritePackets(packets [][]byte) error {
 // BatchRead completes any kernel-deferred checksums while splitting GRO frames
 // (virtio NEEDS_CSUM), so unlike readLoop no checksum fix is needed here.
 func (b *backendLinux) batchReadLoop() {
-	defer close(b.readDone)
 	batchSize := b.batchTUN.BatchSize()
 	sizes := make([]int, batchSize)
 	batch := make([][]byte, 0, batchSize)

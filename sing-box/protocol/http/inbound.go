@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"io"
 	"net"
 	"slices"
 
@@ -37,7 +36,6 @@ type Inbound struct {
 	tlsConfig   tls.ServerConfig
 	http3       bool
 	quicOptions option.QUICOptions
-	http3Server io.Closer
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.HTTPInboundOptions) (adapter.Inbound, error) {
@@ -98,7 +96,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -107,18 +105,20 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(h.tlsConfig.Close)
 	}
 	err := h.listener.Start()
 	if err != nil {
 		return err
 	}
+	scope.Add(h.listener.Close)
 	if h.http3 {
-		return h.startHTTP3()
+		return h.startHTTP3(scope)
 	}
 	return nil
 }
 
-func (h *Inbound) startHTTP3() error {
+func (h *Inbound) startHTTP3(scope *adapter.Scope) error {
 	var metadata adapter.InboundContext
 	//nolint:staticcheck
 	metadata.InboundDetour = h.listener.ListenOptions().Detour
@@ -126,16 +126,8 @@ func (h *Inbound) startHTTP3() error {
 	if err != nil {
 		return err
 	}
-	h.http3Server = http3Server
+	scope.Add(http3Server.Close)
 	return nil
-}
-
-func (h *Inbound) Close() error {
-	return common.Close(
-		h.listener,
-		h.http3Server,
-		h.tlsConfig,
-	)
 }
 
 func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {

@@ -59,8 +59,12 @@ func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	h.client.ResetConnections()
 }
 
-func (h *Outbound) Close() error {
-	return h.client.Close()
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(h.client.Close)
+	return nil
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

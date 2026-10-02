@@ -2,10 +2,10 @@ import { Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import useWindowMaximized from '@/hooks/use-window-maximized'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
-const nextFrame = () =>
-  new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 16))
 
 test('a window drag asks for the maximized state once it settles', async ({
   onTestFinished,
@@ -41,7 +41,9 @@ test('a window drag asks for the maximized state once it settles', async ({
   const fetchesBefore = fetches()
   const rendersBefore = renders
 
-  // A window drag fires a resize event every frame.
+  // A window drag fires a resize event every frame. The frames are timers, not
+  // animation frames: a throttled runner may space those beyond the debounce,
+  // while a stalled timer still runs before the later debounce deadline.
   for (let i = 0; i < 10; i++) {
     window.dispatchEvent(new Event('resize'))
     await nextFrame()

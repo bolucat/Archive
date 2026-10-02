@@ -1,24 +1,24 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import {
+  DndGrid,
+  DndGridProvider,
+  DndGridRoot,
+  hasOverlap,
+  useDndGridRoot,
+  type DndGridItemType,
+  type GridSize,
+} from '@nyanpasu/ui/dnd-grid'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import {
-  DndGrid,
-  DndGridProvider,
-  DndGridRoot,
-  useDndGridRoot,
-  type DndGridItemType,
-  type GridSize,
-} from '@/components/ui/dnd-grid'
-import { hasOverlap } from '@/components/ui/dnd-grid/utils'
 import { m } from '@/paraglide/messages'
 import { DragOverlay } from '@dnd-kit/core'
-import { useKvStorage } from '@nyanpasu/interface'
+import { useKvStorage } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   DashboardItem,
@@ -101,7 +101,11 @@ function DashboardDragOverlay({
             >
               <DndGridProvider
                 value={{
-                  displayItems: [],
+                  displayItems: activeDrag.dragIdPrefix
+                    ? []
+                    : displayItems.filter(
+                        (item) => item.id === activeDrag.itemId,
+                      ),
                   getItemRect: () => ({
                     left: 0,
                     top: 0,
@@ -113,7 +117,7 @@ function DashboardDragOverlay({
                   resizingItemId: null,
                   disabled: true,
                   sourceOnly: true,
-                  dragIdPrefix: '',
+                  dragIdPrefix: activeDrag.dragIdPrefix,
                   isOverlay: true,
                   constraintsMapRef: { current: {} },
                   onResizeStart: () => {},
@@ -133,10 +137,8 @@ function DashboardDragOverlay({
 const WidgetRender = () => {
   const { isEditing, setOpenSheet } = useDashboardContext()
 
-  const [layoutStorage, setLayoutStorage] = useKvStorage<LayoutStorage>(
-    'dashboard-widgets',
-    DEFAULT_LAYOUTS,
-  )
+  const [layoutStorage, setLayoutStorage, { isLoading: layoutLoading }] =
+    useKvStorage<LayoutStorage>('dashboard-widgets', DEFAULT_LAYOUTS)
 
   const [gridSize, setGridSize] = useState<GridSize | null>(null)
 
@@ -248,7 +250,7 @@ const WidgetRender = () => {
           minCellSize={64}
           onSizeChange={handleSizeChange}
           gap={16}
-          disabled={!isEditing}
+          disabled={!isEditing || layoutLoading}
         >
           {renderWidget}
         </DndGrid>

@@ -4,20 +4,20 @@ import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { filesize } from 'filesize'
 import { ComponentProps, ComponentType, ReactNode } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Sparkline } from '@/components/ui/sparkline'
-import TextMarquee from '@/components/ui/text-marquee'
+import { Card, CardContent } from '@nyanpasu/ui/card'
+import { Sparkline } from '@nyanpasu/ui/sparkline'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import {
-  MAX_CONNECTIONS_HISTORY,
-  MAX_MEMORY_HISTORY,
   MAX_TRAFFIC_HISTORY,
   useClashConnections,
   useClashMemory,
   useClashTraffic,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
+import { useWidgetConfig } from './provider'
+import { WidgetId } from './widget-config'
 import WidgetItem, { WidgetItemProps } from './widget-item'
 
 const padData = (data: (number | undefined)[] = [], max: number) =>
@@ -35,6 +35,7 @@ function SparklineCard({
   className,
   children,
   onCloseClick,
+  widgetType,
   ...props
 }: ComponentProps<typeof Card> & {
   chart: ReactNode
@@ -42,6 +43,7 @@ function SparklineCard({
   return (
     <WidgetItem
       id={id}
+      widgetType={widgetType}
       minH={minH}
       minW={minW}
       maxW={maxW}
@@ -131,12 +133,22 @@ function TrafficChart({ direction }: { direction: 'up' | 'down' }) {
   )
 }
 
-function TrafficRate({ direction }: { direction: 'up' | 'down' }) {
+function TrafficRate({
+  direction,
+  unit,
+}: {
+  direction: 'up' | 'down'
+  unit: 'bytes' | 'bits'
+}) {
   const { data: clashTraffic } = useClashTraffic()
 
   return (
     <>
-      {filesize(clashTraffic?.at(-1)?.[direction] ?? 0, { standard: 'iec' })}/s
+      {filesize(clashTraffic?.at(-1)?.[direction] ?? 0, {
+        standard: unit === 'bits' ? 'si' : 'iec',
+        bits: unit === 'bits',
+      })}
+      /s
     </>
   )
 }
@@ -155,10 +167,13 @@ function TrafficTotal({ field }: { field: 'downloadTotal' | 'uploadTotal' }) {
 }
 
 export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.TrafficDown)
+
   return (
     <SparklineCard
       id={id}
-      chart={<TrafficChart direction="down" />}
+      widgetType={WidgetId.TrafficDown}
+      chart={config.showChart && <TrafficChart direction="down" />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowDownwardRounded}>
@@ -166,21 +181,26 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        <TrafficRate direction="down" />
+        <TrafficRate direction="down" unit={config.unit} />
       </SparklineCardContent>
 
-      <SparklineCardBottom>
-        <TrafficTotal field="downloadTotal" />
-      </SparklineCardBottom>
+      {config.showTotal && (
+        <SparklineCardBottom>
+          <TrafficTotal field="downloadTotal" />
+        </SparklineCardBottom>
+      )}
     </SparklineCard>
   )
 }
 
 export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.TrafficUp)
+
   return (
     <SparklineCard
       id={id}
-      chart={<TrafficChart direction="up" />}
+      widgetType={WidgetId.TrafficUp}
+      chart={config.showChart && <TrafficChart direction="up" />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowUpwardRounded}>
@@ -188,24 +208,26 @@ export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        <TrafficRate direction="up" />
+        <TrafficRate direction="up" unit={config.unit} />
       </SparklineCardContent>
 
-      <SparklineCardBottom>
-        <TrafficTotal field="uploadTotal" />
-      </SparklineCardBottom>
+      {config.showTotal && (
+        <SparklineCardBottom>
+          <TrafficTotal field="uploadTotal" />
+        </SparklineCardBottom>
+      )}
     </SparklineCard>
   )
 }
 
-function ConnectionsChart() {
+function ConnectionsChart({ samples }: { samples: number }) {
   const { data: clashConnections } = useClashConnections()
 
   return (
     <Sparkline
       data={padData(
         clashConnections?.map((item) => item.connectionCount),
-        MAX_CONNECTIONS_HISTORY,
+        samples,
       )}
       className={chartClass}
     />
@@ -219,10 +241,13 @@ function ConnectionsCount() {
 }
 
 export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.Connections)
+
   return (
     <SparklineCard
       id={id}
-      chart={<ConnectionsChart />}
+      widgetType={WidgetId.Connections}
+      chart={config.showChart && <ConnectionsChart samples={config.samples} />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={SettingsEthernetRounded}>
@@ -238,14 +263,14 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
   )
 }
 
-function MemoryChart() {
+function MemoryChart({ samples }: { samples: number }) {
   const { data: clashMemory } = useClashMemory()
 
   return (
     <Sparkline
       data={padData(
         clashMemory?.map((item) => item.inuse),
-        MAX_MEMORY_HISTORY,
+        samples,
       )}
       className={chartClass}
     />
@@ -259,8 +284,15 @@ function MemoryInUse() {
 }
 
 export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.Memory)
+
   return (
-    <SparklineCard id={id} chart={<MemoryChart />} onCloseClick={onCloseClick}>
+    <SparklineCard
+      id={id}
+      widgetType={WidgetId.Memory}
+      chart={config.showChart && <MemoryChart samples={config.samples} />}
+      onCloseClick={onCloseClick}
+    >
       <SparklineCardTitle icon={MemoryOutlineRounded}>
         {m.dashboard_widget_memory()}
       </SparklineCardTitle>

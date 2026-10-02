@@ -122,9 +122,7 @@ type Endpoint struct {
 	systemInterfaceName string
 	systemInterfaceMTU  uint32
 	keyAuth             bool
-	serverStarted       bool
 	started             atomic.Bool
-	systemTun           tun.Tun
 	systemDialer        *dialer.DefaultDialer
 }
 
@@ -249,7 +247,7 @@ func (t *Endpoint) References() []string {
 	return []string{t.detour}
 }
 
-func (t *Endpoint) Start(stage adapter.StartStage) error {
+func (t *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
 	case adapter.StartStateInitialize:
 		t.server.NetstackMemoryPressure = oomkiller.MemoryPressure(t.ctx)
@@ -265,14 +263,14 @@ func (t *Endpoint) Start(stage adapter.StartStage) error {
 		}
 		t.server.PeerDNSQueryHandler = (*peerDNSQueryHandler)(t)
 	case adapter.StartStateStart:
-		return t.start()
+		return t.start(scope)
 	case adapter.StartStatePostStart:
-		return t.postStart()
+		return t.postStart(scope)
 	}
 	return nil
 }
 
-func (t *Endpoint) start() error {
+func (t *Endpoint) start(scope *adapter.Scope) error {
 	binding, err := newSystemBinding(t.ctx, t.logger)
 	if err != nil {
 		return err
@@ -303,14 +301,13 @@ func (t *Endpoint) start() error {
 		if err != nil {
 			return err
 		}
+		scope.Add(systemTun.Close)
 		err = systemTun.Start()
 		if err != nil {
-			_ = systemTun.Close()
 			return err
 		}
 		wgTunDevice, err := newTunDeviceAdapter(systemTun, int(mtu), t.logger)
 		if err != nil {
-			_ = systemTun.Close()
 			return err
 		}
 		systemDialer, err := dialer.NewDefault(t.ctx, option.DialerOptions{
@@ -319,29 +316,36 @@ func (t *Endpoint) start() error {
 			},
 		})
 		if err != nil {
-			_ = systemTun.Close()
 			return err
 		}
-		t.systemTun = systemTun
 		t.systemDialer = systemDialer
 		t.server.Tun = wgTunDevice
 	}
 	return nil
 }
 
-func (t *Endpoint) postStart() error {
+func (t *Endpoint) postStart(scope *adapter.Scope) error {
 	err := t.server.Start()
 	if err != nil {
-		if t.systemTun != nil {
-			_ = t.systemTun.Close()
-		}
 		return err
 	}
-	t.serverStarted = true
+	scope.Add(t.server.Close)
 	localBackend := t.server.ExportLocalBackend()
 	t.localBackend.Store(localBackend)
+	scope.Add(func() error {
+		t.localBackend.Store(nil)
+		return nil
+	})
+	scope.Add(func() error {
+		t.taildrop.close()
+		return nil
+	})
 	if !version.IsAppleTV() {
 		registerTaildropEndpoint(localBackend, t)
+		scope.Add(func() error {
+			unregisterTaildropEndpoint(localBackend)
+			return nil
+		})
 		go t.taildrop.start()
 	}
 	wgEngine := localBackend.ExportEngine().(wgengine.ExportedUserspaceEngine)
@@ -373,15 +377,20 @@ func (t *Endpoint) postStart() error {
 		if err != nil {
 			return E.Cause(err, "start SSH server")
 		}
+		scope.Add(sshServer.Close)
 		t.sshReconfigHook = sshServer.OnReconfig
 		t.sshServerInstance = sshServer
 	}
-	go t.watchState()
+	go t.watchState(scope.Context())
 	t.started.Store(true)
+	scope.Add(func() error {
+		t.started.Store(false)
+		return nil
+	})
 	return nil
 }
 
-func (t *Endpoint) watchState() {
+func (t *Endpoint) watchState(ctx context.Context) {
 	localBackend := t.server.ExportLocalBackend()
 	var reportedAuthURL string
 	exitNodePending := t.exitNode != ""
@@ -396,7 +405,7 @@ func (t *Endpoint) watchState() {
 	}
 	for {
 		var busError string
-		localBackend.WatchNotifications(t.ctx, ipn.NotifyInitialState|ipn.NotifyPeerPatches, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+		localBackend.WatchNotifications(ctx, ipn.NotifyInitialState|ipn.NotifyPeerPatches, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
 			if roNotify.ErrMessage != nil {
 				busError = *roNotify.ErrMessage
 				return false
@@ -442,7 +451,7 @@ func (t *Endpoint) watchState() {
 			}
 			return true
 		})
-		if t.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
 		if busError != "" {
@@ -451,7 +460,7 @@ func (t *Endpoint) watchState() {
 			t.logger.Warn("state watcher stopped unexpectedly, restarting")
 		}
 		select {
-		case <-t.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(time.Second):
 		}
@@ -581,27 +590,6 @@ func (t *Endpoint) Logout(ctx context.Context) error {
 		return E.Cause(err, "start interactive login")
 	}
 	return nil
-}
-
-func (t *Endpoint) Close() error {
-	var err error
-	t.started.Store(false)
-	localBackend := t.localBackend.Swap(nil)
-	if localBackend != nil {
-		unregisterTaildropEndpoint(localBackend)
-	}
-	t.taildrop.close()
-	common.Close(common.PtrOrNil(t.sshServerInstance))
-	t.sshServerInstance = nil
-	if t.serverStarted {
-		err = common.Close(common.PtrOrNil(t.server))
-		t.serverStarted = false
-	}
-	if t.systemTun != nil {
-		t.systemTun.Close()
-		t.systemTun = nil
-	}
-	return err
 }
 
 func (t *Endpoint) InterfaceUpdated(ctx context.Context) {

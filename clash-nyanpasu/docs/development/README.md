@@ -13,12 +13,15 @@ retain their operational checklist and section numbers.
 | Commands, frontend backend calls, HTTP capabilities, or events       | [Unified RPC](rpc.md)                            |
 | Tests, mocks, verification, or final review                          | [Testing and review](testing.md)                 |
 | Worktree selection, build prerequisites, or commits                  | [Development workflow](workflow.md)              |
+| Repository scripts, Deno tasks, tool dependencies and script layout  | [Repository scripts](scripts.md)                 |
 | Rust style and current formatter/lint behavior                       | [Rust code style](rust.md)                       |
 | TypeScript, React structure, constants, slots, or UI composition     | [TypeScript and React code style](typescript.md) |
 
 Start with the [root README](../../README.md#development) for running the app and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution setup. For frontend test
 setup, see the [Vitest guide](../frontend-testing.md).
+For package ownership, dependency directions, and source-only typechecking, see
+[Frontend packages](frontend-packages.md).
 
 ## Rules to keep in mind
 
@@ -27,6 +30,7 @@ setup, see the [Vitest guide](../frontend-testing.md).
 - Use the unified RPC surface for application APIs on both desktop and HTTP transports.
 - Wait for real in-process RPC results; a caller leaving does not cancel owner-started work.
 - Keep changes focused, verify the intended behavior, and submit atomic commits.
+- Keep repository scripts under `scripts/src/` and call public entrypoints through `deno task`.
 - Prefer isolated worktrees for feature/migration work; review costs before choosing the current checkout.
 
 ## Maintaining these rules

@@ -12,6 +12,12 @@ and verify the fix. For refactors, verify behavior before and after. For multi-s
 work, pair each step with a check. Explain material tradeoffs and blockers rather
 than preserving an undocumented compatibility layer.
 
+## Repository scripts
+
+Follow [Repository scripts](scripts.md) for the source layout, Deno configuration
+and named task entrypoints. CI and package scripts invoke repository tooling
+through `deno task`; keep its execution logic in the root task catalog.
+
 ## GitHub workflows
 
 - Use `[Category] Action Object` for workflow display names, with the categories `CI`, `Release`, `Maintenance`, and `Reusable`.
@@ -57,24 +63,23 @@ When the user chooses a worktree, its location is the developer's choice (any pa
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                    |
-| -------------------------- | ------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                     |
-| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                       |
-| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                             |
-| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                |
+| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                         |
+| -------------------------- | ------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
+| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
+| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                                  |
+| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
 
 Only `sidecar/` and `resources/` are symlink candidates.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
-- **`frontend/interface/dist`** — `@nyanpasu/interface` (`main` → `./dist/index.js`) is consumed by `@nyanpasu/nyanpasu`. Produce with `pnpm -F interface build`.
 - **`backend/tauri/tmp/dist`** — `backend/tauri/build.rs` calls `tauri_build::build()`, which validates `frontendDist: ./tmp/dist` **at compile time**. When missing, every `cargo build` / `clippy` / `cargo test --all-features` / rust-analyzer run on the tauri crate fails. Resolve one of:
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
-  - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
+  - Runnable UI → `pnpm web:build` (workspace packages resolve from source; this clears and refills `tmp/dist`).
 
-`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `pnpm generate:git-info` only if accurate commit metadata must be baked in.
+`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
 
 ### Create a worktree
 
@@ -90,12 +95,11 @@ New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/t
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
 
 pnpm install
-pnpm -F interface build                               # -> frontend/interface/dist (gitignored)
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
 Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
-# pnpm web:build                                      # B) real UI (replaces tmp/dist)
+# pnpm web:build                                      # B) real UI (builds app and replaces tmp/dist)
 ```
 
 ### Remove a worktree

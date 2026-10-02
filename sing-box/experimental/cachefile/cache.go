@@ -66,8 +66,6 @@ type CacheFile struct {
 	flushAccess       sync.Mutex
 	flushTimer        *time.Timer
 	flushSignal       chan struct{}
-	done              chan struct{}
-	closeOnce         sync.Once
 }
 
 type saveCacheKey struct {
@@ -124,7 +122,6 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 		pending:       newPendingWrites(),
 		flushTimer:    flushTimer,
 		flushSignal:   make(chan struct{}, 1),
-		done:          make(chan struct{}),
 	}
 }
 
@@ -148,17 +145,36 @@ func (c *CacheFile) SetDisableExpire(disableExpire bool) {
 	c.disableExpire = disableExpire
 }
 
-func (c *CacheFile) Start(stage adapter.StartStage) error {
+func (c *CacheFile) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
 	case adapter.StartStateInitialize:
-		return c.start()
+		err := c.start()
+		if err != nil {
+			return err
+		}
+		scope.Add(func() error {
+			return c.database().Close()
+		})
+		scope.Add(func() error {
+			c.flushTimer.Stop()
+			c.Flush()
+			return nil
+		})
+		var flushGroup sync.WaitGroup
+		scope.Add(func() error {
+			flushGroup.Wait()
+			return nil
+		})
+		flushGroup.Go(func() {
+			c.loopFlush(scope.Context())
+		})
 	case adapter.StartStateStart:
-		c.startCacheCleanup()
+		c.startCacheCleanup(scope.Context())
 	}
 	return nil
 }
 
-func (c *CacheFile) startCacheCleanup() {
+func (c *CacheFile) startCacheCleanup(ctx context.Context) {
 	if c.storeDNS {
 		c.clearRDRC()
 		c.cleanupDNSCache()
@@ -166,14 +182,14 @@ func (c *CacheFile) startCacheCleanup() {
 		if interval <= 0 {
 			interval = time.Hour
 		}
-		go c.loopCacheCleanup(interval, c.cleanupDNSCache)
+		go c.loopCacheCleanup(ctx, interval, c.cleanupDNSCache)
 	} else if c.storeRDRC {
 		c.cleanupRDRC()
 		interval := c.rdrcTimeout / 2
 		if interval <= 0 {
 			interval = time.Hour
 		}
-		go c.loopCacheCleanup(interval, c.cleanupRDRC)
+		go c.loopCacheCleanup(ctx, interval, c.cleanupRDRC)
 	}
 }
 
@@ -243,23 +259,7 @@ func (c *CacheFile) start() error {
 		return err
 	}
 	c.DB = db
-	go c.loopFlush()
 	return nil
-}
-
-func (c *CacheFile) Close() error {
-	c.closeOnce.Do(func() {
-		close(c.done)
-	})
-	c.flushTimer.Stop()
-	c.dbAccess.RLock()
-	db := c.DB
-	c.dbAccess.RUnlock()
-	if db == nil {
-		return nil
-	}
-	c.Flush()
-	return db.Close()
 }
 
 func checkDatabase(db *bbolt.DB) error {
