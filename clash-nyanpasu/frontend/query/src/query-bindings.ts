@@ -246,13 +246,6 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getIpsbAsn', ...args],
         queryFn: () => commands.getIpsbAsn(...args),
       }),
-    probeDirectEgress: (
-      ...args: Parameters<typeof commands.probeDirectEgress>
-    ) =>
-      queryOptions({
-        queryKey: ['probeDirectEgress', ...args],
-        queryFn: () => commands.probeDirectEgress(...args),
-      }),
     isAppimage: (...args: Parameters<typeof commands.isAppimage>) =>
       queryOptions({
         queryKey: ['isAppimage', ...args],
@@ -329,10 +322,19 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryTrafficClosedConnections', ...args],
         queryFn: () => commands.queryTrafficClosedConnections(...args),
       }),
-    checkUpdate: (...args: Parameters<typeof commands.checkUpdate>) =>
+    queryTrafficActiveConnectionIds: (
+      ...args: Parameters<typeof commands.queryTrafficActiveConnectionIds>
+    ) =>
       queryOptions({
-        queryKey: ['checkUpdate', ...args],
-        queryFn: () => commands.checkUpdate(...args),
+        queryKey: ['queryTrafficActiveConnectionIds', ...args],
+        queryFn: () => commands.queryTrafficActiveConnectionIds(...args),
+      }),
+    getAppUpdateState: (
+      ...args: Parameters<typeof commands.getAppUpdateState>
+    ) =>
+      queryOptions({
+        queryKey: ['getAppUpdateState', ...args],
+        queryFn: () => commands.getAppUpdateState(...args),
       }),
     getReleaseChannel: (
       ...args: Parameters<typeof commands.getReleaseChannel>
@@ -377,6 +379,33 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>
         commands.setReleaseChannel(...input),
     }),
+    checkAppUpdate: mutationOptions({
+      mutationKey: ['checkAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.checkAppUpdate>) =>
+        commands.checkAppUpdate(...input),
+    }),
+    downloadAppUpdate: mutationOptions({
+      mutationKey: ['downloadAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.downloadAppUpdate>) =>
+        commands.downloadAppUpdate(...input),
+    }),
+    cancelAppUpdateDownload: mutationOptions({
+      mutationKey: ['cancelAppUpdateDownload'],
+      mutationFn: (
+        input: Parameters<typeof commands.cancelAppUpdateDownload>,
+      ) => commands.cancelAppUpdateDownload(...input),
+    }),
+    installAppUpdate: mutationOptions({
+      mutationKey: ['installAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.installAppUpdate>) =>
+        commands.installAppUpdate(...input),
+    }),
+    discardAppUpdatePackage: mutationOptions({
+      mutationKey: ['discardAppUpdatePackage'],
+      mutationFn: (
+        input: Parameters<typeof commands.discardAppUpdatePackage>,
+      ) => commands.discardAppUpdatePackage(...input),
+    }),
     subscribeClashConnectionDetails: mutationOptions({
       mutationKey: ['subscribeClashConnectionDetails'],
       mutationFn: (
@@ -388,6 +417,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (
         input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
       ) => commands.unsubscribeClashConnectionDetails(...input),
+    }),
+    probeDirectEgress: mutationOptions({
+      mutationKey: ['probeDirectEgress'],
+      mutationFn: (input: Parameters<typeof commands.probeDirectEgress>) =>
+        commands.probeDirectEgress(...input),
     }),
     clearCoreLogs: mutationOptions({
       mutationKey: ['clearCoreLogs'],
@@ -627,11 +661,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['restartApplication'],
       mutationFn: (input: Parameters<typeof commands.restartApplication>) =>
         commands.restartApplication(...input),
-    }),
-    installUpdate: mutationOptions({
-      mutationKey: ['installUpdate'],
-      mutationFn: (input: Parameters<typeof commands.installUpdate>) =>
-        commands.installUpdate(...input),
     }),
     setTrayIcon: mutationOptions({
       mutationKey: ['setTrayIcon'],

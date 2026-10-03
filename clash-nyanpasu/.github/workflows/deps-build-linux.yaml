@@ -86,19 +86,6 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - uses: actions/cache@v6
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
         with:
@@ -127,9 +114,6 @@ jobs:
         if: ${{ inputs.nightly == false }}
         run: |
           pnpm prepare:release --linux
-
-      - name: Build UI
-        run: pnpm -F ui build
 
       # ===========================
       # GTK 图标修复步骤（适用于所有架构）

@@ -185,7 +185,7 @@ end
 function exec_call(cmd)
 	math.randomseed(os.time())
 	local tag = "\x01__RC__" .. tostring(math.random(100000, 999999)) .. "\x01"
-	local f = io.popen('(' .. cmd .. '); printf "\\n' .. tag .. '%d" "$?"')
+	local f = io.popen('(' .. cmd .. ') 2>&1; printf "\\n' .. tag .. '%d" "$?"')
 	local out = f:read("*a") or ""
 	f:close()
 	local rc = out:match(tag .. "(%d+)%s*$")
@@ -396,13 +396,12 @@ function repeat_exist(table, value)
 end
 
 function remove(...)
-    for i = 1, select("#", ...) do
-        local value = select(i, ...)
-        if type(value) == "string" and #value > 0 and value ~= "/" then
-            local quoted = "'" .. value:gsub("'", "'\\''") .. "'"
-            sys.call("rm -rf " .. quoted)
-        end
-    end
+	for i = 1, select("#", ...) do
+		local value = select(i, ...)
+		if type(value) == "string" and #value > 0 and value ~= "/" then
+			sys.call(string.format("rm -rf -- %s", value))
+		end
+	end
 end
 
 function is_install(package)
