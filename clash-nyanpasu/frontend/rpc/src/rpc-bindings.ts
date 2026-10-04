@@ -1111,6 +1111,7 @@ export type ConfigError =
   /**  A nightly build keeps its channel. */
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
+  | { kind: 'invalid_core_logs'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
@@ -1512,6 +1513,8 @@ export type CoreInfos_Serialize = {
   detail?: CoreStateDetail | null
 }
 
+export type CoreLogCompression = 'none' | 'preset' | 'trained'
+
 export type CoreLogCursor = {
   generation: string
   sequence: number
@@ -1557,6 +1560,13 @@ export type CoreLogRow = {
   id: CoreLogCursor
   record: CoreLogRecord
   truncated: boolean
+}
+
+/**  Current-session Core log retention, read when the application starts. */
+export type CoreLogSettings = {
+  shard_size_mib?: number
+  max_size_mib?: number
+  compression?: CoreLogCompression
 }
 
 export type CoreLogSource = {
@@ -1882,6 +1892,7 @@ export type EffectFailureCode =
 export type EffectKind =
   | 'locale'
   | 'logger'
+  | 'core_log_level'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'
@@ -2453,6 +2464,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
   | ({
       app_singleton_port?: number | null
       app_log_level?: LoggingLevel_Deserialize | null
+      core_logs?: CoreLogSettings | null
       language?: I18nLanguage_Deserialize | null
       theme_mode?: ThemeMode | null
       traffic_graph?: boolean | null
@@ -2505,6 +2517,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
 export type NyanpasuAppConfigPatch_Serialize = {
   app_singleton_port?: number | null
   app_log_level?: LoggingLevel_Serialize | null
+  core_logs?: CoreLogSettings | null
   language?: I18nLanguage_Serialize | null
   theme_mode?: ThemeMode | null
   traffic_graph?: boolean | null
@@ -2551,6 +2564,8 @@ export type NyanpasuAppConfig_Deserialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Deserialize
+  /**  Core log disk settings, applied on application startup. */
+  core_logs?: CoreLogSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -2650,6 +2665,8 @@ export type NyanpasuAppConfig_Serialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Serialize
+  /**  Core log disk settings, applied on application startup. */
+  core_logs: CoreLogSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -4446,7 +4463,7 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
-export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
+export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
 
 export type UpdaterState =
   | 'idle'

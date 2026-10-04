@@ -5,12 +5,14 @@ use struct_patch::Patch;
 use url::Url;
 
 mod clash_core;
+mod core_logs;
 mod i18n;
 mod logging;
 mod traffic;
 mod update;
 mod widget;
 pub use clash_core::*;
+pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
 pub use traffic::*;
@@ -94,6 +96,10 @@ pub struct NyanpasuAppConfig {
     /// app log level
     /// silent | error | warn | info | debug | trace
     pub app_log_level: LoggingLevel,
+
+    /// Core log disk settings, applied on application startup.
+    #[serde(default)]
+    pub core_logs: CoreLogSettings,
 
     // i18n
     pub language: I18nLanguage,
@@ -243,6 +249,7 @@ impl Default for NyanpasuAppConfig {
         Self {
             app_singleton_port: 0,
             app_log_level: LoggingLevel::default(),
+            core_logs: CoreLogSettings::default(),
             language: default_i18n_language(),
             theme_mode: ThemeMode::System,
             traffic_graph: true,
@@ -309,12 +316,15 @@ mod patch_tests {
         value.as_object_mut().unwrap().remove("update_sources");
         let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
         assert_eq!(config.update_sources, default_update_sources());
-        let patch: NyanpasuAppConfigPatch =
-            serde_json::from_str(r#"{"update_sources":["ghfast","github","nyanpasu"]}"#).unwrap();
+        let patch: NyanpasuAppConfigPatch = serde_json::from_str(
+            r#"{"update_sources":["ghfast","sourceforge","github","nyanpasu"]}"#,
+        )
+        .unwrap();
         assert_eq!(
             patch.update_sources,
             Some(vec![
                 UpdateSource::Ghfast,
+                UpdateSource::Sourceforge,
                 UpdateSource::Github,
                 UpdateSource::Nyanpasu
             ])

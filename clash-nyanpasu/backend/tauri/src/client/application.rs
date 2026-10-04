@@ -84,6 +84,13 @@ impl ApplicationClient {
             &manager.snapshot_handle().load().state.update_sources,
         )
         .map_err(anyhow::Error::msg)?;
+        manager
+            .snapshot_handle()
+            .load()
+            .state
+            .core_logs
+            .validate()
+            .map_err(anyhow::Error::msg)?;
         let snapshot = manager.snapshot_handle();
         let (settings_tx, settings_changes) =
             tokio::sync::watch::channel(snapshot.load().state.clone());
@@ -257,6 +264,7 @@ mod tests {
         let (client, dir) = test_client().await;
         let selected = vec![
             UpdateSource::Ghfast,
+            UpdateSource::Sourceforge,
             UpdateSource::Github,
             UpdateSource::Nyanpasu,
         ];
@@ -271,6 +279,7 @@ mod tests {
             vec![],
             vec![UpdateSource::Github, UpdateSource::Github],
             vec![UpdateSource::Ghfast, UpdateSource::Ghfast],
+            vec![UpdateSource::Sourceforge, UpdateSource::Sourceforge],
         ] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.update_sources = Some(invalid.clone());

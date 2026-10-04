@@ -409,6 +409,7 @@ export type EffectFailureCode =
 export type EffectKind =
   | 'locale'
   | 'logger'
+  | 'core_log_level'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'
@@ -735,7 +736,7 @@ export type TrafficRate = {
   upload: number
 }
 
-export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
+export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
 
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {
