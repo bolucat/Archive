@@ -27,6 +27,8 @@ enum CoreTypeArg {
     ClashPremium,
     #[value(name = "meow")]
     Meow,
+    #[value(name = "meow-alpha")]
+    MeowAlpha,
 }
 
 impl From<CoreTypeArg> for CoreType {
@@ -38,6 +40,7 @@ impl From<CoreTypeArg> for CoreType {
             CoreTypeArg::ClashRustAlpha => ClashCoreType::ClashRustAlpha,
             CoreTypeArg::ClashPremium => ClashCoreType::ClashPremium,
             CoreTypeArg::Meow => ClashCoreType::Meow,
+            CoreTypeArg::MeowAlpha => ClashCoreType::MeowAlpha,
         })
     }
 }
@@ -195,6 +198,7 @@ mod tests {
             ("clash-rs-alpha", ClashCoreType::ClashRustAlpha),
             ("clash", ClashCoreType::ClashPremium),
             ("meow", ClashCoreType::Meow),
+            ("meow-alpha", ClashCoreType::MeowAlpha),
         ];
         for (name, expected) in cases {
             assert_eq!(parse(name).unwrap(), CoreType::Clash(expected), "{name}");
@@ -247,7 +251,8 @@ mod tests {
                 "clash-rs",
                 "clash-rs-alpha",
                 "clash",
-                "meow"
+                "meow",
+                "meow-alpha"
             ]
         );
     }

@@ -15,11 +15,18 @@ jobs:
       BUNDLE: caddy-forwardproxy-naive
     steps:
       - uses: actions/checkout@v4
+      - run: printf 'CADDY_VERSION=%s\n' "$(<CADDY_VERSION)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: caddyserver/caddy
+          ref: ${{ env.CADDY_VERSION }}
+          path: .caddy-bbr
+      - run: git -C .caddy-bbr apply "$GITHUB_WORKSPACE/caddy-sing-quic-bbrv1.patch"
       - uses: actions/setup-go@v5
         with:
-          go-version: ^1.21.9
+          go-version: ^1.26.x
       - run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-      - run: ~/go/bin/xcaddy build --with github.com/caddyserver/forwardproxy@master=$PWD
+      - run: ~/go/bin/xcaddy build "$CADDY_VERSION" --replace "github.com/caddyserver/caddy/v2=$GITHUB_WORKSPACE/.caddy-bbr" --with "github.com/caddyserver/forwardproxy=$GITHUB_WORKSPACE"
       - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}

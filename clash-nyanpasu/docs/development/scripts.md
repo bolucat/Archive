@@ -80,6 +80,11 @@ uses Playwright through Deno and still requires its Chromium binary; it does not
 require Node to launch the repository script. The Tauri signing CLI may still use
 Node as its own runtime.
 
+Do not pass native file system paths as glob patterns: globby treats backslashes as
+escapes, so an absolute Windows path matches nothing. Glob names relative to a `cwd`
+or use the exact paths. Tests that compare paths normalize separators first, and a
+script change is verified on Windows CI as well as Linux.
+
 Deno formatting and type checking cover script sources recursively; frontend
 Prettier conventions do not replace the existing Deno formatter for these files.
 
@@ -88,6 +93,7 @@ deno task lint:deno
 deno task test:scripts
 deno task lint:frontend-boundaries
 deno task lint:architecture-ledger
+deno task lint:backend-boundaries
 ```
 
 Use the narrower test tasks for the affected category when appropriate. For a

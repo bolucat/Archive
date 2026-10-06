@@ -1,0 +1,383 @@
+//! RuntimeBuilder: pure assembly from domain snapshots to the runtime pipeline
+//! executor (PR-3 T06, design §8 + §19). No globals, no IO — port resolution
+//! happens at the caller and file reads/script runs arrive via executor ports.
+//! Must be called from a blocking context (the script adapter blocks on its
+//! own runtime); the facade wraps the whole build in spawn_blocking (T07).
+
+use std::sync::Arc;
+
+use nyanpasu_config::{
+    application::{ClashCore, NyanpasuAppConfig},
+    clash::config::{ClashConfig, tun_stack::TunStack},
+    profile::{ProfileValidationError, Profiles, ScriptRuntime},
+    runtime::executor::{
+        BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
+        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, StepLogEntry,
+        TransformFailure, TunFlavor, TunParams, execute,
+    },
+};
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Serialize, specta::Type)]
+pub struct RuntimeBuildLog {
+    pub tag: nyanpasu_config::runtime::snapshot::OperatorTag,
+    pub entries: Vec<StepLogEntry>,
+}
+
+/// A failure of building a runtime candidate from source config.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub))]
+pub enum RuntimeBuildError {
+    #[snafu(display("could not start the script runner"))]
+    StartScriptRunner {
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
+    ValidateProfiles { errors: Vec<ProfileValidationError> },
+    #[snafu(display("could not run the runtime pipeline: {source}"))]
+    RunPipeline { source: RuntimePipelineError },
+    #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
+    TransformsFailed {
+        failures: Vec<TransformFailure>,
+        logs: Vec<RuntimeBuildLog>,
+    },
+    #[snafu(display("could not serialize the final config"))]
+    SerializeFinalConfig {
+        #[serde(skip)]
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("the final config is not a mapping"))]
+    ConfigNotMapping,
+}
+
+pub struct RuntimeBuildInput {
+    pub profiles: Arc<Profiles>,
+    pub clash: ClashConfig,
+    pub app: NyanpasuAppConfig,
+    pub resolved_ports: ResolvedPortBindings,
+}
+
+const MIHOMO_FAMILY: &[ClashCore] = &[
+    ClashCore::Mihomo,
+    ClashCore::MihomoAlpha,
+    ClashCore::Meow,
+    ClashCore::MeowAlpha,
+];
+const ALL_CORES: &[ClashCore] = &[
+    ClashCore::ClashPremium,
+    ClashCore::ClashRs,
+    ClashCore::Mihomo,
+    ClashCore::MihomoAlpha,
+    ClashCore::ClashRsAlpha,
+    ClashCore::Meow,
+    ClashCore::MeowAlpha,
+];
+// Legacy quirk preserved (chain.rs:174): clash_rs_comp never gated in ClashRsAlpha.
+const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
+
+/// Legacy builtin table, ported 1:1 from enhance/chain.rs:145-176. Order is
+/// execution order.
+pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
+    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 4] = [
+        (
+            MIHOMO_FAMILY,
+            "verge_hy_alpn",
+            ScriptRuntime::JavaScript,
+            include_str!("./builtin/meta_hy_alpn.js"),
+        ),
+        (
+            MIHOMO_FAMILY,
+            "verge_meta_guard",
+            ScriptRuntime::JavaScript,
+            include_str!("./builtin/meta_guard.js"),
+        ),
+        (
+            ALL_CORES,
+            "config_fixer",
+            ScriptRuntime::JavaScript,
+            include_str!("./builtin/config_fixer.js"),
+        ),
+        (
+            CLASH_RS_ONLY,
+            "clash_rs_comp",
+            ScriptRuntime::Lua,
+            include_str!("./builtin/clash_rs_comp.lua"),
+        ),
+    ];
+    table
+        .into_iter()
+        .filter(|(gate, ..)| gate.contains(&core))
+        .map(|(_, name, runtime, source)| BuiltinTransform {
+            name: name.to_string(),
+            runtime,
+            source: source.to_string(),
+        })
+        .collect()
+}
+
+/// Legacy tun derivation (enhance/tun.rs:47-60), quirks preserved: only
+/// `ClashRs` (not Alpha) takes the ClashRs branch; Premium+Mixed → Gvisor.
+pub fn derive_tun_flavor(core: ClashCore, stack: TunStack) -> TunFlavor {
+    if core == ClashCore::ClashRs {
+        return TunFlavor::ClashRs;
+    }
+    let stack = if core == ClashCore::ClashPremium && stack == TunStack::Mixed {
+        TunStack::Gvisor
+    } else {
+        stack
+    };
+    TunFlavor::Standard { stack }
+}
+
+pub struct RuntimeBuilder;
+
+impl RuntimeBuilder {
+    /// Retain diagnostics from the rejected candidate, which is never published.
+    pub fn validate_transforms(artifact: &RuntimeArtifact) -> Result<(), RuntimeBuildError> {
+        if artifact.transform_failures.is_empty() {
+            return Ok(());
+        }
+        let logs = artifact
+            .step_logs
+            .iter()
+            .map(|log| RuntimeBuildLog {
+                tag: artifact
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|node| node.tag.node_key() == log.key)
+                    .expect("executor logs must belong to a snapshot node")
+                    .tag
+                    .clone(),
+                entries: log.entries.clone(),
+            })
+            .collect();
+        Err(RuntimeBuildError::TransformsFailed {
+            failures: artifact.transform_failures.clone(),
+            logs,
+        })
+    }
+
+    pub fn build(
+        input: &RuntimeBuildInput,
+        content: &dyn ProfileContentSource,
+        scripts: &dyn ScriptRunner,
+    ) -> Result<RuntimeArtifact, RuntimeBuildError> {
+        if let Err(errors) = input.profiles.validate() {
+            return ValidateProfilesSnafu { errors }.fail();
+        }
+
+        let target = match &input.profiles.current {
+            Some(uid) => ExecutionTarget::Selected(uid.clone()),
+            None => ExecutionTarget::Bare,
+        };
+        let builtin_transforms = if input.app.enable_builtin_enhanced {
+            builtin_transforms_for(input.app.core)
+        } else {
+            Vec::new()
+        };
+        let inputs = RuntimePipelineInputs {
+            profiles: &input.profiles,
+            target,
+            guard: GuardInputs {
+                overrides: &input.clash.overrides,
+                ports: input.resolved_ports.clone(),
+            },
+            whitelist_enabled: input.clash.enable_clash_fields,
+            tun: TunParams {
+                enable: input.clash.enable_tun_mode,
+                flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
+                windows_fake_ip_filter: cfg!(windows),
+            },
+            expand_include_all: input.clash.expand_include_all,
+            builtin_transforms: &builtin_transforms,
+        };
+        execute(&inputs, content, scripts).context(RunPipelineSnafu)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nyanpasu_config::{
+        profile::{ManagedProfilePath, ProfileId, ScriptRuntime},
+        runtime::{
+            executor::{PortError, StepLogEntry},
+            value::ConfigValue,
+        },
+    };
+
+    /// 极小 fakes(executor 的 support.rs 是 crate 内部,tauri 不可 import)
+    struct EmptyContent;
+    impl ProfileContentSource for EmptyContent {
+        fn read(&self, path: &ManagedProfilePath) -> Result<String, PortError> {
+            Err(format!("no content for {path}").into())
+        }
+    }
+    struct EchoRunner;
+    impl ScriptRunner for EchoRunner {
+        fn run(
+            &self,
+            _: ScriptRuntime,
+            _: &str,
+            config: &ConfigValue,
+            _: &mut Vec<StepLogEntry>,
+        ) -> Result<ConfigValue, PortError> {
+            Ok(config.clone())
+        }
+        fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
+            Ok(true)
+        }
+        fn eval_item_expr(&self, _: &str, item: &ConfigValue) -> Result<ConfigValue, PortError> {
+            Ok(item.clone())
+        }
+    }
+
+    fn base_input() -> RuntimeBuildInput {
+        RuntimeBuildInput {
+            profiles: Arc::new(Profiles::default()),
+            clash: ClashConfig::default(),
+            app: NyanpasuAppConfig::default(),
+            resolved_ports: ResolvedPortBindings {
+                mixed_port: 7890,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn builtin_gating_matches_legacy_table() {
+        let names = |core: ClashCore| -> Vec<String> {
+            builtin_transforms_for(core)
+                .into_iter()
+                .map(|b| b.name)
+                .collect()
+        };
+        assert_eq!(
+            names(ClashCore::Mihomo),
+            vec!["verge_hy_alpn", "verge_meta_guard", "config_fixer"]
+        );
+        assert_eq!(
+            names(ClashCore::ClashRs),
+            vec!["config_fixer", "clash_rs_comp"]
+        );
+        // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
+        assert_eq!(names(ClashCore::ClashRsAlpha), vec!["config_fixer"]);
+        assert_eq!(names(ClashCore::ClashPremium), vec!["config_fixer"]);
+        // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
+        assert_eq!(
+            names(ClashCore::Meow),
+            vec!["verge_hy_alpn", "verge_meta_guard", "config_fixer"]
+        );
+    }
+
+    #[test]
+    fn tun_flavor_derivation_matches_legacy_quirks() {
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashRs, TunStack::Mixed),
+            TunFlavor::ClashRs
+        );
+        // Alpha 走 Standard 分支(tun.rs:47 legacy 怪癖)
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashRsAlpha, TunStack::Mixed),
+            TunFlavor::Standard {
+                stack: TunStack::Mixed
+            }
+        );
+        // Premium + Mixed → Gvisor 降级(tun.rs:58-60)
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashPremium, TunStack::Mixed),
+            TunFlavor::Standard {
+                stack: TunStack::Gvisor
+            }
+        );
+        assert_eq!(
+            derive_tun_flavor(ClashCore::Mihomo, TunStack::System),
+            TunFlavor::Standard {
+                stack: TunStack::System
+            }
+        );
+        // meow-rs uses standard TUN path (mihomo-compatible)
+        assert_eq!(
+            derive_tun_flavor(ClashCore::Meow, TunStack::Mixed),
+            TunFlavor::Standard {
+                stack: TunStack::Mixed
+            }
+        );
+    }
+
+    #[test]
+    fn bare_build_produces_artifact_with_guarded_ports() {
+        let mut input = base_input(); // current = None → Bare
+        input.app.enable_builtin_enhanced = false; // EchoRunner 下 builtin 无意义
+        let artifact =
+            RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
+        let yaml = serde_yaml::to_value(&*artifact.final_config).expect("artifact to yaml");
+        assert_eq!(yaml["mixed-port"], serde_yaml::Value::from(7890));
+    }
+
+    #[test]
+    fn invalid_profiles_rejected_before_executor() {
+        let mut input = base_input();
+        let mut profiles = Profiles::default();
+        profiles.set_current(Some(ProfileId("ghost".into())));
+        input.profiles = Arc::new(profiles);
+        assert!(matches!(
+            RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
+            Err(RuntimeBuildError::ValidateProfiles { .. })
+        ));
+    }
+
+    #[test]
+    fn build_failures_reach_the_wire_with_their_context() {
+        let error = RuntimeBuildError::RunPipeline {
+            source: RuntimePipelineError::SelectedProfileNotFound {
+                profile: ProfileId("ghost".into()),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "run_pipeline",
+                "source": { "kind": "selected_profile_not_found", "profile": "ghost" },
+            })
+        );
+        let error = RuntimeBuildError::TransformsFailed {
+            failures: vec![
+                TransformFailure::Profile { id: "t1".into() },
+                TransformFailure::Builtin { name: "b".into() },
+            ],
+            logs: vec![RuntimeBuildLog {
+                tag: nyanpasu_config::runtime::snapshot::OperatorTag::BareRoot,
+                entries: vec![StepLogEntry::error("transform reported an error")],
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "transforms_failed",
+                "failures": [
+                    { "kind": "profile", "id": "t1" },
+                    { "kind": "builtin", "name": "b" },
+                ],
+                "logs": [{
+                    "tag": { "kind": "bare_root" },
+                    "entries": [{ "level": "error", "message": "transform reported an error" }],
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn builtin_disabled_flag_empties_the_list() {
+        let mut input = base_input();
+        input.app.enable_builtin_enhanced = false;
+        input.app.core = ClashCore::Mihomo;
+        let artifact = RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).unwrap();
+        let debug = format!("{:?}", artifact.graph);
+        assert!(!debug.contains("verge_hy_alpn"));
+    }
+}

@@ -79,7 +79,7 @@ export const STATIC_ITEM_RE =
 export const STATIC_GATE_PREFIX = "backend/tauri/src/";
 
 /**
- * Why a static may exist (AGENTS.md §7):
+ * Why a static may exist (docs/development/architecture.md):
  * - `immutable`: a constant or lookup table, initialized at most once and
  *   never written afterwards;
  * - `external`: a global that an OS or third-party API imposes;
@@ -193,6 +193,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "NET_STAT_WIDGET_FLATTEN",
     "LANGUAGE_CASE",
   ]),
+  ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",
@@ -241,6 +242,13 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     category: "external",
     reason:
       "CRT initializer the linker section points at, which has no closure state",
+  },
+  {
+    path: "backend/tauri/src/main.rs",
+    name: "ALLOC",
+    category: "external",
+    reason:
+      "the global allocator Rust requires to be a static; compiled only with the dhat-heap profiling feature",
   },
   // -- test-only ------------------------------------------------------------
   {

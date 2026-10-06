@@ -60,10 +60,13 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
-    core::actor_v2::{
-        CoreClient,
-        endpoint::ExecutionHost,
-        service_actor::{ServiceClient, ServiceHostAdapter},
+    core::{
+        actor_v2::{
+            CoreClient,
+            endpoint::ExecutionHost,
+            service_actor::{ServiceClient, ServiceHostAdapter},
+        },
+        migration::modules::application::ApplicationFormat,
     },
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
@@ -106,7 +109,8 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
+    {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -131,7 +135,7 @@ pub(super) struct Fixture {
     pub(super) client: ApplicationWorkflowClient,
     pub(super) endpoint: Arc<TestControlEndpoint>,
     pub(super) builder: Arc<ParkingBuilder>,
-    pub(super) application: PersistentStateManager<NyanpasuAppConfig>,
+    pub(super) application: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     pub(super) clash: PersistentStateManager<ClashConfig>,
     profiles: PersistentStateManager<Profiles>,
     pub(super) store: runtime::RuntimeSnapshotStore,
@@ -163,6 +167,20 @@ where
     T: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
 {
     PersistentStateManagerSetup::<T>::builder()
+        .config_path(path)
+        .assemble()
+        .from_state(state)
+        .await
+        .map_err(|error| format!("{error:?}"))
+        .expect("the state manager should initialize")
+}
+
+/// [`manager`] for the application config, which the app persists stamped.
+pub(super) async fn application_manager(
+    path: Utf8PathBuf,
+    state: NyanpasuAppConfig,
+) -> PersistentStateManager<NyanpasuAppConfig, ApplicationFormat> {
+    PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
         .config_path(path)
         .assemble()
         .from_state(state)
@@ -320,7 +338,7 @@ pub(super) async fn fixture_from(
 
     let clash_path = temp_path(&dir, "clash-config.yaml");
     let app_path = temp_path(&dir, "application.yaml");
-    let application = manager(app_path.clone(), NyanpasuAppConfig::default()).await;
+    let application = application_manager(app_path.clone(), NyanpasuAppConfig::default()).await;
     let clash = manager(
         clash_path.clone(),
         crate::client::tests::test_clash_config(),
@@ -338,7 +356,7 @@ pub(super) async fn fixture_from(
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: crate::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -415,8 +433,8 @@ pub(super) fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
 ///
 /// The attempt identity is the caller's so a test can address a settlement
 /// before the attempt has finished, exactly as the domain actor will.
-pub(super) async fn mutate<T>(
-    manager: &mut PersistentStateManager<T>,
+pub(super) async fn mutate<T, F>(
+    manager: &mut PersistentStateManager<T, F>,
     client: &ApplicationWorkflowClient,
     operation_id: OperationId,
     next: T,
@@ -427,6 +445,7 @@ pub(super) async fn mutate<T>(
     + 'static,
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
+    F: nyanpasu_core::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -453,8 +472,8 @@ where
 /// The same mutation, with the settlement the Runtime sends its source. It
 /// arrives once Confirm or Cancel is over, which a test may be holding still,
 /// so awaiting it is the caller's choice. A plain save has none.
-pub(super) async fn mutate_settling<T>(
-    manager: &mut PersistentStateManager<T>,
+pub(super) async fn mutate_settling<T, F>(
+    manager: &mut PersistentStateManager<T, F>,
     client: &ApplicationWorkflowClient,
     operation_id: OperationId,
     next: T,
@@ -468,6 +487,7 @@ pub(super) async fn mutate_settling<T>(
     crate::state::mutation::Settlement,
 )
 where
+    F: nyanpasu_core::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -517,8 +537,8 @@ where
 /// One mutation carrying request-local hints, which is how a content update
 /// says that the bytes behind a managed path moved without the document doing
 /// so.
-pub(super) async fn mutate_with_hints<T>(
-    manager: &mut PersistentStateManager<T>,
+pub(super) async fn mutate_with_hints<T, F>(
+    manager: &mut PersistentStateManager<T, F>,
     client: &ApplicationWorkflowClient,
     next: T,
     class: CommandClass,
@@ -528,6 +548,7 @@ pub(super) async fn mutate_with_hints<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
+    F: nyanpasu_core::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -575,8 +596,8 @@ where
 }
 
 /// The ordinary case: a fresh identity, no decorator, no local write.
-pub(super) async fn simple_mutate<T>(
-    manager: &mut PersistentStateManager<T>,
+pub(super) async fn simple_mutate<T, F>(
+    manager: &mut PersistentStateManager<T, F>,
     client: &ApplicationWorkflowClient,
     next: T,
     class: CommandClass,
@@ -585,6 +606,7 @@ pub(super) async fn simple_mutate<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
+    F: nyanpasu_core::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -953,7 +975,7 @@ async fn a_second_domain_is_admitted_only_after_the_first_commits_and_reads_it()
         ClashCore::ClashRs,
         "the second mutation built against the application the first committed"
     );
-    assert_eq!(published.config["mode"].as_str(), Some("global"));
+    assert_eq!(published.config()["mode"].as_str(), Some("global"));
     drop(clash);
 }
 
@@ -996,7 +1018,7 @@ async fn a_lost_commit_notification_is_resolved_by_the_authoritative_decision() 
             .read()
             .promoted
             .expect("confirm publishes the product")
-            .config["mode"]
+            .config()["mode"]
             .as_str(),
         Some("global")
     );
@@ -1213,14 +1235,14 @@ async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt(
         if commit {
             assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
             assert_eq!(receipt.conclusion, MutationConclusion::Confirmed);
-            assert_eq!(promoted.config["mode"].as_str(), Some("global"));
+            assert_eq!(promoted.config()["mode"].as_str(), Some("global"));
         } else {
             assert!(
                 matches!(result, Err(ReplaceIfVersionError::LocalWrite(_))),
                 "{result:?}"
             );
             assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
-            assert_eq!(promoted.config["mode"].as_str(), Some("direct"));
+            assert_eq!(promoted.config()["mode"].as_str(), Some("direct"));
             assert_eq!(
                 f.store
                     .last_confirmed_runtime_receipt()
@@ -1489,7 +1511,7 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
             .read()
             .promoted
             .expect("the confirm still publishes")
-            .config["mode"]
+            .config()["mode"]
             .as_str(),
         Some("global")
     );
@@ -3755,7 +3777,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
-    let input = crate::enhance::RuntimeBuildInput {
+    let input = nyanpasu_application::enhance::RuntimeBuildInput {
         profiles: Arc::new(profiles.clone()),
         clash: ClashConfig::default(),
         app: NyanpasuAppConfig::default(),
@@ -3764,11 +3786,12 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
             ..Default::default()
         },
     };
-    let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+    let old_content =
+        nyanpasu_platform::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
     let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = crate::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        crate::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+        let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
+        nyanpasu_application::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await
     .unwrap();
@@ -3934,7 +3957,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
 async fn domain_actor_refuses_writes_before_composition_is_ready() {
     use struct_patch::Patch;
     let dir = tempfile::tempdir().unwrap();
-    let manager = manager(
+    let manager = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig::default(),
     )

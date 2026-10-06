@@ -22,6 +22,8 @@ pub enum ClashCoreType {
     ClashPremium,
     #[serde(rename = "meow")]
     Meow,
+    #[serde(rename = "meow-alpha")]
+    MeowAlpha,
 }
 
 impl AsRef<str> for ClashCoreType {
@@ -33,6 +35,7 @@ impl AsRef<str> for ClashCoreType {
             ClashCoreType::ClashRustAlpha => "clash-rs-alpha",
             ClashCoreType::ClashPremium => "clash",
             ClashCoreType::Meow => "meow",
+            ClashCoreType::MeowAlpha => "meow-alpha",
         }
     }
 }
@@ -54,7 +57,10 @@ impl ClashCoreType {
         let app_dir: Cow<'a, OsStr> = Cow::Owned(app_dir.as_ref().as_os_str().to_owned());
         let config_path: Cow<'a, OsStr> = Cow::Owned(config_path.as_ref().as_os_str().to_owned());
         match self {
-            ClashCoreType::Mihomo | ClashCoreType::MihomoAlpha | ClashCoreType::Meow => vec![
+            ClashCoreType::Mihomo
+            | ClashCoreType::MihomoAlpha
+            | ClashCoreType::Meow
+            | ClashCoreType::MeowAlpha => vec![
                 Cow::Borrowed(OsStr::new("-m")),
                 Cow::Borrowed(OsStr::new("-d")),
                 app_dir,
@@ -114,6 +120,9 @@ impl CoreType {
             CoreType::Clash(ClashCoreType::Meow) => {
                 constcat::concat!("meow", std::env::consts::EXE_SUFFIX)
             }
+            CoreType::Clash(ClashCoreType::MeowAlpha) => {
+                constcat::concat!("meow-alpha", std::env::consts::EXE_SUFFIX)
+            }
             CoreType::SingBox => {
                 constcat::concat!("singbox", std::env::consts::EXE_SUFFIX)
             }
@@ -128,6 +137,7 @@ impl CoreType {
             CoreType::Clash(ClashCoreType::ClashRustAlpha),
             CoreType::Clash(ClashCoreType::ClashPremium),
             CoreType::Clash(ClashCoreType::Meow),
+            CoreType::Clash(ClashCoreType::MeowAlpha),
             // CoreType::SingBox,
         ]
     }

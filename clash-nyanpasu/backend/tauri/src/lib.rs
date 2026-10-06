@@ -126,7 +126,13 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::io::Result<()> {
-    // share the tauri async runtime to nyanpasu-utils
+    // Nothing before the logger reaches a trace, so its share is logged.
+    let started = std::time::Instant::now();
+    let mut profilers = utils::profiling::Profilers::default();
+    profilers.start_heap();
+    // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
+    tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
+
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
@@ -186,7 +192,12 @@ pub fn run() -> std::io::Result<()> {
     }
 
     let (logger_reload, jobs_capture) =
-        init::logging::init().expect("failed to initialize logging");
+        init::logging::init(&mut profilers).expect("failed to initialize logging");
+    tracing::info!(
+        pre_logging_ms = started.elapsed().as_millis(),
+        "logging initialized"
+    );
+    let prepare_span = tracing::info_span!("prepare_app").entered();
     crate::log_err!(init::init_config());
 
     // Until setup hands over an app handle, a panic can only end the process.
@@ -325,14 +336,23 @@ pub fn run() -> std::io::Result<()> {
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
                 queue_deep_link(&handle, url.to_string());
-                resolve::create_window(&handle.clone());
+                log_err!(
+                    handle
+                        .state::<window::WindowManager>()
+                        .open(&window::kinds::MainWindow, None)
+                );
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
                 &["clash-nyanpasu", "clash"],
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", request);
-                    resolve::create_window(&handle.clone()); // create window if not exists
+                    // create window if not exists
+                    log_err!(
+                        handle
+                            .state::<window::WindowManager>()
+                            .open(&window::kinds::MainWindow, None)
+                    );
                     queue_deep_link(&handle, request);
                 }
             ));
@@ -342,21 +362,20 @@ pub fn run() -> std::io::Result<()> {
     let app = builder
         .build(context)
         .expect("error while running tauri application");
-    app.run(|app_handle, e| match e {
+    drop(prepare_span);
+    app.run(move |app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, code, .. } => {
+            if code.is_some() {
+                profilers.finish_heap();
+            }
             utils::exit::on_exit_requested(app_handle, code, &api);
         }
+        tauri::RunEvent::Exit => profilers.finish(),
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match &event {
                     tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                         core::tray::on_scale_factor_changed(*scale_factor);
-                    }
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        log::debug!(target: "app", "window close requested");
-                        let _ = resolve::save_window_state(app_handle);
-                        #[cfg(target_os = "macos")]
-                        crate::utils::dock::macos::hide_dock_icon();
                     }
                     tauri::WindowEvent::Destroyed => {
                         log::debug!(target: "app", "window destroyed");
@@ -372,7 +391,11 @@ pub fn run() -> std::io::Result<()> {
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            resolve::create_window(app_handle);
+            log_err!(
+                app_handle
+                    .state::<window::WindowManager>()
+                    .open(&window::kinds::MainWindow, None)
+            );
         }
         _ => {}
     });

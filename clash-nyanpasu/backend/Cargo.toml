@@ -11,6 +11,8 @@ members = [
   'nyanpasu-traffic',
   'nyanpasu-geodata',
   'nyanpasu-panics',
+  'nyanpasu-application',
+  'nyanpasu-platform',
   # Test-only deterministic fake clash core. Never packaged as a production
   # sidecar/resource (see tauri.conf.json externalBin / resources).
   'fake-core',
@@ -89,3 +91,11 @@ panic = 'unwind'
 codegen-units = 1
 lto = true
 opt-level = 's'
+
+# Release code with line tables, so heap profilers can resolve allocation
+# stacks to source lines. Codegen units only change inlining and layout, not
+# what the program allocates, so the profile keeps Cargo's parallel default.
+[profile.profiling]
+inherits = 'release'
+debug = 'line-tables-only'
+codegen-units = 16

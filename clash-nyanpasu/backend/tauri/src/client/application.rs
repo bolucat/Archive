@@ -10,6 +10,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
+    core::migration::modules::application::ApplicationFormat,
     state::{
         application::{
             ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
@@ -43,7 +44,7 @@ impl ApplicationClient {
         let mut seed = NyanpasuAppConfig::default();
         seed.release_channel = Some(build_channel.resolve(seed.release_channel));
         let should_load = config_path.exists();
-        let setup = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
+        let setup = PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
             .config_path(config_path)
             .assemble();
         let mut manager = if should_load {
@@ -75,7 +76,7 @@ impl ApplicationClient {
     /// so a caller can register state subscribers before the actor claims it.
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
-        manager: PersistentStateManager<NyanpasuAppConfig>,
+        manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
         build_channel: crate::bundle::Channel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -413,15 +414,40 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn window_close_patches_merge_by_field_and_reach_no_runtime() {
+        use nyanpasu_config::application::{WindowCloseBehavior, WindowCloseOverride};
+        let (client, _dir) = test_client().await;
+        let mut first = NyanpasuAppConfig::new_empty_patch();
+        first.window_close.global = Some(WindowCloseBehavior::Hide);
+        client.patch(first).await.unwrap();
+
+        let mut second = NyanpasuAppConfig::new_empty_patch();
+        second.window_close.tray_menu = Some(WindowCloseOverride::Hide);
+        let snapshot = client.patch(second).await.unwrap();
+
+        assert_eq!(
+            snapshot.state.window_close.global,
+            WindowCloseBehavior::Hide
+        );
+        assert_eq!(
+            snapshot.state.window_close.tray_menu,
+            WindowCloseOverride::Hide
+        );
+        // No runtime transaction was opened for it.
+        assert_eq!(snapshot.receipt.unwrap().operation_id, None);
+    }
+
+    #[tokio::test]
     async fn release_channel_migrates_old_beta_config_and_keeps_explicit_stable() {
         use crate::bundle::Channel;
         let dir = tempdir().unwrap();
-        let manager = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
-            .config_path(temp_config_path(&dir))
-            .assemble()
-            .from_state(NyanpasuAppConfig::default())
-            .await
-            .unwrap();
+        let manager =
+            PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
+                .config_path(temp_config_path(&dir))
+                .assemble()
+                .from_state(NyanpasuAppConfig::default())
+                .await
+                .unwrap();
         drop(manager);
         let beta = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),

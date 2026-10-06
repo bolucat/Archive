@@ -1,0 +1,69 @@
+diff --git a/listeners.go b/listeners.go
+--- a/listeners.go
++++ b/listeners.go
+@@ -29,9 +29,9 @@
+ 	"sync"
+ 	"sync/atomic"
+ 
+-	"github.com/quic-go/quic-go"
+-	"github.com/quic-go/quic-go/http3"
+-	h3qlog "github.com/quic-go/quic-go/http3/qlog"
++	"github.com/sagernet/quic-go"
++	"github.com/sagernet/quic-go/http3"
++	h3qlog "github.com/sagernet/quic-go/http3/qlog"
+ 	"go.uber.org/zap"
+ 	"golang.org/x/time/rate"
+ 
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -32,7 +32,9 @@
+ 	"time"
+ 
+ 	"github.com/caddyserver/certmagic"
+-	"github.com/quic-go/quic-go/http3"
++	"github.com/sagernet/quic-go"
++	"github.com/sagernet/quic-go/http3"
++	bbr "github.com/sagernet/sing-quic/congestion_meta2"
+ 	"go.uber.org/zap"
+ 	"go.uber.org/zap/zapcore"
+ 
+@@ -1071,6 +1073,11 @@
+ 			// listener and call ServeListener, so anything set here is ignored.
+ 			// The QUIC settings that actually apply are in NetworkAddress.ListenQUIC.
+ 			IdleTimeout: time.Duration(s.IdleTimeout),
++			ConnContext: func(ctx context.Context, conn *quic.Conn) context.Context {
++				conn.SetCongestionControl(bbr.NewBbrSenderWithProfile(conn.InitialPacketSize(), bbr.ProfileStandard))
++				s.logger.Info("installed QUIC congestion controller", zap.String("controller", "sing-quic BBRv1"), zap.String("profile", "standard"))
++				return ctx
++			},
+ 		}
+ 	}
+ 
+diff --git a/modules/caddyhttp/reverseproxy/httptransport.go b/modules/caddyhttp/reverseproxy/httptransport.go
+--- a/modules/caddyhttp/reverseproxy/httptransport.go
++++ b/modules/caddyhttp/reverseproxy/httptransport.go
+@@ -32,8 +32,8 @@
+ 	"time"
+ 
+ 	"github.com/pires/go-proxyproto"
+-	"github.com/quic-go/quic-go"
+-	"github.com/quic-go/quic-go/http3"
++	"github.com/sagernet/quic-go"
++	"github.com/sagernet/quic-go/http3"
+ 	"go.uber.org/zap"
+ 	"go.uber.org/zap/zapcore"
+ 	"golang.org/x/net/http2"
+diff --git a/go.mod b/go.mod
+--- a/go.mod
++++ b/go.mod
+@@ -22,7 +22,8 @@
+ 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/mholt/acmez/v3 v3.1.7
+ 	github.com/prometheus/client_golang v1.24.1
+-	github.com/quic-go/quic-go v0.63.0
++	github.com/sagernet/quic-go v0.61.0-sing-box-mod.9
++	github.com/sagernet/sing-quic v0.7.2-0.20261002084117-75c3ac4fa12b
+ 	github.com/smallstep/certificates v0.30.2
+ 	github.com/smallstep/nosql v0.8.0
+ 	github.com/smallstep/truststore v0.13.0

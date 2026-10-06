@@ -1,5 +1,5 @@
 //! Pure runtime pipeline executor: the "execution half" of the runtime
-//! snapshot store (spec: docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md).
+//! snapshot store (spec: docs/spec/2026-07-04-runtime-pipeline-executor-design.md).
 
 mod artifact;
 mod builtin;
@@ -369,7 +369,7 @@ pub fn execute(
     // order.
     applied_fields.retain(|key| builtin::known_fields().any(|field| field == key));
 
-    let graph = builder.build()?;
+    let graph = builder.build_stored()?;
     let transform_failures = logs.failures.clone();
     Ok(RuntimeArtifact {
         final_config: working,

@@ -61,6 +61,8 @@ pub enum ClashCoreResourceVariant {
     ClashPremium,
     #[serde(rename = "meow")]
     Meow,
+    #[serde(rename = "meow-alpha")]
+    MeowAlpha,
 }
 
 impl ClashCoreResourceVariant {
@@ -82,6 +84,7 @@ impl ClashCoreResourceVariant {
                 concat!("clash", EXE_SUFFIX)
             }
             ClashCoreResourceVariant::Meow => concat!("meow", EXE_SUFFIX),
+            ClashCoreResourceVariant::MeowAlpha => concat!("meow-alpha", EXE_SUFFIX),
         }
     }
 }

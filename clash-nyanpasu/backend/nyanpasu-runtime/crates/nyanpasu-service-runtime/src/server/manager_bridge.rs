@@ -719,7 +719,7 @@ fn core_kind(core_type: &CoreType) -> Result<CoreKind, anyhow::Error> {
             Ok(CoreKind::ClashRust)
         }
         CoreType::Clash(ClashCoreType::ClashPremium) => Ok(CoreKind::ClashPremium),
-        CoreType::Clash(ClashCoreType::Meow) => Ok(CoreKind::Meow),
+        CoreType::Clash(ClashCoreType::Meow | ClashCoreType::MeowAlpha) => Ok(CoreKind::Meow),
         CoreType::SingBox => anyhow::bail!("sing-box is not a supported core"),
     }
 }
@@ -1176,6 +1176,7 @@ mod tests {
             (ClashCoreType::ClashRustAlpha, CoreKind::ClashRust),
             (ClashCoreType::ClashPremium, CoreKind::ClashPremium),
             (ClashCoreType::Meow, CoreKind::Meow),
+            (ClashCoreType::MeowAlpha, CoreKind::Meow),
         ];
         for (core_type, expected) in cases {
             assert_eq!(core_kind(&CoreType::Clash(core_type)).unwrap(), expected);

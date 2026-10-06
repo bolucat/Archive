@@ -266,6 +266,7 @@ fn every_core_type_tag_is_pinned() {
         ),
         (ClashCoreType::ClashPremium, r#"{"clash":"clash"}"#),
         (ClashCoreType::Meow, r#"{"clash":"meow"}"#),
+        (ClashCoreType::MeowAlpha, r#"{"clash":"meow-alpha"}"#),
     ];
     for (core, expected) in cases {
         assert_eq!(
