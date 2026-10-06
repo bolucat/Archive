@@ -1,28 +1,33 @@
 //! IPv6 end-to-end integration test.
 
-#![allow(unused_imports)]
-
-use std::{
-	net::{IpAddr, Ipv4Addr, Ipv6Addr},
-	time::Duration,
-};
+use std::time::Duration;
 
 use tokio::time::timeout;
-use tracing::{error, info};
+use tracing::info;
 use tuic_server::config::ExperimentalConfig;
-use tuic_tests::{
-	run_socks5_server, run_tcp_echo_server, run_udp_echo_server, test_tcp_through_socks5, test_udp_through_socks5,
-};
+use tuic_tests::{run_tcp_echo_server, run_udp_echo_server, test_tcp_through_socks5, test_udp_through_socks5};
 use uuid::Uuid;
 
-// - Server listening on [::1]:8444 (IPv6 localhost)
-// - Client connecting to [::1]:8444
-// - SOCKS5 proxy on [::1]:1081
+/// Outer deadline for the UDP relay half.
+///
+/// It has to outlive what the UDP relay helper does on its own: a 100 ms settle
+/// before the relay starts plus its [`tuic_tests::UDP_RELAY_RESPONSE_DEADLINE`]
+/// window, inside which it retransmits a lost datagram. A tighter outer
+/// deadline aborts the relay while the helper is still retransmitting, so a
+/// slow relay surfaces as this test's opaque "timed out" panic instead of the
+/// helper's own diagnostic. Twice the helper's window also leaves room for the
+/// SOCKS5 UDP association setup.
+const UDP_RELAY_TIMEOUT: Duration = Duration::from_secs(10);
+
+// - Server bound on [::1]:0 (IPv6 localhost, OS-assigned port)
+// - Client connecting to the server on the port the guard reported
+// - SOCKS5 proxy bound on [::1]:0 (port read back from the client guard)
 // - TCP relay through IPv6
 // - UDP relay through IPv6 (native mode)
 //
-// This addresses the error that occurs when using IPv6 addresses like
-// "[::1]:443"
+// The zero port is the bind request, not the address in use: the OS picks the
+// port and the tests read it back, so this file states no fixed port for either
+// endpoint. The port audit in `port_audit.rs` fails if that stops being true.
 #[tokio::test]
 #[tracing_test::traced_test]
 async fn test_ipv6_server_client_integration() -> eyre::Result<()> {
@@ -39,6 +44,9 @@ async fn test_ipv6_server_client_integration() -> eyre::Result<()> {
 	// Skip (rather than silently pass) when the environment has no IPv6
 	// loopback -- common on constrained CI runners. If [::1] is available we
 	// require the relay to actually work below.
+	//
+	// This test addresses the error that occurs when using IPv6 addresses like
+	// "[::1]:443", where the port delimiter collides with the address syntax.
 	if tokio::net::TcpListener::bind("[::1]:0").await.is_err() {
 		info!("[IPv6 Test] no IPv6 loopback available; skipping");
 		return Ok(());
@@ -198,7 +206,7 @@ async fn test_ipv6_server_client_integration() -> eyre::Result<()> {
 		ok
 	};
 
-	let udp_ok = timeout(Duration::from_secs(3), udp_test)
+	let udp_ok = timeout(UDP_RELAY_TIMEOUT, udp_test)
 		.await
 		.expect("IPv6 UDP relay test timed out");
 	assert!(udp_ok, "IPv6 UDP relay through SOCKS5/TUIC failed");
@@ -211,4 +219,36 @@ async fn test_ipv6_server_client_integration() -> eyre::Result<()> {
 	info!("[IPv6 Test] ========================================\n");
 
 	Ok(())
+}
+
+/// The outer UDP deadline must stay strictly above the relay helper's own
+/// response window: the helper retransmits a lost datagram for that whole
+/// window, so an outer deadline inside it can only abort a relay that is still
+/// making progress.
+#[test]
+fn the_udp_relay_deadline_outlives_the_helper_response_window() {
+	assert!(
+		UDP_RELAY_TIMEOUT > tuic_tests::UDP_RELAY_RESPONSE_DEADLINE,
+		"outer UDP deadline {UDP_RELAY_TIMEOUT:?} must exceed the relay helper's response window {:?}",
+		tuic_tests::UDP_RELAY_RESPONSE_DEADLINE
+	);
+}
+
+// The module header is audited by the `port_audit` test in this directory,
+// which fails if this file ever documents a fixed loopback port again.
+
+/// A crate-level allowance for unused imports would let a removed call site
+/// leave a dead `use` behind with no diagnostic at all, which is how the
+/// imports in this file previously drifted out of date; the compiler only keeps
+/// reporting them while such an allowance is absent. The audit is textual
+/// because no build of this file can observe an attribute that would silence
+/// it.
+#[test]
+fn the_file_does_not_mute_unused_import_warnings() {
+	const SOURCE: &str = include_str!("ipv6_integration.rs");
+	const FORBIDDEN: &str = concat!("allow", "(unused_imports)");
+	assert!(
+		!SOURCE.contains(FORBIDDEN),
+		"ipv6_integration.rs must drop its dead imports instead of muting the warnings about them"
+	);
 }

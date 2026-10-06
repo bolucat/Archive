@@ -330,6 +330,52 @@ async fn quiche_reset_visibility() {
 	run_reset_visibility(server_conn, client_conn).await;
 }
 
+/// A zero-length keying-material export must still reach the TLS exporter and
+/// succeed on the quiche backend.
+///
+/// The driver passes the caller's buffer to `SSL_export_keying_material` as a
+/// `(ptr, len)` pair, so a zero-length export used to hand it a dangling
+/// pointer (a zero-capacity `Vec` has no allocation). That only happened not to
+/// fault because BoringSSL's HKDF expansion loop never runs for a zero length.
+/// This test drives the whole path — including the FFI call — with an empty
+/// buffer.
+#[cfg(feature = "quiche")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn quiche_zero_length_export_succeeds() {
+	use wind_quic::quiche;
+
+	const LABEL: &[u8] = b"wind-quic-zero-length-export";
+	const CONTEXT: &[u8] = b"wind-quic-zero-length-context";
+
+	let (_dir, cert, key) = write_self_signed();
+	let (server_tls, client_tls, transport) = configs(&cert, &key);
+
+	let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+	let mut acceptor = quiche::bind_server(addr, &server_tls, &transport, None)
+		.await
+		.expect("bind_server");
+	let local = acceptor.local_addr();
+
+	let server_fut = async move { acceptor.accept().await.expect("server conn") };
+	let client_fut = quiche::connect(local, &client_tls, &transport);
+	let (server_conn, client_conn) = tokio::join!(server_fut, client_fut);
+	let client_conn = client_conn.expect("client connect");
+
+	let mut s_out: [u8; 0] = [];
+	let mut c_out: [u8; 0] = [];
+	server_conn
+		.export_keying_material(&mut s_out, LABEL, CONTEXT)
+		.await
+		.expect("server export of zero bytes");
+	client_conn
+		.export_keying_material(&mut c_out, LABEL, CONTEXT)
+		.await
+		.expect("client export of zero bytes");
+
+	client_conn.close(0, b"done");
+	let _ = tokio::time::timeout(Duration::from_secs(2), client_conn.closed()).await;
+}
+
 /// Regression: per-user traffic accounting samples `byte_stats()` one final
 /// time when the connection closes. That read must still return the final
 /// `(sent, recv)` *after* the connection has closed and its driver worker has
@@ -425,4 +471,351 @@ async fn quiche_byte_stats_survives_close() {
 	let client_conn = client_conn.expect("client connect");
 
 	byte_stats_survives_close(server_conn, client_conn).await;
+}
+
+/// The quiche client must bind its local UDP socket on the peer's address
+/// family. It used to always bind `0.0.0.0:0`, so dialing an IPv6 peer failed
+/// with an address-family mismatch before the handshake could start.
+#[cfg(feature = "quiche")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn quiche_connects_to_ipv6_peer() {
+	use wind_quic::quiche;
+
+	// Some environments have IPv6 disabled; that is not this test's subject.
+	if tokio::net::UdpSocket::bind("[::1]:0").await.is_err() {
+		eprintln!("skipping quiche_connects_to_ipv6_peer: no IPv6 loopback on this host");
+		return;
+	}
+
+	let (_dir, cert, key) = write_self_signed();
+	let (server_tls, client_tls, transport) = configs(&cert, &key);
+
+	let addr: SocketAddr = "[::1]:0".parse().unwrap();
+	let mut acceptor = quiche::bind_server(addr, &server_tls, &transport, None)
+		.await
+		.expect("bind_server on [::1]");
+	let local = acceptor.local_addr();
+	assert!(local.is_ipv6(), "server must be bound on IPv6: {local}");
+
+	// Wait for the client first, bounded: a mismatched bind address family
+	// fails the dial outright, and the acceptor would then wait forever for a
+	// connection that can never arrive.
+	let server_fut = async move { acceptor.accept().await.expect("server conn") };
+	let client_conn = tokio::time::timeout(Duration::from_secs(10), quiche::connect(local, &client_tls, &transport))
+		.await
+		.expect("client connect to an IPv6 peer timed out")
+		.expect("client connect to an IPv6 peer");
+	let server_conn = tokio::time::timeout(Duration::from_secs(10), server_fut)
+		.await
+		.expect("server never saw the IPv6 handshake");
+
+	let (mut c_send, mut c_recv) = client_conn.open_bi().await.expect("open_bi");
+	c_send.write_all(b"ping").await.expect("client write ping");
+	c_send.finish().expect("client finish");
+	let (mut s_send, mut s_recv) = server_conn.accept_bi().await.expect("accept_bi");
+	let mut buf = [0u8; 4];
+	s_recv.read_exact(&mut buf).await.expect("server read ping");
+	assert_eq!(&buf, b"ping");
+	s_send.write_all(b"pong").await.expect("server write pong");
+	s_send.finish().expect("server finish");
+	let mut echo = [0u8; 4];
+	c_recv.read_exact(&mut echo).await.expect("client read pong");
+	assert_eq!(&echo, b"pong");
+
+	client_conn.close(0, b"done");
+	let _ = tokio::time::timeout(Duration::from_secs(2), client_conn.closed()).await;
+}
+
+/// Echo `payload` over a fresh bidi stream, asserting the byte-for-byte
+/// round trip on both ends. Used by the address-family tests below.
+async fn echo_once<C: QuicConnection>(server: &C, client: &C) {
+	const PAYLOAD: &[u8] = b"family-probe";
+
+	let server_side = async {
+		let (mut s_send, mut s_recv) = server.accept_bi().await.expect("accept_bi");
+		let mut buf = vec![0u8; PAYLOAD.len()];
+		s_recv.read_exact(&mut buf).await.expect("server read probe");
+		assert_eq!(buf.as_slice(), PAYLOAD);
+		s_send.write_all(&buf).await.expect("server write echo");
+		s_send.finish().expect("server finish");
+	};
+	let client_side = async {
+		let (mut c_send, mut c_recv) = client.open_bi().await.expect("open_bi");
+		c_send.write_all(PAYLOAD).await.expect("client write probe");
+		c_send.finish().expect("client finish");
+		let mut echo = vec![0u8; PAYLOAD.len()];
+		c_recv.read_exact(&mut echo).await.expect("client read echo");
+		assert_eq!(echo.as_slice(), PAYLOAD, "echo round-trip");
+	};
+	let (server_res, client_res) = tokio::join!(server_side, client_side);
+	assert_eq!(server_res, ());
+	assert_eq!(client_res, ());
+}
+
+/// Whether this host has an IPv6 loopback interface.
+///
+/// A host without one cannot run the address-family tests; that is not their
+/// subject, so they report a skip rather than failing.
+async fn has_ipv6_loopback() -> bool {
+	tokio::net::UdpSocket::bind("[::1]:0").await.is_ok()
+}
+
+/// The quinn client must bind its local UDP socket on the peer's address
+/// family. It used to always bind `0.0.0.0:0`, so dialing an IPv6 peer failed
+/// with an address-family mismatch before the handshake could start.
+#[cfg(feature = "quinn")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn quinn_connects_to_ipv6_peer() {
+	use wind_quic::quinn;
+
+	if !has_ipv6_loopback().await {
+		eprintln!("skipping quinn_connects_to_ipv6_peer: no IPv6 loopback on this host");
+		return;
+	}
+
+	let (_dir, cert, key) = write_self_signed();
+	let (server_tls, client_tls, transport) = configs(&cert, &key);
+
+	let addr: SocketAddr = "[::1]:0".parse().unwrap();
+	let acceptor = quinn::bind_server(addr, &server_tls, &transport).expect("bind_server on [::1]");
+	let local = acceptor.local_addr().expect("local_addr");
+	assert!(local.is_ipv6(), "server must be bound on IPv6: {local}");
+
+	// Drive both sides concurrently and bound the whole exchange: a mismatched
+	// bind address family fails the dial outright, and the acceptor would then
+	// wait forever for a connection that can never arrive.
+	let server_fut = async move { acceptor.accept().await.expect("incoming").expect("server conn") };
+	let client_fut = quinn::connect(local, &client_tls, &transport);
+	let (server_conn, client_conn) = tokio::time::timeout(Duration::from_secs(10), async {
+		let (server_conn, client_conn) = tokio::join!(server_fut, client_fut);
+		(server_conn, client_conn)
+	})
+	.await
+	.expect("IPv6 handshake timed out");
+	let client_conn = client_conn.expect("client connect to an IPv6 peer");
+
+	echo_once(&server_conn, &client_conn).await;
+
+	client_conn.close(0, b"done");
+	let _ = tokio::time::timeout(Duration::from_secs(2), client_conn.closed()).await;
+}
+
+/// [`wind_quic::quinn::QuinnClient`] builds one long-lived endpoint up front,
+/// so it cannot infer the peer's family the way [`wind_quic::quinn::connect`]
+/// does. It must therefore expose an explicit local bind address; the default
+/// stays IPv4 so existing callers keep their behavior.
+#[cfg(feature = "quinn")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn quinn_client_binds_the_configured_address_family() {
+	use wind_quic::quinn;
+
+	if !has_ipv6_loopback().await {
+		eprintln!("skipping quinn_client_binds_the_configured_address_family: no IPv6 loopback on this host");
+		return;
+	}
+
+	// A family that does not match the peer is rejected at connect time rather
+	// than sent to the wrong socket, and the default remains IPv4.
+	let ipv4_socket: SocketAddr = "0.0.0.0:0".parse().unwrap();
+	assert_eq!(quinn::client_bind_addr("127.0.0.1:1".parse().unwrap()), ipv4_socket);
+	assert_eq!(
+		quinn::client_bind_addr("[::1]:1".parse().unwrap()),
+		"[::]:0".parse::<SocketAddr>().unwrap()
+	);
+
+	let (_dir, cert, key) = write_self_signed();
+	let (server_tls, client_tls, transport) = configs(&cert, &key);
+
+	let ipv4_client = quinn::QuinnClient::new(&client_tls, &transport)
+		.await
+		.expect("default client");
+	let ipv4_local = ipv4_client.local_addr().expect("local_addr");
+	assert!(
+		!ipv4_local.is_ipv6(),
+		"QuinnClient::new must keep binding an IPv4 socket: {ipv4_local}"
+	);
+	assert!(
+		ipv4_client.connecting("[::1]:1".parse().unwrap()).is_err(),
+		"a cross-family peer must be rejected instead of dialed from the wrong socket"
+	);
+	drop(ipv4_client);
+
+	// Same-family (IPv6) dial through the explicit bind address.
+	let addr: SocketAddr = "[::1]:0".parse().unwrap();
+	let acceptor = quinn::bind_server(addr, &server_tls, &transport).expect("bind_server on [::1]");
+	let local = acceptor.local_addr().expect("local_addr");
+
+	let server_fut = async move { acceptor.accept().await.expect("incoming").expect("server conn") };
+	let client_fut = async {
+		let client = quinn::QuinnClient::new_bound(&client_tls, &transport, "[::]:0".parse().unwrap())
+			.await
+			.expect("new_bound client");
+		client.connect(local).await.expect("client connect to an IPv6 peer")
+	};
+	let (server_conn, client_conn) = tokio::time::timeout(Duration::from_secs(10), async {
+		let (server_conn, client_conn) = tokio::join!(server_fut, client_fut);
+		(server_conn, client_conn)
+	})
+	.await
+	.expect("IPv6 handshake through QuinnClient timed out");
+
+	echo_once(&server_conn, &client_conn).await;
+
+	client_conn.close(0, b"done");
+	let _ = tokio::time::timeout(Duration::from_secs(2), client_conn.closed()).await;
+}
+
+/// Flood `client` with datagrams in bursts while a reader drains them slower
+/// than they arrive.
+///
+/// Models a handle that lags behind the peer: the flood must not be absorbed
+/// into an unbounded driver queue. Returns how many datagrams the flood sent
+/// (`sent`), how many arrived (`received`), how many the driver dropped in
+/// total (`dropped`), and the drop count observed at the moment the flood
+/// stopped (`dropped_at_stop`). A healthy run has `dropped_at_stop > 0`
+/// *while* the flood is still delivering datagrams; an unbounded queue drops
+/// nothing no matter how far behind the reader is, so it can never produce
+/// that.
+#[cfg(feature = "quiche")]
+async fn read_datagrams_during_flood(
+	server: &wind_quic::quiche::QuicheConnection,
+	client: &wind_quic::quiche::QuicheConnection,
+) -> (usize, usize, u64, u64) {
+	/// The burst has to be large enough to outrun the reader for the length of
+	/// a batch — otherwise the queue never fills and a bounded queue is
+	/// indistinguishable from an unbounded one — while staying under the
+	/// kernel's UDP receive buffer so the drops this test counts are the
+	/// driver's, not the kernel's. A 4096-datagram burst delivered every sent
+	/// datagram below the driver's cap on the development host.
+	const BATCH: usize = 512;
+	const MAX_BATCHES: usize = 64;
+
+	let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+	let reader = async {
+		let mut received = 0usize;
+		loop {
+			tokio::select! {
+				res = client.read_datagram() => match res {
+					Ok(_) => received += 1,
+					Err(_) => break,
+				},
+				_ = &mut stop_rx => {
+					// The flood is over; drain whatever is already queued so
+					// the caller can compare arrivals against sends.
+					while tokio::time::timeout(Duration::from_millis(100), client.read_datagram())
+						.await
+						.is_ok()
+					{
+						received += 1;
+					}
+					break
+				}
+			}
+			// Deliberately drain slower than the bursts deliver, so the
+			// driver's queue is what has to absorb the difference.
+			if received.is_multiple_of(4) {
+				tokio::time::sleep(Duration::from_millis(1)).await;
+			}
+		}
+		received
+	};
+
+	let flood = async {
+		let mut sent = 0usize;
+		let mut dropped_at_stop = 0u64;
+		for _ in 0..MAX_BATCHES {
+			for _ in 0..BATCH {
+				server
+					.send_datagram(Bytes::from_static(b"flood"))
+					.expect("send datagram during flood");
+			}
+			sent += BATCH;
+			// Let the peer's worker move the batch into its receive queue;
+			// whether that queue is bounded is the subject of the test.
+			tokio::time::sleep(Duration::from_millis(2)).await;
+			dropped_at_stop = client.dropped_datagrams();
+			if dropped_at_stop > 0 {
+				break;
+			}
+		}
+		let _ = stop_tx.send(());
+		(sent, dropped_at_stop)
+	};
+
+	let (received, (sent, dropped_at_stop)) = tokio::join!(reader, flood);
+	(received, sent, client.dropped_datagrams(), dropped_at_stop)
+}
+
+/// The quiche driver's inbound datagram queue is bounded.
+///
+/// `process_reads` used to drain every queued datagram into an *unbounded*
+/// channel, so a handle that stopped (or lagged in) reading `read_datagram`
+/// let peer-driven memory grow without bound — while the outbound side was
+/// already capped at 2048. The flood below therefore has to start dropping
+/// datagrams while it is still delivering them; if the queue were unbounded
+/// nothing would ever be dropped, no matter how far behind the reader is.
+#[cfg(feature = "quiche")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn quiche_inbound_datagram_queue_is_bounded() {
+	use wind_quic::quiche;
+
+	let (_dir, cert, key) = write_self_signed();
+	let (server_tls, client_tls, transport) = configs(&cert, &key);
+	assert!(
+		transport.enable_datagram,
+		"the transport must advertise DATAGRAM support for this test to mean anything"
+	);
+
+	let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+	let mut acceptor = quiche::bind_server(addr, &server_tls, &transport, None)
+		.await
+		.expect("bind_server");
+	let local = acceptor.local_addr();
+
+	let server_fut = async move { acceptor.accept().await.expect("server conn") };
+	let client_fut = quiche::connect(local, &client_tls, &transport);
+	let (server_conn, client_conn) = tokio::time::timeout(Duration::from_secs(10), async {
+		let (server_conn, client_conn) = tokio::join!(server_fut, client_fut);
+		(server_conn, client_conn)
+	})
+	.await
+	.expect("handshake timed out");
+	let client_conn = client_conn.expect("client connect");
+	assert!(
+		client_conn.max_datagram_size().is_some(),
+		"the client must have negotiated DATAGRAM support"
+	);
+
+	let (received, sent, dropped, dropped_at_stop) = tokio::time::timeout(
+		Duration::from_secs(60),
+		read_datagrams_during_flood(&server_conn, &client_conn),
+	)
+	.await
+	.expect("datagram flood timed out");
+
+	assert!(
+		dropped_at_stop > 0,
+		"the driver dropped nothing while the reader fell behind (sent={sent} received={received} dropped={dropped}): the \
+		 inbound datagram queue is unbounded again"
+	);
+	assert!(
+		dropped > 0,
+		"a bounded inbound queue must report its drops (sent={sent} received={received})"
+	);
+	assert!(
+		received > 0,
+		"the flood has to deliver datagrams for the drop count to mean anything (sent={sent} dropped={dropped})"
+	);
+	assert!(
+		received <= sent,
+		"a receiver can never see more datagrams than were sent (sent={sent} received={received})"
+	);
+	assert_eq!(
+		client_conn.dropped_datagrams(),
+		dropped,
+		"the drop counter must keep counting monotonically"
+	);
+
+	client_conn.close(0, b"done");
+	let _ = tokio::time::timeout(Duration::from_secs(2), client_conn.closed()).await;
 }

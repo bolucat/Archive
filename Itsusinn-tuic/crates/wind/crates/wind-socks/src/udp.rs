@@ -98,6 +98,10 @@ pub async fn serve_udp(socket: std::net::UdpSocket, stream: UdpStream) -> std::i
 /// accept UDP from this address). When `None`, the first packet's source IP
 /// is latched in instead; either way, subsequent packets from a different IP
 /// are dropped and logged.
+///
+/// Datagrams whose `FRAG` byte is non-zero are also dropped: RFC 1928 §7
+/// defines them as fragments of a larger datagram, and this relay implements no
+/// reassembly, so forwarding one would truncate the payload silently.
 pub async fn serve_udp_with_client(
 	socket: std::net::UdpSocket,
 	stream: UdpStream,
@@ -166,11 +170,22 @@ pub async fn serve_udp_with_client(
 					// somehow got past the IP check) could displace the
 					// previously-latched address, leaving the reply path
 					// pointing at a stale or hostile peer.
-					//
-					// TODO RFC 1928 §7: honour the FRAG byte. The current
-					// implementation drops fragmentation entirely.
 					match parse_udp_request_sync(packet_data) {
-						Ok((_frag, target_addr, payload)) => {
+						Ok((frag, target_addr, payload)) => {
+							// RFC 1928 §7: FRAG other than X'00' marks a
+							// fragment of a larger datagram. This relay does no
+							// reassembly, so the datagram is dropped instead of
+							// being forwarded (and delivered as a truncated
+							// payload) as if it were stand-alone. Like a
+							// malformed header, a fragment must not displace
+							// the latched client address either.
+							if frag != 0 {
+								warn!(
+									target: "udp",
+									"Dropping fragmented SOCKS5 UDP datagram from {addr} (FRAG={frag}; reassembly is not supported)"
+								);
+								continue;
+							}
 							source_addr_rx.store(Arc::new(addr));
 							let packet = UdpPacket {
 								source: None,
@@ -275,6 +290,23 @@ mod tests {
 			}
 			_ => panic!("expected IPv4 target"),
 		}
+	}
+
+	/// The parser must SURFACE the FRAG byte instead of silently normalising it
+	/// to zero: the relay decides to drop fragmented datagrams (RFC 1928 §7),
+	/// so a parser that reported `frag == 0` for a fragment would make the
+	/// drop check impossible.
+	#[test]
+	fn parse_surfaces_a_non_zero_frag_byte() {
+		let mut data = vec![0x00, 0x00, 0x05, 0x01];
+		data.extend_from_slice(&[1, 2, 3, 4]);
+		data.extend_from_slice(&[0x00, 0x35]); // port 53
+		data.extend_from_slice(b"x");
+
+		let (frag, addr, payload) = parse_udp_request_sync(&data).unwrap();
+		assert_eq!(frag, 5, "the FRAG byte must be reported verbatim");
+		assert_eq!(payload, b"x");
+		assert!(matches!(addr, SocksTargetAddr::Ip(_)));
 	}
 
 	#[test]

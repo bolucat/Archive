@@ -13,8 +13,34 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  storage_preflight:
+    name: Check Storage Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check configured storage before package builds
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        continue-on-error: true
+        run: deno task storage:preflight
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+
   windows_build:
     name: Windows Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -26,6 +52,7 @@ jobs:
 
   windows_aarch64_build:
     name: Windows aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -37,6 +64,7 @@ jobs:
 
   linux_build:
     name: Linux Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
@@ -46,6 +74,7 @@ jobs:
 
   linux_aarch64_build:
     name: Linux aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
@@ -55,6 +84,7 @@ jobs:
 
   macos_amd64_build:
     name: macOS amd64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: false
@@ -64,6 +94,7 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: false
@@ -72,7 +103,7 @@ jobs:
     secrets: inherit
 
   publish_storage:
-    name: Publish Complete Build to Archive and Mirrors
+    name: Prepare Complete Storage Inventory
     needs:
       [
         windows_build,
@@ -84,6 +115,19 @@ jobs:
       ]
     uses: ./.github/workflows/deps-publish-storage.yaml
     with:
+      backend: prepare
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  publish_sourceforge:
+    name: Publish SourceForge Mirror
+    needs: [publish_storage]
+    if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.SOURCEFORGE_PROJECT != '' }}
+    uses: ./.github/workflows/deps-publish-storage.yaml
+    with:
+      backend: sourceforge
+      published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: false
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
@@ -105,7 +149,16 @@ jobs:
 
   updater:
     name: Create Updater
-    needs: [upload_release_assets, verify_sourceforge]
+    needs: [upload_release_assets]
+    uses: ./.github/workflows/deps-create-updater.yaml
+    with:
+      nightly: false
+    secrets: inherit
+
+  updater_sourceforge:
+    name: Publish Verified SourceForge Updater
+    needs: [updater, verify_sourceforge]
+    if: ${{ !cancelled() && needs.updater.result == 'success' && needs.verify_sourceforge.result == 'success' && needs.verify_sourceforge.outputs.sourceforge_mirrors_json != '' }}
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false
@@ -113,11 +166,13 @@ jobs:
     secrets: inherit
 
   telegram:
-    name: Send Release Message to Telegram
-    if: startsWith(github.repository, 'libnyanpasu')
-    needs: [upload_release_assets]
-    uses: ./.github/workflows/deps-message-telegram.yaml
+    name: Publish Files to Telegram
+    if: ${{ startsWith(github.repository, 'libnyanpasu') && needs.publish_storage.outputs.publication_prepared == 'true' }}
+    needs: [publish_storage]
+    uses: ./.github/workflows/deps-publish-storage.yaml
     with:
+      backend: telegram
+      published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: false
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
@@ -125,7 +180,7 @@ jobs:
   verify_sourceforge:
     name: Verify SourceForge Mirror
     if: ${{ always() && (vars.SOURCEFORGE_PROJECT == '' || needs.publish_storage.outputs.publication_prepared == 'true') }}
-    needs: [publish_storage]
+    needs: [publish_storage, publish_sourceforge]
     runs-on: ubuntu-latest
     outputs:
       sourceforge_mirrors_json: ${{ steps.verify.outputs.sourceforge_mirrors_json }}
@@ -142,7 +197,7 @@ jobs:
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/download-artifact@v8
         with:
-          pattern: publication-reports-*
+          name: publication-reports-sourceforge
           path: ./publication-reports
           merge-multiple: false
       - name: Verify complete mirror and public hashes
@@ -158,26 +213,3 @@ jobs:
           name: sourceforge-verified-mirrors
           path: ./sourceforge-mirrors.json
           if-no-files-found: error
-
-  verify_archive_uploads:
-    name: Verify IA Archive Upload Reports
-    if: ${{ always() && needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
-    needs: [publish_storage]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Download target publication reports
-        uses: actions/download-artifact@v8
-        with:
-          pattern: publication-reports-*
-          path: ./publication-reports
-          merge-multiple: false
-      - name: Verify complete uploads and report pending ingest
-        run: >-
-          deno task archive:verify-reports ./publication-reports
-          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64

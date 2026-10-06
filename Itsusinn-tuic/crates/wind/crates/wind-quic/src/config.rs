@@ -131,7 +131,10 @@ pub struct TransportConfig {
 	/// Connection-level send window, in bytes.
 	pub send_window: u64,
 	/// Connection / per-stream receive window, in bytes. Legacy single knob;
-	/// the per-direction overrides below take precedence when set.
+	/// the per-direction overrides below take precedence when set. The quinn
+	/// backend has no auto-tuning and uses it for the per-stream window only:
+	/// its connection-level window comes from
+	/// [`max_conn_receive_window`](Self::max_conn_receive_window) alone.
 	pub receive_window: u64,
 	/// Per-stream initial receive window (quiche `initial_max_stream_data_*`).
 	/// `None` falls back to [`receive_window`](Self::receive_window). The quinn

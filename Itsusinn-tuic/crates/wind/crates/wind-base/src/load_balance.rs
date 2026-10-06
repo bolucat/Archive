@@ -1,5 +1,5 @@
 use std::{
-	collections::HashMap,
+	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
 	sync::{
 		Arc,
@@ -27,7 +27,9 @@ use wind_core::{
 pub enum LoadBalanceStrategy {
 	/// Distribute requests across proxies in turn.
 	RoundRobin,
-	/// Map the same target address to the same proxy via hashing.
+	/// Map the same target address to the same proxy via a consistent-hash
+	/// ring.  Each proxy owns a share of the ring, so dropping a proxy only
+	/// remaps the targets that were hashed onto that proxy.
 	ConsistentHashing,
 	/// Cache target → proxy mappings for 10 minutes.
 	StickySessions,
@@ -42,8 +44,8 @@ pub struct LoadBalanceOpts {
 	pub url: String,
 	/// Interval between successive health-check rounds.
 	pub interval: Duration,
-	/// When `true`, health checks are deferred until the first connection
-	/// attempt.  All proxies are assumed alive until proven otherwise.
+	/// When `true`, no periodic health checks are started and every child is
+	/// treated as alive.
 	pub lazy: bool,
 }
 
@@ -70,6 +72,36 @@ impl ProxyState {
 // LoadBalanceOutbound
 // ---------------------------------------------------------------------------
 
+/// Virtual ring nodes per child proxy.  More nodes make the share of the ring
+/// owned by each proxy — and therefore the key distribution — more even.
+const VNODES_PER_PROXY: u32 = 64;
+
+/// Hash a target address over the full 64-bit hash space.  The value is used
+/// as a ring position, never truncated to `usize`.
+fn hash_target(target: &TargetAddr) -> u64 {
+	let mut hasher = DefaultHasher::new();
+	target.hash(&mut hasher);
+	hasher.finish()
+}
+
+/// Build the consistent-hash ring: each proxy is spread over
+/// [`VNODES_PER_PROXY`] virtual nodes, sorted by hash position.
+fn build_hash_ring(proxy_count: usize) -> Vec<(u64, usize)> {
+	let mut ring = Vec::with_capacity(proxy_count.saturating_mul(VNODES_PER_PROXY as usize));
+
+	for index in 0..proxy_count {
+		for vnode in 0..VNODES_PER_PROXY {
+			let mut hasher = DefaultHasher::new();
+			index.hash(&mut hasher);
+			vnode.hash(&mut hasher);
+			ring.push((hasher.finish(), index));
+		}
+	}
+
+	ring.sort_unstable();
+	ring
+}
+
 /// Outbound that distributes connections across multiple child outbounds
 /// according to the configured [`LoadBalanceStrategy`], with optional
 /// periodic health checks.
@@ -81,10 +113,18 @@ impl ProxyState {
 /// HTTP GET, and marks the proxy alive or dead.  The main selection logic
 /// skips dead proxies; when **all** proxies are dead it falls back to the
 /// full set so that a transient network blip doesn't cause a full outage.
+///
+/// When `lazy`, no health checking happens at all: [`Self::start_health_check`]
+/// is a no-op and every child counts as alive.
 pub struct LoadBalanceOutbound {
 	proxies: Vec<ProxyState>,
 	strategy: LoadBalanceStrategy,
 	url: String,
+	interval: Duration,
+	lazy: bool,
+	/// Sorted `(ring position, proxy index)` pairs used by
+	/// [`LoadBalanceStrategy::ConsistentHashing`].
+	ring: Vec<(u64, usize)>,
 	round_robin_counter: AtomicUsize,
 	sticky_cache: Mutex<HashMap<TargetAddr, (Instant, usize)>>,
 }
@@ -98,6 +138,8 @@ impl LoadBalanceOutbound {
 	pub fn new(opts: LoadBalanceOpts, proxies: Vec<Arc<dyn Outbound>>) -> Self {
 		assert!(!proxies.is_empty(), "LoadBalanceOutbound requires at least one child proxy");
 
+		let ring = build_hash_ring(proxies.len());
+
 		Self {
 			proxies: proxies
 				.into_iter()
@@ -108,6 +150,9 @@ impl LoadBalanceOutbound {
 				.collect(),
 			strategy: opts.strategy,
 			url: opts.url,
+			interval: opts.interval,
+			lazy: opts.lazy,
+			ring,
 			round_robin_counter: AtomicUsize::new(0),
 			sticky_cache: Mutex::new(HashMap::new()),
 		}
@@ -115,11 +160,17 @@ impl LoadBalanceOutbound {
 
 	/// Start the background health-check loop.
 	///
-	/// Call this **after** wrapping the outbound in an `Arc`.  If
-	/// [`LoadBalanceOpts::lazy`] is `true` this is a no-op — health checks
-	/// are performed on-demand instead.
-	pub fn start_health_check(self: &Arc<Self>, interval: Duration) {
+	/// Call this **after** wrapping the outbound in an `Arc`.  No-op when
+	/// [`LoadBalanceOpts::lazy`] is `true`; otherwise the loop runs at the
+	/// configured [`LoadBalanceOpts::interval`].
+	pub fn start_health_check(self: &Arc<Self>) {
+		if self.lazy {
+			tracing::debug!("lazy load-balance outbound: health checks stay disabled");
+			return;
+		}
+
 		let this = self.clone();
+		let interval = self.interval;
 		tokio::spawn(async move {
 			health_check_loop(this, interval).await;
 		});
@@ -146,24 +197,39 @@ impl LoadBalanceOutbound {
 		}
 	}
 
+	/// Walk the consistent-hash ring clockwise from `hash` and return the first
+	/// entry whose proxy is alive.  Targets that do not hash onto a dead proxy
+	/// therefore keep their proxy; only the dead proxy's own share of the ring
+	/// is handed to its successors.  When every proxy is dead the ring entry at
+	/// `hash` is returned, matching the full-set fallback of
+	/// [`Self::alive_indices`].
+	fn select_consistent_hash(&self, hash: u64) -> usize {
+		let start = self.ring.partition_point(|(position, _)| *position < hash);
+
+		for offset in 0..self.ring.len() {
+			let (_, index) = self.ring[(start + offset) % self.ring.len()];
+			if self.proxies[index].is_alive() {
+				return index;
+			}
+		}
+
+		tracing::warn!("all load-balance proxies are dead; falling back to full set");
+		self.ring[start % self.ring.len()].1
+	}
+
 	/// Pick a proxy index for `target` according to the configured strategy.
 	async fn select_index(&self, target: &TargetAddr) -> usize {
-		let alive = self.alive_indices();
-
 		match self.strategy {
 			LoadBalanceStrategy::RoundRobin => {
+				let alive = self.alive_indices();
 				// Atomically increment and wrap.
 				let c = self.round_robin_counter.fetch_add(1, Ordering::Relaxed);
 				alive[c % alive.len()]
 			}
-			LoadBalanceStrategy::ConsistentHashing => {
-				// Hash the target, mod into the alive list.
-				let mut hasher = std::collections::hash_map::DefaultHasher::new();
-				target.hash(&mut hasher);
-				let h = hasher.finish();
-				alive[h as usize % alive.len()]
-			}
+			LoadBalanceStrategy::ConsistentHashing => self.select_consistent_hash(hash_target(target)),
 			LoadBalanceStrategy::StickySessions => {
+				let alive = self.alive_indices();
+
 				// Check cache first; on miss, pick via round-robin and cache.
 				let mut cache = self.sticky_cache.lock().await;
 
@@ -395,6 +461,55 @@ mod tests {
 		LoadBalanceOutbound::new(make_opts(strategy), proxies)
 	}
 
+	fn make_lb_arc(opts: LoadBalanceOpts, n: usize) -> Arc<LoadBalanceOutbound> {
+		let proxies: Vec<Arc<dyn Outbound>> = (0..n).map(|_| Arc::new(DummyOutbound::new()) as Arc<dyn Outbound>).collect();
+		Arc::new(LoadBalanceOutbound::new(opts, proxies))
+	}
+
+	// ---- health-check scheduling -----------------------------------------
+
+	/// `lazy: true` means no periodic probing happens, even if the health
+	/// check is requested explicitly — the outbound itself owns that decision.
+	#[tokio::test]
+	async fn lazy_outbound_never_probes_its_children() {
+		let opts = LoadBalanceOpts {
+			lazy: true,
+			interval: Duration::from_millis(10),
+			..make_opts(LoadBalanceStrategy::RoundRobin)
+		};
+		let lb = make_lb_arc(opts, 2);
+
+		lb.start_health_check();
+
+		// The first probe of a started loop runs immediately, so 300 ms is
+		// far more than enough to observe one.
+		tokio::time::sleep(Duration::from_millis(300)).await;
+		assert!(
+			lb.proxies.iter().all(|p| p.is_alive()),
+			"a lazy load-balancer must not probe its children"
+		);
+	}
+
+	/// A non-lazy outbound probes its children (the dummy children never
+	/// answer, so they must end up marked dead).
+	#[tokio::test]
+	async fn non_lazy_outbound_probes_its_children() {
+		let opts = LoadBalanceOpts {
+			lazy: false,
+			interval: Duration::from_millis(10),
+			..make_opts(LoadBalanceStrategy::RoundRobin)
+		};
+		let lb = make_lb_arc(opts, 1);
+
+		lb.start_health_check();
+
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while lb.proxies[0].is_alive() && Instant::now() < deadline {
+			tokio::time::sleep(Duration::from_millis(10)).await;
+		}
+		assert!(!lb.proxies[0].is_alive(), "a non-lazy load-balancer must probe its children");
+	}
+
 	// ---- round-robin -----------------------------------------------------
 
 	#[tokio::test]
@@ -442,6 +557,93 @@ mod tests {
 			assert_eq!(lb.select_index(&t1).await, i1);
 			assert_eq!(lb.select_index(&t2).await, i2);
 		}
+	}
+
+	/// A consistent-hash ring must only remap the keys that were owned by the
+	/// proxy that went away; every other key keeps its proxy.  A plain
+	/// `hash % alive.len()` re-shuffles almost everything instead.
+	#[tokio::test]
+	async fn consistent_hashing_only_remaps_keys_of_a_dead_proxy() {
+		const PROXIES: usize = 8;
+		const DEAD: usize = 5;
+		const KEYS: usize = 2000;
+
+		let lb = make_lb(LoadBalanceStrategy::ConsistentHashing, PROXIES);
+		let targets: Vec<TargetAddr> = (0..KEYS)
+			.map(|i| TargetAddr::Domain(format!("host{i}.example.com"), 443))
+			.collect();
+
+		let mut before = Vec::with_capacity(KEYS);
+		for target in &targets {
+			before.push(lb.select_index(target).await);
+		}
+
+		lb.proxies[DEAD].set_alive(false);
+
+		let mut remapped = 0usize;
+		for (target, old) in targets.iter().zip(&before) {
+			let new = lb.select_index(target).await;
+			if new != *old {
+				assert_eq!(*old, DEAD, "consistent hashing must only remap keys owned by the dead proxy");
+				remapped += 1;
+			}
+		}
+
+		// Roughly `1 / PROXIES` of the keys belonged to the dead proxy.
+		assert!(remapped > 0, "the dead proxy must have owned some keys");
+		assert!(
+			remapped * 4 < KEYS,
+			"a single dead proxy must not remap more than a quarter of the keys, remapped {remapped}/{KEYS}"
+		);
+	}
+
+	/// The ring itself must span the whole 64-bit hash space: a `u64 as usize`
+	/// truncation would collapse it into the low 32 bits on 32-bit targets and
+	/// silently halve the effective key space.
+	#[test]
+	fn consistent_hash_ring_covers_the_full_u64_space() {
+		const PROXIES: usize = 4;
+		let ring = build_hash_ring(PROXIES);
+
+		assert_eq!(ring.len(), PROXIES * VNODES_PER_PROXY as usize);
+		assert!(
+			ring.windows(2).all(|w| w[0].0 <= w[1].0),
+			"the ring must be sorted by position"
+		);
+		assert!(
+			ring.iter().all(|(_, index)| *index < PROXIES),
+			"every ring entry must belong to a proxy"
+		);
+
+		let min = ring.first().expect("the ring is non-empty").0;
+		let max = ring.last().expect("the ring is non-empty").0;
+		// A 32-bit truncation would confine every position to `0..2^32`, so the
+		// span is the observable symptom of using the full `u64` hash.
+		assert!(
+			max - min > u64::from(u32::MAX),
+			"the ring must span more than the low 32 bits, got span {}",
+			max - min
+		);
+		// The upper half of the hash space must be reachable at all.
+		let high = ring.iter().filter(|(position, _)| *position > u64::from(u32::MAX)).count();
+		assert!(
+			high * 4 > ring.len(),
+			"at least a quarter of the ring must sit above 2^32, got {high}/{}",
+			ring.len()
+		);
+	}
+
+	/// With every proxy dead the ring walk must still return a usable index
+	/// instead of panicking.
+	#[tokio::test]
+	async fn consistent_hashing_survives_all_proxies_going_dead() {
+		let lb = make_lb(LoadBalanceStrategy::ConsistentHashing, 3);
+		for proxy in &lb.proxies {
+			proxy.set_alive(false);
+		}
+
+		let idx = lb.select_index(&TargetAddr::Domain("x.com".into(), 80)).await;
+		assert!(idx < 3, "expected index in 0..3, got {idx}");
 	}
 
 	// ---- sticky-sessions -------------------------------------------------

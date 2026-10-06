@@ -14,7 +14,7 @@ memmap2 = "0.9"
 thiserror = "2"
 
 [dev-dependencies]
-criterion = { version = "4.7.0", package = "codspeed-criterion-compat" }
+criterion = { version = "5.0.2", package = "codspeed-criterion-compat" }
 ureq = "3"
 tempfile = "3"
 

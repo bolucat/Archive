@@ -93,16 +93,53 @@ impl<R: Router> AbstractInbound<R> for SocksInbound {
 					let conn_cancel = self.cancel.child_token();
 					conn_tasks.spawn(
 						async move {
+							let conn_info = ConnInfo {
+								remote_addr: client_addr,
+								protocol: Protocol::Socks5,
+								conn_id: next_conn_id(),
+							};
+
+							// Pre-auth connection veto — no identity exists yet, so
+							// it is reported as a plain accept/reject and never as a
+							// disconnected session.
+							if let Some(ch) = &opts.hooks.connection
+								&& let ConnectDecision::Reject(reason) = ch.on_connect(&conn_info).await
+							{
+								info!(target: "socks_in_handler", "connection from {} rejected by hook: {}", client_addr, reason);
+								return;
+							}
+
+							// The identity only exists inside the session, which
+							// cancellation may drop mid-flight; record it here so the
+							// disconnect hook below still reports who the session was,
+							// whatever ends it.
+							let authenticated: std::sync::Mutex<Option<UserId>> = std::sync::Mutex::new(None);
+							let record_auth = |id: &UserId| {
+								*authenticated.lock().unwrap() = Some(id.clone());
+							};
+
+							// The disconnect hook is cloned out of `opts` first: the
+							// session future below borrows `opts`, so `opts` itself is
+							// gone by the time the post-select hook runs.
+							let connection_hooks = opts.hooks.connection.clone();
 							let handler_cancel = conn_cancel.clone();
-							tokio::select! {
+							let result = tokio::select! {
 								_ = conn_cancel.cancelled() => {
 									info!(target: "socks_in_handler", "session aborted by shutdown");
+									Ok(())
 								}
-								res = handle_income(opts, stream, client_addr, cb, handler_cancel) => {
-									if let Err(err) = res {
-										error!(target: "socks_in_handler" , "{:}", err);
-									}
-								}
+								res = handle_session(opts, stream, client_addr, cb, handler_cancel, record_auth) => res,
+							};
+							if let Err(err) = result {
+								error!(target: "socks_in_handler" , "{:}", err);
+							}
+
+							// Connection lifecycle: the hook runs on every exit path —
+							// normal completion, error, or cancellation — so a shutdown
+							// that aborts an in-flight session is still observable.
+							if let Some(ch) = &connection_hooks {
+								let user = authenticated.lock().unwrap().clone();
+								ch.on_disconnect(&conn_info, user.as_ref()).await;
 							}
 						}
 						.in_current_span(),
@@ -127,45 +164,23 @@ impl SocksInbound {
 	}
 }
 
-async fn handle_income<C: InboundCallback>(
+/// Serve one accepted SOCKS5 connection through its command handling.
+///
+/// `record_auth` is invoked as soon as an identity is bound so the caller can
+/// report it through `on_disconnect` even if cancellation drops this future
+/// before it returns.
+async fn handle_session<C: InboundCallback>(
 	opts: Arc<SocksInboundOpt>,
 	stream: TcpStream,
 	client_addr: SocketAddr,
 	cb: C,
 	cancel: CancellationToken,
+	record_auth: impl Fn(&UserId),
 ) -> Result<(), Error> {
-	let conn_info = ConnInfo {
-		remote_addr: client_addr,
-		protocol: Protocol::Socks5,
-		conn_id: next_conn_id(),
-	};
-
-	// Connection-level veto (pre-auth — no UserId yet).
-	if let Some(ch) = &opts.hooks.connection
-		&& let ConnectDecision::Reject(reason) = ch.on_connect(&conn_info).await
-	{
-		info!(target: "socks_in_handler", "connection from {} rejected by hook: {}", client_addr, reason);
-		return Ok(());
-	}
-
-	// Track the authenticated identity so the disconnect hook can report it,
-	// regardless of how the session exits.
+	// Identity bound by this session; `record_auth` mirrors it to the caller
+	// (which needs it for `on_disconnect`) while this future stays alive.
 	let mut user: Option<UserId> = None;
-	let result = serve_socks(&opts, stream, client_addr, &cb, &cancel, &mut user).await;
-	if let Some(ch) = &opts.hooks.connection {
-		ch.on_disconnect(&conn_info, user.as_ref()).await;
-	}
-	result
-}
 
-async fn serve_socks<C: InboundCallback>(
-	opts: &Arc<SocksInboundOpt>,
-	stream: TcpStream,
-	client_addr: SocketAddr,
-	cb: &C,
-	cancel: &CancellationToken,
-	user: &mut Option<UserId>,
-) -> Result<(), Error> {
 	// Authenticate. If a `UserPassAuthenticator` hook is set it takes
 	// precedence: the client's credentials are captured during the SOCKS5
 	// password sub- negotiation and validated via the hook (NB: fast_socks5
@@ -185,7 +200,10 @@ async fn serve_socks<C: InboundCallback>(
 		let creds = captured.lock().unwrap().take();
 		match creds {
 			Some((u, p)) => match auth.authenticate(&u, &p).await {
-				Some(id) => *user = Some(id),
+				Some(id) => {
+					record_auth(&id);
+					user = Some(id);
+				}
 				None => {
 					warn!(target: "socks_in_handler", "SOCKS5 auth rejected for user {:?} from {}", u, client_addr);
 					return Ok(());
@@ -202,7 +220,9 @@ async fn serve_socks<C: InboundCallback>(
 					.await
 					.context(SocksSnafu)?
 					.0;
-				*user = Some(UserId::from(username.as_str()));
+				let id = UserId::from(username.as_str());
+				record_auth(&id);
+				user = Some(id);
 				proto
 			}
 		}

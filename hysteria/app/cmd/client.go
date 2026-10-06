@@ -237,7 +237,6 @@ type tunConfig struct {
 		IPv6 string `mapstructure:"ipv6"`
 	} `mapstructure:"address"`
 	Route *struct {
-		Strict      bool     `mapstructure:"strict"`
 		IPv4        []string `mapstructure:"ipv4"`
 		IPv6        []string `mapstructure:"ipv6"`
 		IPv4Exclude []string `mapstructure:"ipv4Exclude"`
@@ -1202,7 +1201,6 @@ func newTUNServer(config tunConfig, c client.Client) (*tun.Server, error) {
 	}
 	if config.Route != nil {
 		server.AutoRoute = true
-		server.StrictRoute = config.Route.Strict
 
 		parsePrefixes := func(field string, ss []string) ([]netip.Prefix, error) {
 			var prefixes []netip.Prefix

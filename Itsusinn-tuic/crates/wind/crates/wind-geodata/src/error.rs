@@ -8,6 +8,8 @@ pub enum GeoDataError {
 	Io(#[from] std::io::Error),
 	#[error("failed to serialize rkyv snapshot: {0}")]
 	Serialize(String),
+	#[error("geodata index overflow: {0}")]
+	IndexOverflow(String),
 	#[error("cache file too small or truncated")]
 	Truncated,
 	#[error("not a wind-geodata cache file (bad magic)")]

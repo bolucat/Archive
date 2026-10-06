@@ -6,6 +6,7 @@ import {
   reserveSourceforgeArtifact,
   sftpQuote,
   sourceforgeDownloadUrl,
+  sourceforgeReservationBatch,
   sourceforgeUploadBatch,
   validateSourceforgeFilename,
   validateSourceforgeProject,
@@ -52,7 +53,7 @@ async function runSftp(
   knownHostsPath: string,
   batch: string,
 ): Promise<void> {
-  const username = env("SOURCEFORGE_USERNAME");
+  const username = env("SOURCEFORGE_USERNAME").trim();
   validateSourceforgeUsername(username);
   const command = new Deno.Command("sftp", {
     args: [
@@ -87,7 +88,11 @@ async function runSftp(
     new Response(command.stderr).text(),
   ]);
   if (!status.success) {
-    throw new Error(`sftp failed (${status.code}): ${stderr || stdout}`);
+    throw new Error(
+      `sftp failed (${status.code}): ${
+        [stderr, stdout].filter(Boolean).join("\n")
+      }`,
+    );
   }
 }
 
@@ -175,6 +180,8 @@ async function main(): Promise<void> {
     const channel = env("SOURCEFORGE_CHANNEL");
     const releaseTag = Deno.env.get("SOURCEFORGE_RELEASE_TAG") ?? "";
     validateSourceforgeProject(project);
+    // Configuration failures must occur before the transport retry loop.
+    validateSourceforgeUsername(env("SOURCEFORGE_USERNAME").trim());
     if (
       channel !== manifest.channel ||
       (channel !== "release" && channel !== "nightly")
@@ -296,11 +303,8 @@ async function main(): Promise<void> {
                 );
               }
             }
-            const remoteDir = `/home/frs/project/${project}/${remotePath}`;
-            const inventoryRoot = `${remoteDir}/.upload-inventory`;
             for (const artifact of manifest.artifacts) {
               validateSourceforgeFilename(artifact.fileName);
-              const inventoryDir = `${inventoryRoot}/${artifact.fileName}`;
               const localInventory = path.join(tempDir, "inventory.json")
                 .replaceAll("\\", "/");
               const existingInventory = path.join(
@@ -315,31 +319,25 @@ async function main(): Promise<void> {
                   sha256: artifact.sha256,
                 }),
               );
+              const reservation = sourceforgeReservationBatch(
+                project,
+                remotePath,
+                artifact.fileName,
+                localInventory,
+              );
               await reserveSourceforgeArtifact(
                 artifact,
                 () =>
                   runSftp(
                     keyPath,
                     knownHostsPath,
-                    [
-                      `-mkdir ${
-                        sftpQuote(`/home/frs/project/${project}/releases`)
-                      }`,
-                      `-mkdir ${sftpQuote(remoteDir)}`,
-                      `-mkdir ${sftpQuote(inventoryRoot)}`,
-                      // Unlike the parent directories, this mkdir must fail if the claim exists.
-                      `mkdir ${sftpQuote(inventoryDir)}`,
-                      `put ${sftpQuote(localInventory)} ${
-                        sftpQuote(`${inventoryDir}/inventory.json`)
-                      }`,
-                      "",
-                    ].join("\n"),
+                    reservation.batch,
                   ),
                 async () => {
                   await runSftp(
                     keyPath,
                     knownHostsPath,
-                    `get ${sftpQuote(`${inventoryDir}/inventory.json`)} ${
+                    `get ${sftpQuote(reservation.inventoryPath)} ${
                       sftpQuote(existingInventory)
                     }\n`,
                   );

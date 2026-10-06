@@ -52,18 +52,21 @@ pub const VER: u8 = 5;
 // `Ok(None)`).
 // ---------------------------------------------------------------------------
 
-type ParseResult<'a, T> = IResult<&'a [u8], T>;
+type ParseResult<'a, T> = IResult<&'a [u8], T, ParseError>;
 
 pub(crate) fn parse_header(input: &[u8]) -> ParseResult<'_, Header> {
 	let (input, version) = nom_u8(input)?;
 	let (input, cmd_byte) = nom_u8(input)?;
 
 	if version != VER {
-		return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify)));
+		return Err(nom::Err::Error(ParseError::VersionMismatch {
+			expect: VER,
+			current: version,
+		}));
 	}
 	let cmd = CmdType::from(cmd_byte);
-	if matches!(cmd, CmdType::Other(_)) {
-		return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify)));
+	if let CmdType::Other(value) = cmd {
+		return Err(nom::Err::Error(ParseError::UnknownCommandType { value }));
 	}
 	Ok((input, Header::new(cmd)))
 }
@@ -108,7 +111,7 @@ pub(crate) fn parse_command_body(cmd_type: CmdType, input: &[u8]) -> ParseResult
 			Ok((input, Command::Dissociate { assoc_id }))
 		}
 		CmdType::Heartbeat => Ok((input, Command::Heartbeat)),
-		CmdType::Other(_v) => Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify))),
+		CmdType::Other(value) => Err(nom::Err::Error(ParseError::UnknownCommandType { value })),
 	}
 }
 
@@ -136,12 +139,30 @@ pub(crate) fn parse_address(input: &[u8]) -> ParseResult<'_, Address> {
 			let (input, domain_len) = nom_u8(input)?;
 			let (input, domain_bytes) = take(domain_len as usize).parse(input)?;
 			let (input, port) = nom_u16(Endianness::Big).parse(input)?;
-			let s = String::from_utf8(domain_bytes.to_vec())
-				.map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify)))?;
+			let s = String::from_utf8(domain_bytes.to_vec()).map_err(|e| {
+				nom::Err::Error(ParseError::FailParseDomain {
+					raw: hex_encode(domain_bytes),
+					source: e.utf8_error(),
+				})
+			})?;
 			Ok((input, Address::Domain(s, port)))
 		}
-		AddressType::Other(_v) => Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify))),
+		AddressType::Other(value) => Err(nom::Err::Error(ParseError::UnknownAddressType { value })),
 	}
+}
+
+/// Hex dump for [`ParseError::FailParseDomain`]'s `raw` field.
+///
+/// `const-hex` is only a dev-dependency of this crate, so the (rare) failure
+/// path spells the two nibbles out instead of taking a runtime dependency.
+fn hex_encode(bytes: &[u8]) -> String {
+	const HEX: &[u8; 16] = b"0123456789abcdef";
+	let mut out = String::with_capacity(bytes.len() * 2);
+	for byte in bytes {
+		out.push(HEX[usize::from(byte >> 4)] as char);
+		out.push(HEX[usize::from(byte & 0x0f)] as char);
+	}
+	out
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +180,7 @@ fn nom_parse<T>(buf: &mut impl Buf, context: &str, parser: impl Fn(&[u8]) -> Par
 			Ok(value)
 		}
 		Err(nom::Err::Incomplete(_)) => Err(eyre!("Incomplete data in {}", context)),
-		Err(_) => Err(eyre!("Malformed data in {}", context)),
+		Err(nom::Err::Error(err) | nom::Err::Failure(err)) => Err(eyre!("Malformed data in {context}: {err}")),
 	}
 }
 
@@ -327,5 +348,67 @@ mod tests {
 		let mut buf: &[u8] = &v;
 		let err = decode_address(&mut buf, "ctx").expect_err("must error on truncated v4");
 		assert!(format!("{err}").contains("Incomplete"));
+	}
+
+	/// Regression (W36/W37): the free helpers are the production hot path, so
+	/// `Malformed data in <context>` must also say *what* was malformed. Before
+	/// the fix every parse failure was reported as `ErrorKind::Verify` and the
+	/// reason never reached the caller.
+	#[test]
+	fn decode_header_reports_a_version_mismatch() {
+		let mut buf: &[u8] = &[0x04, u8::from(CmdType::Connect)];
+
+		let err = decode_header(&mut buf, "ctx").expect_err("a foreign version must fail");
+
+		let message = format!("{err}");
+		assert!(message.contains("Malformed data in ctx"), "unexpected message: {message}");
+		assert!(
+			message.contains("Version mismatch: expected 5, got 4"),
+			"unexpected message: {message}"
+		);
+	}
+
+	/// Regression (W36/W37): an unknown command type must be named, with the
+	/// offending byte, on the production decode path as well.
+	#[test]
+	fn decode_header_reports_an_unknown_command_type() {
+		let mut buf: &[u8] = &[VER, 0x09];
+
+		let err = decode_header(&mut buf, "ctx").expect_err("an unknown command must fail");
+
+		let message = format!("{err}");
+		assert!(message.contains("Unknown command type 9"), "unexpected message: {message}");
+	}
+
+	/// Regression (W36/W37): an unknown address type must be named, with the
+	/// offending byte, on the production decode path as well.
+	#[test]
+	fn decode_address_reports_an_unknown_address_type() {
+		let mut buf: &[u8] = &[0x07];
+
+		let err = decode_address(&mut buf, "ctx").expect_err("an unknown address type must fail");
+
+		let message = format!("{err}");
+		assert!(
+			message.contains("Unable to decode address due to type 7"),
+			"unexpected message: {message}"
+		);
+	}
+
+	/// Regression (W36): a non-UTF-8 domain keeps a hex dump of the raw bytes
+	/// in the error, so a malformed peer frame can still be diagnosed.
+	#[test]
+	fn decode_address_reports_a_non_utf8_domain() {
+		let mut frame = vec![u8::from(AddressType::Domain), 2, 0xff, 0xfe];
+		frame.extend_from_slice(&443u16.to_be_bytes());
+		let mut buf: &[u8] = &frame;
+
+		let err = decode_address(&mut buf, "ctx").expect_err("a non-UTF-8 domain must fail");
+
+		let message = format!("{err}");
+		assert!(
+			message.contains("Unable to decode domain fffe as UTF-8"),
+			"unexpected message: {message}"
+		);
 	}
 }

@@ -9,6 +9,11 @@ use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	net::{TcpStream, UdpSocket},
 };
+#[cfg(test)]
+use wind_core::{
+	FlowContext,
+	udp::{UdpPacket, UdpStream},
+};
 
 #[ctor::ctor(unsafe)]
 fn setup_crypto() {
@@ -512,58 +517,6 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 		Ok(())
 	}
 
-	async fn handle_udp_direct(_ctx: FlowContext, stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
-		use std::{collections::HashMap, sync::Arc};
-
-		use tokio::sync::Mutex;
-
-		let wind_core::udp::UdpStream { tx, mut rx } = stream;
-		let target_sockets: Arc<Mutex<HashMap<String, Arc<tokio::net::UdpSocket>>>> = Arc::new(Mutex::new(HashMap::new()));
-		let target_sockets_clone = target_sockets.clone();
-
-		tokio::spawn(async move {
-			while let Some(packet) = rx.recv().await {
-				let target_key = packet.target.to_string();
-
-				let target_socket = {
-					let mut sockets = target_sockets_clone.lock().await;
-					if let Some(sock) = sockets.get(&target_key) {
-						sock.clone()
-					} else {
-						let new_sock = Arc::new(tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap());
-						sockets.insert(target_key.clone(), new_sock.clone());
-
-						let tx_for_recv = tx.clone();
-						let target_sock_for_recv = new_sock.clone();
-						let source_addr = packet.target.clone();
-						tokio::spawn(async move {
-							let mut buf = vec![0u8; 65536];
-							while let Ok((len, _from)) = target_sock_for_recv.recv_from(&mut buf).await {
-								let reply_packet = wind_core::udp::UdpPacket {
-									source: None,
-									target: source_addr.clone(),
-									payload: tokio_util::bytes::Bytes::copy_from_slice(&buf[..len]),
-								};
-								if let Err(e) = tx_for_recv.send(reply_packet).await {
-									eprintln!("UDP relay: failed to send reply packet: {}", e);
-								}
-							}
-						});
-
-						new_sock
-					}
-				};
-
-				if let Err(e) = target_socket.send_to(&packet.payload, target_key).await {
-					eprintln!("UDP relay: failed to send to target: {}", e);
-				}
-			}
-			eyre::Ok::<()>(())
-		});
-
-		Ok(())
-	}
-
 	let tuic_inbound = Arc::new(wind_tuic::quinn::inbound::TuicInbound::new(ctx.clone(), tuic_opts));
 	let socks_inbound = Arc::new(wind_socks::inbound::SocksInbound::new(
 		config.socks_opt,
@@ -588,9 +541,174 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 	Ok(())
 }
 
+/// One target's reply socket plus the task relaying its responses back to the
+/// client.
+#[cfg(test)]
+struct ReplySocket {
+	socket: Arc<tokio::net::UdpSocket>,
+	task: tokio::task::JoinHandle<()>,
+}
+
+/// Direct UDP relay used by the test proxy's outbound.
+///
+/// Module level rather than nested in `run_test_proxy` so the regression test
+/// can drive it without starting a whole proxy.
+#[cfg(test)]
+async fn handle_udp_direct(_ctx: FlowContext, stream: UdpStream) -> eyre::Result<()> {
+	use std::{collections::HashMap, sync::Arc};
+
+	use tokio::sync::Mutex;
+
+	let UdpStream { tx, mut rx } = stream;
+	let target_sockets: Arc<Mutex<HashMap<String, ReplySocket>>> = Arc::new(Mutex::new(HashMap::new()));
+	let target_sockets_clone = target_sockets.clone();
+
+	tokio::spawn(async move {
+		while let Some(packet) = rx.recv().await {
+			let target_key = packet.target.to_string();
+
+			let target_socket = {
+				let mut sockets = target_sockets_clone.lock().await;
+				if let Some(relay) = sockets.get(&target_key) {
+					relay.socket.clone()
+				} else {
+					let new_sock = Arc::new(tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap());
+
+					let tx_for_recv = tx.clone();
+					let target_sock_for_recv = new_sock.clone();
+					let source_addr = packet.target.clone();
+					let sockets_for_recv = target_sockets_clone.clone();
+					let key_for_recv = target_key.clone();
+					// The handle is kept instead of dropped: dropping a
+					// `JoinHandle` only detaches, and a reply task left running
+					// parks in `recv_from` while holding a `tx` clone, which
+					// keeps the caller-visible channel open after the flow
+					// ends.
+					let task = tokio::spawn(async move {
+						let mut buf = vec![0u8; 65536];
+						while let Ok((len, _from)) = target_sock_for_recv.recv_from(&mut buf).await {
+							let reply_packet = UdpPacket {
+								source: None,
+								target: source_addr.clone(),
+								payload: tokio_util::bytes::Bytes::copy_from_slice(&buf[..len]),
+							};
+							if let Err(e) = tx_for_recv.send(reply_packet).await {
+								eprintln!("UDP relay: failed to send reply packet: {}", e);
+								break;
+							}
+						}
+						// This socket cannot deliver replies any more: forget
+						// the entry so a later packet for the same target binds
+						// a fresh socket instead of reusing a dead one.
+						sockets_for_recv.lock().await.remove(&key_for_recv);
+					});
+
+					sockets.insert(
+						target_key.clone(),
+						ReplySocket {
+							socket: new_sock.clone(),
+							task,
+						},
+					);
+					new_sock
+				}
+			};
+
+			if let Err(e) = target_socket.send_to(&packet.payload, target_key).await {
+				eprintln!("UDP relay: failed to send to target: {}", e);
+			}
+		}
+
+		// The caller side is gone, so the association is over: stop every
+		// per-target reply task and wait for it. Otherwise their sockets and
+		// `tx` clones outlive the flow.
+		let relays: Vec<ReplySocket> = {
+			let mut sockets = target_sockets_clone.lock().await;
+			sockets.drain().map(|(_, relay)| relay).collect()
+		};
+		for relay in relays {
+			relay.task.abort();
+			let _ = relay.task.await;
+		}
+	});
+
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// Minimal context for the direct UDP relay test.
+	fn test_udp_ctx() -> FlowContext {
+		FlowContext {
+			target: wind_core::types::TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0),
+			network: wind_core::rule::NetworkType::Udp,
+			source: None,
+			inbound_tag: "wind-test".into(),
+			protocol: wind_core::hooks::Protocol::Tunnel,
+			user: None,
+			inbound_port: None,
+			inbound_type: None,
+		}
+	}
+
+	/// Each per-target reply task holds a `tx` clone of the caller-visible
+	/// stream, so a task left running after the association ends keeps that
+	/// channel open (and its socket alive) for good. Closing the client side of
+	/// the relay must therefore stop the reply tasks instead of leaving them
+	/// parked in `recv_from`.
+	#[tokio::test]
+	async fn udp_relay_reply_tasks_stop_when_the_flow_closes() {
+		use tokio::net::UdpSocket;
+
+		// A local echo socket stands in for the relay target; it makes the
+		// reply task receive at least one datagram before parking.
+		let echo = UdpSocket::bind("127.0.0.1:0").await.expect("bind local udp echo");
+		let echo_addr = echo.local_addr().expect("echo local addr");
+		tokio::spawn(async move {
+			let mut buf = vec![0u8; 2048];
+			while let Ok((n, from)) = echo.recv_from(&mut buf).await {
+				let _ = echo.send_to(&buf[..n], from).await;
+			}
+		});
+
+		let (tx_to_relay, rx_at_relay) = tokio::sync::mpsc::channel::<UdpPacket>(4);
+		let (tx_to_caller, mut rx_at_caller) = tokio::sync::mpsc::channel::<UdpPacket>(4);
+		let stream = UdpStream {
+			tx: tx_to_caller,
+			rx: rx_at_relay,
+		};
+
+		handle_udp_direct(test_udp_ctx(), stream)
+			.await
+			.expect("start direct udp relay");
+
+		tx_to_relay
+			.send(UdpPacket {
+				source: None,
+				target: wind_core::types::TargetAddr::IPv4(std::net::Ipv4Addr::LOCALHOST, echo_addr.port()),
+				payload: bytes::Bytes::from_static(b"wind-test socks5 udp relay"),
+			})
+			.await
+			.expect("send packet into the relay");
+
+		let echoed = tokio::time::timeout(Duration::from_secs(5), rx_at_caller.recv())
+			.await
+			.expect("echo never arrived, so the relay path did not run")
+			.expect("reply channel closed before the echo arrived");
+		assert_eq!(&echoed.payload[..], b"wind-test socks5 udp relay");
+
+		// The client side is gone: the relay has to tear its per-target reply
+		// task down. While a reply task survives, its `tx` clone keeps this
+		// receive pending instead of resolving to `None`.
+		drop(tx_to_relay);
+		let closed = tokio::time::timeout(Duration::from_secs(2), rx_at_caller.recv()).await;
+		assert!(
+			matches!(closed, Ok(None)),
+			"caller channel outlived the relay (got {closed:?}); a per-target reply task is still running"
+		);
+	}
 
 	#[tokio::test]
 	async fn test_direct_tcp_connection() {

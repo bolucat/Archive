@@ -22,7 +22,7 @@ type UDPResolver struct {
 	mu      sync.Mutex
 }
 
-func NewUDPResolver(config *UDPResolverProto, dialer *finalmask.Dialer) (Resolver, error) {
+func NewUDPResolver(config *ResolverProto, dialer *finalmask.Dialer) (Resolver, error) {
 	dest, err := net.ParseDestination("udp:" + config.Addr)
 	if err != nil {
 		return nil, err
@@ -117,13 +117,15 @@ func (r *UDPResolver) Send(p []byte) {
 
 func (r *UDPResolver) Close() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed() {
+		r.mu.Unlock()
 		return
 	}
 	close(r.closeCh)
-	if r.conn != nil {
-		_ = r.conn.Close()
+	conn := r.conn
+	r.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
 	}
 	r.wg.Wait()
 	close(r.readCh)

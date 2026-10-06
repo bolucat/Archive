@@ -131,6 +131,11 @@ NaiveOutbound (cronet-rs)
 └─────────────────────────┘
 ```
 
+When the relay ends, the channel closures make the sync thread unwind, and the
+async side hands its `JoinHandle` to a session guard that joins it on a blocking
+thread. The thread and the socket inside its `NaiveConn` are therefore reclaimed
+instead of being detached and left to outlive the tunnel.
+
 ## UDP (UDP-over-TCP v2)
 
 NaiveProxy's classic protocol only tunnels **TCP** (an HTTP `CONNECT` byte

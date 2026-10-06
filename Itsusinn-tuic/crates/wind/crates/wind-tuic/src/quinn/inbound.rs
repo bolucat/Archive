@@ -310,9 +310,16 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 			Endpoint::new_with_abstract_socket(EndpointConfig::default(), Some(config), socket, Arc::new(TokioRuntime))
 				.wrap_err("Failed to create QUIC endpoint")?;
 
-		info!("TUIC server listening on {}", endpoint.local_addr().unwrap());
+		// `Endpoint::local_addr` is fallible: it reports `io::Error` from the
+		// underlying socket. A failed lookup must abort startup with context
+		// instead of panicking in the listener path, and the value is read once
+		// so the log line and the `bound_addr` report cannot disagree.
+		let local_addr = endpoint
+			.local_addr()
+			.wrap_err("Failed to read the bound address of the TUIC endpoint")?;
+		info!("TUIC server listening on {}", local_addr);
 		if let Some(tx) = &self.opts.bound_addr {
-			let _ = tx.send_replace(Some(endpoint.local_addr().unwrap()));
+			let _ = tx.send_replace(Some(local_addr));
 		}
 
 		let users = Arc::new(self.opts.users.clone());
@@ -475,7 +482,103 @@ async fn handle_connection<C: InboundCallback + Clone>(
 
 #[cfg(test)]
 mod tests {
+	use wind_core::{RouteAction, Router, flow::FlowContext};
+
 	use super::*;
+
+	/// Minimal router: `listen` only needs the [`Dispatcher`] for connection
+	/// callbacks and never asks this stub to route anything.
+	struct TestRouter;
+
+	impl Router for TestRouter {
+		async fn route(&self, _ctx: &FlowContext) -> eyre::Result<RouteAction> {
+			Ok(RouteAction::Forward("default".to_string()))
+		}
+	}
+
+	/// Self-signed material for a listener that never completes a handshake.
+	fn self_signed_tls() -> TlsProvider {
+		let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+		TlsProvider::Files {
+			certificate: vec![rustls::pki_types::CertificateDer::from(cert.cert)],
+			private_key: rustls::pki_types::PrivateKeyDer::from(rustls::pki_types::PrivatePkcs8KeyDer::from(
+				cert.signing_key.serialize_der(),
+			)),
+		}
+	}
+
+	/// The server TLS config is built through `rustls`'s implicit
+	/// process-level provider lookup, which panics when nothing is installed
+	/// (exactly what [`crate::quinn::tls`] resolves for the client side).
+	/// Install the feature-selected default once, the same way a real server
+	/// process does before building any config.
+	fn ensure_crypto_provider() {
+		#[cfg(feature = "aws-lc-rs")]
+		let install = || {
+			let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+		};
+		#[cfg(all(feature = "ring", not(feature = "aws-lc-rs")))]
+		let install = || {
+			let _ = rustls::crypto::ring::default_provider().install_default();
+		};
+		if rustls::crypto::CryptoProvider::get_default().is_none() {
+			install();
+		}
+	}
+
+	/// [`TuicInbound::listen`] must read the bound address without panicking
+	/// and publish exactly the address the socket is really bound to — the
+	/// value a caller that asked for port 0 needs in order to reach the
+	/// listener.
+	///
+	/// The read is fallible in quinn (`Endpoint::local_addr` returns
+	/// `io::Result`), so it is neither unwrapped nor duplicated: one read
+	/// feeds both the log line and the `bound_addr` report.
+	#[tokio::test]
+	async fn listen_publishes_the_os_assigned_bound_address() {
+		ensure_crypto_provider();
+		let bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+		let (tx, mut rx) = watch::channel(None);
+		let ctx = Arc::new(AppContext::default());
+		let opts = TuicInboundOpts {
+			listen_addr: bind_addr,
+			tls: self_signed_tls(),
+			bound_addr: Some(tx),
+			..Default::default()
+		};
+		let inbound = TuicInbound::new(ctx.clone(), opts);
+		let dispatcher = Dispatcher::new(TestRouter);
+		let listener = tokio::spawn(async move { inbound.listen(&dispatcher).await });
+		let cancel = ctx.token.clone();
+
+		let reported = tokio::time::timeout(Duration::from_secs(5), async {
+			loop {
+				let current = rx.borrow_and_update().to_owned();
+				if let Some(addr) = current {
+					return addr;
+				}
+				rx.changed().await.expect("the listener dropped its bound_addr sender");
+			}
+		})
+		.await
+		.expect("the listener never published a bound address");
+
+		// Cancelling the context token makes `listen` return cleanly instead of
+		// leaving a detached endpoint (and a leaked test task) behind.
+		cancel.cancel();
+		tokio::time::timeout(Duration::from_secs(5), listener)
+			.await
+			.expect("the listener did not stop after cancellation")
+			.expect("the listener task panicked")
+			.expect("the listener failed after successfully publishing an address");
+
+		assert_eq!(
+			reported.ip(),
+			bind_addr.ip(),
+			"the listener must stay on the requested interface"
+		);
+		assert_ne!(reported.port(), 0, "a port-0 bind must report the port the OS assigned");
+	}
 
 	/// Windows defaults `IPV6_V6ONLY` to 1: without dual-stack mode a wildcard
 	/// IPv6 listener never sees the IPv4 peers of a host that resolved this

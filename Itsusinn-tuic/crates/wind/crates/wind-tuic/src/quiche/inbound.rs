@@ -21,9 +21,10 @@ use wind_quic::{
 
 use crate::{Result, quiche::utils::ConnectionOpts};
 
-/// Authentication timeout for quiche connections. The peer must send its `Auth`
-/// command within this window or the connection is closed (matches the quinn
-/// backend's default).
+/// Default authentication timeout for quiche connections. The peer must send
+/// its `Auth` command within this window or the connection is closed (matches
+/// the quinn backend's default). Override it per-inbound with
+/// [`TuicheInboundBuilder::auth_timeout`].
 const AUTH_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// TUIC server using the quiche / tokio-quiche backend.
@@ -32,6 +33,10 @@ pub struct TuicheInbound {
 	listen_addr: SocketAddr,
 	users: HashMap<Uuid, String>,
 	opts: ConnectionOpts,
+	/// How long an accepted connection may stay unauthenticated before it is
+	/// closed. Set through [`TuicheInboundBuilder::auth_timeout`]; the direct
+	/// constructor uses [`AUTH_TIMEOUT`].
+	auth_timeout: Duration,
 	/// Path to the PEM-encoded TLS certificate chain.
 	cert_path: String,
 	/// Path to the PEM-encoded private key.
@@ -66,6 +71,10 @@ impl TuicheInbound {
 	/// Direct constructor — build a [`TuicheInbound`] without going through the
 	/// async builder. Useful when the caller has already generated certs and
 	/// knows the paths are valid.
+	///
+	/// The authentication window is the default [`AUTH_TIMEOUT`]; build a
+	/// [`TuicheInboundBuilder`] and call
+	/// [`auth_timeout`](TuicheInboundBuilder::auth_timeout) to change it.
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		listen_addr: SocketAddr,
@@ -85,6 +94,7 @@ impl TuicheInbound {
 			listen_addr,
 			users,
 			opts,
+			auth_timeout: AUTH_TIMEOUT,
 			cert_path,
 			private_key_path,
 			cert_store,
@@ -165,7 +175,7 @@ impl<R: Router> AbstractInbound<R> for TuicheInbound {
 					conn,
 					remote,
 					users,
-					AUTH_TIMEOUT,
+					self.auth_timeout,
 					cb,
 					cancel,
 					masquerade,
@@ -191,6 +201,7 @@ pub struct TuicheInboundBuilder {
 	cert_path: Option<String>,
 	private_key_path: Option<String>,
 	opts: ConnectionOpts,
+	auth_timeout: Duration,
 	cancel: Option<CancellationToken>,
 	masquerade: Option<crate::server::MasqueradeConfig>,
 	hooks: InboundHooks,
@@ -208,6 +219,7 @@ impl TuicheInboundBuilder {
 			cert_path: None,
 			private_key_path: None,
 			opts: ConnectionOpts::default(),
+			auth_timeout: AUTH_TIMEOUT,
 			cancel: None,
 			masquerade: None,
 			hooks: InboundHooks::default(),
@@ -297,6 +309,24 @@ impl TuicheInboundBuilder {
 		self
 	}
 
+	/// Set how long an accepted connection may stay unauthenticated before the
+	/// server closes it. Defaults to 3 s, matching the quinn backend.
+	///
+	/// A window that is too long leaves unauthenticated peers (and their
+	/// per-connection state) alive; too short can drop a client whose first
+	/// `Authenticate` is delayed by a slow link.
+	pub fn auth_timeout(mut self, timeout: Duration) -> Self {
+		self.auth_timeout = timeout;
+		self
+	}
+
+	/// Set the ALPN protocols the server offers during the TLS handshake.
+	/// Defaults to `["h3"]`; entries are used verbatim (no `h3` is injected).
+	pub fn alpn(mut self, alpn: Vec<Vec<u8>>) -> Self {
+		self.opts.alpn = alpn;
+		self
+	}
+
 	/// Build the server. Reads the certificate and key files to seed the
 	/// hot-swappable [`CertStore`]; both paths are required.
 	pub async fn build(self) -> Result<TuicheInbound> {
@@ -317,6 +347,7 @@ impl TuicheInboundBuilder {
 			listen_addr,
 			users: self.users,
 			opts: self.opts,
+			auth_timeout: self.auth_timeout,
 			cert_path,
 			private_key_path,
 			cert_store,
@@ -333,5 +364,59 @@ impl TuicheInboundBuilder {
 impl Default for TuicheInboundBuilder {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// W46: before the builder exposed the window it lived in a private const,
+	/// so a server operator could not lengthen or shorten it. The historical
+	/// 3 s default must survive the new knob (an unconfigured server keeps the
+	/// exact previous behavior).
+	#[test]
+	fn the_default_auth_window_stays_three_seconds() {
+		assert_eq!(AUTH_TIMEOUT, Duration::from_secs(3), "the historical default must not change");
+		assert_eq!(
+			TuicheInboundBuilder::new().auth_timeout,
+			Duration::from_secs(3),
+			"an unconfigured builder must keep the historical 3 s window"
+		);
+	}
+
+	/// The builder is the only way to reach the window, so the setter must
+	/// actually store what the caller passed.
+	#[test]
+	fn the_builder_stores_a_configured_auth_window() {
+		assert_eq!(
+			TuicheInboundBuilder::new()
+				.auth_timeout(Duration::from_millis(250))
+				.auth_timeout,
+			Duration::from_millis(250)
+		);
+	}
+
+	/// `build()` is where the builder's value must land on the server: if it
+	/// were dropped here the accept loop would silently fall back to the
+	/// default and the setter would be a no-op.
+	#[tokio::test]
+	async fn build_carries_the_configured_auth_window_onto_the_server() -> Result<()> {
+		let dir = tempfile::tempdir()?;
+		let generated = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])?;
+		let cert_path = dir.path().join("cert.pem");
+		let key_path = dir.path().join("key.pem");
+		std::fs::write(&cert_path, generated.cert.pem())?;
+		std::fs::write(&key_path, generated.signing_key.serialize_pem())?;
+
+		let inbound = TuicheInboundBuilder::new()
+			.listen_addr("127.0.0.1:0".parse()?)
+			.certificate_path(cert_path.to_string_lossy().into_owned())
+			.private_key_path(key_path.to_string_lossy().into_owned())
+			.auth_timeout(Duration::from_millis(250))
+			.build()
+			.await?;
+		assert_eq!(inbound.auth_timeout, Duration::from_millis(250));
+		Ok(())
 	}
 }

@@ -70,6 +70,9 @@ func NewClient(c *Config, dialer *finalmask.Dialer) (net.PacketConn, error) {
 		for j := range c.Domains[i].Types {
 			types = append(types, uint16(c.Domains[i].Types[j]))
 		}
+		if len(types) == 0 {
+			types = []uint16{16}
+		}
 		domain, err := NewDomain(c.Domains[i].Name, int(c.Domains[i].LenLimit), int(c.Domains[i].LabelLimit), types, uint16(c.Domains[i].Edns0))
 		if err != nil {
 			return nil, err
@@ -80,6 +83,9 @@ func NewClient(c *Config, dialer *finalmask.Dialer) (net.PacketConn, error) {
 	for i := range c.Resolvers {
 		resolver, err := NewResolver(c.Resolvers[i], dialer)
 		if err != nil {
+			for _, resolver := range resolvers {
+				resolver.Close()
+			}
 			return nil, err
 		}
 		resolvers = append(resolvers, resolver)

@@ -177,8 +177,9 @@ pub trait ConnectionHooks: Send + Sync + 'static {
 /// Receives periodic batches of per-user traffic from the flush task.
 #[async_trait]
 pub trait TrafficSink: Send + Sync + 'static {
-	/// Submit one flush cycle's batch. On `Err`, the collector `restore`s the
-	/// batch so it rolls into the next cycle (zero loss).
+	/// Submit one flush cycle's batch. On `Err`, the flush task `restore`s the
+	/// batch: the periodic flush rolls it into the next cycle, and the final
+	/// shutdown flush retries it in place, since no later cycle will run.
 	async fn submit(&self, batch: Vec<UserTraffic>) -> eyre::Result<()>;
 }
 
@@ -261,10 +262,41 @@ impl StaticUserPass {
 	}
 }
 
+/// Compares a client-supplied secret against the configured one without letting
+/// the comparison stop at the first differing byte.
+///
+/// `==` on `str`/`String` ends up in `memcmp`, which returns as soon as the
+/// bytes differ, so how long it takes reveals how many leading bytes a guess
+/// got right — enough to recover a credential byte by byte. The fold below
+/// always reads every byte of an equally long pair, and `black_box` keeps the
+/// optimiser from recognising the loop as `memcmp` and putting the early exit
+/// back; `wind-tuic` uses the same fold for its 32-byte token.
+///
+/// Length inequality is decided before the loop: the *length* of the client's
+/// own guess already travels in the clear in the SOCKS5 handshake (RFC 1929),
+/// so only the byte contents are secret. A length-first compare cannot hide the
+/// configured length anyway — its trip count would still depend on it.
+fn secrets_match(candidate: &str, expected: &str) -> bool {
+	let (candidate, expected) = (candidate.as_bytes(), expected.as_bytes());
+	if candidate.len() != expected.len() {
+		return false;
+	}
+	let mut diff = 0u8;
+	for (a, b) in candidate.iter().zip(expected) {
+		diff = core::hint::black_box(diff | (a ^ b));
+	}
+	core::hint::black_box(diff) == 0
+}
+
 #[async_trait]
 impl UserPassAuthenticator for StaticUserPass {
 	async fn authenticate(&self, username: &str, password: &str) -> Option<UserId> {
-		(username == self.username && password == self.password).then(|| self.user_id.clone())
+		// Both comparisons always run (bitwise `&`, not `&&`): short-circuiting
+		// would skip the password check for a wrong username, which by itself
+		// leaks whether the username matched.
+		let user_ok = secrets_match(username, &self.username);
+		let pass_ok = secrets_match(password, &self.password);
+		(user_ok & pass_ok).then(|| self.user_id.clone())
 	}
 }
 
@@ -362,6 +394,46 @@ mod tests {
 		let auth = StaticUserPass::new("alice", "pw");
 		assert_eq!(auth.authenticate("alice", "pw").await, Some(UserId::from("alice")));
 		assert!(auth.authenticate("alice", "bad").await.is_none());
+	}
+
+	/// The constant-time fold must keep the exact accept/reject truth table,
+	/// including equal-length near misses. Constant-time-ness itself is not
+	/// deterministically assertable from a unit test (any timing assertion is
+	/// flaky), so what is pinned here is the behaviour the fold must preserve.
+	#[tokio::test]
+	async fn static_userpass_rejects_equal_length_guesses_that_differ_in_any_position() {
+		let auth = StaticUserPass::new("alice", "correct-horse-battery");
+		// Same length as the configured secret: differ in the last byte (whole
+		// prefix matches), in the first byte (whole suffix matches), in the
+		// username, in both, or in the username only.
+		assert!(auth.authenticate("alice", "correct-horse-batterX").await.is_none());
+		assert!(auth.authenticate("alice", "Xorrect-horse-battery").await.is_none());
+		assert!(auth.authenticate("alicX", "correct-horse-battery").await.is_none());
+		assert!(auth.authenticate("alicX", "correct-horse-batterX").await.is_none());
+		assert!(auth.authenticate("bob", "correct-horse-battery").await.is_none());
+		// Length mismatches reject in both directions, including the empty
+		// credential set (no panic on the shorter operand).
+		assert!(auth.authenticate("alice", "correct-horse-batter").await.is_none());
+		assert!(auth.authenticate("alice", "correct-horse-batteryX").await.is_none());
+		assert!(auth.authenticate("", "").await.is_none());
+		// The exact pair still authenticates and binds the configured identity.
+		assert_eq!(
+			auth.authenticate("alice", "correct-horse-battery").await,
+			Some(UserId::from("alice"))
+		);
+	}
+
+	#[test]
+	fn secrets_match_accepts_only_byte_identical_secrets() {
+		assert!(secrets_match("", ""));
+		assert!(secrets_match("pw", "pw"));
+		assert!(!secrets_match("pw", "pX"));
+		assert!(!secrets_match("Xw", "pw"));
+		assert!(!secrets_match("p", "pw"));
+		assert!(!secrets_match("pw", "pw "));
+		// Comparison is on encoded bytes, not on `char`s.
+		assert!(secrets_match("pässword", "pässword"));
+		assert!(!secrets_match("pässword", "pässwOrd"));
 	}
 
 	#[test]

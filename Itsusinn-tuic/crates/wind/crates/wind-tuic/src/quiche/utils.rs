@@ -99,6 +99,12 @@ pub struct ConnectionOpts {
 	pub udp_relay_mode: UdpRelayMode,
 	/// Enable 0-RTT.
 	pub enable_0rtt: bool,
+	/// ALPN protocols advertised to the peer. For a server this is the list it
+	/// offers during the TLS handshake — without an entry here the connection
+	/// fails; for a client it is a fallback that
+	/// [`TuicheOutboundOpts::alpn`](crate::quiche::TuicheOutboundOpts::alpn)
+	/// overrides.
+	pub alpn: Vec<Vec<u8>>,
 }
 
 impl Default for ConnectionOpts {
@@ -117,6 +123,7 @@ impl Default for ConnectionOpts {
 			cc: CongestionTuning::default(),
 			udp_relay_mode: UdpRelayMode::default(),
 			enable_0rtt: true,
+			alpn: vec![b"h3".to_vec()],
 		}
 	}
 }
@@ -138,9 +145,37 @@ impl ConnectionOpts {
 			// TUIC's native UDP relay uses QUIC DATAGRAM frames (RFC 9221).
 			enable_datagram: matches!(self.udp_relay_mode, UdpRelayMode::Datagram),
 			enable_0rtt: self.enable_0rtt,
-			alpn: vec![b"h3".to_vec()],
+			alpn: self.alpn.clone(),
 			cc: self.cc.clone(),
 			..Default::default()
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The quiche **server** offers exactly [`ConnectionOpts::alpn`]: unlike
+	/// the quinn backend's TLS config there is no separate server-side ALPN
+	/// field, so this list is what the handshake advertises.
+	#[test]
+	fn to_transport_carries_the_caller_alpn() {
+		let opts = ConnectionOpts {
+			alpn: vec![b"tuic-test".to_vec(), b"h3".to_vec()],
+			..Default::default()
+		};
+		assert_eq!(
+			opts.to_transport().alpn,
+			vec![b"tuic-test".to_vec(), b"h3".to_vec()],
+			"the transport must advertise the configured ALPN list verbatim"
+		);
+	}
+
+	/// The default stays the TUIC/HTTP-3 protocol id, so an unconfigured server
+	/// behaves exactly as before.
+	#[test]
+	fn default_alpn_is_h3() {
+		assert_eq!(ConnectionOpts::default().to_transport().alpn, vec![b"h3".to_vec()]);
 	}
 }

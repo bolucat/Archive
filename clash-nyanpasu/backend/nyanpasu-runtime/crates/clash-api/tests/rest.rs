@@ -66,7 +66,7 @@ async fn typed_rest_methods_preserve_queries_bodies_and_empty_responses() {
             "/providers/proxies/{provider}/healthcheck",
             get(provider_healthcheck),
         )
-        .route("/proxies/{group}/", put(select_proxy));
+        .route("/proxies/{group}", put(select_proxy));
     let (address, server) = spawn_server(app).await;
     let client = Client::builder(Host::http(address).unwrap())
         .secret("controller-secret")
@@ -333,10 +333,10 @@ fn config_response_validation_does_not_widen_writes_or_subscriptions() {
 #[tokio::test]
 async fn proxy_lists_accept_base_nodes_and_partial_subscription_usage() {
     let app = Router::new()
-        .route("/proxies/", get(|| async { Json(serde_json::json!({"proxies":{
+        .route("/proxies", get(|| async { Json(serde_json::json!({"proxies":{
             "node":{"name":"node","type":"Vless","udp":true,"history":[{"time":"2026-09-07T00:00:00Z","delay":-1}]}
         }})) }))
-        .route("/providers/proxies/", get(|| async { Json(serde_json::json!({"providers":{
+        .route("/providers/proxies", get(|| async { Json(serde_json::json!({"providers":{
             "p":{"name":"p","type":"FutureProxy","vehicleType":"FutureTransport","proxies":[],"subscriptionInfo":{"Expire":123,"upload":5}}
         }})) }));
     let (address, server) = spawn_server(app).await;
@@ -375,4 +375,79 @@ fn proxy_metadata_still_rejects_malformed_present_values() {
         )
         .is_err()
     );
+}
+
+fn group_record(name: &str) -> serde_json::Value {
+    serde_json::json!({"name": name, "type": "LoadBalance", "history": [], "udp": true, "all": []})
+}
+
+#[tokio::test]
+async fn group_lists_accept_mihomo_arrays_and_meow_maps() {
+    let group = group_record("组/ %");
+    let mut memberless = group_record("memberless");
+    memberless["all"] = serde_json::Value::Null;
+    let cases = [
+        (
+            serde_json::json!({"proxies": [group.clone(), memberless.clone()]}),
+            Some(2),
+        ),
+        (
+            serde_json::json!({"proxies": {"组/ %": group.clone(), "memberless": memberless}}),
+            Some(2),
+        ),
+        (serde_json::json!({"proxies": []}), Some(0)),
+        (serde_json::json!({"proxies": {}}), Some(0)),
+        (serde_json::json!({"proxies": null}), None),
+        (serde_json::json!({}), None),
+        (serde_json::json!({"proxies": [{"name": "broken"}]}), None),
+    ];
+    for (body, expected) in cases {
+        let app = Router::new().route("/group", get(move || async move { Json(body) }));
+        let (address, server) = spawn_server(app).await;
+        let result = Client::new_http(address).unwrap().groups().await;
+        match expected {
+            Some(count) => {
+                let groups = result.unwrap();
+                assert_eq!(groups.len(), count);
+                if let Some(group) = groups.get(&ProxyName::from("组/ %")) {
+                    assert_eq!(group.all, Some(vec![]));
+                    assert!(group.now.is_none());
+                }
+                if let Some(group) = groups.get(&ProxyName::from("memberless")) {
+                    assert!(group.all.is_none());
+                }
+            }
+            None => assert!(
+                matches!(result, Err(clash_api::Error::Decode { .. })),
+                "{result:?}"
+            ),
+        }
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn proxy_resource_paths_encode_names_without_trailing_slashes() {
+    let app = Router::new()
+        .route("/group/{name}", get(|Path(name): Path<String>| async move { Json(group_record(&name)) }))
+        .route("/proxies/{name}", get(|Path(name): Path<String>| async move { Json(group_record(&name)) }).delete(|| async { StatusCode::NO_CONTENT }))
+        .route("/providers/proxies/{name}", get(|Path(name): Path<String>| async move { Json(serde_json::json!({"name":name,"type":"Proxy","vehicleType":"HTTP","proxies":[]})) }).put(|| async { StatusCode::NO_CONTENT }))
+        .route("/providers/proxies/{provider}/{name}", get(|Path((provider,name)): Path<(String,String)>| async move { assert_eq!(provider,"provider/ % 中文"); Json(group_record(&name)) }));
+    let (address, server) = spawn_server(app).await;
+    let client = Client::new_http(address).unwrap();
+    let name = ProxyName::from("group/ % 中文");
+    let provider = ProviderName::from("provider/ % 中文");
+    assert_eq!(client.group(&name).await.unwrap().name, name);
+    assert_eq!(client.proxy(&name).await.unwrap().name, name);
+    client.clear_proxy_selection(&name).await.unwrap();
+    assert_eq!(
+        client.proxy_provider(&provider).await.unwrap().name,
+        provider
+    );
+    client.update_proxy_provider(&provider).await.unwrap();
+    assert_eq!(
+        client.provider_proxy(&provider, &name).await.unwrap().name,
+        name
+    );
+    server.abort();
 }

@@ -110,8 +110,11 @@ pub struct ReconnectConfig {
 	/// client shuts down.
 	pub enabled: bool,
 	/// Delay before the first reconnect attempt; doubled after each failure.
+	/// Must be positive: a zero delay never grows and would turn the reconnect
+	/// supervisor into a busy loop.
 	pub initial_backoff: Duration,
-	/// Upper bound on the backoff delay.
+	/// Upper bound on the backoff delay. Must be positive, otherwise every
+	/// delay is clamped to zero.
 	pub max_backoff: Duration,
 }
 
@@ -168,6 +171,9 @@ impl TuicOutbound {
 		if opts.gc_lifetime.is_zero() {
 			return Err(eyre::eyre!("TUIC GC lifetime must be positive"));
 		}
+		// Reject a zero backoff before binding a socket or dialing: the
+		// supervisor would otherwise re-dial in a hot loop instead of waiting.
+		validate_reconnect(&opts.reconnect)?;
 		let client_config = {
 			// A caller-supplied config wins: it may carry a custom verifier,
 			// mTLS material, ALPN list, or SNI policy the built-in config
@@ -422,9 +428,33 @@ async fn connect_and_auth(
 	Ok(connection)
 }
 
-/// Next exponential-backoff delay: double `current`, capped at `max`.
+/// Next exponential-backoff delay: doubling never grows a zero delay, so a
+/// zero `current` is returned unchanged. [`validate_reconnect`] rejects a zero
+/// `initial_backoff` up front, which is what keeps the loop from hot-spinning.
 fn next_backoff(current: Duration, max: Duration) -> Duration {
 	current.saturating_mul(2).min(max)
+}
+
+/// Reject a [`ReconnectConfig`] whose backoff could never grow.
+///
+/// [`next_backoff`] doubles the current delay, so `initial_backoff == 0`
+/// stays `0` forever: `tokio::time::sleep(ZERO)` returns immediately and
+/// [`reconnect_loop`] becomes a busy loop that re-dials as fast as the OS
+/// allows until shutdown. `max_backoff == 0` is rejected for the same reason —
+/// it would clamp every delay, including a non-zero `initial_backoff`, to
+/// zero. The default config (500 ms → 30 s) is unaffected.
+///
+/// Checked regardless of `enabled`: a zero delay is invalid configuration
+/// either way, and failing at construction is cheaper to diagnose than a busy
+/// loop after the first drop.
+fn validate_reconnect(reconnect: &ReconnectConfig) -> Result<(), Error> {
+	if reconnect.initial_backoff.is_zero() {
+		return Err(eyre::eyre!("TUIC reconnect initial backoff must be positive"));
+	}
+	if reconnect.max_backoff.is_zero() {
+		return Err(eyre::eyre!("TUIC reconnect max backoff must be positive"));
+	}
+	Ok(())
 }
 
 /// Retry [`connect_and_auth`] with exponential backoff until it succeeds or
@@ -634,12 +664,15 @@ async fn dispatch_incoming_udp(udp_session: &Cache<u16, Arc<TuicUdpStream<QuinnC
 		Err(_) => (TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0), false),
 	};
 
+	// `frag_id` is a raw wire byte, so widen it before the 1-based display:
+	// `frag_id + 1` overflows `u8` for a peer-sent `0xFF` (panic under
+	// `overflow-checks`, silent wrap to `0` in release).
 	if has_address {
 		info!(target: "tuic_out", "Received UDP packet: assoc={:#06x}, pkt={}, frag={}/{}, size={}, target={}",
-			assoc_id, pkt_id, frag_id + 1, frag_total, size, target);
+			assoc_id, pkt_id, u16::from(frag_id) + 1, frag_total, size, target);
 	} else {
 		info!(target: "tuic_out", "Received UDP fragment: assoc={:#06x}, pkt={}, frag={}/{}, size={} (no address - non-first fragment)",
-			assoc_id, pkt_id, frag_id + 1, frag_total, size);
+			assoc_id, pkt_id, u16::from(frag_id) + 1, frag_total, size);
 	}
 
 	if let Some(tuic_udp_stream) = udp_session.get(&assoc_id).await {
@@ -774,12 +807,16 @@ impl Outbound for TuicOutbound {
 							Some(packet) => packet,
 						};
 
-						// Send packet to remote via UDP stream
-						let payload_len = packet.payload.len();
-						if let Err(e) = tuic_stream.send_packet(packet).await {
-							warn!(target: "tuic_out", "Failed to send UDP packet to remote (assoc {:#06x}): {}", assoc_id, e);
-						} else {
-							info!(target: "tuic_out", "Sent UDP packet to remote ({} bytes, assoc {:#06x})", payload_len, assoc_id);
+						// Send packet to remote via UDP stream. A failure here
+						// means this association's snapshot connection can no
+						// longer reach the peer (replaced by a reconnect, peer
+						// close, or a reset stream), so end the session instead
+						// of warning once per packet and blackholing the rest.
+						if crate::proto::forward_remote_packet(&tuic_stream, packet, assoc_id)
+							.await
+							.is_break()
+						{
+							break;
 						}
 					}
 					_ = gc_interval.tick() => {
@@ -822,9 +859,24 @@ impl Outbound for TuicOutbound {
 
 #[cfg(test)]
 mod tests {
-	use std::{net::SocketAddr, time::Duration};
+	use std::{
+		net::{Ipv4Addr, SocketAddr},
+		sync::Arc,
+		time::Duration,
+	};
 
-	use super::{ReconnectConfig, next_backoff, peer_family_differs};
+	use bytes::BufMut as _;
+	use moka::future::Cache;
+	use wind_core::AppContext;
+
+	use super::{
+		QuinnConnection, ReconnectConfig, TuicOutbound, TuicOutboundOpts, dispatch_incoming_udp, next_backoff,
+		peer_family_differs, validate_reconnect,
+	};
+	use crate::{
+		proto::{AddressType, CmdType, UdpStream as TuicUdpStream, VER},
+		quinn::{CongestionControl, UdpRelayMode},
+	};
 
 	#[test]
 	fn next_backoff_doubles_until_capped() {
@@ -845,6 +897,48 @@ mod tests {
 		assert_eq!(next_backoff(huge, max), max);
 	}
 
+	/// A zero `initial_backoff` is the hot-spin input: `next_backoff` returns
+	/// zero for every failure, so the supervisor re-dials without ever
+	/// sleeping. It must be rejected instead of silently accepted.
+	#[test]
+	fn zero_initial_backoff_is_rejected() {
+		let cfg = ReconnectConfig {
+			initial_backoff: Duration::ZERO,
+			..Default::default()
+		};
+		// Precondition of the bug this guards: doubling zero never grows it.
+		assert_eq!(next_backoff(Duration::ZERO, cfg.max_backoff), Duration::ZERO);
+
+		let err = validate_reconnect(&cfg).expect_err("a zero initial backoff must be rejected");
+		assert!(
+			format!("{err}").contains("reconnect initial backoff"),
+			"unexpected error: {err}"
+		);
+	}
+
+	/// A zero `max_backoff` clamps every delay — including a positive
+	/// `initial_backoff` — to zero, so it is rejected too.
+	#[test]
+	fn zero_max_backoff_is_rejected() {
+		let cfg = ReconnectConfig {
+			max_backoff: Duration::ZERO,
+			..Default::default()
+		};
+		assert_eq!(next_backoff(cfg.initial_backoff, Duration::ZERO), Duration::ZERO);
+
+		let err = validate_reconnect(&cfg).expect_err("a zero max backoff must be rejected");
+		assert!(format!("{err}").contains("reconnect max backoff"), "unexpected error: {err}");
+	}
+
+	#[test]
+	fn default_reconnect_backoff_is_accepted() {
+		let cfg = ReconnectConfig::default();
+		assert!(validate_reconnect(&cfg).is_ok());
+		// A disabled reconnect with sane delays stays acceptable.
+		let disabled = ReconnectConfig { enabled: false, ..cfg };
+		assert!(validate_reconnect(&disabled).is_ok());
+	}
+
 	#[test]
 	fn peer_family_differs_only_across_families() {
 		let v4: SocketAddr = "127.0.0.1:1".parse().unwrap();
@@ -862,5 +956,93 @@ mod tests {
 		assert_eq!(cfg.initial_backoff, Duration::from_millis(500));
 		assert_eq!(cfg.max_backoff, Duration::from_secs(30));
 		assert!(cfg.initial_backoff <= cfg.max_backoff);
+	}
+
+	/// The guard must run on the real construction path, before any socket is
+	/// bound or connection attempted: a peer that nothing listens on would
+	/// otherwise fail with a connect error instead of the config error (or, if
+	/// it did connect, the supervisor would hot-spin on the zero delay).
+	#[test_log::test(tokio::test)]
+	async fn outbound_construction_rejects_a_zero_initial_backoff() {
+		let opts = TuicOutboundOpts {
+			peer_addr: "127.0.0.1:9443".parse().unwrap(),
+			peer_resolver: None,
+			sni: "localhost".into(),
+			auth: (uuid::Uuid::nil(), Arc::<[u8]>::from(&[][..])),
+			zero_rtt_handshake: false,
+			heartbeat: Duration::from_secs(10),
+			gc_interval: Duration::from_secs(10),
+			gc_lifetime: Duration::from_secs(10),
+			// The guard is a pure config check, so the TLS/verification choices
+			// must not matter for reaching it.
+			skip_cert_verify: true,
+			alpn: vec!["h3".into()],
+			reconnect: ReconnectConfig {
+				initial_backoff: Duration::ZERO,
+				..Default::default()
+			},
+			client_config: None,
+			congestion_control: CongestionControl::Bbr,
+			max_concurrent_bi_streams: None,
+			max_concurrent_uni_streams: None,
+			send_window: None,
+			stream_receive_window: None,
+			max_idle_time: None,
+			udp_relay_mode: UdpRelayMode::Native,
+			socket_factory: None,
+		};
+
+		let err = match tokio::time::timeout(
+			Duration::from_secs(5),
+			TuicOutbound::new(Arc::new(AppContext::default()), opts),
+		)
+		.await
+		{
+			Err(_) => panic!("the zero-backoff guard must reject before dialing, but construction hung"),
+			Ok(Ok(_)) => panic!("a zero initial backoff must be rejected before dialing"),
+			Ok(Err(err)) => err,
+		};
+		assert!(
+			format!("{err}").contains("reconnect initial backoff"),
+			"the zero-backoff guard must run before the connect attempt, got: {err}"
+		);
+	}
+
+	/// One wire `Packet` frame exactly as [`dispatch_incoming_udp`] consumes
+	/// it.
+	///
+	/// `address = None` selects the address-less (`AddressType::None`) form,
+	/// which logs through the second, otherwise identical, `info!` call.
+	fn packet_frame(frag_id: u8, frag_total: u8, address: Option<(Ipv4Addr, u16)>) -> bytes::Bytes {
+		const PAYLOAD: &[u8] = b"pong";
+		let mut frame = bytes::BytesMut::new();
+		frame.put_u8(VER);
+		frame.put_u8(CmdType::Packet.into());
+		frame.put_u16(0x1234); // assoc_id
+		frame.put_u16(7); // pkt_id
+		frame.put_u8(frag_total);
+		frame.put_u8(frag_id);
+		frame.put_u16(PAYLOAD.len() as u16);
+		match address {
+			Some((ip, port)) => {
+				frame.put_u8(AddressType::IPv4.into());
+				frame.put_slice(&ip.octets());
+				frame.put_u16(port);
+			}
+			None => frame.put_u8(AddressType::None.into()),
+		}
+		frame.put_slice(PAYLOAD);
+		frame.freeze()
+	}
+
+	/// `frag_id` is a raw wire `u8`, so the 1-based fragment number in the log
+	/// must be computed after widening: `frag_id + 1` overflows for `0xFF`
+	/// (panic under `overflow-checks`, silent wrap to `0` in release).
+	#[test_log::test(tokio::test)]
+	async fn frag_id_255_does_not_overflow_the_log_path() {
+		let sessions: Cache<u16, Arc<TuicUdpStream<QuinnConnection>>> = Cache::new(u64::from(u16::MAX));
+		for address in [Some((Ipv4Addr::LOCALHOST, 8080)), None] {
+			dispatch_incoming_udp(&sessions, packet_frame(0xFF, 2, address)).await;
+		}
 	}
 }

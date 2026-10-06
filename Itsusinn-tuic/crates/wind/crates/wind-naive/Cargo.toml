@@ -33,3 +33,9 @@ tracing = "0.1"
 
 # Standard lib
 bytes = "1"
+
+[dev-dependencies]
+# The bridge regression test needs a multi-thread runtime: it has to block its
+# own thread waiting for the bridge's I/O thread while that task and the thread
+# make progress elsewhere.
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros", "io-util"] }

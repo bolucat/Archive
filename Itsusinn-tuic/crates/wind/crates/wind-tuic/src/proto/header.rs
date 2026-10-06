@@ -46,7 +46,7 @@ impl Decoder for HeaderCodec {
 				Ok(Some(header))
 			}
 			Err(nom::Err::Incomplete(_)) => Ok(None),
-			Err(_) => BytesRemainingSnafu.fail(),
+			Err(nom::Err::Error(err) | nom::Err::Failure(err)) => Err(err.into()),
 		}
 	}
 
@@ -86,7 +86,7 @@ impl From<&Command> for CmdType {
 mod test {
 	use futures_util::SinkExt as _;
 	use tokio_stream::StreamExt as _;
-	use tokio_util::codec::{FramedRead, FramedWrite};
+	use tokio_util::codec::{Decoder as _, FramedRead, FramedWrite};
 
 	use crate::proto::{CmdType, Header, HeaderCodec, ProtoError, VER};
 
@@ -137,5 +137,37 @@ mod test {
 		assert_eq!(reader.next().await.unwrap()?, header);
 
 		Ok(())
+	}
+
+	/// Regression (W36/W37): a header from another protocol version must reach
+	/// the caller as `VersionMismatch` — with both versions — instead of the
+	/// generic `BytesRemaining` that the nom refactor collapsed it into.
+	#[test]
+	fn version_mismatch_reports_the_expected_and_actual_version() {
+		let mut src = bytes::BytesMut::from(&[0x04u8, 0x01][..]);
+
+		let err = HeaderCodec.decode(&mut src).expect_err("a foreign version must be rejected");
+
+		match err {
+			ProtoError::VersionMismatch { expect, current, .. } => {
+				assert_eq!(expect, VER, "the local protocol version must be reported");
+				assert_eq!(current, 0x04, "the peer's version must be reported");
+			}
+			other => panic!("expected VersionMismatch, got {other:?}"),
+		}
+	}
+
+	/// Regression (W36/W37): a command byte outside the TUIC command set must
+	/// be reported with its value, not swallowed as `BytesRemaining`.
+	#[test]
+	fn unknown_command_type_reports_the_offending_byte() {
+		let mut src = bytes::BytesMut::from(&[VER, 0x09u8][..]);
+
+		let err = HeaderCodec.decode(&mut src).expect_err("an unknown command must be rejected");
+
+		match err {
+			ProtoError::UnknownCommandType { value, .. } => assert_eq!(value, 0x09),
+			other => panic!("expected UnknownCommandType, got {other:?}"),
+		}
 	}
 }

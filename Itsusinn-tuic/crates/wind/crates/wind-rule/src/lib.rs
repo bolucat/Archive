@@ -336,14 +336,17 @@ impl Rule {
 				.and_then(|d| ctx.geosite_lookup.map(|f| f(site, d)))
 				.unwrap_or(false),
 
-			RuleType::IpCidr(net) => ctx.dst_ip.is_some_and(|ip| net.contains(&ip)),
+			RuleType::IpCidr(net) => ctx.dst_ip.is_some_and(|ip| net_contains_ip(net, ip)),
 
+			// IPv6-only by contract (`IP-CIDR6`), so no mapped-v4 folding: the
+			// literal comparison already accepts a mapped address whose bits
+			// fall inside the v6 prefix.
 			RuleType::IpCidr6(net) => ctx.dst_ip.is_some_and(|ip| match ip {
 				IpAddr::V6(v6) => net.contains(&v6),
 				_ => false,
 			}),
 
-			RuleType::IpSuffix(net) => ctx.dst_ip.is_some_and(|ip| net.contains(&ip)),
+			RuleType::IpSuffix(net) => ctx.dst_ip.is_some_and(|ip| net_contains_ip(net, ip)),
 
 			RuleType::IpAsn(asn) => ctx.dst_ip.and_then(|ip| ctx.asn_lookup.map(|f| f(*asn, ip))).unwrap_or(false),
 
@@ -359,9 +362,9 @@ impl Rule {
 
 			RuleType::SrcIpAsn(asn) => ctx.src_ip.and_then(|ip| ctx.asn_lookup.map(|f| f(*asn, ip))).unwrap_or(false),
 
-			RuleType::SrcIpCidr(net) => ctx.src_ip.is_some_and(|ip| net.contains(&ip)),
+			RuleType::SrcIpCidr(net) => ctx.src_ip.is_some_and(|ip| net_contains_ip(net, ip)),
 
-			RuleType::SrcIpSuffix(net) => ctx.src_ip.is_some_and(|ip| net.contains(&ip)),
+			RuleType::SrcIpSuffix(net) => ctx.src_ip.is_some_and(|ip| net_contains_ip(net, ip)),
 
 			RuleType::DstPort(p) => ctx.dst_port.is_some_and(|dp| dp == *p),
 			RuleType::DstPortRange(lo, hi) => ctx.dst_port.is_some_and(|dp| dp >= *lo && dp <= *hi),
@@ -909,6 +912,34 @@ fn compile_wildcard(pattern: &str) -> Result<Regex, regex::Error> {
 	Regex::new(&re)
 }
 
+/// Whether the CIDR `net` contains the address `ip`, also treating an
+/// IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) as the IPv4 address it embeds.
+///
+/// A dual-stack peer can report a destination in mapped form, and
+/// `IpNet::contains` compares address families literally, so a
+/// `IP-CIDR,10.0.0.0/8` rule — including a `REJECT` one — would silently miss
+/// `::ffff:10.0.0.1`. That is the same bypass `wind_core::is_private_ip`
+/// closes by canonicalizing before classifying, so every CIDR match on a
+/// connection address (`IP-CIDR`, `IP-SUFFIX`, `SRC-IP-CIDR`,
+/// `SRC-IP-SUFFIX`, and the ACL IR's typed `Ip` leaf / `Ips` set) goes through
+/// here and the two engines agree.
+///
+/// The result is a strict superset of `IpNet::contains`: the literal
+/// comparison runs first, so an address that already matched — for example
+/// `::ffff:10.0.0.1` in `::ffff:0:0/96` or `::/0` — keeps matching. Rule text
+/// is never rewritten, so a rule written in mapped form keeps its literal
+/// meaning; `IP-CIDR6` stays IPv6-only and is deliberately not folded.
+#[inline]
+pub fn net_contains_ip(net: &IpNet, ip: IpAddr) -> bool {
+	if net.contains(&ip) {
+		return true;
+	}
+	match ip {
+		IpAddr::V6(v6) => v6.to_ipv4_mapped().is_some_and(|v4| net.contains(&IpAddr::V4(v4))),
+		IpAddr::V4(_) => false,
+	}
+}
+
 /// `h.eq_ignore_ascii_case(suffix)` OR `h` ends with `.{suffix}` (also
 /// case-insensitive). Allocation-free.
 fn ascii_ci_ends_with_dot_or_eq(host: &str, suffix_lc: &str) -> bool {
@@ -1135,6 +1166,66 @@ mod tests {
 		}));
 		assert!(!rule.matches(&MatchContext {
 			src_ip: Some("10.0.0.1".parse().unwrap()),
+			..Default::default()
+		}));
+	}
+
+	/// W19: a dual-stack peer can report an address in IPv4-mapped form, so a
+	/// v4 CIDR must judge `::ffff:a.b.c.d` by the IPv4 address it embeds —
+	/// otherwise `IP-CIDR,10.0.0.0/8,REJECT` is bypassed by the mapped
+	/// spelling. The literal comparison still runs, so nothing that matched
+	/// before stops matching; `IP-CIDR6` keeps its IPv6-only contract.
+	#[test]
+	fn cidr_rules_match_ipv4_mapped_ipv6_on_both_sides() {
+		let dst = Rule::parse("IP-CIDR,10.0.0.0/8,REJECT").unwrap();
+		let src = Rule::parse("SRC-IP-CIDR,192.168.1.0/24,DIRECT").unwrap();
+
+		let mapped_dst: IpAddr = "::ffff:10.0.0.1".parse().unwrap();
+		let other_dst: IpAddr = "::ffff:11.0.0.1".parse().unwrap();
+		let mapped_src: IpAddr = "::ffff:192.168.1.50".parse().unwrap();
+
+		// Destination and source CIDRs both fold the mapped spelling.
+		assert!(dst.matches(&MatchContext {
+			dst_ip: Some(mapped_dst),
+			..Default::default()
+		}));
+		assert!(!dst.matches(&MatchContext {
+			dst_ip: Some(other_dst),
+			..Default::default()
+		}));
+		assert!(src.matches(&MatchContext {
+			src_ip: Some(mapped_src),
+			..Default::default()
+		}));
+		assert!(!src.matches(&MatchContext {
+			src_ip: Some(mapped_dst),
+			..Default::default()
+		}));
+
+		// Widening only: a genuine IPv6 address is still not a v4 match, and a
+		// genuine IPv4 address is still not a v6 match.
+		assert!(!dst.matches(&MatchContext {
+			dst_ip: Some("2001:db8::1".parse().unwrap()),
+			..Default::default()
+		}));
+		let all_v6 = Rule::parse("IP-CIDR,::/0,REJECT").unwrap();
+		assert!(all_v6.matches(&MatchContext {
+			dst_ip: Some(mapped_dst),
+			..Default::default()
+		}));
+		assert!(!all_v6.matches(&MatchContext {
+			dst_ip: Some("10.0.0.1".parse().unwrap()),
+			..Default::default()
+		}));
+
+		// `IP-CIDR6` stays IPv6-only and never folds a mapped address back out.
+		let v6_only = Rule::parse("IP-CIDR6,::ffff:0:0/96,REJECT").unwrap();
+		assert!(v6_only.matches(&MatchContext {
+			dst_ip: Some(mapped_dst),
+			..Default::default()
+		}));
+		assert!(!v6_only.matches(&MatchContext {
+			dst_ip: Some("10.0.0.1".parse().unwrap()),
 			..Default::default()
 		}));
 	}

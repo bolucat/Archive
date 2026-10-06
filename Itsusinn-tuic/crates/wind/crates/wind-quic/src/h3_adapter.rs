@@ -181,7 +181,18 @@ impl<C: QuicConnection> SendStream<Bytes> for H3Send<C> {
 
 	fn send_data<T: Into<WriteBuf<Bytes>>>(&mut self, data: T) -> Result<(), StreamErrorIncoming> {
 		// h3 always polls `poll_ready` to readiness before `send_data`, so the
-		// previous buffer has drained.
+		// previous buffer has drained. Should it ever call this while a frame
+		// is still buffered, overwriting `pending` would discard that
+		// frame and hand h3 a response it believes was sent in full;
+		// report the misuse instead, as `h3-quinn` does. h3 turns this
+		// into H3_INTERNAL_ERROR.
+		if self.pending.is_some() {
+			return Err(StreamErrorIncoming::ConnectionErrorIncoming {
+				connection_error: ConnectionErrorIncoming::InternalError(
+					"send_data called while the h3 send stream is not ready".to_owned(),
+				),
+			});
+		}
 		self.pending = Some(data.into());
 		Ok(())
 	}
@@ -190,8 +201,11 @@ impl<C: QuicConnection> SendStream<Bytes> for H3Send<C> {
 		match self.poll_flush_pending(cx) {
 			Poll::Ready(Ok(())) => match Pin::new(&mut self.inner).poll_flush(cx) {
 				Poll::Ready(Ok(())) => {
-					let _ = self.inner.finish();
-					Poll::Ready(Ok(()))
+					// The backend reports a FIN it could not queue (e.g. an
+					// already-reset stream) through this `Result`. Discarding
+					// it told h3 the stream ended cleanly; propagate it, as
+					// `h3-quinn` does.
+					Poll::Ready(self.inner.finish().map_err(|e| StreamErrorIncoming::Unknown(Box::new(e))))
 				}
 				Poll::Ready(Err(e)) => Poll::Ready(Err(StreamErrorIncoming::Unknown(Box::new(e)))),
 				Poll::Pending => Poll::Pending,
@@ -362,9 +376,14 @@ impl<C: QuicConnection> Connection<Bytes> for H3Conn<C> {
 }
 
 fn stream_id(id: u64) -> StreamId {
-	// QUIC stream ids fit the h3 `StreamId` invariant (< 2^62); fall back to 0
-	// only if a backend ever surfaces something out of range.
-	StreamId::try_from(id).unwrap_or_else(|_| StreamId::try_from(0).expect("0 is a valid stream id"))
+	// QUIC encodes stream ids as varints, so both backends only ever surface
+	// ids that satisfy the h3 `StreamId` invariant (< 2^62) and this conversion
+	// cannot fail. Should one ever report something larger, substituting 0
+	// would hand h3 the id of the peer's *first bidi request stream* — a
+	// plausible, valid id that h3 then records in its `ongoing_streams` set and
+	// in the resolved request — so the wrong stream would be described silently
+	// instead of loudly. Fail instead, as `h3-quinn` does.
+	StreamId::try_from(id).unwrap_or_else(|_| panic!("backend stream id {id:#x} does not fit the h3 stream id range"))
 }
 
 fn poll_open_send<C: QuicConnection>(
@@ -406,5 +425,194 @@ fn poll_open_bidi<C: QuicConnection>(
 			Poll::Ready(res.map(into_bidi).map_err(stream_err))
 		}
 		Poll::Pending => Poll::Pending,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		future, io,
+		sync::{
+			Arc,
+			atomic::{AtomicUsize, Ordering},
+		},
+		task::Waker,
+	};
+
+	use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+	use super::*;
+	use crate::{QuicConnection, QuicError, QuicRecvStream, QuicSendStream};
+
+	/// A send half the test drives directly: it counts the FINs handed to it
+	/// and can be told to fail `finish()`, so the adapter's finish path can
+	/// be exercised without a live QUIC connection. `h3-quinn` maps a
+	/// failing `quinn::SendStream::finish()` (already finished or reset) to
+	/// `StreamErrorIncoming::Unknown`; the same shape is reproduced here.
+	struct FakeSend {
+		id: u64,
+		finishes: Arc<AtomicUsize>,
+		fail_finish: bool,
+	}
+
+	impl FakeSend {
+		fn new(fail_finish: bool) -> Self {
+			Self {
+				id: 4,
+				finishes: Arc::new(AtomicUsize::new(0)),
+				fail_finish,
+			}
+		}
+	}
+
+	impl AsyncWrite for FakeSend {
+		fn poll_write(self: Pin<&mut Self>, _cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+			Poll::Ready(Ok(buf.len()))
+		}
+
+		fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+
+		fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+	}
+
+	impl QuicSendStream for FakeSend {
+		fn finish(&mut self) -> Result<(), QuicError> {
+			self.finishes.fetch_add(1, Ordering::SeqCst);
+			if self.fail_finish {
+				return Err(QuicError::ConnectionLost("the fake stream was already reset".to_owned()));
+			}
+			Ok(())
+		}
+
+		fn reset(&mut self, _code: u64) {}
+
+		fn id(&self) -> u64 {
+			self.id
+		}
+	}
+
+	/// A recv half that is never read by these tests.
+	struct FakeRecv;
+
+	impl AsyncRead for FakeRecv {
+		fn poll_read(self: Pin<&mut Self>, _cx: &mut Context<'_>, _buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+			Poll::Ready(Ok(()))
+		}
+	}
+
+	impl QuicRecvStream for FakeRecv {
+		fn stop(&mut self, _code: u64) {}
+
+		fn id(&self) -> u64 {
+			0
+		}
+	}
+
+	/// The smallest `QuicConnection` that can hold a [`FakeSend`]; every method
+	/// other than the ones under test is inert.
+	#[derive(Clone)]
+	struct FakeConn;
+
+	impl QuicConnection for FakeConn {
+		type RecvStream = FakeRecv;
+		type SendStream = FakeSend;
+
+		async fn open_bi(&self) -> Result<(Self::SendStream, Self::RecvStream), QuicError> {
+			future::pending().await
+		}
+
+		async fn accept_bi(&self) -> Result<(Self::SendStream, Self::RecvStream), QuicError> {
+			future::pending().await
+		}
+
+		async fn open_uni(&self) -> Result<Self::SendStream, QuicError> {
+			future::pending().await
+		}
+
+		async fn accept_uni(&self) -> Result<Self::RecvStream, QuicError> {
+			future::pending().await
+		}
+
+		fn send_datagram(&self, _data: Bytes) -> Result<(), QuicError> {
+			Ok(())
+		}
+
+		async fn read_datagram(&self) -> Result<Bytes, QuicError> {
+			future::pending().await
+		}
+
+		fn max_datagram_size(&self) -> Option<usize> {
+			None
+		}
+
+		async fn export_keying_material(&self, _out: &mut [u8], _label: &[u8], _context: &[u8]) -> Result<(), QuicError> {
+			Ok(())
+		}
+
+		fn close(&self, _code: u32, _reason: &[u8]) {}
+
+		async fn closed(&self) {
+			future::pending::<()>().await;
+		}
+	}
+
+	fn poll_finish(send: &mut H3Send<FakeConn>) -> Poll<Result<(), StreamErrorIncoming>> {
+		let mut cx = Context::from_waker(Waker::noop());
+		SendStream::poll_finish(send, &mut cx)
+	}
+
+	/// A backend that refuses the FIN must not be reported to h3 as a clean
+	/// finish: h3 only learns the stream did not end through this error, and
+	/// otherwise records the response as fully delivered.
+	#[test]
+	fn a_failed_stream_finish_is_not_reported_as_a_clean_finish() {
+		let mut send = H3Send::<FakeConn>::new(FakeSend::new(true));
+
+		match poll_finish(&mut send) {
+			Poll::Ready(Err(StreamErrorIncoming::Unknown(err))) => {
+				// The backend's own error must survive, not a placeholder.
+				assert!(
+					err.to_string().contains("the fake stream was already reset"),
+					"unexpected error text: {err}"
+				);
+			}
+			other => panic!("a failed finish must surface as a stream error, got {other:?}"),
+		}
+	}
+
+	/// The positive control for the test above: an accepted finish is still
+	/// reported as clean, and the FIN is handed to the backend exactly once.
+	#[test]
+	fn an_accepted_stream_finish_is_reported_as_clean() {
+		let stream = FakeSend::new(false);
+		let finishes = Arc::clone(&stream.finishes);
+		let mut send = H3Send::<FakeConn>::new(stream);
+
+		assert!(matches!(poll_finish(&mut send), Poll::Ready(Ok(()))));
+		assert_eq!(finishes.load(Ordering::SeqCst), 1, "the FIN must reach the backend");
+	}
+
+	/// The positive control for the test below: every id a QUIC varint can
+	/// carry — including 0, the peer's first bidi request stream, and the
+	/// largest encodable id — is reported to h3 unchanged.
+	#[test]
+	fn in_range_backend_stream_ids_are_reported_unchanged() {
+		for id in [0, 4, 8, u32::MAX as u64, (1u64 << 62) - 1] {
+			assert_eq!(stream_id(id).into_inner(), id, "stream id {id} must survive the conversion");
+		}
+	}
+
+	/// An id a QUIC varint cannot encode is not a stream at all. Reporting it
+	/// as 0 would hand h3 the id of the peer's *first bidi request stream* — an
+	/// id it records in `ongoing_streams` and in the resolved request — so the
+	/// adapter must fail loudly instead of describing the wrong stream.
+	#[test]
+	#[should_panic(expected = "does not fit the h3 stream id range")]
+	fn an_out_of_range_backend_stream_id_is_not_reported_as_stream_zero() {
+		let _ = stream_id(1u64 << 62);
 	}
 }

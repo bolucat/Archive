@@ -62,7 +62,7 @@ impl Decoder for AddressCodec {
 				Ok(Some(address))
 			}
 			Err(nom::Err::Incomplete(_)) => Ok(None),
-			Err(_) => BytesRemainingSnafu.fail(),
+			Err(nom::Err::Error(err) | nom::Err::Failure(err)) => Err(err.into()),
 		}
 	}
 
@@ -121,9 +121,9 @@ mod test {
 
 	use futures_util::SinkExt as _;
 	use tokio_stream::StreamExt as _;
-	use tokio_util::codec::{FramedRead, FramedWrite};
+	use tokio_util::codec::{Decoder as _, FramedRead, FramedWrite};
 
-	use super::{Address, AddressCodec};
+	use super::{Address, AddressCodec, AddressType};
 	use crate::proto::ProtoError;
 
 	/// Test complete encoding and decoding cycle for all address types
@@ -212,5 +212,41 @@ mod test {
 		FramedWrite::new(&mut buffer, AddressCodec).send(vars[1].clone()).await?;
 		tracing::info!("{}", hex::encode(buffer));
 		Ok(())
+	}
+
+	/// Regression (W36/W37): an address type byte outside the TUIC address set
+	/// must be reported with its value instead of collapsing into
+	/// `BytesRemaining`.
+	#[test]
+	fn unknown_address_type_reports_the_offending_byte() {
+		let mut src = bytes::BytesMut::from(&[0x07u8][..]);
+
+		let err = AddressCodec
+			.decode(&mut src)
+			.expect_err("an unknown address type must be rejected");
+
+		match err {
+			ProtoError::UnknownAddressType { value, .. } => assert_eq!(value, 0x07),
+			other => panic!("expected UnknownAddressType, got {other:?}"),
+		}
+	}
+
+	/// Regression (W36/W37): a domain that is not valid UTF-8 must be reported
+	/// as `FailParseDomain`, keeping a hex dump of the peer's raw bytes for the
+	/// log instead of discarding them behind a generic decode error.
+	#[test]
+	fn non_utf8_domain_is_reported_as_fail_parse_domain() {
+		let mut frame = vec![u8::from(AddressType::Domain), 2, 0xff, 0xfe];
+		frame.extend_from_slice(&443u16.to_be_bytes());
+		let mut src = bytes::BytesMut::from(&frame[..]);
+
+		let err = AddressCodec
+			.decode(&mut src)
+			.expect_err("a non-UTF-8 domain must be rejected");
+
+		match err {
+			ProtoError::FailParseDomain { raw, .. } => assert_eq!(raw, "fffe"),
+			other => panic!("expected FailParseDomain, got {other:?}"),
+		}
 	}
 }

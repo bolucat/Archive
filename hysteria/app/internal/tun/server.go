@@ -43,7 +43,6 @@ type Server struct {
 
 	// auto route
 	AutoRoute                bool
-	StrictRoute              bool
 	Inet4RouteAddress        []netip.Prefix
 	Inet6RouteAddress        []netip.Prefix
 	Inet4RouteExcludeAddress []netip.Prefix
@@ -159,7 +158,6 @@ func (s *Server) start() error {
 		// sing-tun owns the rule priorities [9000, 9010] and flushes the
 		// whole range on setup and teardown, so this must never be 0.
 		IPRoute2RuleIndex:        tun.DefaultIPRoute2RuleIndex,
-		StrictRoute:              s.StrictRoute,
 		Inet4RouteAddress:        s.Inet4RouteAddress,
 		Inet6RouteAddress:        s.Inet6RouteAddress,
 		Inet4RouteExcludeAddress: s.Inet4RouteExcludeAddress,

@@ -17,7 +17,7 @@ resolver = ["dep:rustls-acme", "dep:tokio-stream"]
 # the PEM chain/key to disk (for backends that load TLS material from files, e.g.
 # quiche/tokio-quiche). Uses `instant-acme` rather than the `rustls-acme` state
 # machine that backs the resolver-based flow.
-http01 = ["dep:instant-acme", "dep:x509-parser", "dep:rcgen", "dep:time"]
+http01 = ["dep:instant-acme", "dep:x509-parser", "dep:rcgen", "dep:time", "dep:serde", "dep:serde_json"]
 
 [dependencies]
 # TLS / ACME
@@ -41,3 +41,6 @@ instant-acme = { version = "0.8", features = ["rcgen"], optional = true }
 x509-parser = { version = "0.18.1", optional = true }
 rcgen = { version = "0.14", features = ["aws_lc_rs", "pem"], optional = true }
 time = { version = "0.3", optional = true }
+# Persist/reuse the ACME account credentials next to the certificate key
+serde = { version = "1", default-features = false, features = ["derive", "std"], optional = true }
+serde_json = { version = "1", optional = true }

@@ -13,6 +13,7 @@ mod direct_egress;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
+pub mod frontend_events;
 pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
@@ -218,6 +219,7 @@ struct NyanpasuClientInner {
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
+    frontend_log: Arc<dyn frontend_events::FrontendLogSink>,
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
@@ -448,11 +450,13 @@ impl NyanpasuClient {
             }
         });
         let service_logs = logging.service;
+        let frontend_log = logging.frontend;
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
                 port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
                     effects,
                     streams.clone(),
+                    core_logs.clone(),
                 )),
                 ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(
@@ -622,6 +626,7 @@ impl NyanpasuClient {
                 app_logs,
                 jobs,
                 service_logs,
+                frontend_log,
                 application,
                 session_state,
                 clash_config,
@@ -881,6 +886,10 @@ impl NyanpasuClient {
         kind: effects::plan::EffectKind,
     ) -> std::result::Result<(), effects::error::EffectsError> {
         self.inner.effects.retry_now(kind)
+    }
+
+    pub fn request_tray_refresh(&self) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.request_tray_refresh()
     }
 
     pub async fn save_main_window_geometry(

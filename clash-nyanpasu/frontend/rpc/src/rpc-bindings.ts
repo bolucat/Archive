@@ -16,6 +16,8 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
+    readClipboardText: () =>
+      typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
@@ -88,7 +90,7 @@ export function createRpcClient(
       provider: string | null,
       url: string | null,
     ) =>
-      typedError<DelayRes, IpcError>(
+      typedError<Delay, IpcError>(
         __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
       ),
     clashApiGetConfigs: () =>
@@ -104,11 +106,11 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
     clashApiGetGroupDelay: (group: string, url: string | null) =>
-      typedError<{ [key in string]: number }, IpcError>(
+      typedError<{ [key in ProxyName]: number }, IpcError>(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
       ),
     clashApiGetProvidersProxies: () =>
-      typedError<ProvidersProxiesRes_Serialize, IpcError>(
+      typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
         __RPC_INVOKE('clash_api_get_providers_proxies'),
       ),
     fetchLatestCoreVersions: () =>
@@ -166,8 +168,10 @@ export function createRpcClient(
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
     collectEnvs: () =>
       typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
-    getServerPort: () =>
-      typedError<number, IpcError>(__RPC_INVOKE('get_server_port')),
+    getCachedIcon: (url: string) =>
+      typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
+    getTrayIcon: (mode: TrayIcon) =>
+      typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
     getCoreStatus: () =>
@@ -267,6 +271,40 @@ export function createRpcClient(
       typedError<string | null, IpcError>(
         __RPC_INVOKE('get_system_accent_color'),
       ),
+    writeClipboardText: (text: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('write_clipboard_text', { text }),
+      ),
+    showNativeNotification: (title: string, body: string | null) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('show_native_notification', { title, body }),
+      ),
+    showNativeMessageDialog: (
+      message: string,
+      title: string | null,
+      kind: NativeDialogKind,
+      buttons: NativeDialogButtons,
+    ) =>
+      typedError<string, IpcError>(
+        __RPC_INVOKE('show_native_message_dialog', {
+          message,
+          title,
+          kind,
+          buttons,
+        }),
+      ),
+    askNativeDialog: (
+      message: string,
+      title: string | null,
+      kind: NativeDialogKind,
+    ) =>
+      typedError<boolean, IpcError>(
+        __RPC_INVOKE('ask_native_dialog', { message, title, kind }),
+      ),
+    openNativeFileDialog: (title: string | null, filters: FileDialogFilter[]) =>
+      typedError<string | null, IpcError>(
+        __RPC_INVOKE('open_native_file_dialog', { title, filters }),
+      ),
     setDebugHttpEnabled: (enabled: boolean) =>
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('set_debug_http_enabled', { enabled }),
@@ -327,6 +365,10 @@ export function createRpcClient(
       typedError<null, LogError>(
         __RPC_INVOKE('close_log_session', { source, session }),
       ),
+    reportFrontendEvents: (batch: FrontendEventBatch) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('report_frontend_events', { batch }),
+      ),
     flushSystemDnsCache: () =>
       typedError<null, IpcError>(__RPC_INVOKE('flush_system_dns_cache')),
     openAppConfigDir: () =>
@@ -378,6 +420,10 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+    setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
+      ),
     /**
      *  Rebuild-only command: there is no prior state commit, so a failure is a
      *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -1562,7 +1608,10 @@ export type CoreLogRow = {
   truncated: boolean
 }
 
-/**  Current-session Core log retention, read when the application starts. */
+/**
+ *  Current-session Core log rotation and compression, applied as soon as it is
+ *  committed.
+ */
 export type CoreLogSettings = {
   shard_size_mib?: number
   max_size_mib?: number
@@ -1754,7 +1803,12 @@ export type DegradationReason =
       cause: ProfilesError
     }
 
-export type DelayRes = {
+export type Delay = {
+  delay: number
+}
+
+export type DelayHistory = {
+  time: string
   delay: number
 }
 
@@ -1869,6 +1923,7 @@ export type EffectFailureCode =
   | 'hotkey_shut_down'
   | 'hotkey_stopped'
   | 'logger_refresh_failed'
+  | 'core_log_storage_failed'
   | 'widget_unavailable'
   | 'widget_apply_failed'
   | 'tray_refresh_failed'
@@ -1893,6 +1948,7 @@ export type EffectKind =
   | 'locale'
   | 'logger'
   | 'core_log_level'
+  | 'core_log_storage'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'
@@ -2028,6 +2084,11 @@ export type FileConfig_Serialize = {
   transforms?: ProfileId[]
 }
 
+export type FileDialogFilter = {
+  name: string
+  extensions: string[]
+}
+
 export type Filter = {
   levels: Level[]
   target: string | null
@@ -2035,6 +2096,51 @@ export type Filter = {
   to_ms: number | null
   text: string | null
 }
+
+export type FrontendErrorCause = {
+  name: string | null
+  message: string
+  stack: string | null
+}
+
+export type FrontendEvent = {
+  kind: FrontendEventKind
+  level: FrontendEventLevel
+  message: string
+  error_name: string | null
+  stack: string | null
+  /**  The `error.cause` chain, outermost first. */
+  causes: FrontendErrorCause[]
+  /**  React's component stack, for the `react_*` kinds. */
+  component_stack: string | null
+  fingerprint: string
+  /**  How often the fingerprint occurred within the frontend's dedupe window. */
+  count: number
+  /**
+   *  Client clock, Unix milliseconds. The log line's own timestamp is when
+   *  the backend wrote it.
+   */
+  first_seen_ms: number | null
+  last_seen_ms: number | null
+  /**  The route path, without query parameters. */
+  route: string
+}
+
+export type FrontendEventBatch = {
+  events: FrontendEvent[]
+  /**  Events the frontend dropped since its previous batch. */
+  dropped: number
+}
+
+export type FrontendEventKind =
+  | 'console'
+  | 'uncaught_error'
+  | 'unhandled_rejection'
+  | 'react_uncaught'
+  | 'react_caught'
+  | 'react_recoverable'
+
+export type FrontendEventLevel = 'warning' | 'error'
 
 /**  What the address a destination was located by is to the outbound. */
 export type GeoBasis =
@@ -2126,6 +2232,10 @@ export type I18nLanguage_Deserialize =
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+
+export type IconData = {
+  data_url: string
+}
 
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =
@@ -2435,6 +2545,17 @@ export type MutationOutcome<T> =
       degradations: Degradation[]
     }
 
+export type NativeDialogButtons =
+  | { type: 'ok' }
+  | { type: 'ok_cancel' }
+  | { type: 'yes_no' }
+  | { type: 'yes_no_cancel' }
+  | { type: 'ok_custom'; ok: string }
+  | { type: 'ok_cancel_custom'; ok: string; cancel: string }
+  | { type: 'yes_no_cancel_custom'; yes: string; no: string; cancel: string }
+
+export type NativeDialogKind = 'info' | 'warning' | 'error'
+
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
 
@@ -2564,7 +2685,7 @@ export type NyanpasuAppConfig_Deserialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Deserialize
-  /**  Core log disk settings, applied on application startup. */
+  /**  Core log disk settings, applied as soon as they are committed. */
   core_logs?: CoreLogSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
@@ -2665,7 +2786,7 @@ export type NyanpasuAppConfig_Serialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Serialize
-  /**  Core log disk settings, applied on application startup. */
+  /**  Core log disk settings, applied as soon as they are committed. */
   core_logs: CoreLogSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */
@@ -3490,18 +3611,9 @@ export type ProfilesError =
   | { kind: 'blocking_task_cancelled' }
   | { kind: 'shutting_down' }
 
+export type ProviderName = string
+
 export type ProviderType = 'Proxy' | 'Rule' | string
-
-export type ProvidersProxiesRes =
-  ProvidersProxiesRes_Serialize | ProvidersProxiesRes_Deserialize
-
-export type ProvidersProxiesRes_Deserialize = {
-  providers?: { [key in string]: ProxyProviderItem_Deserialize }
-}
-
-export type ProvidersProxiesRes_Serialize = {
-  providers: { [key in string]: ProxyProviderItem_Serialize }
-}
 
 export type ProvidersRulesRes = {
   providers: { [key in string]: RuleProviderItem }
@@ -3512,26 +3624,31 @@ export type Proxies = Proxies_Serialize | Proxies_Deserialize
 export type ProxiesSelectorMode = 'hidden' | 'normal' | 'submenu'
 
 export type Proxies_Deserialize = {
-  global: ProxyGroupItem_Deserialize
-  groups: ProxyGroupItem_Deserialize[]
+  /**  The core's GLOBAL group; `None` when the core has none. */
+  global: ProxyGroup | null
+  groups: ProxyGroup[]
   /**
    *  Every `/proxies` entry plus every provider-owned node referenced by a
    *  group, keyed by name. A node that belongs to several groups still has
    *  exactly one entry here; groups reference it by name in `all`.
    */
-  nodes: { [key in string]: ProxyItem_Deserialize }
+  nodes: { [key in ProxyName]: Proxy_Deserialize }
 }
 
 export type Proxies_Serialize = {
-  global: ProxyGroupItem_Serialize
-  groups: ProxyGroupItem_Serialize[]
+  /**  The core's GLOBAL group; `None` when the core has none. */
+  global: ProxyGroup | null
+  groups: ProxyGroup[]
   /**
    *  Every `/proxies` entry plus every provider-owned node referenced by a
    *  group, keyed by name. A node that belongs to several groups still has
    *  exactly one entry here; groups reference it by name in `all`.
    */
-  nodes: { [key in string]: ProxyItem_Serialize }
+  nodes: { [key in ProxyName]: Proxy_Serialize }
 }
+
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy = Proxy_Serialize | Proxy_Deserialize
 
 export type ProxyChangeBreakMode =
   | 'off'
@@ -3540,99 +3657,126 @@ export type ProxyChangeBreakMode =
   /**  中断所有连接 */
   | 'all'
 
-export type ProxyGroupItem =
-  ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
-
-export type ProxyGroupItem_Deserialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[]
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp: boolean | null
-  tfo: boolean | null
-  icon: string | null
-  hidden?: boolean
+export type ProxyExtra = {
+  alive: boolean
+  history: DelayHistory[]
 }
 
-export type ProxyGroupItem_Serialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[]
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp?: boolean | null
-  tfo?: boolean | null
-  icon?: string | null
+/**  A group's meaning, derived from its record in `Proxies::nodes`. */
+export type ProxyGroup = {
+  name: ProxyName
+  type: ProxyGroupKind
+  /**  Member names; look each node up in `Proxies::nodes`. */
+  all: ProxyName[]
+  now: ProxyName | null
+  /**  The member a user pinned; `None` while the core selects on its own. */
+  fixed: ProxyName | null
   hidden: boolean
-}
-
-export type ProxyItem = ProxyItem_Serialize | ProxyItem_Deserialize
-
-export type ProxyItemHistory = {
-  time: string
-  delay: number
-}
-
-export type ProxyItem_Deserialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[] | null
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp: boolean | null
-  tfo: boolean | null
   icon: string | null
-  hidden?: boolean
+  capabilities: ProxyGroupCapabilities
 }
 
-export type ProxyItem_Serialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[] | null
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp?: boolean | null
-  tfo?: boolean | null
-  icon?: string | null
-  hidden: boolean
+/**  What the running core lets a user do with a group. */
+export type ProxyGroupCapabilities = {
+  /**  `PUT /proxies/{group}` chooses a member. */
+  select: boolean
+  /**  `DELETE /proxies/{group}` returns a pinned group to automatic selection. */
+  clearFixed: boolean
 }
 
-export type ProxyProviderItem =
-  ProxyProviderItem_Serialize | ProxyProviderItem_Deserialize
+/**  A group's `type`, as the core reports it. */
+export type ProxyGroupKind =
+  | 'Selector'
+  | 'URLTest'
+  | 'Fallback'
+  | 'LoadBalance'
+  | 'Relay'
+  | 'Smart'
+  /**  A type this build does not know, kept verbatim. */
+  | string
 
-export type ProxyProviderItem_Deserialize = {
-  name: string
+export type ProxyName = string
+
+export type ProxyProvider = ProxyProvider_Serialize | ProxyProvider_Deserialize
+
+export type ProxyProvider_Deserialize = {
+  name: ProviderName
   type: ProviderType
-  proxies: ProxyItem_Deserialize[]
   vehicleType: VehicleType
-  updatedAt: string | null
-  subscriptionInfo: SubscriptionInfo_Deserialize | null
+  proxies: Proxy_Deserialize[]
   testUrl: string | null
   expectedStatus: string | null
+  updatedAt?: string | null
+  subscriptionInfo?: SubscriptionInfo_Deserialize | null
 }
 
-export type ProxyProviderItem_Serialize = {
-  name: string
+export type ProxyProvider_Serialize = {
+  name: ProviderName
   type: ProviderType
-  proxies: ProxyItem_Serialize[]
   vehicleType: VehicleType
-  updatedAt?: string | null
-  subscriptionInfo?: SubscriptionInfo_Serialize | null
+  proxies: Proxy_Serialize[]
+  testUrl: string | null
+  expectedStatus: string | null
+  updatedAt: string | null
+  subscriptionInfo: SubscriptionInfo_Serialize | null
+}
+
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy_Deserialize = {
+  name: ProxyName
+  type: string
+  history: DelayHistory[]
+  extra?: { [key in string]: ProxyExtra } | null
+  alive?: boolean | null
+  udp: boolean
+  uot?: boolean | null
+  xudp?: boolean | null
+  tfo?: boolean | null
+  mptcp?: boolean | null
+  smux?: boolean | null
+  interface?: string | null
+  'routing-mark'?: number | null
+  'provider-name'?: string | null
+  'dialer-proxy'?: string | null
+  id?: string | null
+  now?: ProxyName | null
+  all?: ProxyName[] | null
   testUrl?: string | null
   expectedStatus?: string | null
+  fixed?: ProxyName | null
+  hidden?: boolean | null
+  icon?: string | null
+  emptyFallback?: ProxyName | null
+  provider?: string | null
+}
+
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy_Serialize = {
+  name: ProxyName
+  type: string
+  history: DelayHistory[]
+  extra?: { [key in string]: ProxyExtra } | null
+  alive?: boolean | null
+  udp: boolean
+  uot?: boolean | null
+  xudp?: boolean | null
+  tfo?: boolean | null
+  mptcp?: boolean | null
+  smux?: boolean | null
+  interface?: string | null
+  'routing-mark'?: number | null
+  'provider-name'?: string | null
+  'dialer-proxy'?: string | null
+  id: string | null
+  now: ProxyName | null
+  all: ProxyName[] | null
+  testUrl: string | null
+  expectedStatus: string | null
+  fixed: ProxyName | null
+  hidden: boolean | null
+  icon: string | null
+  emptyFallback: ProxyName | null
+  provider: string | null
 }
 
 /**  A failure of publishing the derived runtime config file. */
@@ -4293,32 +4437,32 @@ export type SubscriptionInfo =
 
 export type SubscriptionInfo_Deserialize =
   | {
-      upload?: number
+      Upload?: number
     }
   | ({
-      Upload?: number
+      upload?: number
     } & {
-      download?: number
-    })
-  | ({
       Download?: number
-    } & {
-      total?: number
     })
   | ({
-      Total?: number
+      download?: number
     } & {
-      expire?: number
+      Total?: number
+    })
+  | ({
+      total?: number
+    } & {
+      Expire?: number
     })
   | {
-      Expire?: number
+      expire?: number
     }
 
 export type SubscriptionInfo_Serialize = {
-  upload: number
-  download: number
-  total: number
-  expire: number
+  Upload: number
+  Download: number
+  Total: number
+  Expire: number
 }
 
 /**

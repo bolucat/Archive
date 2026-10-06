@@ -59,7 +59,7 @@ validates the complete target set and unique asset names, then publishes the six
 target inventories to configured mirrors with one shared UTC timestamp. Setting
 `SOURCEFORGE_PROJECT` automatically connects FRS mirroring, Project Web manifest
 publication, and the compiled app fallback endpoint. It also requires the
-`SOURCEFORGE_USERNAME` variable and the `SOURCEFORGE_SSH_KEY` and
+`SOURCEFORGE_USERNAME` variable (or secret) and the `SOURCEFORGE_SSH_KEY` and
 `SOURCEFORGE_KNOWN_HOSTS` secrets. There are no separate enabled flags. The
 known-hosts value must cover both `frs.sourceforge.net` and
 `web.sourceforge.net` for FRS and Project Web. The publication workflow verifies
@@ -70,7 +70,7 @@ writing to FRS. Recorded files must keep the same size, SHA-256 and mirror URL;
 lookup failures stop the upload. CI supplies `GITHUB_TOKEN` and
 `GITHUB_REPOSITORY` for this check. Manual release uploads require those values
 as well. Before uploading release bytes, the uploader also reserves each file
-using an exclusive SFTP directory under `releases/<tag>/.upload-inventory/` and
+using an exclusive SFTP directory under `releases/<tag>/upload-inventory/` and
 records its size and SHA-256. Retries must match that write-once inventory even
 when a previous attempt failed before attaching the GitHub sidecar. Identical
 retries can finish partial uploads; conflicting bytes are rejected. Release and
@@ -84,42 +84,87 @@ project and SSH values. The workflow stages each feed and renames it only after
 all files have uploaded; it verifies the public JSON before the nightly cleanup
 job can run. It only adds `updater/index.html` when that file is absent.
 
-Setting `IA_ITEM_PREFIX` automatically connects Internet Archive archiving.
-Configure `IA_ITEM_PREFIX` as a repository variable. The uploader lives in this
-repository and runs from the same checkout as the publication workflow.
-Configure `IA_ACCESS_KEY`, `IA_SECRET_KEY`, `IA_UPLOADER` and the existing
-`FILE_SERVER_TOKEN` secrets. `IA_UPLOADER` must exactly match the value sent as
-IA `metadata.uploader` (often the account email, not the public username).
-Configure the Archive Hub Worker with the same `IA_ITEM_PREFIX` and
-`IA_UPLOADER`, then apply migration `0003` and deploy the Worker before adding
-the CI `IA_ITEM_PREFIX` variable. Archive ingest may remain pending after a
-successful byte upload; that status is reported separately and does not hold up
-SourceForge or updater-feed publication. To reconcile a pending item after IA
-ingest, use the main repository's
-`deno task archive:verify --build-id <target-build-id>
---server https://archive.nyanpasu.org --report <report.json>`.
-Old nightly FRS directories are pruned only after manifest publication succeeds
-and the corresponding IA archive builds report ready. Release directories are
-retained indefinitely.
+Release files reserve their immutable size/SHA-256 inventory under
+`releases/<tag>/upload-inventory/<filename>/inventory.json` before uploading.
+SourceForge forbids dot-prefixed file and directory names, so this directory
+must not start with `.`. An unreadable reservation fails closed and reports both
+its creation error and its read error; do not remove the reservation to bypass
+an immutable-byte conflict.
 
-Use `[Maintenance] Backfill SourceForge Release Mirror` with an existing
-published release tag to mirror its current GitHub assets and attach verified
-`sourceforge-mirrors.json` metadata to that release. It does not rebuild the
-release or publish a new app feed.
+Nightly and release builds validate all six target inventories before storage
+writes. SourceForge and Telegram publish in separate jobs with independent
+writer locks. GitHub updater generation starts after GitHub asset upload and
+does not wait for storage. A subsequent updater job attaches only verified
+SourceForge metadata and publishes those feeds to SourceForge Project Web.
+SourceForge preflight errors are reported without blocking package builds or the
+GitHub updater.
 
-Repository variables are unset by default, so a fresh setup continues to publish
-GitHub Releases and Surge without pretending that either optional mirror is
-configured.
+All finalized packages, updater bundles and signatures are uploaded as documents
+to `@ClashNyanpasu` using the historical MTProto/GramJS approach. Configure
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_TOKEN` and an archive
+registration token (`ARCHIVE_UPLOAD_TOKEN`, `FILE_SERVER_TOKEN` or
+`UPLOAD_TOKEN`). The bot must be allowed to post documents to the channel.
+Documents upload sequentially with eight concurrent part workers per file. No
+Bot API download URL or token is exposed. The archive lists Telegram files and
+redirects `/bin/:id` to the corresponding
+`https://t.me/ClashNyanpasu/<message-id>` post. This is a Telegram message link;
+users download the document through Telegram.
 
-The related Deno tasks are `prepare:central-publication`,
-`prepare:publication-manifest`, `sourceforge:upload`, `sourceforge:verify`,
-`sourceforge:web-publish`, `sourceforge:cleanup`, `archive:publish`,
-`archive:verify-reports` and `archive:verify`. `archive:publish` calls the local
-IA uploader; `nyanpasu-file-list` only provides registration, verification,
-indexing and download routes. `sourceforge:verify` writes the compact mirror
-manifest consumed by the updater task, while `sourceforge:cleanup` accepts only
-full run/attempt/SHA nightly directory names and never scans or deletes release
-paths.
+Deploy `nyanpasu-file-list` migration `0004_add_telegram_storage.sql` and its
+Telegram-aware routes before enabling this uploader. Old IA and OneDrive rows
+remain readable; matching IA copies are hidden when their Telegram replacement
+is indexed. New builds no longer upload to IA, and IA credentials are not
+required by release/nightly publication. Historical IA tools remain available
+for already published data. The retained item prefix only preserves old manifest
+identities during recovery; it does not enable IA publication.
+
+SourceForge uploads six targets concurrently and public verification checks four
+files concurrently. Normal publication hashes the mirror once in its independent
+verification job. Nightly cleanup requires archived copies of all six targets
+(Telegram, or legacy ready IA entries) before deleting an old SF folder. Missing
+credentials or archives retain the folder. Releases are never pruned.
+
+### Debug and recover without rebuilding
+
+Use `[Maintenance] Debug and Recover Storage Publication` with the completed
+package run id and `backend=telegram`, `sourceforge` or `both`. `mode=upload`
+uses retained signed packages without rebuilding. The six-target inventory,
+original run/attempt/commit/timestamp and every size/hash are checked before any
+remote write. `mode=preflight` checks configuration, archive auth/database
+access and optional SourceForge SFTP connectivity without posting documents.
+
+Telegram checkpoints each uploaded document's message id, document id, size and
+hashes in `telegram-report.json`. For subsequent recovery, set
+`telegram_report_run_id` to the run containing that report; the default is the
+original source run. Recovery checks saved messages and skips already uploaded
+documents. `mode=register` retries archive indexing from saved receipts without
+uploading bytes; `mode=verify` checks saved channel messages without uploading
+or registering. If the first Telegram transfer has no report, use `mode=upload`.
+The report remains available even if later uploads or archive registration fail.
+An expired or conflicting receipt fails closed rather than posting a duplicate.
+
+For the failed release run `37342393456`, choose that `source_run_id`,
+`mode=upload`, `backend=telegram`, `target=all` after deploying the archive
+change and pushing the main repository changes. This transfers its existing
+signed packages to the channel. Recovery does not publish updater feeds:
+manually run `[Reusable] Publish Updater Manifests` with `nightly=false` to
+regenerate the GitHub/Surge feeds; pass verified SF metadata only after SF
+recovery succeeds. Re-running an old release job uses its original SHA, not
+these new scripts.
+
+Locally, use
+`deno task telegram:publish --publication-dir <dir> --report
+<report.json>`; an
+existing report is reused and must belong to the same inventory. Add
+`--target <target>`, `--register-only` or `--verify-only` for scoped recovery.
+SF-only recovery verifies public hashes and saves a complete
+`recovery-reports/sourceforge-mirrors.json` for the updater workflow. Partial
+mirror metadata must not replace the complete six-target mirror inventory.
+
+Use `[Maintenance] Backfill SourceForge Release Mirror` for an existing
+published release tag when Actions artifacts are no longer retained. It
+downloads GitHub release assets, verifies SF bytes and attaches mirror metadata;
+it does not rebuild packages or publish an updater feed.
 
 ## Legacy OneDrive upload diagnostics
 
@@ -154,10 +199,11 @@ merely to diagnose a storage quota error.
 
 Telegram notifications contain release/build information and the corresponding
 GitHub Release download page (`pre-release` for nightly builds). Notifications
-wait for GitHub release assets to finish uploading; notification jobs do not
-download or upload packages. To resend a release notification after the updated
-workflow is available on GitHub, manually run
-`[Reusable] Notify Telegram of Releases` with `nightly: false` and the published
-`tag`, for example `v2.0.0-beta.1`. This sends only the notification to
-`@keikolog`; it does not rebuild packages. Re-running an older failed
-publication run uses that run's original workflow and scripts.
+are available through manual dispatch; normal release/nightly jobs upload files
+through `telegram:publish`. The manual notification does not download or upload
+packages. To resend a release notification after the updated workflow is
+available on GitHub, manually run `[Reusable] Notify Telegram of Releases` with
+`nightly: false` and the published `tag`, for example `v2.0.0-beta.1`. This
+sends only the notification to `@keikolog`; it does not rebuild packages.
+Re-running an older failed publication run uses that run's original workflow and
+scripts.

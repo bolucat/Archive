@@ -20,6 +20,11 @@ pub trait Resolver: Send + Sync + 'static {
 	/// Resolve `host` to every available [`IpAddr`].
 	///
 	/// Literal IP addresses yield a single-entry vector.
+	///
+	/// The returned vector is never empty: a host with no records, or with none
+	/// matching the resolver's stack preference, is reported as an error so
+	/// that callers cannot mistake "nothing to connect to" for a successful
+	/// lookup.
 	fn resolve_all<'a>(&'a self, host: &'a str) -> Pin<Box<dyn Future<Output = eyre::Result<Vec<IpAddr>>> + Send + 'a>>;
 }
 
@@ -61,9 +66,26 @@ impl Resolver for SystemResolver {
 			if addrs.is_empty() {
 				eyre::bail!("no DNS records for {host}");
 			}
-			Ok(filter_addrs_by_preference(addrs, self.prefer))
+			let addrs = filter_addrs_by_preference(addrs, self.prefer);
+			bail_if_no_addrs(&addrs, host, self.prefer)?;
+			Ok(addrs)
 		})
 	}
+}
+
+/// Report an empty address list as an error instead of returning it.
+///
+/// Filtering by [`StackPrefer`] can legitimately empty a list when the host
+/// only publishes records of the other family (an A-only name under
+/// [`StackPrefer::V6only`], for example).  Returning `Ok(vec![])` made that
+/// indistinguishable from a successful lookup, so every `resolve_all` path
+/// funnels its filtered list through this guard; the message matches the one
+/// [`resolve`](Resolver::resolve) and [`resolve_target_with_preference`] use.
+pub fn bail_if_no_addrs(addrs: &[IpAddr], host: &str, prefer: StackPrefer) -> eyre::Result<()> {
+	if addrs.is_empty() {
+		eyre::bail!("no address matching {prefer:?} for {host}");
+	}
+	Ok(())
 }
 
 /// Pick the best address from a resolved list according to [`StackPrefer`].
@@ -211,5 +233,25 @@ mod tests {
 			filter_addrs_by_preference(addrs, StackPrefer::V6first),
 			ips(&["2001:db8::1", "::1", "192.168.1.1", "10.0.0.1"]),
 		);
+	}
+
+	#[test]
+	fn an_empty_address_list_is_an_error_not_an_empty_ok() {
+		// `resolve_all` used to hand the filtered list straight back, so a host
+		// whose only records belong to the other family looked like a
+		// successful lookup of zero addresses.
+		let filtered = filter_addrs_by_preference(ips(&["192.168.1.1"]), StackPrefer::V6only);
+		assert!(filtered.is_empty());
+		let err = bail_if_no_addrs(&filtered, "example.com", StackPrefer::V6only).unwrap_err();
+		assert!(
+			err.to_string().contains("no address matching V6only for example.com"),
+			"unexpected message: {err}"
+		);
+	}
+
+	#[test]
+	fn a_non_empty_address_list_passes_the_guard() {
+		let addrs = ips(&["192.168.1.1"]);
+		assert!(bail_if_no_addrs(&addrs, "example.com", StackPrefer::V4first).is_ok());
 	}
 }

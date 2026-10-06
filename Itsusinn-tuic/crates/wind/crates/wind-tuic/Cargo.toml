@@ -105,14 +105,16 @@ quinn-congestions = { workspace = true, optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging"], optional = true }
 rustls = { version  = "0.23", default-features = false, optional = true }
 rustls-platform-verifier = { version = "0.7", default-features = false, optional = true }
-aws-lc-rs = { version = "*", optional = true, default-features = false }
+aws-lc-rs = { version = "1", optional = true, default-features = false }
 
 # HTTP/3 masquerade: the transport-agnostic h3 server engine plus a `reqwest`
 # reverse-proxy client to the upstream site (reqwest owns TLS/roots/pooling, so
 # no hyper/rustls plumbing here). Gated behind the `masquerade` feature.
+# reqwest 0.13 renamed the `rustls-tls` feature to `rustls` and now takes roots
+# from `rustls-platform-verifier` (system CA store) instead of `webpki-roots`.
 h3 = { version = "0.0.8", optional = true }
 http = { version = "1", optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "http2"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "http2"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util", "macros", "rt-multi-thread", "io-util"] }
@@ -121,6 +123,6 @@ tokio-stream = "0.1"
 eyre = "0.6"
 color-eyre = { version = "0.6", default-features = false }
 hex = { package = "const-hex", version = "1" }
-rcgen = "0.14.7"
+rcgen = "0.14"
 tempfile = "3"
 test-log = { version = "0.2", features = ["trace"] }

@@ -1,4 +1,9 @@
-use std::{fs::File, net::IpAddr, path::Path};
+use std::{
+	fs::File,
+	net::IpAddr,
+	path::{Path, PathBuf},
+	sync::atomic::{AtomicU64, Ordering},
+};
 
 use memmap2::Mmap;
 
@@ -19,6 +24,24 @@ const FORMAT_VERSION: u32 = 1;
 /// size keeps the rkyv payload aligned to 16 relative to the (page-aligned)
 /// mmap base.
 const HEADER_LEN: usize = 16;
+
+/// Distinguishes the temp files of concurrent builders living in the same
+/// process (see `temp_cache_path`).
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Temp path used to stage a cache write before the atomic rename.
+///
+/// It must sit next to `cache_path` (the rename is only atomic within one
+/// filesystem) and it must be unique per call: a pid alone is not enough,
+/// because two builders in the same process — a second task, or parallel
+/// tests using one cache path — would otherwise write, rename, and delete one
+/// shared temp file out from under each other.
+fn temp_cache_path(cache_path: &Path) -> PathBuf {
+	let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+	let mut tmp_name = cache_path.file_name().unwrap_or_default().to_os_string();
+	tmp_name.push(format!(".tmp.{}.{}", std::process::id(), seq));
+	cache_path.with_file_name(tmp_name)
+}
 
 pub struct GeoData {
 	mmap: Mmap,
@@ -44,9 +67,9 @@ impl GeoData {
 		buf.extend_from_slice(&payload[..]);
 		// Write atomically: a partial write (process killed mid-write) or a
 		// concurrent builder must never leave a truncated cache that a later
-		// `open()` would read. Write to a pid-scoped temp file, then rename it
+		// `open()` would read. Write to a per-call temp file, then rename it
 		// into place (atomic on the same filesystem).
-		let tmp_path = cache_path.with_extension(format!("tmp.{}", std::process::id()));
+		let tmp_path = temp_cache_path(cache_path);
 		std::fs::write(&tmp_path, &buf)?;
 		if let Err(e) = std::fs::rename(&tmp_path, cache_path) {
 			let _ = std::fs::remove_file(&tmp_path);
@@ -100,7 +123,7 @@ impl GeoData {
 
 #[cfg(test)]
 mod tests {
-	use std::net::IpAddr;
+	use std::{net::IpAddr, sync::atomic::AtomicUsize};
 
 	use geosite_rs::{Cidr, Domain, GeoIp, GeoIpList, GeoSite, GeoSiteList, encode_geoip, encode_geosite};
 
@@ -253,6 +276,43 @@ mod tests {
 	}
 
 	#[test]
+	fn duplicate_geosite_categories_are_merged() {
+		// Regression: entries sharing a tag used to produce one `CategoryInfo`
+		// per entry, so the by-name binary search could only ever reach one of
+		// them (the other entry's domains were unreachable). Tags are compared
+		// after uppercasing, so differently-cased spellings must merge too.
+		let geosite = GeoSiteList {
+			entry: vec![
+				GeoSite {
+					country_code: "google".to_string(),
+					domain: vec![domain(3, "first.example")], // Full → exact
+				},
+				GeoSite {
+					country_code: "GOOGLE".to_string(),
+					domain: vec![domain(2, "second.example")], // Domain → suffix
+				},
+			],
+		};
+		let geoip = GeoIpList { entry: Vec::new() };
+		let gs = encode_geosite(geosite);
+		let gi = encode_geoip(geoip);
+
+		let snapshot = crate::builder::build_snapshot(&gs, &gi).unwrap();
+		assert_eq!(
+			snapshot.geosite.categories.len(),
+			1,
+			"a repeated geosite tag must produce a single merged category"
+		);
+		assert_eq!(snapshot.geosite.categories[0].name, "GOOGLE");
+
+		let tmp = tempfile::NamedTempFile::new().unwrap().into_temp_path();
+		let geo = GeoData::build_and_open(&gs, &gi, &tmp).unwrap();
+		let site = geo.geosite_lookup();
+		assert!(site("google", "first.example"));
+		assert!(site("google", "second.example"));
+	}
+
+	#[test]
 	fn open_roundtrips_via_cache() {
 		let (tmp, _geo) = open_fixture();
 		let reopened = GeoData::open(&tmp).unwrap();
@@ -315,5 +375,208 @@ mod tests {
 		let tmp = tempfile::NamedTempFile::new().unwrap();
 		std::fs::write(tmp.path(), &buf).unwrap();
 		assert!(matches!(GeoData::open(tmp.path()), Err(GeoDataError::Validate(_))));
+	}
+
+	/// Serialise `snapshot` behind a valid header into a temporary cache file.
+	fn write_cache(snapshot: &crate::snapshot::GeoDataSnapshot) -> tempfile::NamedTempFile {
+		let payload = rkyv::api::high::to_bytes::<rkyv::rancor::Error>(snapshot).unwrap();
+		let mut buf = Vec::new();
+		buf.extend_from_slice(&MAGIC);
+		buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+		buf.extend_from_slice(&[0u8; 4]);
+		buf.extend_from_slice(&payload[..]);
+
+		let tmp = tempfile::NamedTempFile::new().unwrap();
+		std::fs::write(tmp.path(), &buf).unwrap();
+		tmp
+	}
+
+	/// A snapshot with no geosite data and one country holding `v4_ranges`.
+	fn geoip_snapshot(v4_ranges: Vec<crate::snapshot::RangeV4>) -> crate::snapshot::GeoDataSnapshot {
+		use crate::snapshot::{CountryInfo, GeoDataSnapshot, GeoIpIndex, GeoSiteIndex};
+
+		GeoDataSnapshot {
+			geosite: GeoSiteIndex {
+				categories: Vec::new(),
+				exact_domains: Vec::new(),
+				suffix_domains: Vec::new(),
+				keyword_domains: Vec::new(),
+			},
+			geoip: GeoIpIndex {
+				countries: vec![CountryInfo {
+					name: "EVIL".to_string(),
+					v4_start: 0,
+					v4_len: v4_ranges.len() as u32,
+					v6_start: 0,
+					v6_len: 0,
+				}],
+				v4_ranges,
+				v6_ranges: Vec::new(),
+			},
+		}
+	}
+
+	#[test]
+	fn open_rejects_unsorted_domain_slice() {
+		use crate::snapshot::{CategoryInfo, CountryInfo, GeoDataSnapshot, GeoIpIndex, GeoSiteIndex};
+
+		// In bounds and structurally sound, but the category's exact-domain
+		// slice is out of order. Every query binary-searches that slice, so a
+		// cache like this would silently miss entries instead of being
+		// rejected.
+		let snapshot = GeoDataSnapshot {
+			geosite: GeoSiteIndex {
+				categories: vec![CategoryInfo {
+					name: "EVIL".to_string(),
+					exact_start: 0,
+					exact_len: 2,
+					suffix_start: 0,
+					suffix_len: 0,
+					keyword_start: 0,
+					keyword_len: 0,
+				}],
+				exact_domains: vec!["b.example".to_string(), "a.example".to_string()],
+				suffix_domains: Vec::new(),
+				keyword_domains: Vec::new(),
+			},
+			geoip: GeoIpIndex {
+				countries: Vec::<CountryInfo>::new(),
+				v4_ranges: Vec::new(),
+				v6_ranges: Vec::new(),
+			},
+		};
+
+		let tmp = write_cache(&snapshot);
+		assert!(matches!(
+			GeoData::open(tmp.path()),
+			Err(GeoDataError::Validate(msg)) if msg.contains("geosite exact domains not sorted")
+		));
+	}
+
+	#[test]
+	fn open_rejects_overlapping_or_inverted_ranges() {
+		use crate::snapshot::RangeV4;
+
+		// `range_contains_v4` finds the last range whose start <= addr and
+		// assumes at most one range can contain the address. Overlapping,
+		// descending, or inverted ranges break that assumption silently.
+		let cases: [(&str, Vec<RangeV4>); 3] = [
+			(
+				"overlapping",
+				vec![RangeV4 { start: 10, end: 20 }, RangeV4 { start: 15, end: 25 }],
+			),
+			(
+				"descending",
+				vec![RangeV4 { start: 30, end: 40 }, RangeV4 { start: 10, end: 20 }],
+			),
+			("inverted", vec![RangeV4 { start: 20, end: 10 }]),
+		];
+
+		for (what, ranges) in cases {
+			let tmp = write_cache(&geoip_snapshot(ranges));
+			assert!(
+				matches!(GeoData::open(tmp.path()), Err(GeoDataError::Validate(_))),
+				"{what} ranges must be rejected"
+			);
+		}
+	}
+
+	#[test]
+	fn open_accepts_ordered_slices() {
+		use crate::snapshot::{CategoryInfo, CountryInfo, GeoDataSnapshot, GeoIpIndex, GeoSiteIndex, RangeV4};
+
+		// Positive control: the invariants the ordering checks demand (sorted
+		// domains, ranges sorted by start and disjoint) must still open and
+		// answer queries.
+		let snapshot = GeoDataSnapshot {
+			geosite: GeoSiteIndex {
+				categories: vec![CategoryInfo {
+					name: "GOOGLE".to_string(),
+					exact_start: 0,
+					exact_len: 2,
+					suffix_start: 0,
+					suffix_len: 1,
+					keyword_start: 0,
+					keyword_len: 1,
+				}],
+				exact_domains: vec!["a.example".to_string(), "b.example".to_string()],
+				suffix_domains: vec!["c.example".to_string()],
+				keyword_domains: vec!["d".to_string()],
+			},
+			geoip: GeoIpIndex {
+				countries: vec![CountryInfo {
+					name: "US".to_string(),
+					v4_start: 0,
+					v4_len: 2,
+					v6_start: 0,
+					v6_len: 0,
+				}],
+				v4_ranges: vec![RangeV4 { start: 1, end: 2 }, RangeV4 { start: 5, end: 9 }],
+				v6_ranges: Vec::new(),
+			},
+		};
+
+		let tmp = write_cache(&snapshot);
+		let geo = GeoData::open(tmp.path()).unwrap();
+		let site = geo.geosite_lookup();
+		assert!(site("google", "a.example"));
+		assert!(site("google", "sub.c.example"));
+		assert!(site("google", "xxdxx"));
+		assert!(!site("google", "z.example"));
+		let ip = geo.geoip_lookup();
+		assert!(ip("US", "0.0.0.5".parse::<IpAddr>().unwrap()));
+		assert!(!ip("US", "0.0.0.3".parse::<IpAddr>().unwrap()));
+	}
+
+	#[test]
+	fn temp_cache_paths_are_unique_per_call() {
+		// Regression: the temp path was `<cache>.tmp.<pid>`, i.e. identical
+		// for every builder inside one process. Two builders sharing a cache
+		// path then staged their bytes to the same file.
+		let dir = tempfile::tempdir().unwrap();
+		let cache = dir.path().join("geodata.rkyv");
+
+		let first = temp_cache_path(&cache);
+		let second = temp_cache_path(&cache);
+
+		assert_ne!(first, second, "two builders in one process must not share a temp file");
+		// The rename into place only stays atomic while the temp file is on
+		// the cache's own filesystem.
+		assert_eq!(first.parent(), cache.parent());
+		assert_eq!(second.parent(), cache.parent());
+	}
+
+	#[test]
+	fn concurrent_builds_to_one_cache_path_all_succeed() {
+		// End to end counterpart of `temp_cache_paths_are_unique_per_call`:
+		// two real builders racing on one cache path must both keep a usable
+		// handle, and the cache left behind must still be complete.
+		let (gs, gi) = fixture();
+		let dir = tempfile::tempdir().unwrap();
+		let cache = dir.path().join("geodata.rkyv");
+		let barrier = std::sync::Barrier::new(2);
+		let built = AtomicUsize::new(0);
+		let built = &built;
+
+		std::thread::scope(|scope| {
+			for _ in 0..2 {
+				let gs = &gs;
+				let gi = &gi;
+				let cache = &cache;
+				let barrier = &barrier;
+				scope.spawn(move || {
+					barrier.wait();
+					let geo = GeoData::build_and_open(gs, gi, cache).expect("concurrent build must not lose its temp file");
+					assert!(geo.geosite_lookup()("google", "mail.google.com"));
+					assert!(geo.geoip_lookup()("US", "8.8.8.8".parse::<IpAddr>().unwrap()));
+					built.fetch_add(1, Ordering::SeqCst);
+				});
+			}
+		});
+
+		assert_eq!(built.load(Ordering::SeqCst), 2);
+		let reopened = GeoData::open(&cache).unwrap();
+		assert!(reopened.geosite_lookup()("google", "youtube.com"));
+		assert!(reopened.geoip_lookup()("CN", "2400:3200::1".parse::<IpAddr>().unwrap()));
 	}
 }

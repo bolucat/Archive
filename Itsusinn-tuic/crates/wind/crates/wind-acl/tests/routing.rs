@@ -3,16 +3,26 @@
 //! These exercise the rule pipeline without guards, so no resolver is needed.
 
 use std::{
-	net::{Ipv4Addr, Ipv6Addr},
+	net::{IpAddr, Ipv4Addr, Ipv6Addr},
 	sync::Arc,
 };
 
 use wind_acl::AclEngine;
-use wind_core::{FlowContext, RouteAction, Router, hooks::Protocol, types::TargetAddr};
+use wind_core::{FlowContext, RouteAction, Router, StackPrefer, SystemResolver, hooks::Protocol, types::TargetAddr};
 use wind_rule::{NetworkType, RuleParseError};
 
 fn ipv4(addr: &str, port: u16) -> TargetAddr {
 	TargetAddr::IPv4(addr.parse::<Ipv4Addr>().unwrap(), port)
+}
+
+/// Build a literal target from any IP spelling, keeping the address family the
+/// text actually names (`::ffff:127.0.0.1` stays an IPv6 literal, exactly as it
+/// arrives from a client).
+fn ip(addr: &str, port: u16) -> TargetAddr {
+	match addr.parse::<IpAddr>().unwrap() {
+		IpAddr::V4(ip) => TargetAddr::IPv4(ip, port),
+		IpAddr::V6(ip) => TargetAddr::IPv6(ip, port),
+	}
 }
 
 fn domain(host: &str, port: u16) -> TargetAddr {
@@ -83,6 +93,83 @@ async fn guard_without_resolver_is_build_error() {
 		})
 		.build();
 	assert!(err.is_err(), "guard without resolver must fail to build");
+}
+
+/// W8 regression: the `drop_loopback` guard must reject every spelling of the
+/// local host, not only canonical `127.x` / `::1` literals.
+///
+/// [`resolve_target`](wind_core::resolve::resolve_target) passes IPv6 literals
+/// through unchanged, so an IPv4-mapped loopback target arrives as
+/// `IpAddr::V6` — and `Ipv6Addr::is_loopback()` is false for `::ffff:127.0.0.1`
+/// (as is `is_private_ip`). The unspecified address is a second spelling: a
+/// `connect` to `0.0.0.0` / `::` targets the local host on the major stacks.
+/// Both made the guard reachable-to-loopback, i.e. SSRF past the very guard
+/// that exists to prevent it.
+#[tokio::test]
+async fn drop_loopback_rejects_mapped_and_unspecified_local_targets() {
+	let engine = AclEngine::builder("direct")
+		.guards(wind_acl::GuardConfig {
+			drop_loopback: true,
+			drop_private: false,
+		})
+		// Literal targets never reach the resolver; guards only require one.
+		.resolver(Arc::new(SystemResolver::new(StackPrefer::V4first)))
+		.build()
+		.unwrap();
+
+	for addr in [
+		"127.0.0.1",
+		"127.1.2.3",
+		"::1",
+		"::ffff:127.0.0.1",
+		"::ffff:127.1.2.3",
+		"0.0.0.0",
+		"::",
+		"::ffff:0.0.0.0",
+	] {
+		let action = engine.route(&fc(&ip(addr, 8080), true)).await.unwrap();
+		assert!(
+			matches!(action, RouteAction::Reject(_)),
+			"{addr} addresses the local host and must be rejected by drop_loopback, got {action:?}"
+		);
+	}
+
+	// Public destinations — including a mapped one — must still route, so the
+	// guard rejects locality rather than IPv6 in general.
+	for addr in ["8.8.8.8", "::ffff:8.8.8.8", "2001:db8::1"] {
+		let action = engine.route(&fc(&ip(addr, 8080), true)).await.unwrap();
+		assert_eq!(forwarded(&action), Some("direct"), "{addr} must still route");
+	}
+}
+
+/// W8 documents the deliberate split between the two guards: `drop_private`
+/// classifies RFC1918-class private *unicast* space only, so a loopback
+/// destination is the business of `drop_loopback`. Pinned here so a future
+/// change to either guard is a conscious decision rather than a silent one.
+#[tokio::test]
+async fn drop_private_alone_leaves_loopback_to_drop_loopback() {
+	let engine = AclEngine::builder("direct")
+		.guards(wind_acl::GuardConfig {
+			drop_loopback: false,
+			drop_private: true,
+		})
+		.resolver(Arc::new(SystemResolver::new(StackPrefer::V4first)))
+		.build()
+		.unwrap();
+
+	// Private unicast space is rejected...
+	let private = engine.route(&fc(&ip("10.0.0.1", 8080), true)).await.unwrap();
+	assert!(matches!(private, RouteAction::Reject(_)), "10.0.0.1 must be rejected");
+
+	// ...while loopback is not: only the loopback guard covers it.
+	for addr in ["127.0.0.1", "::1"] {
+		let action = engine.route(&fc(&ip(addr, 8080), true)).await.unwrap();
+		assert_eq!(
+			forwarded(&action),
+			Some("direct"),
+			"{addr} is left to drop_loopback: {action:?}"
+		);
+	}
 }
 
 #[tokio::test]

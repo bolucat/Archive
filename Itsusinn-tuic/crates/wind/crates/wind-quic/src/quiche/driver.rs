@@ -70,6 +70,13 @@ const MAX_PENDING_OUT: usize = 256 * 1024;
 /// oldest are dropped past this — bounding memory when the app queues faster
 /// than the peer drains (the command channel itself is unbounded).
 const MAX_OUT_DATAGRAMS: usize = 2048;
+/// Hard cap on queued *inbound* datagrams, the mirror of
+/// [`MAX_OUT_DATAGRAMS`]: the handle's receive channel is bounded and the
+/// driver drops the datagram that would grow it past this. The peer controls
+/// how many datagrams it sends, so without a cap a local application that
+/// stops calling `read_datagram` (e.g. a busy UDP relay) would let this queue
+/// grow for as long as the peer keeps sending.
+const MAX_IN_DATAGRAMS: usize = 2048;
 
 /// An item delivered on a stream's inbound channel: either a chunk of peer
 /// data, or `Err(code)` signaling the peer reset the stream (RESET_STREAM) so
@@ -81,7 +88,7 @@ pub(crate) type InboundItem = Result<Bytes, u64>;
 pub(crate) type CmdTx = mpsc::UnboundedSender<DriverCommand>;
 type AcceptBiTx = mpsc::UnboundedSender<(QuicheSend, QuicheRecv)>;
 type AcceptUniTx = mpsc::UnboundedSender<QuicheRecv>;
-type DgramInTx = mpsc::UnboundedSender<Bytes>;
+type DgramInTx = mpsc::Sender<Bytes>;
 /// A queued keying-material export request: `(out_len, label, context, reply)`.
 type ExportReq = (usize, Vec<u8>, Vec<u8>, oneshot::Sender<Option<Vec<u8>>>);
 
@@ -137,6 +144,10 @@ pub(crate) struct Shared {
 	/// (0 = not sent, 1 = rejected, 2 = accepted, ...). See
 	/// [`quiche::Connection::early_data_reason`].
 	pub early_data_reason: AtomicU32,
+	/// Cumulative inbound datagrams dropped because the bounded receive queue
+	/// was full. Peer-driven, so this counts loss the application never asked
+	/// for; exposed so the drop is observable instead of silent.
+	pub dropped_in_datagrams: AtomicU64,
 }
 
 /// Per-stream bridge state held by the driver.
@@ -249,6 +260,8 @@ pub(crate) struct BridgeDriver {
 	/// Whether an unsendable datagram has already been reported at `warn` for
 	/// this connection (subsequent drops stay at `trace` to avoid log spam).
 	dgram_drop_warned: bool,
+	/// Same, for inbound datagrams dropped by the receive-queue cap.
+	dgram_in_drop_warned: bool,
 	pending_opens: VecDeque<PendingOpen>,
 	pending_exports: VecDeque<ExportReq>,
 	pending_sessions: VecDeque<oneshot::Sender<Option<Vec<u8>>>>,
@@ -267,7 +280,7 @@ impl BridgeDriver {
 		let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 		let (accept_bi_tx, accept_bi_rx) = mpsc::unbounded_channel();
 		let (accept_uni_tx, accept_uni_rx) = mpsc::unbounded_channel();
-		let (dgram_in_tx, dgram_in_rx) = mpsc::unbounded_channel();
+		let (dgram_in_tx, dgram_in_rx) = mpsc::channel(MAX_IN_DATAGRAMS);
 		let shared = Arc::new(Shared {
 			max_dgram: AtomicUsize::new(0),
 			closed: AtomicBool::new(false),
@@ -275,6 +288,7 @@ impl BridgeDriver {
 			sent_bytes: AtomicU64::new(0),
 			recv_bytes: AtomicU64::new(0),
 			early_data_reason: AtomicU32::new(0),
+			dropped_in_datagrams: AtomicU64::new(0),
 		});
 		let handle = Handle::new(
 			cmd_tx.clone(),
@@ -301,6 +315,7 @@ impl BridgeDriver {
 			dgram_in_tx,
 			out_datagrams: VecDeque::new(),
 			dgram_drop_warned: false,
+			dgram_in_drop_warned: false,
 			pending_opens: VecDeque::new(),
 			pending_exports: VecDeque::new(),
 			pending_sessions: VecDeque::new(),
@@ -337,6 +352,37 @@ impl BridgeDriver {
 	fn is_peer_initiated(&self, sid: u64) -> bool {
 		let init = if self.is_server { 1 } else { 0 };
 		(sid & 1) != init
+	}
+
+	/// Queue one inbound datagram for the handle.
+	///
+	/// The receive channel is bounded ([`MAX_IN_DATAGRAMS`]), so the datagram
+	/// that would grow it past the cap is dropped. Previously the channel was
+	/// unbounded *and* [`process_reads`](ApplicationOverQuic::process_reads)
+	/// drained every queued datagram into it, so a handle that stopped reading
+	/// let peer-driven memory grow without bound. Datagrams are unreliable, so
+	/// dropping is the accepted loss mode (the outbound queue drops its oldest
+	/// past [`MAX_OUT_DATAGRAMS`] for the same reason); the counter keeps the
+	/// loss observable.
+	///
+	/// Returns `false` when the datagram was dropped because the queue was
+	/// full, so the caller can stop draining.
+	fn accept_datagram(&mut self, data: Bytes) -> bool {
+		match self.dgram_in_tx.try_send(data) {
+			Ok(()) => true,
+			Err(TrySendError::Full(_)) => {
+				self.shared.dropped_in_datagrams.fetch_add(1, Ordering::Relaxed);
+				if self.dgram_in_drop_warned {
+					trace!("dropping inbound QUIC datagram: receive queue full");
+				} else {
+					self.dgram_in_drop_warned = true;
+					warn!("dropping inbound QUIC datagrams: receive queue full; further drops at trace level");
+				}
+				false
+			}
+			// The handle is gone (connection teardown); nothing to deliver to.
+			Err(TrySendError::Closed(_)) => false,
+		}
 	}
 
 	fn open_local_bi(&mut self) -> (QuicheSend, QuicheRecv) {
@@ -601,13 +647,15 @@ fn export_keying_material(qconn: &mut QuicheConnection, out_len: usize, label: &
 
 	let ssl: &mut boring::ssl::SslRef = qconn.as_mut();
 	let mut out = vec![0u8; out_len];
-	// SAFETY: `ssl.as_ptr()` yields a valid `SSL*` for the borrow; `out` /
+	let mut scratch = 0u8;
+	let out_ptr = export_out_ptr(&mut out, &mut scratch);
+	// SAFETY: `ssl.as_ptr()` yields a valid `SSL*` for the borrow; `out_ptr` /
 	// `label` / `context` are passed as (ptr, len) of valid slices and
 	// BoringSSL does not retain them past the call.
 	let rc = unsafe {
 		boring_sys::SSL_export_keying_material(
 			ssl.as_ptr(),
-			out.as_mut_ptr(),
+			out_ptr,
 			out.len(),
 			label.as_ptr() as *const core::ffi::c_char,
 			label.len(),
@@ -617,6 +665,22 @@ fn export_keying_material(qconn: &mut QuicheConnection, out_len: usize, label: &
 		)
 	};
 	(rc == 1).then_some(out)
+}
+
+/// The `out` pointer to hand `SSL_export_keying_material` for an export of
+/// `out.len()` bytes.
+///
+/// BoringSSL takes `out` as a pointer valid for `out_len` bytes. A
+/// zero-capacity `Vec` has no allocation, so its `as_mut_ptr` is a dangling —
+/// merely non-null — pointer that must not reach the FFI. A zero-length export
+/// is backed by `scratch` instead; the exporter writes nothing at that length,
+/// so the observable output is unchanged.
+fn export_out_ptr(out: &mut [u8], scratch: &mut u8) -> *mut u8 {
+	if out.is_empty() {
+		core::ptr::from_mut(scratch)
+	} else {
+		out.as_mut_ptr()
+	}
 }
 
 impl ApplicationOverQuic for BridgeDriver {
@@ -714,7 +778,14 @@ impl ApplicationOverQuic for BridgeDriver {
 		loop {
 			match qconn.dgram_recv(&mut self.buffer) {
 				Ok(n) => {
-					let _ = self.dgram_in_tx.send(Bytes::copy_from_slice(&self.buffer[..n]));
+					// Bounded queue: the datagram that would overflow it is
+					// dropped and the drain stops. Datagrams left unread stay
+					// in quiche's own receive queue, so a handle that stops
+					// reading no longer lets this path accumulate without
+					// bound.
+					if !self.accept_datagram(Bytes::copy_from_slice(&self.buffer[..n])) {
+						break;
+					}
 				}
 				Err(quiche::Error::Done) => break,
 				Err(e) => {
@@ -839,5 +910,46 @@ impl ApplicationOverQuic for BridgeDriver {
 		self.shared.recv_bytes.store(stats.recv_bytes, Ordering::Relaxed);
 		self.shared.closed.store(true, Ordering::SeqCst);
 		self.shared.closed_notify.notify_waiters();
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::export_out_ptr;
+
+	#[test]
+	fn a_zero_length_export_does_not_pass_a_dangling_pointer() {
+		// A zero-capacity `Vec` has no allocation, so `as_mut_ptr` is a
+		// dangling (non-null) pointer; the pre-fix code handed exactly
+		// that to `SSL_export_keying_material` whenever the caller
+		// exported zero bytes.
+		let mut out: Vec<u8> = Vec::new();
+		let mut scratch = 0u8;
+		let ptr = export_out_ptr(&mut out, &mut scratch);
+		assert_eq!(
+			ptr,
+			core::ptr::from_mut(&mut scratch),
+			"a zero-length export must hand BoringSSL a dereferenceable pointer"
+		);
+		assert_ne!(
+			ptr,
+			out.as_mut_ptr(),
+			"the empty buffer's dangling pointer must never reach the FFI call"
+		);
+		// The pointer really is writable even though a zero-length export
+		// writes nothing into it.
+		unsafe { ptr.write(0xA5) };
+		assert_eq!(scratch, 0xA5);
+	}
+
+	#[test]
+	fn a_non_empty_export_still_uses_the_callers_own_buffer() {
+		let mut out = [0u8; 32];
+		let mut scratch = 0u8;
+		assert_eq!(
+			export_out_ptr(&mut out, &mut scratch),
+			out.as_mut_ptr(),
+			"a non-empty export must write into the caller's buffer"
+		);
 	}
 }

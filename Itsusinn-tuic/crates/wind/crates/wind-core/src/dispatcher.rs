@@ -19,7 +19,7 @@ use std::{collections::HashMap, future::Future, sync::Arc};
 
 use tracing::Instrument;
 
-use crate::{InboundCallback, flow::FlowContext, outbound::Outbound, tcp::AbstractTcpStream, udp::UdpStream};
+use crate::{AppContext, InboundCallback, flow::FlowContext, outbound::Outbound, tcp::AbstractTcpStream, udp::UdpStream};
 
 /// Decision returned by a [`Router`].
 #[derive(Debug, Clone)]
@@ -57,6 +57,9 @@ pub trait Router: Send + Sync + 'static {
 pub struct Dispatcher<R: Router> {
 	router: Arc<R>,
 	handlers: Arc<HashMap<String, Arc<dyn Outbound>>>,
+	/// Owner of the dispatcher's internal tasks. Without one, dispatcher-local
+	/// helper tasks are detached (see [`Dispatcher::context`]).
+	context: Arc<AppContext>,
 }
 
 impl<R: Router> Dispatcher<R> {
@@ -65,7 +68,20 @@ impl<R: Router> Dispatcher<R> {
 		Self {
 			router: Arc::new(router),
 			handlers: Arc::new(HashMap::new()),
+			context: Arc::new(AppContext::default()),
 		}
+	}
+
+	/// Attach the application context that owns this dispatcher's internal
+	/// tasks, so graceful shutdown drains them like any other task.
+	///
+	/// Pass the same context the inbound driving this dispatcher was built
+	/// with. Without this call the dispatcher owns a private context whose
+	/// tasks are never drained by `App::run`; they are still all
+	/// self-terminating, so this is a shutdown-timing gap rather than a leak.
+	pub fn context(mut self, ctx: Arc<AppContext>) -> Self {
+		self.context = ctx;
+		self
 	}
 
 	/// Register a named outbound handler.
@@ -89,6 +105,7 @@ impl<R: Router> Clone for Dispatcher<R> {
 		Self {
 			router: self.router.clone(),
 			handlers: self.handlers.clone(),
+			context: self.context.clone(),
 		}
 	}
 }
@@ -174,13 +191,28 @@ impl<R: Router> Dispatcher<R> {
 				// sees the first packet too. A small proxy channel replays
 				// the first packet and then forwards everything else from the
 				// original receiver verbatim.
+				//
+				// The replayer is spawned on the dispatcher's [`AppContext`]
+				// so graceful shutdown awaits it: a detached task would keep
+				// the session's upstream receiver and buffers alive past the
+				// drain. It still self-terminates as soon as the handler drops
+				// its receiver — either the next `send` fails, or the `closed`
+				// arm fires while the upstream is idle — so the drain cannot
+				// block on it indefinitely.
 				let (proxy_tx, proxy_rx) = tokio::sync::mpsc::channel(32);
-				tokio::spawn(async move {
+				self.context.tasks.spawn(async move {
 					if proxy_tx.send(first).await.is_err() {
 						return;
 					}
-					while let Some(pkt) = rx.recv().await {
-						if proxy_tx.send(pkt).await.is_err() {
+					loop {
+						let packet = tokio::select! {
+							packet = rx.recv() => packet,
+							_ = proxy_tx.closed() => None,
+						};
+						let Some(packet) = packet else {
+							break;
+						};
+						if proxy_tx.send(packet).await.is_err() {
 							break;
 						}
 					}
@@ -199,6 +231,7 @@ mod tests {
 	use std::sync::atomic::{AtomicBool, Ordering};
 
 	use async_trait::async_trait;
+	use tokio::sync::oneshot;
 
 	use super::*;
 	use crate::{hooks::Protocol, rule::NetworkType, types::TargetAddr};
@@ -365,5 +398,114 @@ mod tests {
 			.handle_tcpstream(fc(&TargetAddr::Domain("a.com".into(), 80), true), client)
 			.await;
 		assert!(result.is_err());
+	}
+
+	/// Signals the test once the replayed first packet arrives, then keeps the
+	/// session open until the test flips `open` to `false`. That gives the
+	/// replay task a well-defined end: it stops when this handler drops its
+	/// receiver.
+	struct SignalThenEnd {
+		seen: std::sync::Mutex<Option<oneshot::Sender<()>>>,
+		open: Arc<AtomicBool>,
+	}
+
+	#[async_trait]
+	impl Outbound for SignalThenEnd {
+		async fn handle_tcp(&self, _ctx: FlowContext, _stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+			Ok(())
+		}
+
+		async fn handle_udp(&self, _ctx: FlowContext, mut stream: UdpStream) -> eyre::Result<()> {
+			let packet = stream.rx.recv().await.expect("the replay task must deliver the first packet");
+			assert_eq!(
+				packet.target,
+				TargetAddr::Domain("drain.example".into(), 53),
+				"the replayed packet must be the one the session was routed on"
+			);
+			if let Some(seen) = self.seen.lock().unwrap().take() {
+				let _ = seen.send(());
+			}
+			while self.open.load(Ordering::Relaxed) {
+				tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+			}
+			// Dropping `stream` here closes the relay channel, which is what
+			// tells the replay task to finish.
+			Ok(())
+		}
+	}
+
+	/// The UDP first-packet replayer must be registered on the dispatcher's
+	/// `AppContext`, so graceful shutdown drains it instead of leaving a
+	/// detached task holding the session's upstream receiver and buffers.
+	///
+	/// A bare `tokio::spawn` leaves the replayer invisible to the tracker, so
+	/// the drain would complete while the session is still live.
+	#[tokio::test]
+	async fn udp_replay_task_participates_in_the_shutdown_drain() {
+		let ctx = Arc::new(crate::AppContext::default());
+		let open = Arc::new(AtomicBool::new(true));
+		let (seen_tx, seen_rx) = oneshot::channel();
+
+		let mut dispatcher = Dispatcher::new(StubRouter::new(RouteAction::Forward("relay".into()))).context(ctx.clone());
+		dispatcher.add_handler(
+			"relay",
+			Arc::new(SignalThenEnd {
+				seen: std::sync::Mutex::new(Some(seen_tx)),
+				open: open.clone(),
+			}),
+		);
+
+		let (tx, _rx) = tokio::sync::mpsc::channel(1);
+		let (tx2, rx2) = tokio::sync::mpsc::channel(1);
+		tx2.send(crate::udp::UdpPacket {
+			source: None,
+			target: TargetAddr::Domain("drain.example".into(), 53),
+			payload: bytes::Bytes::new(),
+		})
+		.await
+		.unwrap();
+		let stream = UdpStream { tx, rx: rx2 };
+
+		let dispatch = tokio::spawn({
+			let dispatcher = dispatcher.clone();
+			async move { dispatcher.handle_udpstream(fc_udp(), stream).await }
+		});
+		tokio::time::timeout(std::time::Duration::from_secs(5), seen_rx)
+			.await
+			.expect("the handler never saw the replayed first packet")
+			.expect("the handler dropped its signal");
+
+		// The session is live, so a drain must still be waiting on the
+		// replayer.
+		assert!(
+			!ctx.tasks.is_empty(),
+			"the UDP replay task must be registered on the app's TaskTracker"
+		);
+		ctx.tasks.close();
+		assert!(
+			tokio::time::timeout(std::time::Duration::from_secs(5), ctx.tasks.wait())
+				.await
+				.is_err(),
+			"the drain must await the replay task while the session is still live"
+		);
+
+		// End the session; the same drain must now complete and leave nothing
+		// behind.
+		open.store(false, Ordering::Relaxed);
+		assert!(
+			tokio::time::timeout(std::time::Duration::from_secs(5), ctx.tasks.wait())
+				.await
+				.is_ok(),
+			"the drain must finish once the session's handler is gone"
+		);
+		assert!(ctx.tasks.is_empty(), "no replay task may be left behind after the drain");
+		assert!(
+			tokio::time::timeout(std::time::Duration::from_secs(5), dispatch)
+				.await
+				.expect("dispatch_udp did not return after the session ended")
+				.expect("dispatch task panicked")
+				.is_ok(),
+			"the UDP session must end without an error"
+		);
 	}
 }

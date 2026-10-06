@@ -11,6 +11,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use tokio::net::UdpSocket;
+#[cfg(test)]
+use tokio::sync::watch;
 use tracing::{Instrument as _, warn};
 #[cfg(test)]
 use wind_core::AppContext;
@@ -80,7 +82,7 @@ impl Outbound for DirectCallback {
 			.in_current_span(),
 		);
 
-		tokio::spawn(
+		let reply_handle = tokio::spawn(
 			async move {
 				let mut buf = vec![0u8; 65536];
 				loop {
@@ -119,8 +121,31 @@ impl Outbound for DirectCallback {
 			.in_current_span(),
 		);
 
-		recv_handle.await?;
-		Ok(())
+		// Both halves are joined: the reply relay must not outlive this call.
+		// It owns the only `tx` clone, so a task left running keeps the
+		// local receive side open indefinitely while it sits parked in
+		// `recv_from`. Dropping a `JoinHandle` only detaches, so the
+		// survivor has to be aborted explicitly — that drops the task
+		// (and its `tx`) before this function returns.
+		let mut upstream = std::pin::pin!(recv_handle);
+		let mut reply_handle = reply_handle;
+		let (upstream_join, reply_join): (Result<(), tokio::task::JoinError>, Option<Result<(), tokio::task::JoinError>>) = tokio::select! {
+			result = &mut upstream => (result, None),
+			result = &mut reply_handle => (Ok(()), Some(result)),
+		};
+		upstream.abort();
+		reply_handle.abort();
+		if let Some(Err(e)) = reply_join
+			&& !e.is_cancelled()
+		{
+			return Err(eyre::Report::msg(format!("DirectCallback UDP reply task join failed: {e}")));
+		}
+		// `upstream` is the task whose completion ended the association, so a
+		// join error here is a real failure rather than our own cancellation.
+		match upstream_join {
+			Ok(()) => Ok(()),
+			Err(e) => Err(eyre::Report::msg(format!("DirectCallback UDP receive task join failed: {e}"))),
+		}
 	}
 }
 
@@ -227,42 +252,16 @@ mod tests {
 
 	/// As [`spawn_tuic_server`], but lets the caller enable 0-RTT early data on
 	/// the inbound (`max_early_data_size` + `into_0rtt()` accept path).
+	///
+	/// The listener is bound through [`spawn_server_on`], so the returned
+	/// address is the one the server really bound — never a port that some
+	/// throwaway socket reserved and then released.
 	async fn spawn_tuic_server_with(
 		zero_rtt: bool,
 	) -> eyre::Result<(Arc<AppContext>, SocketAddr, Uuid, tokio::task::JoinHandle<eyre::Result<()>>)> {
-		let (cert, key) = generate_tuic_test_cert();
 		let uuid = Uuid::new_v4();
-		let mut users = HashMap::new();
-		users.insert(uuid, String::from_utf8_lossy(TEST_PASSWORD).to_string());
-
-		// Obtain a free UDP port without holding the socket
-		let temp = std::net::UdpSocket::bind("127.0.0.1:0")?;
-		let server_addr = temp.local_addr()?;
-		drop(temp);
-
-		let ctx = Arc::new(AppContext::default());
-		let opts = TuicInboundOpts {
-			listen_addr: server_addr,
-			tls: wind_tuic::quinn::inbound::TlsProvider::Files {
-				certificate: cert,
-				private_key: key,
-			},
-			alpn: vec!["h3".to_string()],
-			users,
-			auth_timeout: Duration::from_secs(5),
-			max_idle_time: Duration::from_secs(30),
-			zero_rtt,
-			..Default::default()
-		};
-
-		let server = TuicInbound::new(ctx.clone(), opts);
-		let dispatcher = direct_dispatcher();
-		let listen = tokio::spawn(async move { server.listen(&dispatcher).await }.in_current_span());
-
-		// Allow the server time to bind and begin accepting
-		tokio::time::sleep(Duration::from_millis(300)).await;
-
-		Ok((ctx, server_addr, uuid, listen))
+		let (ctx, bound, handle) = spawn_server_on(ephemeral_loopback_addr(), uuid, zero_rtt).await;
+		Ok((ctx, bound, uuid, handle))
 	}
 
 	/// Connect a TUIC client to `addr`/`uuid` and start its heartbeat poll.
@@ -447,6 +446,76 @@ mod tests {
 			client.udp_session.entry_count(),
 			0,
 			"UDP session cache entries leaked after all local streams closed"
+		);
+	}
+
+	/// The reply relay task must not outlive `handle_udp`: it holds the only
+	/// `tx` clone, so a task left running keeps the local receive side open
+	/// after the association has been torn down. The regression harness
+	/// observed the upstream channel still open 3 s after `handle_udp`
+	/// returned; here that shows up as a receive that never resolves to `None`.
+	#[tokio::test]
+	async fn direct_callback_udp_reply_task_does_not_outlive_handle_udp() {
+		// A locally bound UDP socket stands in for the real echo target and
+		// makes the relay receive at least one datagram before parking.
+		let echo = UdpSocket::bind("127.0.0.1:0").await.expect("bind local udp echo");
+		let echo_addr = echo.local_addr().expect("echo local addr");
+		tokio::spawn(
+			async move {
+				let mut buf = vec![0u8; 2048];
+				while let Ok((n, from)) = echo.recv_from(&mut buf).await {
+					let _ = echo.send_to(&buf[..n], from).await;
+				}
+			}
+			.in_current_span(),
+		);
+
+		let (tx_to_relay, rx_at_relay) = tokio::sync::mpsc::channel::<UdpPacket>(4);
+		let (tx_to_caller, mut rx_at_caller) = tokio::sync::mpsc::channel::<UdpPacket>(4);
+		let stream = UdpStream {
+			tx: tx_to_caller,
+			rx: rx_at_relay,
+		};
+		let target = TargetAddr::IPv4(std::net::Ipv4Addr::LOCALHOST, echo_addr.port());
+
+		let handle = tokio::spawn(async move { DirectCallback.handle_udp(test_udp_ctx(), stream).await });
+
+		// One datagram out, its echo back: this puts the reply relay task on
+		// the relay socket, exactly the state the leak needs. The echo
+		// also proves the relay path ran, so parking in `recv_from`
+		// afterwards is real.
+		tx_to_relay
+			.send(UdpPacket {
+				source: None,
+				target,
+				payload: Bytes::from_static(b"wind-test direct callback udp"),
+			})
+			.await
+			.expect("send packet into the direct callback");
+		let echoed = tokio::time::timeout(Duration::from_secs(5), rx_at_caller.recv())
+			.await
+			.expect("echo never arrived, so the relay path did not run")
+			.expect("reply channel closed before the echo arrived");
+		assert_eq!(&echoed.payload[..], b"wind-test direct callback udp");
+
+		// Closing the local side ends the association; `handle_udp` must
+		// return.
+		drop(tx_to_relay);
+		tokio::time::timeout(Duration::from_secs(5), handle)
+			.await
+			.expect("handle_udp did not return after the local side closed")
+			.expect("handle_udp task panicked")
+			.expect("handle_udp errored");
+
+		// Drain anything the echo round trip delivered late, then require the
+		// channel to be closed. With the reply task aborted before `handle_udp`
+		// returns, its `tx` is gone and the receive resolves to `None`; a
+		// surviving task still owns a `tx`, so this stays pending.
+		while let Ok(Some(_)) = tokio::time::timeout(Duration::from_millis(100), rx_at_caller.recv()).await {}
+		let upstream = tokio::time::timeout(Duration::from_secs(1), rx_at_caller.recv()).await;
+		assert!(
+			matches!(upstream, Ok(None)),
+			"upstream channel outlived handle_udp (got {upstream:?}); the reply relay task is still running"
 		);
 	}
 
@@ -899,14 +968,84 @@ mod tests {
 		assert!(joined.is_ok(), "listen returned an error on shutdown: {:?}", joined.err());
 	}
 
-	/// Spawn a TUIC relay server bound to a fixed address with a known user;
-	/// returns its context (to cancel) and the listen-loop join handle. Lets
-	/// the reconnect test restart a server on the same address.
-	async fn spawn_server_on(addr: SocketAddr, uuid: Uuid) -> (Arc<AppContext>, tokio::task::JoinHandle<eyre::Result<()>>) {
+	/// The address the test helpers hand to clients must come from the server's
+	/// own bind, not from a socket that reserved a port and released it: a
+	/// reserve-then-release probe leaves a window in which another process can
+	/// take the port, and the listener is then not where the caller thinks.
+	/// Asking for port 0 and reading the server's report closes that window
+	/// because the port is never free between the probe and the real bind.
+	///
+	/// The abandoned-port race itself is timing dependent and cannot be
+	/// reproduced deterministically; what is pinned here is its precondition —
+	/// the returned address is a real, OS-assigned report, which is what the
+	/// previous probe-based helper could not produce at all.
+	#[tokio::test]
+	async fn reporting_the_bound_address_leaves_no_reserve_release_window() {
+		let uuid = Uuid::new_v4();
+		let (ctx, reported, _listen) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
+
+		assert_ne!(
+			reported.port(),
+			0,
+			"a port-0 request must be answered with the port the OS assigned"
+		);
+		assert_eq!(
+			reported.ip(),
+			std::net::Ipv4Addr::LOCALHOST,
+			"the listener must stay on the interface the caller asked for"
+		);
+
+		ctx.token.cancel();
+	}
+
+	/// A local loopback address whose port the OS assigns, so nothing has to
+	/// guess a free port before the listener does.
+	fn ephemeral_loopback_addr() -> SocketAddr {
+		SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0))
+	}
+
+	/// Wait until the inbound publishes the address it actually bound, or fail
+	/// after `timeout`.
+	///
+	/// This is the read-back half of the `:0`-bind pattern: the port comes from
+	/// the listener's own `bound_addr` report, never from a throwaway socket
+	/// that was released beforehand (which would leave a window for another
+	/// process to take the port between the probe and the real bind).
+	async fn wait_for_reported_addr(
+		rx: &mut watch::Receiver<Option<SocketAddr>>,
+		timeout: Duration,
+	) -> eyre::Result<SocketAddr> {
+		tokio::time::timeout(timeout, async {
+			loop {
+				if let Some(addr) = *rx.borrow_and_update() {
+					return addr;
+				}
+				if rx.changed().await.is_err() {
+					return SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0));
+				}
+			}
+		})
+		.await
+		.map_err(|_| eyre::Report::msg("the TUIC server never reported its bound address"))
+	}
+
+	/// Spawn a TUIC relay server on `addr` with a known user.
+	///
+	/// Returns the context (to cancel), the address the listener really bound,
+	/// and the listen-loop join handle. Callers that don't care about the port
+	/// pass [`ephemeral_loopback_addr`] and use the returned address, so the
+	/// OS-assigned port is handed out from the bound socket instead of from a
+	/// reserve-then-release probe.
+	async fn spawn_server_on(
+		addr: SocketAddr,
+		uuid: Uuid,
+		zero_rtt: bool,
+	) -> (Arc<AppContext>, SocketAddr, tokio::task::JoinHandle<eyre::Result<()>>) {
 		let (cert, key) = generate_tuic_test_cert();
 		let mut users = HashMap::new();
 		users.insert(uuid, String::from_utf8_lossy(TEST_PASSWORD).to_string());
 
+		let (bound_tx, mut bound_rx) = watch::channel(None);
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicInboundOpts {
 			listen_addr: addr,
@@ -918,14 +1057,42 @@ mod tests {
 			users,
 			auth_timeout: Duration::from_secs(5),
 			max_idle_time: Duration::from_secs(30),
-			zero_rtt: false,
+			zero_rtt,
+			bound_addr: Some(bound_tx),
 			..Default::default()
 		};
 		let server = TuicInbound::new(ctx.clone(), opts);
 		let dispatcher = direct_dispatcher();
 		let handle = tokio::spawn(async move { server.listen(&dispatcher).await }.in_current_span());
+
+		let bound = wait_for_reported_addr(&mut bound_rx, Duration::from_secs(5))
+			.await
+			.expect("the TUIC server must report the address it bound");
+		// Let the accept loop reach `accept_incoming` before the first client.
 		tokio::time::sleep(Duration::from_millis(300)).await;
-		(ctx, handle)
+		(ctx, bound, handle)
+	}
+
+	/// As [`spawn_server_on`], but retries the bind when the port is still in
+	/// the previous server's shutdown window. Restart tests hand a bound port
+	/// straight from one listener to the next, so a transient `EADDRINUSE`
+	/// must not be mistaken for a test failure.
+	async fn spawn_server_on_with_retry(
+		addr: SocketAddr,
+		uuid: Uuid,
+	) -> (Arc<AppContext>, SocketAddr, tokio::task::JoinHandle<eyre::Result<()>>) {
+		let mut last = None;
+		for _ in 0..50 {
+			let (ctx, bound, handle) = spawn_server_on(addr, uuid, false).await;
+			if !handle.is_finished() {
+				return (ctx, bound, handle);
+			}
+			if let Ok(Err(e)) = tokio::time::timeout(Duration::from_secs(5), handle).await {
+				last = Some(e);
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+		panic!("the TUIC server never bound {addr} while restarting: {last:?}");
 	}
 
 	/// Attempt one proxied TCP echo through the client. Returns the echoed
@@ -964,16 +1131,13 @@ mod tests {
 			}
 		});
 
-		// Reserve a fixed UDP port for the relay so the second server can
-		// rebind it.
-		let probe = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let server_addr = probe.local_addr().unwrap();
-		drop(probe);
-
+		// Server #1 reports the port it actually bound; the second server must
+		// rebind that address so the client's reconnect target stays valid.
+		// No probe socket reserves and releases the port beforehand.
 		let uuid = Uuid::new_v4();
 
 		// Server #1 + client; confirm the proxy works.
-		let (ctx1, handle1) = spawn_server_on(server_addr, uuid).await;
+		let (ctx1, server_addr, handle1) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
 		let client = connect_client(server_addr, uuid).await.expect("connect client");
 		let got = proxy_echo_once(&client, echo_port, b"before")
 			.await
@@ -986,7 +1150,7 @@ mod tests {
 		tokio::time::sleep(Duration::from_millis(300)).await;
 
 		// Server #2 on the SAME address with the same credentials.
-		let (ctx2, _handle2) = spawn_server_on(server_addr, uuid).await;
+		let (ctx2, _bound2, _handle2) = spawn_server_on_with_retry(server_addr, uuid).await;
 
 		// The supervisor should reconnect within a few backoff cycles; retry
 		// the proxied echo until it succeeds (or give up after ~15s).
@@ -1087,17 +1251,12 @@ mod tests {
 		});
 
 		// Distinct loopback addresses for the initial server and the failover.
-		let probe_a = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let addr_a = probe_a.local_addr().unwrap();
-		drop(probe_a);
-		let probe_b = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let addr_b = probe_b.local_addr().unwrap();
-		drop(probe_b);
-
+		// The failover is started first so its OS-assigned port is known before
+		// the client is pointed at the initial server.
 		let uuid = Uuid::new_v4();
 
-		let (ctx_a, handle_a) = spawn_server_on(addr_a, uuid).await;
-		let (ctx_b, _handle_b) = spawn_server_on(addr_b, uuid).await;
+		let (ctx_b, addr_b, _handle_b) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
+		let (ctx_a, addr_a, handle_a) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
 
 		// The resolver only returns the failover target; the initial connection
 		// still goes to `peer_addr` (server A).
@@ -1137,12 +1296,9 @@ mod tests {
 	/// tracked tasks promptly, not hang.
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn test_client_shuts_down_cleanly_while_reconnecting() {
-		let probe = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let server_addr = probe.local_addr().unwrap();
-		drop(probe);
 		let uuid = Uuid::new_v4();
 
-		let (ctx1, handle1) = spawn_server_on(server_addr, uuid).await;
+		let (ctx1, server_addr, handle1) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
 		let client = connect_client(server_addr, uuid).await.expect("connect client");
 
 		// Kill the server so the supervisor enters its reconnect backoff loop.
@@ -1178,12 +1334,9 @@ mod tests {
 			}
 		});
 
-		let probe = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let server_addr = probe.local_addr().unwrap();
-		drop(probe);
 		let uuid = Uuid::new_v4();
 
-		let (ctx1, handle1) = spawn_server_on(server_addr, uuid).await;
+		let (ctx1, server_addr, handle1) = spawn_server_on(ephemeral_loopback_addr(), uuid, false).await;
 		let client = connect_client_with(
 			server_addr,
 			uuid,
@@ -1207,7 +1360,7 @@ mod tests {
 		ctx1.token.cancel();
 		let _ = tokio::time::timeout(Duration::from_secs(5), handle1).await;
 		tokio::time::sleep(Duration::from_millis(300)).await;
-		let (ctx2, _handle2) = spawn_server_on(server_addr, uuid).await;
+		let (ctx2, _bound2, _handle2) = spawn_server_on_with_retry(server_addr, uuid).await;
 
 		// Reconnect is disabled, so no proxied echo should ever succeed even
 		// though a fresh server is now listening.
@@ -1280,14 +1433,14 @@ mod tests {
 			rejected: AtomicUsize::new(0),
 		});
 
-		// Bring up a TUIC server with hooks wired in.
+		// Bring up a TUIC server with hooks wired in. The listen address is
+		// left to the OS and read back from the inbound's own report,
+		// so no socket has to reserve and release the port first.
 		let (cert, key) = generate_tuic_test_cert();
 		let uuid = Uuid::new_v4();
 		let mut users = HashMap::new();
 		users.insert(uuid, String::from_utf8_lossy(TEST_PASSWORD).to_string());
-		let temp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-		let server_addr = temp.local_addr().unwrap();
-		drop(temp);
+		let (bound_tx, mut bound_rx) = watch::channel(None);
 
 		let ctx = Arc::new(AppContext::default());
 		let hooks = InboundHooks {
@@ -1297,7 +1450,7 @@ mod tests {
 			..Default::default()
 		};
 		let opts = TuicInboundOpts {
-			listen_addr: server_addr,
+			listen_addr: ephemeral_loopback_addr(),
 			tls: wind_tuic::quinn::inbound::TlsProvider::Files {
 				certificate: cert,
 				private_key: key,
@@ -1308,11 +1461,15 @@ mod tests {
 			max_idle_time: Duration::from_secs(30),
 			zero_rtt: false,
 			hooks,
+			bound_addr: Some(bound_tx),
 			..Default::default()
 		};
 		let server = TuicInbound::new(ctx.clone(), opts);
 		let dispatcher = direct_dispatcher();
 		let listen = tokio::spawn(async move { server.listen(&dispatcher).await }.in_current_span());
+		let server_addr = wait_for_reported_addr(&mut bound_rx, Duration::from_secs(5))
+			.await
+			.expect("the TUIC server must report the address it bound");
 		tokio::time::sleep(Duration::from_millis(300)).await;
 
 		let connect = |reconnect: ReconnectConfig| async move {

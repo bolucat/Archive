@@ -12,16 +12,20 @@ mod dns;
 mod h2mux;
 mod http_handler;
 mod hysteria2_server;
+mod listener_tasks;
 mod logging;
 mod mixed_handler;
 mod naiveproxy;
 mod option_util;
 mod port_forward_handler;
+mod prepend_stream;
+mod quic_endpoint;
 mod quic_server;
 mod quic_stream;
 mod reality;
 mod reality_client_handler;
 mod resolver;
+mod resources;
 mod routing;
 mod rustls_config_util;
 mod rustls_connection_util;
@@ -42,6 +46,7 @@ mod trojan_handler;
 mod tuic_server;
 #[cfg(unix)]
 mod tun;
+mod udp_fragments;
 mod udp_message_stream;
 mod uot;
 mod util;
@@ -66,7 +71,7 @@ use log::debug;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tcp_server::start_servers;
 use tokio::runtime::Builder;
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::{Receiver, channel};
 
 use crate::reality::generate_keypair;
 use crate::shadowsocks::ShadowsocksCipher;
@@ -76,15 +81,13 @@ use tcp::*;
 #[derive(Debug)]
 struct ConfigChanged;
 
-fn start_notify_thread(
-    config_paths: Vec<String>,
-) -> (RecommendedWatcher, UnboundedReceiver<ConfigChanged>) {
-    let (tx, rx) = unbounded_channel();
+fn start_notify_thread(config_paths: Vec<String>) -> (RecommendedWatcher, Receiver<ConfigChanged>) {
+    let (tx, rx) = channel(1);
 
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| match res {
         Ok(event) => {
             if matches!(event.kind, EventKind::Modify(..)) {
-                tx.send(ConfigChanged {}).unwrap();
+                let _ = tx.try_send(ConfigChanged {});
             }
         }
         Err(e) => println!("watch error: {e:?}"),
@@ -110,7 +113,17 @@ fn print_usage_and_exit(arg0: String) {
     );
     eprintln!("    -d, --dry-run        Parse the config and exit");
     eprintln!("    --no-reload          Disable automatic config reloading on file changes");
+    eprintln!(
+        "    global_limits.reload_grace_secs sets the TCP reload drain deadline (default: 300)"
+    );
+    eprintln!("    QUIC connections disconnect immediately on reload.");
     eprintln!("    -V, --version        Print version information and exit");
+    eprintln!();
+    eprintln!("RESOURCE LIMITS:");
+    eprintln!("    Optional YAML entry: - global_limits: {{ max_connections: 1024 }}");
+    eprintln!(
+        "    Admission is unlimited unless configured. Only one global_limits entry is allowed."
+    );
     eprintln!();
     eprintln!("COMMANDS:");
     eprintln!(
@@ -341,14 +354,8 @@ fn main() {
             };
 
             if load_file_count > 0 {
-                    println!("Loaded {load_file_count} certs/keys from files");
+                println!("Loaded {load_file_count} certs/keys from files");
             }
-
-            for config in configs.iter() {
-                debug!("================================================================================");
-                debug!("{config:#?}");
-            }
-            debug!("================================================================================");
 
             if dry_run {
                 if let Err(e) = config::create_server_configs(configs) {
@@ -373,7 +380,10 @@ fn main() {
             let config::ValidatedConfigs {
                 configs: server_configs,
                 dns_groups,
+                global_limits,
             } = server_configs;
+            resources::configure(global_limits).expect("validated global limits");
+            let _resource_reporter = resources::ResourceReporter::start();
 
             // Build DNS registry from expanded groups (async - resolves hostnames)
             let mut dns_registry = match dns::build_dns_registry(dns_groups).await {
@@ -404,8 +414,11 @@ fn main() {
 
                     println!("Configs changed, restarting servers in 3 seconds..");
 
-                    for join_handle in join_handles {
+                    for join_handle in &join_handles {
                         join_handle.abort();
+                    }
+                    for join_handle in join_handles {
+                        let _ = join_handle.await;
                     }
 
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;

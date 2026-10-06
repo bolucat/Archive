@@ -9,7 +9,7 @@
 //! [`Ruleset::route`] — so its decisions are identical to evaluating the rules
 //! first-match-wins, with apernet-derived rules taking precedence over Clash.
 
-use std::{future::Future, sync::Arc};
+use std::{future::Future, net::IpAddr, sync::Arc};
 
 use tracing::Instrument as _;
 use wind_core::{
@@ -35,10 +35,17 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct GuardConfig {
-	/// Reject destinations that resolve to a loopback address (`127.0.0.0/8`,
-	/// `::1`).
+	/// Reject destinations that resolve to the local host: `127.0.0.0/8`, `::1`
+	/// and the unspecified address (`0.0.0.0`, `::`), including IPv4-mapped
+	/// spellings such as `::ffff:127.0.0.1` that a dual-stack `connect` routes
+	/// to loopback.
 	pub drop_loopback: bool,
 	/// Reject destinations that resolve to RFC1918 / link-local / ULA space.
+	///
+	/// Deliberately narrower than [`Self::drop_loopback`]: [`is_private_ip`]
+	/// classifies private *unicast* ranges only, so loopback and unspecified
+	/// destinations are not covered here. Enable both guards to keep clients
+	/// away from the proxy's own local services.
 	pub drop_private: bool,
 }
 
@@ -47,6 +54,28 @@ impl GuardConfig {
 	fn enabled(&self) -> bool {
 		self.drop_loopback || self.drop_private
 	}
+}
+
+/// Whether `ip` addresses the local host itself.
+///
+/// `is_loopback()` alone is not enough, for the same reason [`is_private_ip`]
+/// canonicalizes before classifying:
+///
+/// - a literal IPv6 target is handed through by `resolve_target` unchanged, so
+///   an IPv4-mapped loopback destination arrives as `IpAddr::V6` — where
+///   `is_loopback()` is false — even though a dual-stack `connect` to it
+///   reaches `127.0.0.1`;
+/// - the unspecified address (`0.0.0.0`, `::` and their mapped forms) is routed
+///   to the local host by the major stacks, so connecting to it reaches a
+///   service bound to loopback.
+///
+/// Multicast and broadcast are deliberately not covered: they are not unicast
+/// destinations for the local host, and blocking them belongs in an explicit
+/// `IP-CIDR,...,REJECT` rule.
+#[inline]
+fn is_local_destination(ip: IpAddr) -> bool {
+	let ip = ip.to_canonical();
+	ip.is_loopback() || ip.is_unspecified()
 }
 
 /// A protocol-agnostic ACL / routing engine backed by the [`Ruleset`] IR.
@@ -92,9 +121,9 @@ impl AclEngine {
 				.as_ref()
 				.expect("guards enabled without a resolver (should be rejected at build time)");
 			let resolved = resolve_target(&ctx.target, resolver.as_ref()).await?;
-			if self.guards.drop_loopback && resolved.ip().is_loopback() {
-				tracing::debug!(resolved = %resolved, "dropping loopback connection");
-				return Ok(RouteAction::Reject(format!("loopback address rejected: {resolved}")));
+			if self.guards.drop_loopback && is_local_destination(resolved.ip()) {
+				tracing::debug!(resolved = %resolved, "dropping local-host connection");
+				return Ok(RouteAction::Reject(format!("local-host address rejected: {resolved}")));
 			}
 			if self.guards.drop_private && is_private_ip(&resolved.ip()) {
 				tracing::debug!(resolved = %resolved, "dropping private-range connection");

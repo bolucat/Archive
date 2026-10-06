@@ -146,12 +146,6 @@ fn resolve_inbounds(inbounds: Vec<InboundConfig>) -> eyre::Result<Vec<ResolvedIn
 }
 
 fn resolve_outbounds(outbounds: Vec<OutboundConfig>) -> eyre::Result<(Vec<ResolvedOutbound>, String)> {
-	if outbounds.is_empty() {
-		return Err(eyre::eyre!(
-			"no outbounds configured; add at least one outbound so the router has a target"
-		));
-	}
-
 	let mut tag_index: HashMap<String, usize> = HashMap::new();
 	let mut resolved: Vec<ResolvedOutbound> = Vec::with_capacity(outbounds.len());
 
@@ -163,13 +157,14 @@ fn resolve_outbounds(outbounds: Vec<OutboundConfig>) -> eyre::Result<(Vec<Resolv
 		resolved.push(ob);
 	}
 
-	// `outbounds` was rejected when empty above, so the first tag is always
-	// available and preserves the "first declared outbound" default.
-	let default_tag = resolved
-		.first()
-		.map(ResolvedOutbound::tag)
-		.ok_or_else(|| eyre::eyre!("no outbounds configured"))?
-		.to_owned();
+	// One resolved outbound per declared one, so this guard is the single place
+	// that rejects an empty outbound list (a router with no target). It also
+	// takes the first tag, preserving the "first declared outbound" default.
+	let Some(default_tag) = resolved.first().map(ResolvedOutbound::tag).map(str::to_owned) else {
+		return Err(eyre::eyre!(
+			"no outbounds configured; add at least one outbound so the router has a target"
+		));
+	};
 	let ordered = order_outbounds(&resolved, &tag_index)?;
 
 	// Move each outbound into its dependency-ordered slot.
@@ -569,6 +564,31 @@ mod tests {
 		let err = expect_err(config(vec![], vec![]), "empty outbounds must fail");
 		let msg = format!("{err:#}");
 		assert!(msg.contains("no outbounds configured"), "got: {msg}");
+		assert!(
+			msg.contains("add at least one outbound"),
+			"the error must keep its hint: {msg}"
+		);
+	}
+
+	/// `resolve_outbounds` owns the empty-list rejection on its own, and its
+	/// guard has to stay reachable: a list with one entry resolves normally
+	/// instead of tripping it.
+	#[test]
+	fn the_empty_outbound_guard_rejects_only_an_empty_declaration() {
+		let err = match resolve_outbounds(Vec::new()) {
+			Ok(_) => panic!("an empty outbound list must be rejected"),
+			Err(e) => e,
+		};
+		let msg = format!("{err:#}");
+		assert!(msg.contains("no outbounds configured"), "got: {msg}");
+		assert!(
+			msg.contains("add at least one outbound"),
+			"the guard must keep its hint: {msg}"
+		);
+
+		let (resolved, default_tag) = resolve_outbounds(vec![tuic("main")]).expect("one outbound must resolve");
+		assert_eq!(resolved.len(), 1);
+		assert_eq!(default_tag, "main", "the first declared outbound is the default");
 	}
 
 	/// Load-balance serde defaults (strategy/url/interval) survive resolution,

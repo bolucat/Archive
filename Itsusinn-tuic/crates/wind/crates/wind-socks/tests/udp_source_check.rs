@@ -21,7 +21,12 @@ use wind_socks::udp::serve_udp_with_client;
 /// Build a minimal SOCKS5 UDP request frame: `RSV(2) FRAG(1) ATYP(1) DST.ADDR
 /// DST.PORT payload`.
 fn make_socks_udp_pkt(target: SocketAddr, payload: &[u8]) -> Vec<u8> {
-	let mut buf = vec![0x00, 0x00, 0x00]; // RSV, RSV, FRAG
+	make_socks_udp_pkt_with_frag(0x00, target, payload)
+}
+
+/// Same as [`make_socks_udp_pkt`] but with an explicit FRAG byte.
+fn make_socks_udp_pkt_with_frag(frag: u8, target: SocketAddr, payload: &[u8]) -> Vec<u8> {
+	let mut buf = vec![0x00, 0x00, frag]; // RSV, RSV, FRAG
 	match target {
 		SocketAddr::V4(v4) => {
 			buf.push(0x01);
@@ -256,4 +261,36 @@ async fn malformed_packet_does_not_displace_latched_source() {
 		mallory_recv.is_err(),
 		"reply must NOT be diverted to the malformed-packet sender: {mallory_recv:?}"
 	);
+}
+
+/// RFC 1928 §7: `FRAG` other than X'00' marks a fragment of a larger datagram.
+/// This relay implements no reassembly, so such a datagram must be dropped
+/// rather than forwarded as if it were stand-alone — forwarding it would hand
+/// the upstream target a truncated payload under the guise of a complete one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fragmented_datagram_is_dropped() {
+	let (relay_addr, mut rx_at_upstream, _tx_at_upstream) = spawn_relay(Some(IpAddr::V4(Ipv4Addr::LOCALHOST))).await;
+
+	let sender = UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+
+	// FRAG = 1: one fragment the relay cannot reassemble.
+	let fragment = make_socks_udp_pkt_with_frag(0x01, SocketAddr::from(([1, 1, 1, 1], 53)), b"fragment");
+	sender.send_to(&fragment, relay_addr).await.expect("send_to");
+
+	let forwarded = timeout(Duration::from_millis(300), rx_at_upstream.recv()).await;
+	assert!(
+		forwarded.is_err(),
+		"a datagram with FRAG != 0 must be dropped, got {forwarded:?}"
+	);
+
+	// Rejecting the fragment must not disable the relay: a stand-alone
+	// datagram from the same client is still forwarded.
+	let standalone = make_socks_udp_pkt(SocketAddr::from(([1, 1, 1, 1], 53)), b"standalone");
+	sender.send_to(&standalone, relay_addr).await.expect("send_to");
+
+	let received = timeout(Duration::from_millis(500), rx_at_upstream.recv())
+		.await
+		.expect("a FRAG == 0 datagram must still be forwarded")
+		.expect("upstream channel closed");
+	assert_eq!(received.payload.as_ref(), b"standalone");
 }

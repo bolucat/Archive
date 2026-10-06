@@ -11,21 +11,23 @@
 //! verify individual tunnel inbounds).
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	net::{Ipv4Addr, SocketAddr},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	net::TcpListener,
+	sync::{oneshot, watch},
 	time::timeout,
 };
 use tuic_server::{Config, TuicServerPlugin, config::ExperimentalConfig};
+use tuic_tests::{TempDataDir, install_crypto_provider};
 use wind_core::{App, FlowContext, Outbound, hooks::Protocol, rule::NetworkType, types::TargetAddr};
 
 // ---------------------------------------------------------------------------
@@ -46,31 +48,83 @@ fn test_ctx(target: &TargetAddr) -> FlowContext {
 	}
 }
 
-/// Obtain a free UDP port without holding the socket, so the server can bind
-/// it immediately afterwards.
-fn free_udp_addr() -> SocketAddr {
-	let s = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind free port");
-	let a = s.local_addr().expect("local addr");
-	drop(s);
-	a
+/// Loopback address with an OS-assigned port: the server binds it and reports
+/// the real port back through [`start_server`].
+fn any_loopback_addr() -> SocketAddr {
+	SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+}
+
+/// Start a server on an OS-assigned loopback port and wait until the inbound
+/// reports the address it actually bound.
+///
+/// The address is taken from the server itself rather than from a probe socket
+/// that is bound and closed before the server starts: a probed port is not
+/// reserved, so another process (or a parallel test) can take it in the window
+/// between the probe and the server's own bind, and the server then fails to
+/// start for a reason unrelated to what the test is checking.
+async fn start_server(
+	cfg: Config,
+) -> (
+	Arc<wind_core::AppContext>,
+	tokio::task::JoinHandle<eyre::Result<()>>,
+	SocketAddr,
+) {
+	let (addr_tx, mut addr_rx) = watch::channel(None::<SocketAddr>);
+	let app = App::new()
+		.add_plugin(TuicServerPlugin::new(cfg).with_bound_addr(addr_tx))
+		.await
+		.expect("plugin build");
+
+	let ctx = app.context().clone();
+	let mut handle = tokio::spawn(async move { app.run().await });
+
+	// Either the inbound reports its socket, or the server gives up first —
+	// in which case the test must fail with that reason, not sit on a
+	// configured address that was never bound. The wait is bounded so a server
+	// that neither binds nor exits fails the test instead of hanging it.
+	let addr = timeout(Duration::from_secs(10), async {
+		tokio::select! {
+			reported = addr_rx.wait_for(|a| a.is_some()) => reported
+				.expect("the address channel closed before the server reported its bound address")
+				.expect("wait_for predicate guarantees a bound address"),
+			exited = &mut handle => match exited {
+				Ok(Ok(())) => panic!("server exited before reporting its bound address"),
+				Ok(Err(e)) => panic!("server failed before reporting its bound address: {e:#}"),
+				Err(e) => panic!("server task panicked: {e}"),
+			},
+		}
+	})
+	.await
+	.expect("the server neither reported its bound address nor exited within 10s");
+	assert_ne!(addr.port(), 0, "the server must report the OS-assigned port, got {addr}");
+	assert!(addr.ip().is_loopback(), "the test server must stay on loopback, got {addr}");
+
+	(ctx, handle, addr)
 }
 
 /// Minimal server config suitable for a cancel-only test — self-signed TLS,
 /// empty user list (no client can authenticate, but the inbound starts and
 /// enters its accept loop), and a direct default outbound.
-fn build_minimal_server_config(server_addr: SocketAddr) -> Config {
-	Config {
-		server: server_addr,
-		users: HashMap::new(),
-		tls: tuic_server::config::TlsConfig {
-			self_sign: true,
-			hostname: "localhost".to_string(),
-			alpn: vec!["h3".to_string()],
+///
+/// The returned guard owns the server's `data_dir`; keep it alive for as long
+/// as the server runs.
+fn build_minimal_server_config() -> (Config, TempDataDir) {
+	let data_dir = TempDataDir::new("tuic-graceful-shutdown");
+	(
+		Config {
+			server: any_loopback_addr(),
+			users: HashMap::new(),
+			tls: tuic_server::config::TlsConfig {
+				self_sign: true,
+				hostname: "localhost".to_string(),
+				alpn: vec!["h3".to_string()],
+				..Default::default()
+			},
+			data_dir: data_dir.path().to_path_buf(),
 			..Default::default()
 		},
-		data_dir: std::env::temp_dir().join("tuic-graceful-shutdown-test"),
-		..Default::default()
-	}
+		data_dir,
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -81,18 +135,10 @@ fn build_minimal_server_config(server_addr: SocketAddr) -> Config {
 /// `App::run()` within a bounded time — no hanging, no timeout-then-SIGKILL.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn idle_server_exits_on_cancel() {
-	let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+	install_crypto_provider();
 
-	let addr = free_udp_addr();
-	let cfg = build_minimal_server_config(addr);
-
-	let app = App::new().add_plugin(TuicServerPlugin::new(cfg)).await.expect("plugin build");
-
-	let ctx = app.context().clone();
-	let handle = tokio::spawn(async move { app.run().await });
-
-	// Give the server a moment to bind and start accepting.
-	tokio::time::sleep(Duration::from_millis(300)).await;
+	let (cfg, _data_dir) = build_minimal_server_config();
+	let (ctx, handle, _addr) = start_server(cfg).await;
 
 	// Trigger graceful shutdown via the cancel token (no OS signal).
 	ctx.token.cancel();
@@ -112,36 +158,14 @@ async fn idle_server_exits_on_cancel() {
 /// drain all per-connection handlers and the accept loop within a bounded time.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn active_connection_drains_on_cancel() {
-	let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-
-	let addr = free_udp_addr();
+	install_crypto_provider();
 
 	// Build a config *with* a known user so a client can authenticate.
 	let uuid = uuid::Uuid::new_v4();
 	let password = "test-password";
-	let mut users = HashMap::new();
-	users.insert(uuid, password.to_string());
+	let (cfg, _data_dir) = build_server_config_with_user(uuid, password);
 
-	let cfg = Config {
-		server: addr,
-		users,
-		tls: tuic_server::config::TlsConfig {
-			self_sign: true,
-			hostname: "localhost".to_string(),
-			alpn: vec!["h3".to_string()],
-			..Default::default()
-		},
-		data_dir: std::env::temp_dir().join("tuic-graceful-shutdown-active"),
-		..Default::default()
-	};
-
-	let app = App::new().add_plugin(TuicServerPlugin::new(cfg)).await.expect("plugin build");
-
-	let ctx = app.context().clone();
-	let handle = tokio::spawn(async move { app.run().await });
-
-	// Let the server bind.
-	tokio::time::sleep(Duration::from_millis(300)).await;
+	let (ctx, handle, addr) = start_server(cfg).await;
 
 	// Connect a TUIC client to ensure the server spawns a per-connection
 	// handler tracked in ctx.tasks.
@@ -198,29 +222,36 @@ async fn active_connection_drains_on_cancel() {
 // ---------------------------------------------------------------------------
 
 /// Build a server config with a known user (for client authentication).
-fn build_server_config_with_user(addr: SocketAddr, uuid: uuid::Uuid, password: &str) -> Config {
+///
+/// The returned guard owns the server's `data_dir`; keep it alive for as long
+/// as the server runs.
+fn build_server_config_with_user(uuid: uuid::Uuid, password: &str) -> (Config, TempDataDir) {
 	let mut users = HashMap::new();
 	users.insert(uuid, password.to_string());
-	Config {
-		server: addr,
-		users,
-		tls: tuic_server::config::TlsConfig {
-			self_sign: true,
-			hostname: "localhost".to_string(),
-			alpn: vec!["h3".to_string()],
+	let data_dir = TempDataDir::new("tuic-graceful-shutdown");
+	(
+		Config {
+			server: any_loopback_addr(),
+			users,
+			tls: tuic_server::config::TlsConfig {
+				self_sign: true,
+				hostname: "localhost".to_string(),
+				alpn: vec!["h3".to_string()],
+				..Default::default()
+			},
+			data_dir: data_dir.path().to_path_buf(),
+			// The traffic test relays to a loopback echo server, so the loopback
+			// guards must be off or the relay target is rejected before it ever
+			// reaches the outbound (this used to make the test pass with zero
+			// traffic actually flowing).
+			experimental: ExperimentalConfig {
+				drop_loopback: false,
+				drop_private: false,
+			},
 			..Default::default()
 		},
-		data_dir: std::env::temp_dir().join("tuic-graceful-shutdown-traffic"),
-		// The traffic test relays to a loopback echo server, so the loopback
-		// guards must be off or the relay target is rejected before it ever
-		// reaches the outbound (this used to make the test pass with zero
-		// traffic actually flowing).
-		experimental: ExperimentalConfig {
-			drop_loopback: false,
-			drop_private: false,
-		},
-		..Default::default()
-	}
+		data_dir,
+	)
 }
 
 /// Connect a TUIC client to the given server address / credentials.
@@ -289,25 +320,22 @@ async fn start_tcp_echo_server() -> (tokio::task::JoinHandle<()>, SocketAddr) {
 /// When a TUIC client has active, long-lived TCP traffic flowing through the
 /// tunnel, cancelling the server's root token must still drain all connection
 /// handlers and the accept loop within a bounded time — the traffic must not
-/// keep the server alive indefinitely.
+/// keep the server alive indefinitely. The client-side tunnel task this test
+/// drives must drain with it: the test awaits its handle after the server has
+/// stopped rather than leaving it detached.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn drains_while_active_traffic_flows() {
-	let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+	install_crypto_provider();
 
 	// 1. Start a local TCP echo server.
 	let (_echo_task, echo_addr) = start_tcp_echo_server().await;
 
 	// 2. Build and start the TUIC server.
-	let server_addr = free_udp_addr();
 	let uuid = uuid::Uuid::new_v4();
 	let password = "test-pass";
-	let cfg = build_server_config_with_user(server_addr, uuid, password);
+	let (cfg, _data_dir) = build_server_config_with_user(uuid, password);
 
-	let app = App::new().add_plugin(TuicServerPlugin::new(cfg)).await.expect("plugin build");
-
-	let ctx = app.context().clone();
-	let app_handle = tokio::spawn(async move { app.run().await });
-	tokio::time::sleep(Duration::from_millis(300)).await;
+	let (ctx, app_handle, server_addr) = start_server(cfg).await;
 
 	// 3. Connect a TUIC client.
 	let client = connect_tuic_client(server_addr, uuid, password).await;
@@ -319,7 +347,7 @@ async fn drains_while_active_traffic_flows() {
 	let target = TargetAddr::IPv4(Ipv4Addr::LOCALHOST, echo_addr.port());
 
 	let c = client.clone();
-	let _tunnel_handle = tokio::spawn(async move {
+	let tunnel_handle = tokio::spawn(async move {
 		let _ = c.handle_tcp(test_ctx(&target), Box::new(remote)).await;
 	});
 
@@ -332,6 +360,9 @@ async fn drains_while_active_traffic_flows() {
 	// loop could `break` immediately and the test still passed).
 	let round_trips = Arc::new(AtomicUsize::new(0));
 	let rt = round_trips.clone();
+	// Dropped when the traffic loop ends, so the poll below can tell "still
+	// flowing" from "the connection already broke" without a fixed wait.
+	let (traffic_stop_tx, mut traffic_stop_rx) = oneshot::channel::<()>();
 	let traffic_handle = tokio::spawn(async move {
 		let (mut reader, mut writer) = tokio::io::split(local);
 		let ping = b"hello-from-tuic-keepalive";
@@ -351,10 +382,18 @@ async fn drains_while_active_traffic_flows() {
 				_ => break, // connection broken (expected after cancel)
 			}
 		}
+		drop(traffic_stop_tx);
 	});
 
-	// Let the traffic loop run for a few round-trips.
-	tokio::time::sleep(Duration::from_millis(500)).await;
+	// Let the traffic loop run for a few round-trips.  Poll until the count is
+	// reached instead of sleeping for a fixed slice: a loaded or slow machine
+	// must not turn "not finished yet" into a failure.  Bail out as soon as the
+	// loop is gone, so a broken tunnel still fails fast instead of burning the
+	// whole deadline.
+	let deadline = Instant::now() + Duration::from_secs(10);
+	while Instant::now() < deadline && round_trips.load(Ordering::SeqCst) < 3 && traffic_stop_rx.try_recv().is_err() {
+		tokio::time::sleep(Duration::from_millis(10)).await;
+	}
 
 	// 6. Prove traffic actually flowed through the tunnel: several successful
 	//    ping→echo round-trips must have completed before we cancel (previously
@@ -382,4 +421,74 @@ async fn drains_while_active_traffic_flows() {
 
 	// Clean up: the traffic loop should have exited by now (connection broke).
 	let _ = timeout(Duration::from_secs(2), traffic_handle).await;
+
+	// The tunnel task must be gone too. Its handle used to be dropped without
+	// ever being awaited, so a task that outlived the server would be torn down
+	// implicitly only when the test runtime shut down. The bounded await makes
+	// that an assertion about the shutdown this test exists to check, and fails
+	// instead of hanging if the tunnel keeps running.
+	match timeout(Duration::from_secs(2), tunnel_handle).await {
+		Ok(Ok(())) => {}
+		Ok(Err(e)) => panic!("the TCP tunnel task panicked instead of draining: {e}"),
+		Err(_) => panic!("the TCP tunnel task was still running 2s after the server drained active traffic"),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// data-directory ownership
+// ---------------------------------------------------------------------------
+
+/// Every server config this file builds must carry its own data directory, so
+/// that no two cases — running in parallel here, or in two sequential runs —
+/// can share one path.
+///
+/// The directory used to be a fixed name under the system temp dir
+/// (`tuic-graceful-shutdown-test` and friends) that nothing removed. A shared
+/// path is a latent cross-run conflict even while it happens to stay empty:
+/// the server writes into `data_dir` as soon as geodata or ACME is enabled.
+/// The guard also means the directory is gone when the test ends rather than
+/// accumulating in the temp dir.
+#[test]
+fn each_server_config_owns_a_unique_data_dir() {
+	let uuid = uuid::Uuid::new_v4();
+
+	let (minimal, minimal_dir) = build_minimal_server_config();
+	let (active, active_dir) = build_server_config_with_user(uuid, "test-password");
+	let (traffic, traffic_dir) = build_server_config_with_user(uuid, "test-pass");
+
+	let dirs = [&minimal_dir, &active_dir, &traffic_dir];
+	let paths: Vec<std::path::PathBuf> = dirs.iter().map(|d| d.path().to_path_buf()).collect();
+	// The directory must be one level under the system temp dir; compare the
+	// canonical parent so a trailing separator cannot make the check vacuous.
+	let temp_dir = std::fs::canonicalize(std::env::temp_dir()).expect("canonicalise the system temp dir");
+
+	assert_eq!(
+		paths.iter().collect::<HashSet<_>>().len(),
+		paths.len(),
+		"each config must get its own data directory, got {paths:?}"
+	);
+	for (config, path) in [(&minimal, &paths[0]), (&active, &paths[1]), (&traffic, &paths[2])] {
+		assert_eq!(
+			&config.data_dir, path,
+			"the config must point at the directory its guard owns"
+		);
+		assert_eq!(
+			path.parent().and_then(|p| std::fs::canonicalize(p).ok()),
+			Some(temp_dir.clone()),
+			"{} must live under the system temp dir",
+			path.display()
+		);
+		let name = path
+			.file_name()
+			.and_then(|n| n.to_str())
+			.expect("the data directory must have a UTF-8 name");
+		let suffix = name
+			.strip_prefix("tuic-graceful-shutdown-")
+			.unwrap_or_else(|| panic!("{name} must be named after the case that owns it"));
+		assert!(
+			uuid::Uuid::parse_str(suffix).is_ok(),
+			"{name} must end in a UUID so two runs cannot collide"
+		);
+		assert!(path.is_dir(), "{} must exist while its guard is alive", path.display());
+	}
 }

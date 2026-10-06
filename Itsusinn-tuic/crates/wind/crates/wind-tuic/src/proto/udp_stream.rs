@@ -1,4 +1,5 @@
 use std::{
+	ops::ControlFlow,
 	sync::atomic::{AtomicU16, Ordering},
 	time::Duration,
 };
@@ -13,7 +14,10 @@ type UdpPacketTx = MAsyncTx<mpmc::Array<UdpPacket>>;
 use wind_quic::QuicConnection;
 
 use crate::{
-	proto::{Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec, UdpRelayMode},
+	proto::{
+		Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec, UdpRelayMode,
+		check_packet_payload_size,
+	},
 	udp::{DEFAULT_FRAGMENT_TIMEOUT, FragmentInfo, FragmentReassemblyBuffer, MAX_FRAGMENTS},
 };
 
@@ -85,10 +89,9 @@ impl<C: QuicConnection> UdpStream<C> {
 
 		// The `size` field of a `Packet` command is a `u16`; refuse to send
 		// anything that would silently truncate (reachable in QUIC relay mode,
-		// where a stream carries an arbitrary-length payload).
-		if payload_len > u16::MAX as usize {
-			return Err(eyre::eyre!("TUIC packet exceeds UDP size limit"));
-		}
+		// where a stream carries an arbitrary-length payload). `send_udp`
+		// applies the same guard, so both send routes fail identically.
+		check_packet_payload_size(payload_len)?;
 
 		// QUIC relay mode — or a peer that cannot receive DATAGRAM frames —
 		// carries one unidirectional stream per packet, no fragmentation
@@ -342,6 +345,43 @@ impl<C: QuicConnection> UdpStream<C> {
 	}
 }
 
+/// Relay one locally-sourced packet to the peer, reporting whether the
+/// association can keep running.
+///
+/// A send failure means this association's streams no longer reach the peer:
+/// the connection it was created on may have been replaced by a reconnect (the
+/// bridge holds the snapshot taken when the association was created), the peer
+/// may have closed it, or the stream may have been reset. A failure is also how
+/// a *stale* snapshot surfaces at all — the `closed()` watcher has not
+/// necessarily resolved yet when the supervisor swaps in the replacement, so a
+/// send can fail first.
+///
+/// Continuing after such a failure blackholes every later packet: the bridge
+/// keeps pulling from the local socket, the peer receives nothing, and the
+/// caller never learns it should rebuild the association on the live
+/// connection. Returning [`ControlFlow::Break`] ends the bridge instead, which
+/// drops both channel halves, removes the association from `udp_session`, and
+/// lets the caller re-create it on the current connection.
+///
+/// Both backends use this so quinn and quiche cannot drift apart here.
+pub(crate) async fn forward_remote_packet<C: QuicConnection>(
+	stream: &UdpStream<C>,
+	packet: UdpPacket,
+	assoc_id: u16,
+) -> ControlFlow<()> {
+	let payload_len = packet.payload.len();
+	match stream.send_packet(packet).await {
+		Ok(()) => {
+			tracing::info!(target: "tuic_out", "Sent UDP packet to remote ({payload_len} bytes, assoc {assoc_id:#06x})");
+			ControlFlow::Continue(())
+		}
+		Err(e) => {
+			tracing::warn!(target: "tuic_out", "Failed to send UDP packet to remote (assoc {assoc_id:#06x}): {e}");
+			ControlFlow::Break(())
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::{
@@ -472,6 +512,9 @@ mod tests {
 	#[derive(Clone)]
 	struct RecordingConn {
 		max_datagram: Option<usize>,
+		/// When set, `send_datagram` fails the way a replaced or closed
+		/// connection does — a caller must stop feeding the association.
+		fail_datagrams: bool,
 		datagrams: Arc<Mutex<Vec<Bytes>>>,
 		uni_streams: Arc<Mutex<Vec<Vec<u8>>>>,
 	}
@@ -480,8 +523,18 @@ mod tests {
 		fn new(max_datagram: Option<usize>) -> Self {
 			Self {
 				max_datagram,
+				fail_datagrams: false,
 				datagrams: Arc::new(Mutex::new(Vec::new())),
 				uni_streams: Arc::new(Mutex::new(Vec::new())),
+			}
+		}
+
+		/// A connection whose datagram path always fails, as it does once the
+		/// QUIC connection behind an association is gone.
+		fn with_failing_datagrams(max_datagram: Option<usize>) -> Self {
+			Self {
+				fail_datagrams: true,
+				..Self::new(max_datagram)
 			}
 		}
 
@@ -572,6 +625,9 @@ mod tests {
 		}
 
 		fn send_datagram(&self, data: Bytes) -> Result<(), QuicError> {
+			if self.fail_datagrams {
+				return Err(QuicError::Other("connection closed".into()));
+			}
 			self.datagrams.lock().unwrap().push(data);
 			Ok(())
 		}
@@ -770,5 +826,89 @@ mod tests {
 		let (_, decoded_target, decoded_payload) = decode_packet_frame(&streams[0]);
 		assert_eq!(decoded_target, target);
 		assert_eq!(decoded_payload, &payload[..]);
+	}
+
+	// -----------------------------------------------------------------------
+	// Oversize guard (W36/W42): the `size` field of a `Packet` command is a
+	// `u16`. A larger payload must be refused with the numeric overflow named,
+	// rather than truncated or sent as a frame whose `size` disagrees with the
+	// bytes that follow it.
+	// -----------------------------------------------------------------------
+
+	/// Regression (W36): the guard reports a `NumericOverflow` naming the
+	/// offending field and value, and nothing reaches the wire.
+	#[tokio::test]
+	async fn oversized_payload_is_rejected_as_a_numeric_overflow() {
+		let conn = RecordingConn::new(Some(1200));
+		let stream = recording_stream(&conn, UdpRelayMode::Native);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+		let payload_len = u16::MAX as usize + 1;
+
+		let err = stream
+			.send_packet(UdpPacket {
+				source: None,
+				target,
+				payload: Bytes::from(vec![0xABu8; payload_len]),
+			})
+			.await
+			.expect_err("a payload that does not fit `size` must be refused");
+
+		match err.downcast_ref::<crate::proto::ProtoError>() {
+			Some(crate::proto::ProtoError::NumericOverflow { field, num, .. }) => {
+				assert_eq!(field, "UDP payload size");
+				assert_eq!(num, &payload_len.to_string());
+			}
+			other => panic!("expected NumericOverflow, got {other:?}"),
+		}
+		assert!(conn.datagrams().is_empty(), "a refused packet must not be sent as a datagram");
+		assert!(
+			conn.uni_streams().is_empty(),
+			"a refused packet must not be sent on a uni stream"
+		);
+	}
+
+	// -----------------------------------------------------------------------
+	// Association bridge send path (W11): a packet the peer can no longer
+	// receive must stop the bridge, not be logged and skipped. The caller only
+	// learns the association is dead when the bridge ends and drops the
+	// channels, so continuing would blackhole every later packet on a
+	// connection that a reconnect has already replaced.
+	// -----------------------------------------------------------------------
+
+	/// Control: a reachable peer keeps the bridge running.
+	#[tokio::test]
+	async fn forwarded_packet_with_a_live_connection_continues_the_bridge() {
+		let conn = RecordingConn::new(Some(1200));
+		let stream = recording_stream(&conn, UdpRelayMode::Native);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+
+		let outcome = forward_remote_packet(&stream, probe_packet(&target, b"relayed"), TEST_ASSOC_ID).await;
+
+		assert!(
+			outcome.is_continue(),
+			"a packet the transport accepted must leave the association alive"
+		);
+		assert_eq!(conn.datagrams().len(), 1, "the packet reached the wire");
+	}
+
+	/// A send failure on the association's snapshot connection (reconnect, peer
+	/// close, reset stream) must end the bridge so the caller can rebuild the
+	/// association on the live connection.
+	#[tokio::test]
+	async fn failed_remote_send_breaks_the_bridge_instead_of_blackholing() {
+		let conn = RecordingConn::with_failing_datagrams(Some(1200));
+		let stream = recording_stream(&conn, UdpRelayMode::Native);
+		let target = TargetAddr::IPv4(Ipv4Addr::new(127, 0, 0, 1), 5353);
+
+		let outcome = forward_remote_packet(&stream, probe_packet(&target, b"dropped"), TEST_ASSOC_ID).await;
+
+		assert!(
+			outcome.is_break(),
+			"a send failure must end the association, not be warned about once per packet"
+		);
+		assert!(
+			conn.datagrams().is_empty(),
+			"the failing connection records nothing on the wire"
+		);
 	}
 }

@@ -13,7 +13,7 @@ tokio = { version = "1", default-features = false, features = ["net"] }
 tokio-util = { version = "0.7", features = ["codec", "rt"] }
 tokio-stream = "0.1"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
-fast-socks5 = "1.0.0-rc.0" 
+fast-socks5 = "1.0"
 
 # Pattern
 arc-swap = "1"

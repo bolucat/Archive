@@ -55,6 +55,25 @@ impl FromStr for StackPrefer {
 /// IPv4 form before the check, so `::ffff:10.0.0.1` is treated as private.
 /// Without this, an attacker could bypass a `drop_private` guard by writing an
 /// internal target in mapped form.
+///
+/// # Deliberately excluded special-purpose ranges
+///
+/// This function classifies private *unicast* space only. The following are
+/// intentionally **not** reported as private, and that exclusion is what the
+/// test `special_purpose_ranges_are_deliberately_not_private` pins down:
+///
+/// - loopback: `127.0.0.0/8`, `::1` — they are not RFC1918/ULA space, and
+///   `IpAddr::is_loopback()` already answers for them;
+/// - unspecified: `0.0.0.0`, `::`;
+/// - multicast: `224.0.0.0/4`, `ff00::/8`;
+/// - broadcast: `255.255.255.255`.
+///
+/// Callers that must keep a client away from the host running the proxy need
+/// the loopback guard as well: `wind-acl`'s `GuardConfig::drop_loopback`
+/// rejects loopback *and* unspecified destinations, in canonicalized form so
+/// mapped spellings such as `::ffff:127.0.0.1` cannot slip through. Multicast
+/// and broadcast are destinations no unicast `connect` can reach and belong in
+/// an explicit `IP-CIDR,...,REJECT` rule.
 #[inline]
 pub fn is_private_ip(ip: &IpAddr) -> bool {
 	match ip.to_canonical() {
@@ -157,6 +176,35 @@ mod tests {
 		}
 		// Mapped public addresses stay public.
 		assert!(!is_private_ip(&ip("::ffff:8.8.8.8")), "mapped 8.8.8.8 should be public");
+	}
+
+	/// The exclusion of special-purpose ranges from `is_private_ip` is a
+	/// deliberate design decision, not an oversight: `drop_private` classifies
+	/// private unicast space, and `wind-acl`'s `GuardConfig::drop_loopback`
+	/// covers the local host (loopback *and* unspecified, canonicalized).
+	/// Changing any assertion here changes a security-relevant classification,
+	/// so it must be a conscious decision.
+	#[test]
+	fn special_purpose_ranges_are_deliberately_not_private() {
+		// Loopback and unspecified: local-host concerns, owned by the
+		// loopback guard (see `GuardConfig` in `wind-acl`).
+		for s in [
+			"127.0.0.1",
+			"127.1.2.3",
+			"0.0.0.0",
+			"::1",
+			"::",
+			"::ffff:127.0.0.1",
+			"::ffff:0.0.0.0",
+		] {
+			assert!(!is_private_ip(&ip(s)), "{s} is a local-host address, not private space");
+		}
+		// Multicast and broadcast: not RFC1918/ULA space, and not destinations
+		// a unicast connect can reach; block them with an explicit
+		// REJECT rule.
+		for s in ["224.0.0.1", "239.255.255.250", "255.255.255.255", "ff02::1"] {
+			assert!(!is_private_ip(&ip(s)), "{s} is not private unicast space");
+		}
 	}
 
 	#[test]

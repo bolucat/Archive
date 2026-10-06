@@ -10,7 +10,7 @@ mod udp;
 
 use std::{
 	io,
-	net::{Ipv4Addr, SocketAddr},
+	net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 	pin::Pin,
 	sync::Arc,
 	task::{Context, Poll},
@@ -221,6 +221,23 @@ pub fn bind_server(
 	Ok(QuinnAcceptor { endpoint })
 }
 
+/// The local address a client socket binds before dialing `peer`.
+///
+/// The family must match `peer`: a socket bound to `0.0.0.0` cannot dial an
+/// IPv6 peer (and vice versa), so the dial fails before the handshake starts.
+///
+/// A single wildcard socket is *not* a portable substitute. The unspecified
+/// IPv6 address is IPv6-only on Windows — an IPv4 dial on it fails with
+/// `WSAEADDRNOTAVAIL` even when `IPV6_V6ONLY` is clear — so an endpoint meant
+/// for both families must still be rebuilt per peer family.
+pub fn client_bind_addr(peer: SocketAddr) -> SocketAddr {
+	if peer.is_ipv6() {
+		SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
+	} else {
+		SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
+	}
+}
+
 /// Connect to `peer` as a client, returning an established [`QuinnConnection`].
 pub async fn connect(
 	peer: SocketAddr,
@@ -235,9 +252,11 @@ pub async fn connect(
 	));
 	client_config.transport_config(Arc::new(build_transport(transport)?));
 
-	// Bind an ephemeral local socket on the unspecified address.
-	let bind_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
-	let socket = std::net::UdpSocket::bind(bind_addr).map_err(|e| QuicError::Endpoint(format!("bind client: {e}")))?;
+	// Bind an ephemeral local socket on the unspecified address that matches
+	// `peer`'s family.
+	let bind_addr = client_bind_addr(peer);
+	let socket =
+		std::net::UdpSocket::bind(bind_addr).map_err(|e| QuicError::Endpoint(format!("bind client {bind_addr}: {e}")))?;
 	let endpoint = Endpoint::new(EndpointConfig::default(), None, socket, Arc::new(TokioRuntime))
 		.map_err(|e| QuicError::Endpoint(format!("create client endpoint: {e}")))?;
 	endpoint.set_default_client_config(client_config);
@@ -263,6 +282,13 @@ pub async fn connect(
 /// config alive, so a second `connect` can resume the TLS session established
 /// by the first and replay 0-RTT early data (observable via
 /// `Connecting::into_0rtt` / `ZeroRttAccepted`).
+///
+/// The endpoint binds once, when the struct is built, so it cannot pick a
+/// socket family from the peer the way [`connect`] does. The default is
+/// `0.0.0.0:0` (IPv4-only, the historical behavior); call
+/// [`QuinnClient::with_bind_addr`] to reach IPv6 peers. See
+/// [`client_bind_addr`] for why one wildcard socket cannot serve both
+/// families.
 pub struct QuinnClient {
 	endpoint: Endpoint,
 	client_config: ClientConfig,
@@ -270,8 +296,23 @@ pub struct QuinnClient {
 }
 
 impl QuinnClient {
-	/// Create a client endpoint bound to an ephemeral local socket.
+	/// Create a client endpoint bound to an ephemeral IPv4 local socket.
 	pub async fn new(tls_cfg: &ClientTlsConfig, transport: &TransportConfig) -> Result<Self, QuicError> {
+		Self::new_bound(tls_cfg, transport, SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await
+	}
+
+	/// Create a client endpoint bound to an ephemeral local socket on
+	/// `bind_addr`.
+	///
+	/// Pass [`client_bind_addr`]`(peer)` to dial a specific peer, or the
+	/// unspecified address of the family you need. The address family cannot be
+	/// changed later: [`QuinnClient::connect`] fails with
+	/// [`QuicError::Endpoint`] when `peer` belongs to the other family.
+	pub async fn new_bound(
+		tls_cfg: &ClientTlsConfig,
+		transport: &TransportConfig,
+		bind_addr: SocketAddr,
+	) -> Result<Self, QuicError> {
 		tls::ensure_provider();
 		let crypto = tls::client_crypto(tls_cfg)?;
 		let mut client_config = ClientConfig::new(Arc::new(
@@ -280,8 +321,8 @@ impl QuinnClient {
 		));
 		client_config.transport_config(Arc::new(build_transport(transport)?));
 
-		let bind_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
-		let socket = std::net::UdpSocket::bind(bind_addr).map_err(|e| QuicError::Endpoint(format!("bind client: {e}")))?;
+		let socket =
+			std::net::UdpSocket::bind(bind_addr).map_err(|e| QuicError::Endpoint(format!("bind client {bind_addr}: {e}")))?;
 		let endpoint = Endpoint::new(EndpointConfig::default(), None, socket, Arc::new(TokioRuntime))
 			.map_err(|e| QuicError::Endpoint(format!("create client endpoint: {e}")))?;
 
@@ -292,9 +333,24 @@ impl QuinnClient {
 		})
 	}
 
+	/// The local socket address this endpoint is bound to.
+	pub fn local_addr(&self) -> Result<SocketAddr, QuicError> {
+		self.endpoint.local_addr().map_err(|e| QuicError::Endpoint(e.to_string()))
+	}
+
 	/// Begin connecting to `peer`, returning the raw quinn `Connecting` so
 	/// callers can observe 0-RTT via `into_0rtt` / `ZeroRttAccepted`.
 	pub fn connecting(&self, peer: SocketAddr) -> Result<quinn::Connecting, QuicError> {
+		// quinn reports a cross-family dial as a generic UDP send error; name
+		// the real cause here instead.
+		if let Ok(local) = self.endpoint.local_addr()
+			&& local.is_ipv6() != peer.is_ipv6()
+		{
+			return Err(QuicError::Endpoint(format!(
+				"endpoint is bound to {local}, which cannot dial the {} peer {peer}",
+				if peer.is_ipv6() { "IPv6" } else { "IPv4" }
+			)));
+		}
 		self.endpoint
 			.connect_with(self.client_config.clone(), peer, &self.server_name)
 			.map_err(|e| QuicError::ConnectionLost(format!("connect {peer}: {e}")))
@@ -321,15 +377,27 @@ fn build_transport(t: &TransportConfig) -> Result<QuinnTransport, QuicError> {
 		.map_err(|_| QuicError::Other("max_concurrent_bidi_streams out of range".into()))?;
 	let uni = VarInt::from_u64(t.max_concurrent_uni_streams)
 		.map_err(|_| QuicError::Other("max_concurrent_uni_streams out of range".into()))?;
-	let recv_window = VarInt::from_u64(t.receive_window).map_err(|_| QuicError::Other("receive_window out of range".into()))?;
+	// quinn's windows are fixed — it has no init/max auto-tuning — so the
+	// per-direction `max_*` overrides map straight onto them and each falls
+	// back to the legacy single `receive_window`.
+	let stream_window = VarInt::from_u64(t.max_stream_receive_window.unwrap_or(t.receive_window))
+		.map_err(|_| QuicError::Other("stream receive window out of range".into()))?;
 
 	tr.max_concurrent_bidi_streams(bidi)
 		.max_concurrent_uni_streams(uni)
 		.send_window(t.send_window)
-		.stream_receive_window(recv_window)
+		.stream_receive_window(stream_window)
 		.initial_mtu(t.initial_mtu)
 		.min_mtu(t.min_mtu)
 		.enable_segmentation_offload(t.gso);
+
+	// Connection-level receive window. Only set when explicitly configured, so
+	// the default keeps quinn's built-in ceiling in place.
+	if let Some(max_conn) = t.max_conn_receive_window {
+		let conn_window =
+			VarInt::from_u64(max_conn).map_err(|_| QuicError::Other("connection receive window out of range".into()))?;
+		tr.receive_window(conn_window);
+	}
 
 	if let Some(idle) = t.max_idle_timeout {
 		let idle = IdleTimeout::try_from(idle).map_err(|_| QuicError::Other("max_idle_timeout out of range".into()))?;
@@ -372,5 +440,107 @@ fn congestion_factory(t: &TransportConfig) -> Option<Arc<dyn quinn::congestion::
 			}
 			Some(Arc::new(cfg))
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const MIB: u64 = 1024 * 1024;
+
+	/// Read one numeric field out of quinn's `TransportConfig` debug rendering.
+	///
+	/// quinn keeps every transport field private and exposes only setters, but
+	/// its `Debug` impl deliberately lists `stream_receive_window` and
+	/// `receive_window` for diagnostics, so that rendering is the only way to
+	/// observe what `build_transport` actually applied. The leading space in
+	/// the key keeps the lookup for `receive_window` from matching the tail of
+	/// `stream_receive_window`.
+	fn window_field(tr: &QuinnTransport, field: &str) -> u64 {
+		let rendered = format!("{tr:?}");
+		let key = format!(" {field}: ");
+		let start = rendered
+			.find(&key)
+			.unwrap_or_else(|| panic!("quinn's TransportConfig debug output has no `{field}` field: {rendered}"))
+			+ key.len();
+		let rest = &rendered[start..];
+		let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+		rest[..end]
+			.parse()
+			.unwrap_or_else(|e| panic!("`{field}` is not a plain integer in quinn's TransportConfig ({e}): {rendered}"))
+	}
+
+	/// `max_conn_receive_window` is documented as quinn's fixed
+	/// connection-level `receive_window`, so configuring it must reach
+	/// quinn.
+	#[test]
+	fn configures_the_connection_receive_window() {
+		let conn_window = 20 * MIB;
+		let t = TransportConfig {
+			max_conn_receive_window: Some(conn_window),
+			..Default::default()
+		};
+		let tr = build_transport(&t).expect("transport config");
+		assert_eq!(
+			window_field(&tr, "receive_window"),
+			conn_window,
+			"max_conn_receive_window must reach quinn's connection receive_window"
+		);
+	}
+
+	/// `max_stream_receive_window` is documented as quinn's fixed
+	/// `stream_receive_window` and must win over the legacy single knob.
+	#[test]
+	fn configures_the_per_stream_receive_window() {
+		let t = TransportConfig {
+			receive_window: 5 * MIB,
+			max_stream_receive_window: Some(9 * MIB),
+			..Default::default()
+		};
+		let tr = build_transport(&t).expect("transport config");
+		assert_eq!(
+			window_field(&tr, "stream_receive_window"),
+			9 * MIB,
+			"max_stream_receive_window must win over the legacy receive_window"
+		);
+	}
+
+	/// Without the per-direction overrides the legacy knob keeps sizing the
+	/// per-stream window and quinn's own connection ceiling stays untouched —
+	/// the documented fallback, and no change to existing defaults.
+	#[test]
+	fn leaves_unset_windows_at_their_quinn_defaults() {
+		let t = TransportConfig {
+			receive_window: 5 * MIB,
+			..Default::default()
+		};
+		let tr = build_transport(&t).expect("transport config");
+		let default_conn = window_field(&QuinnTransport::default(), "receive_window");
+		assert_eq!(window_field(&tr, "receive_window"), default_conn);
+		assert_eq!(window_field(&tr, "stream_receive_window"), 5 * MIB);
+	}
+
+	/// A window that cannot be represented as a QUIC varint must fail loudly
+	/// instead of being dropped on the floor.
+	#[test]
+	fn rejects_windows_outside_the_varint_range() {
+		let conn = TransportConfig {
+			max_conn_receive_window: Some(u64::MAX),
+			..Default::default()
+		};
+		assert!(
+			build_transport(&conn).is_err(),
+			"an out-of-range connection receive window must be rejected"
+		);
+
+		let stream = TransportConfig {
+			max_stream_receive_window: Some(u64::MAX),
+			..Default::default()
+		};
+		assert!(
+			build_transport(&stream).is_err(),
+			"an out-of-range stream receive window must be rejected"
+		);
 	}
 }

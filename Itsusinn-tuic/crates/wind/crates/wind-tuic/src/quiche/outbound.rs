@@ -66,8 +66,11 @@ pub struct ReconnectConfig {
 	/// exponential backoff until it succeeds or the client shuts down.
 	pub enabled: bool,
 	/// Delay before the first reconnect attempt; doubled after each failure.
+	/// Must be positive: a zero delay never grows and would turn the reconnect
+	/// supervisor into a busy loop.
 	pub initial_backoff: Duration,
-	/// Upper bound on the backoff delay.
+	/// Upper bound on the backoff delay. Must be positive, otherwise every
+	/// delay is clamped to zero.
 	pub max_backoff: Duration,
 }
 
@@ -147,6 +150,9 @@ impl TuicheOutbound {
 		if opts.gc_lifetime.is_zero() {
 			return Err(eyre::eyre!("TUIC GC lifetime must be positive"));
 		}
+		// Reject a zero backoff before dialing: the supervisor would otherwise
+		// re-dial in a hot loop instead of waiting between attempts.
+		validate_reconnect(&opts.reconnect)?;
 
 		let token = ctx.token.child_token();
 		let session: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
@@ -341,9 +347,31 @@ fn spawn_ticket_capture(
 	);
 }
 
-/// Next exponential-backoff delay: double `current`, capped at `max`.
+/// Next exponential-backoff delay: doubling never grows a zero delay, so a
+/// zero `current` is returned unchanged. [`validate_reconnect`] rejects a zero
+/// `initial_backoff` up front, which is what keeps the loop from hot-spinning.
 fn next_backoff(current: Duration, max: Duration) -> Duration {
 	current.saturating_mul(2).min(max)
+}
+
+/// Reject a [`ReconnectConfig`] whose backoff could never grow.
+///
+/// Mirrors the quinn outbound's guard: [`next_backoff`] doubles the current
+/// delay, so a zero `initial_backoff` (or a zero `max_backoff`, which clamps
+/// every delay) makes [`reconnect_loop`] re-dial without waiting. The default
+/// config (500 ms → 30 s) is unaffected.
+///
+/// Checked regardless of `enabled`: a zero delay is invalid configuration
+/// either way, and failing at construction is cheaper to diagnose than a busy
+/// loop after the first drop.
+fn validate_reconnect(reconnect: &ReconnectConfig) -> Result<(), Error> {
+	if reconnect.initial_backoff.is_zero() {
+		return Err(eyre::eyre!("TUIC reconnect initial backoff must be positive"));
+	}
+	if reconnect.max_backoff.is_zero() {
+		return Err(eyre::eyre!("TUIC reconnect max backoff must be positive"));
+	}
+	Ok(())
 }
 
 /// Retry [`establish`] with exponential backoff until it succeeds or
@@ -509,12 +537,15 @@ async fn dispatch_incoming_udp(udp_session: &Cache<u16, Arc<TuicUdpStream<Quiche
 		Err(_) => (TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0), false),
 	};
 
+	// `frag_id` is a raw wire byte, so widen it before the 1-based display:
+	// `frag_id + 1` overflows `u8` for a peer-sent `0xFF` (panic under
+	// `overflow-checks`, silent wrap to `0` in release).
 	if has_address {
 		info!(target: "tuic_out", "Received UDP packet: assoc={assoc_id:#06x}, pkt={pkt_id}, frag={}/{frag_total}, size={size}, target={target}",
-			frag_id + 1);
+			u16::from(frag_id) + 1);
 	} else {
 		info!(target: "tuic_out", "Received UDP fragment: assoc={assoc_id:#06x}, pkt={pkt_id}, frag={}/{frag_total}, size={size} (no address - non-first fragment)",
-			frag_id + 1);
+			u16::from(frag_id) + 1);
 	}
 
 	if let Some(tuic_udp_stream) = udp_session.get(&assoc_id).await {
@@ -634,11 +665,16 @@ impl Outbound for TuicheOutbound {
 							Some(packet) => packet,
 						};
 
-						let payload_len = packet.payload.len();
-						if let Err(e) = tuic_stream.send_packet(packet).await {
-							warn!(target: "tuic_out", "Failed to send UDP packet to remote (assoc {assoc_id:#06x}): {e}");
-						} else {
-							info!(target: "tuic_out", "Sent UDP packet to remote ({payload_len} bytes, assoc {assoc_id:#06x})");
+						// Send packet to remote via UDP stream. A failure here
+						// means this association's snapshot connection can no
+						// longer reach the peer (replaced by a reconnect, peer
+						// close, or a reset stream), so end the session instead
+						// of warning once per packet and blackholing the rest.
+						if crate::proto::forward_remote_packet(&tuic_stream, packet, assoc_id)
+							.await
+							.is_break()
+						{
+							break;
 						}
 					}
 					_ = gc_interval.tick() => {
@@ -825,6 +861,127 @@ mod tests {
 		assert!(cfg.initial_backoff <= cfg.max_backoff);
 	}
 
+	/// A zero `initial_backoff` is the hot-spin input: `next_backoff` returns
+	/// zero for every failure, so the supervisor re-dials without ever
+	/// sleeping. It must be rejected instead of silently accepted.
+	#[test]
+	fn zero_initial_backoff_is_rejected() {
+		let cfg = ReconnectConfig {
+			initial_backoff: Duration::ZERO,
+			..Default::default()
+		};
+		// Precondition of the bug this guards: doubling zero never grows it.
+		assert_eq!(next_backoff(Duration::ZERO, cfg.max_backoff), Duration::ZERO);
+
+		let err = validate_reconnect(&cfg).expect_err("a zero initial backoff must be rejected");
+		assert!(
+			format!("{err}").contains("reconnect initial backoff"),
+			"unexpected error: {err}"
+		);
+	}
+
+	/// A zero `max_backoff` clamps every delay — including a positive
+	/// `initial_backoff` — to zero, so it is rejected too.
+	#[test]
+	fn zero_max_backoff_is_rejected() {
+		let cfg = ReconnectConfig {
+			max_backoff: Duration::ZERO,
+			..Default::default()
+		};
+		assert_eq!(next_backoff(cfg.initial_backoff, Duration::ZERO), Duration::ZERO);
+
+		let err = validate_reconnect(&cfg).expect_err("a zero max backoff must be rejected");
+		assert!(format!("{err}").contains("reconnect max backoff"), "unexpected error: {err}");
+	}
+
+	#[test]
+	fn default_reconnect_backoff_is_accepted() {
+		let cfg = ReconnectConfig::default();
+		assert!(validate_reconnect(&cfg).is_ok());
+		// A disabled reconnect with sane delays stays acceptable.
+		let disabled = ReconnectConfig { enabled: false, ..cfg };
+		assert!(validate_reconnect(&disabled).is_ok());
+	}
+
+	/// The guard must run on the real construction path, before the QUIC
+	/// handshake is attempted: a peer that nothing listens on would otherwise
+	/// fail with a dial error instead of the config error.
+	#[test_log::test(tokio::test)]
+	async fn outbound_construction_rejects_a_zero_initial_backoff() {
+		let opts = TuicheOutboundOpts {
+			peer_addr: "127.0.0.1:9443".parse().unwrap(),
+			sni: "localhost".into(),
+			auth: (Uuid::nil(), Arc::<[u8]>::from(&[][..])),
+			verify_certificate: false,
+			alpn: Vec::new(),
+			heartbeat: Duration::from_secs(10),
+			gc_interval: Duration::from_secs(10),
+			gc_lifetime: Duration::from_secs(10),
+			reconnect: ReconnectConfig {
+				initial_backoff: Duration::ZERO,
+				..Default::default()
+			},
+			connection: ConnectionOpts::default(),
+		};
+
+		let err = match tokio::time::timeout(
+			Duration::from_secs(5),
+			TuicheOutbound::new(Arc::new(AppContext::default()), opts),
+		)
+		.await
+		{
+			Err(_) => panic!("the zero-backoff guard must reject before dialing, but construction hung"),
+			Ok(Ok(_)) => panic!("a zero initial backoff must be rejected before dialing"),
+			Ok(Err(err)) => err,
+		};
+		assert!(
+			format!("{err}").contains("reconnect initial backoff"),
+			"the zero-backoff guard must run before the connect attempt, got: {err}"
+		);
+	}
+
+	/// One wire `Packet` frame exactly as [`dispatch_incoming_udp`] consumes
+	/// it.
+	///
+	/// `address = None` selects the address-less (`AddressType::None`) form,
+	/// which logs through the second, otherwise identical, `info!` call.
+	fn packet_frame(frag_id: u8, frag_total: u8, address: Option<(std::net::Ipv4Addr, u16)>) -> bytes::Bytes {
+		use bytes::BufMut as _;
+
+		use crate::proto::{AddressType, CmdType, VER};
+
+		const PAYLOAD: &[u8] = b"pong";
+		let mut frame = bytes::BytesMut::new();
+		frame.put_u8(VER);
+		frame.put_u8(CmdType::Packet.into());
+		frame.put_u16(0x1234); // assoc_id
+		frame.put_u16(7); // pkt_id
+		frame.put_u8(frag_total);
+		frame.put_u8(frag_id);
+		frame.put_u16(PAYLOAD.len() as u16);
+		match address {
+			Some((ip, port)) => {
+				frame.put_u8(AddressType::IPv4.into());
+				frame.put_slice(&ip.octets());
+				frame.put_u16(port);
+			}
+			None => frame.put_u8(AddressType::None.into()),
+		}
+		frame.put_slice(PAYLOAD);
+		frame.freeze()
+	}
+
+	/// `frag_id` is a raw wire `u8`, so the 1-based fragment number in the log
+	/// must be computed after widening: `frag_id + 1` overflows for `0xFF`
+	/// (panic under `overflow-checks`, silent wrap to `0` in release).
+	#[test_log::test(tokio::test)]
+	async fn frag_id_255_does_not_overflow_the_log_path() {
+		let sessions: Cache<u16, Arc<TuicUdpStream<QuicheConnection>>> = Cache::new(u64::from(u16::MAX));
+		for address in [Some((std::net::Ipv4Addr::LOCALHOST, 8080)), None] {
+			dispatch_incoming_udp(&sessions, packet_frame(0xFF, 2, address)).await;
+		}
+	}
+
 	#[tokio::test]
 	async fn builder_requires_required_fields() {
 		match TuicheOutboundBuilder::new().build().await {
@@ -856,6 +1013,7 @@ mod tests {
 			types::TargetAddr,
 			udp::{UdpPacket, UdpStream as CoreUdpStream},
 		};
+		use wind_quic::QuicConnection as _;
 
 		use super::super::{ConnectionOpts, ReconnectConfig, TuicheOutbound, TuicheOutboundBuilder};
 		use crate::quiche::{TuicheInboundBuilder, UdpRelayMode as TransportUdpRelayMode};
@@ -919,6 +1077,17 @@ mod tests {
 			password: &str,
 			server_opts: ConnectionOpts,
 		) -> eyre::Result<(std::net::SocketAddr, tempfile::TempDir)> {
+			start_echo_server_with_auth_timeout(uuid, password, server_opts, None).await
+		}
+
+		/// Same as [`start_echo_server`], but able to override the inbound's
+		/// authentication window; `None` keeps the builder's default.
+		async fn start_echo_server_with_auth_timeout(
+			uuid: Uuid,
+			password: &str,
+			server_opts: ConnectionOpts,
+			auth_timeout: Option<Duration>,
+		) -> eyre::Result<(std::net::SocketAddr, tempfile::TempDir)> {
 			let dir = tempfile::tempdir()?;
 			let generated = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])?;
 			let cert_path = dir.path().join("cert.pem");
@@ -927,15 +1096,17 @@ mod tests {
 			std::fs::write(&key_path, generated.signing_key.serialize_pem())?;
 
 			let (addr_tx, mut addr_rx) = tokio::sync::watch::channel(None::<std::net::SocketAddr>);
-			let inbound = TuicheInboundBuilder::new()
+			let mut builder = TuicheInboundBuilder::new()
 				.listen_addr("127.0.0.1:0".parse()?)
 				.bound_addr(addr_tx)
 				.certificate_path(cert_path.to_string_lossy().into_owned())
 				.private_key_path(key_path.to_string_lossy().into_owned())
 				.user(uuid, password.to_string())
-				.connection_opts(server_opts)
-				.build()
-				.await?;
+				.connection_opts(server_opts);
+			if let Some(auth_timeout) = auth_timeout {
+				builder = builder.auth_timeout(auth_timeout);
+			}
+			let inbound = builder.build().await?;
 
 			let mut dispatcher = Dispatcher::new(ForwardRouter);
 			dispatcher.add_handler("default", Arc::new(EchoOutbound) as Arc<dyn Outbound>);
@@ -1045,6 +1216,106 @@ mod tests {
 			}
 
 			outbound.close();
+			Ok(())
+		}
+
+		/// W45: the quiche server offers `ConnectionOpts::alpn` during the TLS
+		/// handshake; a client that provides the same list completes the
+		/// handshake and authenticates.
+		#[tokio::test]
+		async fn quiche_server_offers_the_configured_alpn() -> eyre::Result<()> {
+			let uuid = Uuid::new_v4();
+			let password = "test-password";
+			let server_opts = ConnectionOpts {
+				alpn: vec![b"tuic-test".to_vec()],
+				..Default::default()
+			};
+			let (addr, _dir) = start_echo_server(uuid, password, server_opts).await?;
+
+			let outbound = client_builder(addr, uuid, password, TransportUdpRelayMode::Datagram)
+				.alpn(vec![b"tuic-test".to_vec()])
+				.build()
+				.await?;
+			outbound.close();
+			Ok(())
+		}
+
+		/// The mirror image: the server offers only `tuic-test`, the client
+		/// only `h3`. With no protocol in common the handshake can
+		/// never complete, so dialing must fail. Before W45 the server
+		/// discarded its own ALPN list and always offered `h3`, so this
+		/// client authenticated successfully — proving the server-side
+		/// ALPN was not actually enforced.
+		#[tokio::test]
+		async fn quiche_server_rejects_a_client_without_a_common_alpn() -> eyre::Result<()> {
+			let uuid = Uuid::new_v4();
+			let password = "test-password";
+			let server_opts = ConnectionOpts {
+				alpn: vec![b"tuic-test".to_vec()],
+				..Default::default()
+			};
+			let (addr, _dir) = start_echo_server(uuid, password, server_opts).await?;
+
+			// A mismatched ALPN surfaces as quiche giving up on the handshake
+			// (quiche reports `timed out`), not as a distinct ALPN error, so
+			// bound the dial and require a failure rather than a connection.
+			let built = tokio::time::timeout(
+				Duration::from_secs(20),
+				client_builder(addr, uuid, password, TransportUdpRelayMode::Datagram).build(),
+			)
+			.await
+			.expect("a server that enforces ALPN must never leave the dial hanging");
+
+			// `TuicheOutbound` is deliberately not `Debug`, so match instead of
+			// `expect_err`.
+			match built {
+				Ok(outbound) => {
+					outbound.close();
+					eyre::bail!("a client offering only `h3` authenticated to a server offering only `tuic-test`")
+				}
+				Err(err) => assert!(
+					format!("{err}").contains("timed out"),
+					"expected the handshake to time out with no common ALPN, got: {err}"
+				),
+			}
+			Ok(())
+		}
+
+		/// W46: the inbound's authentication window is configurable and really
+		/// applied. A raw QUIC client completes the handshake but never sends
+		/// `Authenticate`, so the server's auth-timeout guard is the only thing
+		/// that can close the connection. With the former private 3 s constant
+		/// it survived the full 3 s; configured to 250 ms it must be gone well
+		/// before that — the 2 s bound below sits under the old default on
+		/// purpose, so this test fails if the window is ignored.
+		#[tokio::test]
+		async fn quiche_server_closes_an_unauthenticated_connection_at_the_configured_auth_timeout() -> eyre::Result<()> {
+			let configured = Duration::from_millis(250);
+			let (addr, _dir) = start_echo_server_with_auth_timeout(
+				Uuid::new_v4(),
+				"test-password",
+				ConnectionOpts::default(),
+				Some(configured),
+			)
+			.await?;
+
+			let tls = wind_quic::ClientTlsConfig {
+				server_name: "localhost".to_string(),
+				verify_certificate: false,
+				alpn: vec![b"h3".to_vec()],
+				enable_early_data: false,
+			};
+			let started = std::time::Instant::now();
+			let conn = wind_quic::quiche::connect(addr, &tls, &ConnectionOpts::default().to_transport()).await?;
+
+			tokio::time::timeout(Duration::from_secs(2), conn.closed())
+				.await
+				.map_err(|_| eyre::eyre!("an unauthenticated connection outlived its configured {configured:?} auth window"))?;
+			let elapsed = started.elapsed();
+			assert!(
+				elapsed < Duration::from_secs(2),
+				"the server kept an unauthenticated connection for {elapsed:?}, past the configured {configured:?} window"
+			);
 			Ok(())
 		}
 

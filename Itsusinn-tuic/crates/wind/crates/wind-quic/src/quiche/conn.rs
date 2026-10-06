@@ -26,7 +26,7 @@ struct Inner {
 	cmd_tx: CmdTx,
 	accept_bi: Mutex<mpsc::UnboundedReceiver<(QuicheSend, QuicheRecv)>>,
 	accept_uni: Mutex<mpsc::UnboundedReceiver<QuicheRecv>>,
-	dgram_in: Mutex<mpsc::UnboundedReceiver<Bytes>>,
+	dgram_in: Mutex<mpsc::Receiver<Bytes>>,
 	shared: Arc<Shared>,
 	peer_addr: SocketAddr,
 }
@@ -40,7 +40,7 @@ impl QuicheConnection {
 		cmd_tx: CmdTx,
 		accept_bi: mpsc::UnboundedReceiver<(QuicheSend, QuicheRecv)>,
 		accept_uni: mpsc::UnboundedReceiver<QuicheRecv>,
-		dgram_in: mpsc::UnboundedReceiver<Bytes>,
+		dgram_in: mpsc::Receiver<Bytes>,
 		shared: Arc<Shared>,
 		peer_addr: SocketAddr,
 	) -> Self {
@@ -74,6 +74,16 @@ impl QuicheConnection {
 	/// assert that a resumed handshake's early data was actually accepted.
 	pub fn early_data_reason(&self) -> u32 {
 		self.0.shared.early_data_reason.load(Ordering::Relaxed)
+	}
+
+	/// Cumulative inbound datagrams dropped because the driver's bounded
+	/// receive queue was full (the driver's `MAX_IN_DATAGRAMS` cap).
+	///
+	/// The peer decides how many datagrams to send, so a handle that does not
+	/// keep up with [`read_datagram`](QuicConnection::read_datagram) loses
+	/// datagrams here instead of letting the queue grow without bound.
+	pub fn dropped_datagrams(&self) -> u64 {
+		self.0.shared.dropped_in_datagrams.load(Ordering::Relaxed)
 	}
 }
 

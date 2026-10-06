@@ -70,7 +70,7 @@ jobs:
         run: cargo codspeed build --workspace -m ${{ matrix.instrument }}
 
       - name: Run the benchmarks (${{ matrix.instrument }})
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@v5
         with:
           mode: ${{ matrix.instrument }}
           run: cargo codspeed run --workspace
@@ -116,7 +116,7 @@ jobs:
         run: cargo codspeed build --workspace -m walltime
 
       - name: Run the benchmarks (walltime)
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@v5
         with:
           mode: walltime
           run: cargo codspeed run --workspace

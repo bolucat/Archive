@@ -1,5 +1,5 @@
 use clap::Parser as _;
-use tracing::{Level, info};
+use tracing::info;
 use wind_core::App;
 
 use crate::{
@@ -14,17 +14,21 @@ mod plugin;
 // curl --socks5 127.0.0.1:6666 https://www.bing.com
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-	log::init_log(Level::TRACE)?;
-	info!(target: "wind_main", "Wind starting");
-	// Use clap's own `Error::exit()` so version/help requests go to stdout
-	// with exit code 0 and ACTUAL errors go to stderr with a non-zero exit
-	// code. The previous `println!("{err:#}"); return Ok(())` lumped both
-	// together: real argument errors disappeared into stdout with exit 0,
-	// hiding misconfigurations from CI and shell pipelines.
+	// Parse arguments before installing the subscriber so that `--log-level`
+	// actually governs it. Previously `init_log(Level::TRACE)` ran before clap,
+	// so no argument could influence the filter and `--help`/`--version` output
+	// was written through the global subscriber. Use clap's own `Error::exit()`
+	// so version/help requests go to stdout with exit code 0 and ACTUAL errors
+	// go to stderr with a non-zero exit code; the earlier
+	// `println!("{err:#}"); return Ok(())` lumped both together, hiding
+	// misconfigurations from CI and shell pipelines.
 	let cli = match Cli::try_parse() {
 		Ok(v) => v,
 		Err(err) => err.exit(),
 	};
+
+	log::init_log(cli.log_level)?;
+	info!(target: "wind_main", "Wind starting");
 
 	if cli.version {
 		// Allow build-time override via `WIND_OVERRIDE_VERSION` (e.g. nightly

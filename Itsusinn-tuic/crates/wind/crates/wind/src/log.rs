@@ -2,12 +2,17 @@ use time::macros::format_description;
 use tracing::{Level, level_filters::LevelFilter};
 use tracing_subscriber::{fmt::time::LocalTime, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+/// Install the global tracing subscriber at `level`.
+///
+/// `level` is the caller-supplied log level (`crates/wind/src/cli.rs`'s
+/// `--log-level`, default `info`); it applies to every wind workspace crate, so
+/// `--log-level trace` raises the filter for all of them.
 pub fn init_log(level: Level) -> eyre::Result<()> {
 	// Apply the user-supplied level to every wind workspace crate. Previously
 	// only `wind`, `wind_core`, `wind_tuic` and `wind_socks` were listed —
 	// trace/debug from `wind_naive`, `wind_dns`, `wind_acme`, `wind_base`
-	// fell through to the default INFO filter, making `--log-level trace`
-	// silently ineffective for half the workspace.
+	// fell through to the default INFO filter, making a trace level silently
+	// ineffective for half the workspace.
 	let filter = tracing_subscriber::filter::Targets::new()
 		.with_targets(vec![
 			("wind", level),

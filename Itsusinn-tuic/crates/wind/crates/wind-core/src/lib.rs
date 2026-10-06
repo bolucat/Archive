@@ -38,6 +38,14 @@ pub use utils::{StackPrefer, is_private_ip};
 #[cfg(test)]
 mod udp_tests;
 
+/// Shared task ownership and cancellation for one runtime.
+///
+/// Everything spawned through `tasks` is drained by the owning `App::run` on
+/// shutdown, so any component that spawns connection or session work must be
+/// given the live context — inbounds receive it from their factory, and a
+/// [`Dispatcher`](crate::Dispatcher) takes it through
+/// [`Dispatcher::context`](crate::Dispatcher::context). A component left on a
+/// private default context is cancelled but never awaited.
 pub struct AppContext {
 	pub tasks: TaskTracker,
 	pub token: CancellationToken,

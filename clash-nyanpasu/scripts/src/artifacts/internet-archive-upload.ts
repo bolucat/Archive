@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
+import { runPublicationTasks } from "./publication-concurrency.ts";
 
 interface PublishArtifact {
   path: string;
@@ -56,7 +57,7 @@ const parseOptions = (args: string[]) => {
   const options = new Map<string, string>();
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
-    if (key === "--verify-only") {
+    if (key === "--verify-only" || key === "--register-only") {
       options.set(key, "true");
       continue;
     }
@@ -68,6 +69,10 @@ const parseOptions = (args: string[]) => {
   const manifest = options.get("--manifest");
   const server = options.get("--server");
   const verifyOnly = options.get("--verify-only") === "true";
+  const registerOnly = options.get("--register-only") === "true";
+  if (verifyOnly && registerOnly) {
+    throw new Error("--verify-only and --register-only are mutually exclusive");
+  }
   const buildId = options.get("--build-id");
   if (!server || (verifyOnly ? !buildId : !manifest)) {
     throw new Error(
@@ -91,6 +96,7 @@ const parseOptions = (args: string[]) => {
     manifestPath: manifest ? resolve(manifest) : undefined,
     buildId,
     verifyOnly,
+    registerOnly,
     serverUrl: serverUrl.origin,
     reportPath: options.get("--report"),
   };
@@ -108,9 +114,12 @@ const delay = (milliseconds: number) =>
 const retry = async <T>(
   operation: () => Promise<T>,
   label: string,
+  maxAttempts = RETRY_COUNT,
 ): Promise<T> => {
   let lastError: unknown;
-  for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
+  let attempts = 0;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    attempts++;
     try {
       return await operation();
     } catch (error) {
@@ -119,14 +128,27 @@ const retry = async <T>(
         typeof error === "object" && error !== null && "permanent" in error &&
         error.permanent === true
       ) break;
-      if (error instanceof Error && /HTTP 4\d\d/.test(error.message)) break;
-      if (attempt + 1 === RETRY_COUNT) break;
+      if (
+        error instanceof Error && /HTTP 4\d\d/.test(error.message) &&
+        !/HTTP (408|429)/.test(error.message)
+      ) break;
+      if (attempt + 1 === maxAttempts) break;
+      console.warn(
+        `[archive] ${label}: attempt ${attempts}/${maxAttempts} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }; retrying`,
+      );
       await delay(Math.min(1_000 * 2 ** attempt, 16_000));
     }
   }
-  throw new Error(`${label} failed after ${RETRY_COUNT} attempts`, {
-    cause: lastError,
-  });
+  throw new Error(
+    `${label} failed after ${attempts} attempt(s): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+    {
+      cause: lastError,
+    },
+  );
 };
 
 export const digestFile = async (filePath: string) => {
@@ -229,7 +251,26 @@ const apiRequest = async (
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Archive API returned HTTP ${response.status}: ${detail}`);
+    const error = new Error(
+      `Archive API returned HTTP ${response.status}: ${detail}`,
+    );
+    if (
+      /no such (table|column)|must be configured|Server misconfigured/i.test(
+        detail,
+      )
+    ) {
+      throw Object.assign(error, { permanent: true });
+    }
+    throw error;
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    const detail = (await response.text()).slice(0, 2000);
+    throw Object.assign(
+      new Error(
+        `Archive API returned non-JSON HTTP ${response.status}: ${detail}`,
+      ),
+      { permanent: true },
+    );
   }
   return response;
 };
@@ -333,6 +374,7 @@ const reconcile = async (serverUrl: string, buildId: string) => {
   const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
     Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
+  console.log(`[archive] Verifying ${buildId}`);
   const verification = await verifyRemoteBuild(serverUrl, token, buildId);
   return {
     schemaVersion: 1 as const,
@@ -438,6 +480,144 @@ export const allowedIaUploadUrl = (value: string, itemIdentifier?: string) => {
     url.port === "" && allowedHost;
 };
 
+// IA S3 requires fixed-length streaming and may redirect before consuming the
+// body. curl handles both without buffering package bytes in JavaScript.
+export const uploadFileRequest = async (
+  filePath: string,
+  url: URL,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+  idleTimeoutMs = 90_000,
+): Promise<Response> => {
+  const directory = await Deno.makeTempDir({ prefix: "ia-upload-" });
+  const headerPath = `${directory}/headers`;
+  const bodyPath = `${directory}/body`;
+  // Keep credentials out of command arguments and temporary files.
+  const quote = (value: string) => {
+    if (/[\r\n\0]/.test(value)) throw new Error("Invalid IA upload header");
+    return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  };
+  let progress: ReturnType<typeof setInterval> | undefined;
+  let child: Deno.ChildProcess | undefined;
+  try {
+    const configuration = Object.entries(headers).map(([name, value]) =>
+      `header = ${quote(`${name}: ${value}`)}`
+    ).join("\n");
+    child = new Deno.Command("curl", {
+      args: [
+        "--disable",
+        "--config",
+        "-",
+        "--http1.1",
+        "--request",
+        "PUT",
+        "--upload-file",
+        filePath,
+        "--connect-timeout",
+        "15",
+        "--speed-limit",
+        "1024",
+        "--speed-time",
+        String(Math.max(1, Math.ceil(idleTimeoutMs / 1000))),
+        "--max-time",
+        "1800",
+        "--dump-header",
+        headerPath,
+        "--output",
+        bodyPath,
+        "--write-out",
+        "%{http_code}",
+        url.href,
+      ],
+      signal,
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const started = Date.now();
+    let lastProgress = "connecting";
+    let stderr = "";
+    const readStderr = (async () => {
+      for await (
+        const chunk of child!.stderr.pipeThrough(new TextDecoderStream())
+      ) {
+        stderr = (stderr + chunk).slice(-16_384);
+        const lines = chunk.split(/[\r\n]/).map((line) => line.trim()).filter(
+          Boolean,
+        );
+        lastProgress = lines.at(-1) ?? lastProgress;
+      }
+    })();
+    progress = setInterval(() => {
+      console.log(
+        `[archive] ${basename(filePath)}: ${
+          Math.round((Date.now() - started) / 1000)
+        }s elapsed; curl: ${lastProgress}`,
+      );
+    }, 30_000);
+    console.log(
+      `[archive] PUT ${url.hostname}${url.pathname}, ${
+        headers["content-length"]
+      } bytes`,
+    );
+    const writeConfiguration = (async () => {
+      const writer = child!.stdin.getWriter();
+      try {
+        await writer.write(new TextEncoder().encode(configuration + "\n"));
+      } finally {
+        await writer.close();
+      }
+    })();
+    const [status, statusText] = await Promise.all([
+      child.status,
+      new Response(child.stdout).text(),
+      readStderr,
+      writeConfiguration,
+    ]);
+    if (!status.success) {
+      throw new Error(
+        `IA upload transport failed (curl ${status.code}): ${stderr.trim()}`,
+      );
+    }
+    // curl does not follow redirects; streamUpload validates each destination.
+    const responseHeaders = new Headers();
+    const blocks = (await Deno.readTextFile(headerPath)).trim().split(
+      /\r?\n\r?\n/,
+    );
+    for (const line of blocks.at(-1)!.split(/\r?\n/).slice(1)) {
+      const colon = line.indexOf(":");
+      if (colon > 0) {
+        responseHeaders.append(
+          line.slice(0, colon),
+          line.slice(colon + 1).trim(),
+        );
+      }
+    }
+    const responseStatus = Number(statusText);
+    console.log(
+      `[archive] PUT response HTTP ${responseStatus}, ${
+        Math.round((Date.now() - started) / 1000)
+      }s elapsed`,
+    );
+    return new Response(
+      responseStatus === 204 ? null : await Deno.readFile(bodyPath),
+      {
+        status: responseStatus,
+        headers: responseHeaders,
+      },
+    );
+  } finally {
+    if (progress !== undefined) clearInterval(progress);
+    if (child) {
+      try {
+        child.kill("SIGTERM");
+      } catch { /* The process may already have exited. */ }
+      await child.status;
+    }
+    await Deno.remove(directory, { recursive: true });
+  }
+};
+
 export const streamUpload = async (
   filePath: string,
   destination: URL,
@@ -446,46 +626,31 @@ export const streamUpload = async (
   secret: string,
   firstFile: boolean,
   manifest: PublishManifest,
+  upload = uploadFileRequest,
 ) => {
   let url = destination;
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!allowedIaUploadUrl(url.href, manifest.itemIdentifier)) {
       throw new Error("IA upload redirected to a non-IA S3 host");
     }
-    const file = await Deno.open(filePath, { read: true });
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "PUT",
-        redirect: "manual",
-        headers: {
-          Authorization: `LOW ${accessKey}:${secret}`,
-          "content-type": "application/octet-stream",
-          "content-length": String(fileSize),
-          "x-archive-queue-derive": "0",
-          ...(firstFile
-            ? {
-              "x-archive-auto-make-bucket": "1",
-              "x-archive-meta-mediatype": "software",
-              "x-archive-meta-title": `Clash Nyanpasu ${manifest.channel} ${
-                manifest.tag ?? manifest.commit
-              }`,
-              "x-archive-meta-source": IA_SOURCE,
-              "x-archive-meta-homepage": IA_HOMEPAGE,
-              "x-archive-meta-licenseurl": IA_LICENSE_URL,
-            }
-            : {}),
-        },
-        body: file.readable,
-        signal: AbortSignal.timeout(30 * 60_000),
-      });
-    } finally {
-      try {
-        file.close();
-      } catch {
-        // Fetch may have drained and closed the Deno file stream already.
-      }
-    }
+    const response = await upload(filePath, url, {
+      Authorization: `LOW ${accessKey}:${secret}`,
+      "content-type": "application/octet-stream",
+      "content-length": String(fileSize),
+      "x-archive-queue-derive": "0",
+      ...(firstFile
+        ? {
+          "x-archive-auto-make-bucket": "1",
+          "x-archive-meta-mediatype": "software",
+          "x-archive-meta-title": `Clash Nyanpasu ${manifest.channel} ${
+            manifest.tag ?? manifest.commit
+          }`,
+          "x-archive-meta-source": IA_SOURCE,
+          "x-archive-meta-homepage": IA_HOMEPAGE,
+          "x-archive-meta-licenseurl": IA_LICENSE_URL,
+        }
+        : {}),
+    }, AbortSignal.timeout(30 * 60_000));
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       await response.body?.cancel();
@@ -512,29 +677,35 @@ export const streamUpload = async (
   throw new Error("Too many IA upload redirects");
 };
 
-const uploadOne = async (
+export const uploadOne = async (
   itemIdentifier: string,
   file: { path: string; fileName: string; fileSize: number; md5: string },
   accessKey: string,
   secret: string,
   firstFile: boolean,
   manifest: PublishManifest,
+  upload = streamUpload,
 ) => {
-  if (
-    await retry(
-      () => skipIfAlreadyUploaded(itemIdentifier, file.fileName, file),
-      `IA metadata check for ${file.fileName}`,
-    )
-  ) return "skipped" as const;
   const destination = new URL(
     `${encodeURIComponent(itemIdentifier)}/${
       encodeURIComponent(file.fileName)
     }`,
     `${IA_S3_ORIGIN}/`,
   );
-  await retry(
-    () =>
-      streamUpload(
+  return await retry(
+    async () => {
+      // A timed-out response can still mean IA stored the entire file. Recheck
+      // on every attempt before sending those immutable bytes again.
+      console.log(
+        `[archive] Checking ${
+          manifest.target ?? manifest.buildId
+        }/${file.fileName} (${file.fileSize} bytes)`,
+      );
+      if (await skipIfAlreadyUploaded(itemIdentifier, file.fileName, file)) {
+        console.log(`[archive] Skipped matching file ${file.fileName}`);
+        return "skipped" as const;
+      }
+      await upload(
         file.path,
         destination,
         file.fileSize,
@@ -542,10 +713,13 @@ const uploadOne = async (
         secret,
         firstFile,
         manifest,
-      ),
+      );
+      console.log(`[archive] Uploaded ${file.fileName}`);
+      return "uploaded" as const;
+    },
     `IA upload for ${file.fileName}`,
+    3,
   );
-  return "uploaded" as const;
 };
 
 const createSanitizedManifestFile = async (manifest: PublishManifest) => {
@@ -576,12 +750,16 @@ const createSanitizedManifestFile = async (manifest: PublishManifest) => {
   return { path, fileName: "artifact-manifest.json", ...digest };
 };
 
-const publish = async (manifestPath: string, serverUrl: string) => {
+const publish = async (
+  manifestPath: string,
+  serverUrl: string,
+  registerOnly = false,
+) => {
   const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
     Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
-  const accessKey = requiredEnv("IA_ACCESS_KEY");
-  const secret = requiredEnv("IA_SECRET_KEY");
+  const accessKey = registerOnly ? "" : requiredEnv("IA_ACCESS_KEY");
+  const secret = registerOnly ? "" : requiredEnv("IA_SECRET_KEY");
   const itemPrefix = requiredEnv("IA_ITEM_PREFIX");
   const manifest = await validateManifest(
     manifestPath,
@@ -590,7 +768,9 @@ const publish = async (manifestPath: string, serverUrl: string) => {
   if (!manifest.itemIdentifier.startsWith(`${itemPrefix}-`)) {
     throw new Error("itemIdentifier is outside IA_ITEM_PREFIX");
   }
+  console.log(`[archive] Registering ${manifest.target ?? manifest.buildId}`);
   const registered = await registerBuild(serverUrl, token, manifest);
+  console.log(`[archive] Registration complete: ${registered.status}`);
   if (registered.status === "failed") {
     throw new Error(
       `Build registration is failed: ${registered.diagnostics.join("; ")}`,
@@ -600,6 +780,18 @@ const publish = async (manifestPath: string, serverUrl: string) => {
     ...manifest,
     publishedAt: registered.publishedAt ?? manifest.publishedAt,
   };
+  if (registerOnly) {
+    return {
+      schemaVersion: 1 as const,
+      ...registered,
+      target: manifest.target ?? null,
+      channel: manifest.channel,
+      commit: manifest.commit,
+      folderPath: manifest.folderPath,
+      registrationOnly: true,
+      uploads: [],
+    };
+  }
 
   const sanitized = await createSanitizedManifestFile(registeredManifest);
   const uploads: Array<{ fileName: string; status: "uploaded" | "skipped" }> =
@@ -616,8 +808,10 @@ const publish = async (manifestPath: string, serverUrl: string) => {
         registeredManifest,
       ),
     });
-    for (const artifact of manifest.artifacts) {
-      uploads.push({
+    const results = await runPublicationTasks(
+      manifest.artifacts,
+      2,
+      async (artifact) => ({
         fileName: artifact.fileName,
         status: await uploadOne(
           registeredManifest.itemIdentifier,
@@ -627,12 +821,27 @@ const publish = async (manifestPath: string, serverUrl: string) => {
           false,
           registeredManifest,
         ),
-      });
+      }),
+    );
+    const errors: string[] = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled") uploads.push(result.value);
+      else {
+        errors.push(
+          `${manifest.artifacts[index].fileName}: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
     }
+    if (errors.length) throw new Error(errors.join("; "));
   } finally {
     await Deno.remove(sanitized.path).catch(() => undefined);
   }
 
+  console.log(`[archive] Verifying ${registeredManifest.buildId}`);
   const verification = await verifyRemoteBuild(
     serverUrl,
     token,
@@ -690,12 +899,17 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
     }
     const report = options.verifyOnly
       ? await reconcile(options.serverUrl, options.buildId!)
-      : await publish(options.manifestPath!, options.serverUrl);
+      : await publish(
+        options.manifestPath!,
+        options.serverUrl,
+        options.registerOnly,
+      );
     if (reportPath) {
       await Deno.writeTextFile(reportPath, JSON.stringify(report, null, 2));
     }
     console.log(JSON.stringify(report, null, 2));
     if (report.status === "failed") return 1;
+    if (options.registerOnly) return 0;
     return report.status === "ready" ? 0 : 2;
   } catch (error) {
     const failure = {

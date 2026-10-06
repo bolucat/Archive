@@ -8,7 +8,7 @@ use hickory_resolver::{
 };
 use wind_core::{
 	StackPrefer,
-	resolve::{Resolver, filter_addrs_by_preference, pick_addr_by_preference},
+	resolve::{Resolver, bail_if_no_addrs, filter_addrs_by_preference, pick_addr_by_preference},
 };
 
 use crate::config::{DnsConfig, DnsMode};
@@ -59,7 +59,9 @@ impl Resolver for HickoryResolver {
 			if addrs.is_empty() {
 				eyre::bail!("no DNS records for {host}");
 			}
-			Ok(filter_addrs_by_preference(addrs, self.prefer))
+			let addrs = filter_addrs_by_preference(addrs, self.prefer);
+			bail_if_no_addrs(&addrs, host, self.prefer)?;
+			Ok(addrs)
 		})
 	}
 }
@@ -112,13 +114,32 @@ pub(crate) fn build(cfg: &DnsConfig) -> Result<Option<HickoryResolver>> {
 	Ok(Some(HickoryResolver::new(resolver, cfg.stack_prefer)))
 }
 
+/// Transport requested by a server spec.
+///
+/// A spec without `://` is kept distinct from an explicit `udp://` so that the
+/// legacy plaintext form (UDP with a TCP fallback for truncated answers) is not
+/// silently narrowed by this change.
+enum ServerScheme<'a> {
+	Default,
+	Named(&'a str),
+}
+
 type MakeNameServer = fn(IpAddr, Option<String>) -> NameServerConfig;
 
 /// Parse a DNS server URL or bare address into a [`NameServerConfig`].
 fn parse_server(spec: &str) -> Result<NameServerConfig> {
 	let (scheme, rest) = match spec.split_once("://") {
-		Some((a, b)) => (a.to_ascii_lowercase(), b),
-		None => (String::from("udp"), spec),
+		Some((a, b)) => (ServerScheme::Named(a), b),
+		None => (ServerScheme::Default, spec),
+	};
+	// Scheme names stay case-insensitive (`TLS://` keeps working).
+	let folded;
+	let scheme = match scheme {
+		ServerScheme::Named(a) => {
+			folded = a.to_ascii_lowercase();
+			ServerScheme::Named(&folded)
+		}
+		ServerScheme::Default => ServerScheme::Default,
 	};
 
 	let (addr_part, sni) = match rest.rsplit_once('#') {
@@ -126,15 +147,23 @@ fn parse_server(spec: &str) -> Result<NameServerConfig> {
 		None => (rest, None),
 	};
 
-	let (default_port, make_ns): (u16, MakeNameServer) = match scheme.as_str() {
-		"udp" | "tcp" => (53u16, |ip, _sni| NameServerConfig::udp_and_tcp(ip)),
-		"tls" => (853u16, |ip, sni| {
+	let (default_port, make_ns): (u16, MakeNameServer) = match scheme {
+		// The transport in the spec is authoritative: an explicit `udp://` or
+		// `tcp://` opens only that transport, so an operator can pin a
+		// plaintext resolver exactly as written. Hickory's pool filters on the
+		// configured protocols and tries UDP before TCP, so a `tcp://` spec
+		// that also opened UDP previously never actually took effect.
+		ServerScheme::Named("udp") => (53u16, |ip, _sni| NameServerConfig::udp(ip)),
+		ServerScheme::Named("tcp") => (53u16, |ip, _sni| NameServerConfig::tcp(ip)),
+		ServerScheme::Named("tls") => (853u16, |ip, sni| {
 			NameServerConfig::tls(ip, Arc::from(sni.unwrap_or_else(|| ip.to_string()).as_str()))
 		}),
-		"https" => (443u16, |ip, sni| {
+		ServerScheme::Named("https") => (443u16, |ip, sni| {
 			NameServerConfig::https(ip, Arc::from(sni.unwrap_or_else(|| ip.to_string()).as_str()), None)
 		}),
-		other => eyre::bail!("unknown DNS scheme: {other}"),
+		// Historical bare-address behaviour: UDP with a TCP fallback.
+		ServerScheme::Default => (53u16, |ip, _sni| NameServerConfig::udp_and_tcp(ip)),
+		ServerScheme::Named(other) => eyre::bail!("unknown DNS scheme: {other}"),
 	};
 
 	let (ip_str, port) = split_host_port(addr_part, default_port)?;
@@ -143,8 +172,8 @@ fn parse_server(spec: &str) -> Result<NameServerConfig> {
 		.with_context(|| format!("invalid IP literal in DNS server: {ip_str}"))?;
 
 	let mut ns = make_ns(ip, sni);
-	// The `udp_and_tcp` / `tls` / `https` constructors fill the protocol's
-	// default port. Honour an explicit port from the user spec instead.
+	// The constructors fill the protocol's default port. Honour an explicit
+	// port from the user spec instead.
 	for c in &mut ns.connections {
 		c.port = port;
 	}
@@ -187,6 +216,7 @@ mod tests {
 	use std::net::{Ipv4Addr, Ipv6Addr};
 
 	use hickory_resolver::config::ProtocolConfig;
+	use wind_core::resolve::filter_addrs_by_preference;
 
 	use super::*;
 
@@ -198,22 +228,53 @@ mod tests {
 		})
 	}
 
+	/// The transports opened for a name server, as a comparable list.
+	fn transports(ns: &NameServerConfig) -> Vec<String> {
+		ns.connections
+			.iter()
+			.map(|c| match &c.protocol {
+				ProtocolConfig::Udp => String::from("udp"),
+				ProtocolConfig::Tcp => String::from("tcp"),
+				ProtocolConfig::Tls { .. } => String::from("tls"),
+				ProtocolConfig::Https { .. } => String::from("https"),
+			})
+			.collect()
+	}
+
 	#[test]
 	fn parse_bare_ipv4() {
 		let ns = parse_server("1.1.1.1").unwrap();
 		assert_eq!(ns.ip, IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
-		// `udp_and_tcp` yields both a UDP and a TCP connection.
-		assert_eq!(ns.connections.len(), 2);
+		// A scheme-less spec keeps the legacy `udp_and_tcp` pair.
+		assert_eq!(transports(&ns), ["udp", "tcp"]);
 		assert!(ns.connections.iter().all(|c| c.port == 53));
 		assert!(ns.connections.iter().any(|c| matches!(c.protocol, ProtocolConfig::Udp)));
 	}
 
 	#[test]
-	fn parse_ipv4_with_port() {
+	fn explicit_udp_opens_only_udp() {
+		// `udp://` must not silently open a TCP fallback: the pool would
+		// otherwise be free to answer over TCP as well.
 		let ns = parse_server("udp://1.1.1.1:5353").unwrap();
 		assert_eq!(ns.ip, IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
-		assert_eq!(ns.connections.len(), 2);
-		assert!(ns.connections.iter().all(|c| c.port == 5353));
+		assert_eq!(transports(&ns), ["udp"]);
+		assert_eq!(ns.connections[0].port, 5353);
+	}
+
+	#[test]
+	fn explicit_tcp_opens_only_tcp() {
+		// Regression: a `tcp://` spec used to produce `[udp, tcp]`, and
+		// Hickory's pool sorts UDP first, so the request was actually sent
+		// over UDP and the spec had no effect.
+		let ns = parse_server("tcp://1.1.1.1:5353").unwrap();
+		assert_eq!(transports(&ns), ["tcp"]);
+		assert_eq!(ns.connections[0].port, 5353);
+	}
+
+	#[test]
+	fn scheme_is_case_insensitive() {
+		assert_eq!(transports(&parse_server("UDP://1.1.1.1").unwrap()), ["udp"]);
+		assert_eq!(transports(&parse_server("TCP://1.1.1.1").unwrap()), ["tcp"]);
 	}
 
 	#[test]
@@ -254,5 +315,21 @@ mod tests {
 		};
 		let result = build(&cfg).unwrap();
 		assert!(result.is_none());
+	}
+
+	#[tokio::test]
+	async fn resolve_all_errors_when_the_preference_filter_empties_the_list() {
+		// Regression W53: `HickoryResolver::resolve_all` returned
+		// `Ok(filter_addrs_by_preference(..))` as-is, so a host that only
+		// resolved to the other family produced `Ok(vec![])` —
+		// indistinguishable from a successful lookup with no addresses.
+		let v4_only: Vec<IpAddr> = vec![IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1))];
+		let filtered = filter_addrs_by_preference(v4_only, StackPrefer::V6only);
+		assert!(filtered.is_empty());
+		let err = bail_if_no_addrs(&filtered, "example.com", StackPrefer::V6only).unwrap_err();
+		assert!(
+			err.to_string().contains("no address matching V6only"),
+			"unexpected message: {err}"
+		);
 	}
 }

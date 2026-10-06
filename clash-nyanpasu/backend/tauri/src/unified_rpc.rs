@@ -4,6 +4,7 @@ use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, s
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Query, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
@@ -258,6 +259,7 @@ impl UnifiedRpc {
     pub fn router(self) -> Router {
         Router::new()
             .route("/bridge/rpc", post(http_call))
+            .route("/bridge/logs/archive", get(http_logs_archive))
             .route("/bridge/events", get(http_events))
             .route("/bridge/connection-details", get(http_connection_details))
             .with_state(self)
@@ -285,6 +287,44 @@ impl UnifiedRpc {
             .ok_or_else(|| RpcError::unknown_method(method))?;
         (handler.1)(app, window, webview, params).await
     }
+}
+
+async fn http_logs_archive() -> Result<Response, (StatusCode, Json<RpcError>)> {
+    let archive = tokio::task::spawn_blocking(crate::utils::candy::collect_logs_tempfile)
+        .await
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)?
+        .map_err(|error| RpcError::new("application_error", error.to_string()))
+        .map_err(http_rpc_error)?;
+    let file = tokio::fs::File::open(archive.path())
+        .await
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)?;
+    let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+        use tokio::io::AsyncReadExt;
+
+        let mut bytes = vec![0; 64 * 1024];
+        let count = file.read(&mut bytes).await?;
+        if count == 0 {
+            return Ok::<_, std::io::Error>(None);
+        }
+        bytes.truncate(count);
+        Ok(Some((bytes, (file, _archive))))
+    });
+    let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+    Response::builder()
+        .header("content-type", "application/zip")
+        .header(
+            "content-disposition",
+            format!("attachment; filename=\"{file_name}\""),
+        )
+        .body(Body::from_stream(body))
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)
+}
+
+fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
+    (error.status(), Json(error))
 }
 
 // Subscribe only while a page consumes full connection details. Dropping the
@@ -458,6 +498,13 @@ mod tests {
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
             for method in [
+                "read_clipboard_text",
+                "write_clipboard_text",
+                "show_native_notification",
+                "show_native_message_dialog",
+                "ask_native_dialog",
+                "open_native_file_dialog",
+                "set_tray_icon",
                 "get_app_update_state",
                 "check_app_update",
                 "download_app_update",
@@ -605,6 +652,29 @@ mod tests {
             .await;
             assert_eq!(close.0, StatusCode::OK);
             assert!(close.1.is_null());
+            let report = rpc_for_test_call(
+                &app,
+                "report_frontend_events",
+                serde_json::json!({"batch":{"events":[{
+                    "kind":"unhandled_rejection", "level":"error", "message":"boom",
+                    "error_name":null, "stack":null, "causes":[], "component_stack":null,
+                    "fingerprint":"x", "count":1, "first_seen_ms":0, "last_seen_ms":0,
+                    "route":"/main/dashboard"
+                }], "dropped":0}}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(report.0, StatusCode::OK, "{:?}", report.1);
+            assert!(report.1.is_null());
+            let malformed = rpc_for_test_call(
+                &app,
+                "report_frontend_events",
+                serde_json::json!({"batch":{"events":[{"kind":"unknown"}], "dropped":0}}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(malformed.0, StatusCode::BAD_REQUEST);
+            assert_eq!(malformed.1["kind"], "invalid_params");
             let set = app.clone().oneshot(Request::post("/bridge/rpc")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())
@@ -952,6 +1022,20 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
+        use crate::client::frontend_events::{FrontendLogSink, SanitizedEvent};
+        #[derive(Default)]
+        struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
+        impl FrontendLogSink for RecordingSink {
+            fn write(&self, owner: &str, event: &SanitizedEvent) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((owner.to_string(), event.clone()));
+            }
+            fn dropped(&self, _: &str, _: u32) {}
+        }
+        let frontend_events = Arc::new(RecordingSink::default());
+        args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
@@ -987,6 +1071,7 @@ mod tests {
                 std::time::Duration::from_secs(60),
                 tokio::process::Command::new("deno")
                     .env("NYANPASU_HTTP_CORE_LOG_FIXTURE", "1")
+                    .env("NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE", "1")
                     .args(["task", "test:http-ui"])
                     .current_dir(repository)
                     .arg(&url)
@@ -1003,6 +1088,40 @@ mod tests {
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
+            let reported = frontend_events.0.lock().unwrap();
+            let fixture: Vec<_> = reported
+                .iter()
+                .filter(|(_, event)| event.event.message.contains("error reporting test"))
+                .collect();
+            use crate::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
+            let kinds: Vec<_> = fixture
+                .iter()
+                .map(|(_, event)| (event.event.kind, event.event.level))
+                .collect();
+            for expected in [
+                (FrontendEventKind::Console, FrontendEventLevel::Warning),
+                (FrontendEventKind::Console, FrontendEventLevel::Error),
+                (FrontendEventKind::UncaughtError, FrontendEventLevel::Error),
+                (
+                    FrontendEventKind::UnhandledRejection,
+                    FrontendEventLevel::Error,
+                ),
+            ] {
+                assert!(kinds.contains(&expected), "{expected:?} in {reported:?}");
+            }
+            for (owner, event) in &fixture {
+                assert!(!owner.is_empty());
+                assert_eq!(event.event.route, "/main/settings/debug");
+            }
+            let console_error = fixture
+                .iter()
+                .map(|(_, event)| &event.event)
+                .find(|event| event.message.contains("console error"))
+                .unwrap();
+            assert_eq!(console_error.error_name.as_deref(), Some("Error"));
+            assert!(console_error.stack.is_some());
+            assert_eq!(console_error.causes.len(), 1);
+            assert!(console_error.causes[0].message.contains("root cause"));
         });
     }
 }

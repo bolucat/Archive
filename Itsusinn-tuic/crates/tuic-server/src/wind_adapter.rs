@@ -14,6 +14,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use eyre::WrapErr;
 use tracing::Instrument;
 use wind_acl::AclEngine;
 use wind_base::{
@@ -31,6 +32,13 @@ use crate::{
 };
 
 /// Inbound QUIC listener selected by `backend.mode`.
+///
+/// One instance is built per inbound during plugin setup and then owned by the
+/// runtime for the process lifetime, so the enum is never held in bulk. The
+/// stack-size difference between the two backends does not justify the
+/// indirection `clippy::large_enum_variant` proposes, and boxing a variant
+/// would change this public enum's variant types without an ownership benefit.
+#[allow(clippy::large_enum_variant)]
 pub enum ServerInbound {
 	Tuic(wind_tuic::quinn::inbound::TuicInbound),
 	#[cfg(feature = "quiche")]
@@ -180,12 +188,24 @@ impl TuicRouter {
 		resolver: Arc<dyn wind_core::Resolver>,
 		geodata: Option<Arc<GeoData>>,
 	) -> eyre::Result<Self> {
-		let converted = acl_to_rules(&cfg.acl);
+		let converted = acl_to_rules(&cfg.acl)?;
+		// The configuration layer already parses every entry into a `Rule`,
+		// but render it back to text and re-parse so this router accepts
+		// exactly the strings the rule grammar defines. `Display` and the
+		// parser share one positional grammar, so the round trip is lossless
+		// for every rule `Rule::parse` accepted (see
+		// `explicit_rules_survive_the_display_parse_round_trip`). A failure
+		// here means the rule grammar and its renderer disagree, which must
+		// stop startup with a diagnostic instead of panicking on a runtime
+		// thread.
 		let explicit: Vec<Rule> = cfg
 			.rules
 			.iter()
-			.map(|r| Rule::parse(&r.to_string()).expect("round-trip rule parse"))
-			.collect();
+			.map(|r| {
+				let line = r.to_string();
+				Rule::parse(&line).wrap_err_with(|| format!("configured routing rule {line:?} cannot be re-parsed"))
+			})
+			.collect::<eyre::Result<_>>()?;
 		let all_rules: Vec<Rule> = converted.into_iter().chain(explicit).collect();
 
 		let acl_engine = if all_rules.is_empty() {
@@ -241,6 +261,11 @@ impl TuicRouter {
 }
 
 /// Load TLS certificate and private key from PEM files.
+///
+/// Both files must actually contain PEM material. `rustls_pemfile` skips bytes
+/// it does not recognize, so a DER-only or mistyped certificate file would
+/// otherwise yield an empty chain that only fails later — inside the TLS
+/// builder, with an error that no longer names the file.
 pub fn load_cert_from_files(
 	cert_path: &std::path::Path,
 	key_path: &std::path::Path,
@@ -250,8 +275,18 @@ pub fn load_cert_from_files(
 )> {
 	let cert_data = std::fs::read(cert_path)?;
 	let key_data = std::fs::read(key_path)?;
-	let certs = rustls_pemfile::certs(&mut cert_data.as_slice()).collect::<Result<Vec<_>, _>>()?;
-	let key = rustls_pemfile::private_key(&mut key_data.as_slice())?.ok_or_else(|| eyre::eyre!("No private key found"))?;
+	let certs = rustls_pemfile::certs(&mut cert_data.as_slice())
+		.collect::<Result<Vec<_>, _>>()
+		.wrap_err_with(|| format!("parse PEM certificates from {}", cert_path.display()))?;
+	if certs.is_empty() {
+		eyre::bail!(
+			"no PEM certificate found in {}; `tls.certificate` must be a PEM file holding the certificate chain",
+			cert_path.display()
+		);
+	}
+	let key = rustls_pemfile::private_key(&mut key_data.as_slice())
+		.wrap_err_with(|| format!("parse the PEM private key from {}", key_path.display()))?
+		.ok_or_else(|| eyre::eyre!("no PEM private key found in {}", key_path.display()))?;
 	Ok((certs, key))
 }
 
@@ -502,5 +537,108 @@ mod tests {
 
 		let result = load_cert_from_files(&cert_path, &key_path);
 		assert!(result.is_err());
+	}
+
+	/// A certificate file that holds no PEM certificate must be rejected by the
+	/// loader itself: the PEM reader silently skips bytes it does not
+	/// recognize, so without an explicit check the caller receives an empty
+	/// chain and only fails much later, with an error that never names the
+	/// file the operator pointed at.
+	#[test]
+	fn certificate_file_without_pem_certificates_is_rejected_with_the_path() {
+		let dir = tempdir().unwrap();
+		let cert_path = dir.path().join("cert.pem");
+		let key_path = dir.path().join("key.pem");
+
+		let key_pem = rcgen::KeyPair::generate().unwrap().serialize_pem();
+		// A valid key next to unusable certificate bytes: the key must not mask
+		// the missing certificate.
+		std::fs::write(&cert_path, b"not a certificate").unwrap();
+		std::fs::write(&key_path, &key_pem).unwrap();
+
+		let message = match load_cert_from_files(&cert_path, &key_path) {
+			Ok((certs, _key)) => format!("the loader accepted a {} certificate chain", certs.len()),
+			Err(err) => err.to_string(),
+		};
+		assert!(
+			message.contains("cert.pem"),
+			"a certificate file without PEM certificates must be rejected with an error naming the file, got: {message}"
+		);
+	}
+
+	/// A truncated or unknown PEM block is a parse error, not a silent miss; it
+	/// must also name the file so a mistyped path is distinguishable from
+	/// corrupt content.
+	#[test]
+	fn malformed_pem_certificate_error_names_the_file() {
+		let dir = tempdir().unwrap();
+		let cert_path = dir.path().join("cert.pem");
+		let key_path = dir.path().join("key.pem");
+
+		let key_pem = rcgen::KeyPair::generate().unwrap().serialize_pem();
+		std::fs::write(&cert_path, b"-----BEGIN GARBAGE-----\nnot a certificate\n").unwrap();
+		std::fs::write(&key_path, &key_pem).unwrap();
+
+		let message = match load_cert_from_files(&cert_path, &key_path) {
+			Ok((certs, _key)) => format!("the loader accepted a {} certificate chain", certs.len()),
+			Err(err) => err.to_string(),
+		};
+		assert!(
+			message.contains("cert.pem"),
+			"a malformed PEM certificate must be reported with the file it came from, got: {message}"
+		);
+	}
+
+	/// The explicit rule list is fed to the router through
+	/// `to_string()` → `Rule::parse`, so that round trip is the invariant the
+	/// router depends on. Exercise one representative rule per grammar shape,
+	/// including the shapes whose `Display` output looks suspicious — nested
+	/// compounds and the target-less sub-rules that `parse_compound`
+	/// produces — and require the render/re-parse pair to be lossless.
+	#[test]
+	fn explicit_rules_survive_the_display_parse_round_trip() {
+		let inputs = [
+			"DOMAIN,example.com,reject",
+			"DOMAIN-SUFFIX,example.com,proxy",
+			"DOMAIN-WILDCARD,*.example.com,proxy",
+			"IP-CIDR,10.0.0.0/8,direct",
+			"IP-CIDR6,fc00::/7,direct",
+			"DST-PORT,443,proxy",
+			"SRC-PORT,1000-2000,proxy",
+			"NETWORK,udp,direct",
+			"IP-CIDR,10.0.0.0/8,direct,no-resolve",
+			"MATCH,proxy",
+			"AND,((NETWORK,tcp),(DST-PORT,443)),proxy",
+			"OR,((NETWORK,tcp),(DST-PORT,53)),proxy",
+			"NOT,((NETWORK,udp)),proxy",
+			"SUB-RULE,((NETWORK,tcp)),proxy",
+			// A nested compound: the inner rule carries an empty target
+			// because `parse_compound` strips the placeholder target it
+			// appends to make the sub-rule parsable.
+			"AND,((AND,((NETWORK,tcp),(DST-PORT,443)))),proxy",
+		];
+
+		let mut rules = Vec::new();
+		for line in inputs {
+			let rule = Rule::parse(line).unwrap_or_else(|e| panic!("{line:?} must parse: {e}"));
+			let rendered = rule.to_string();
+			let reparsed = Rule::parse(&rendered).unwrap_or_else(|e| {
+				panic!("Display output of {line:?} ({rendered:?}) must re-parse, otherwise the router cannot accept it: {e}")
+			});
+			assert_eq!(
+				reparsed.to_string(),
+				rendered,
+				"the round trip through Display must be lossless for {line:?}"
+			);
+			rules.push(rule);
+		}
+
+		// The whole list must build a router instead of aborting the server.
+		let cfg = crate::Config {
+			rules,
+			..Default::default()
+		};
+		let router = TuicRouter::new(&cfg, default_resolver(), None).expect("router must build from valid rules");
+		assert!(router.acl_engine.is_some(), "the explicit rules must reach the ACL engine");
 	}
 }

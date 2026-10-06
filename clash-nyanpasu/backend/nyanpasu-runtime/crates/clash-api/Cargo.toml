@@ -1,6 +1,6 @@
 [package]
 name = "clash-api"
-version = "1.0.0-rc.9"
+version = "1.0.0-rc.10"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -28,6 +28,7 @@ url = "2"
 uuid = { version = "1", features = ["serde"] }
 
 [dev-dependencies]
+tempfile = "3"
 axum = { workspace = true, features = ["ws"] }
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["service", "tokio"] }

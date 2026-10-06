@@ -1,14 +1,22 @@
 //! Evaluation of a [`Ruleset`] against a `wind_rule::MatchContext`.
 //!
-//! Semantics follow <https://rust-proxy.github.io/wind/acl-ir/> §4: scan the entry chain top-to-bottom;
+//! Semantics follow <https://rust-proxy.github.io/wind/acl-ir/> §5: scan the entry chain top-to-bottom;
 //! on a match run the statements then apply the verdict; `Jump` pushes a return
-//! frame, `Goto` does not, `Return` / chain-exhaustion falls through; a base
-//! chain that falls through applies its `policy`.
+//! frame, `Goto` does not, and chain-exhaustion falls through to the next rule;
+//! `Return` pops out of the chain it was evaluated in (so a bare `Return` in
+//! the entry chain reaches the entry `policy`, and one inside a jumped-to chain
+//! resumes the caller at the rule after the jump); a base chain that falls
+//! through applies its `policy`.
+//!
+//! IP leaves compare the connection address with
+//! [`wind_rule::net_contains_ip`], so an IPv4-mapped IPv6 destination
+//! (`::ffff:10.0.0.1`) is judged by the IPv4 CIDR it embeds — exactly as the
+//! legacy `Rule::matches` reference does for [`Match::Predicate`].
 
 use std::net::IpAddr;
 
 use wind_core::RouteAction;
-use wind_rule::MatchContext;
+use wind_rule::{MatchContext, net_contains_ip};
 
 use crate::model::{DomainSet, MapField, Match, Ruleset, SetData, Side, Verdict};
 
@@ -20,8 +28,16 @@ enum Resolution {
 	Forward(String),
 	Reject(String),
 	Drop,
-	/// `Return`, or the chain ran out of rules without a terminal verdict.
+	/// The chain ran out of rules without a terminal verdict: scan the next
+	/// rule of the calling chain (or, for a `Goto` target, of the chain
+	/// containing the `Goto`), or apply the entry `policy` at the top
+	/// level.
 	Fallthrough,
+	/// [`Verdict::Return`]: pop out of the chain being evaluated instead of
+	/// scanning its remaining rules. The caller resumes at the rule after the
+	/// `Jump` that invoked the chain; past the entry chain, [`Ruleset::route`]
+	/// applies the entry `policy`.
+	Returned,
 }
 
 impl Ruleset {
@@ -35,9 +51,10 @@ impl Ruleset {
 			Resolution::Forward(o) => RouteAction::Forward(o),
 			Resolution::Reject(r) => RouteAction::Reject(r),
 			Resolution::Drop => RouteAction::Reject("dropped".to_string()),
-			// A base chain that falls through applies its policy. `policy` is a
-			// terminal verdict by construction.
-			Resolution::Fallthrough => match self.resolve_policy(self.entry, ctx) {
+			// Both a chain that ran out of rules and a `Return` that popped past
+			// the entry chain apply the entry policy. `policy` is a terminal
+			// verdict by construction.
+			Resolution::Fallthrough | Resolution::Returned => match self.resolve_policy(self.entry, ctx) {
 				Resolution::Forward(o) => RouteAction::Forward(o),
 				Resolution::Reject(r) => RouteAction::Reject(r),
 				_ => RouteAction::Reject("no matching rule and non-terminal policy".to_string()),
@@ -61,7 +78,10 @@ impl Ruleset {
 			// Statements are non-terminal side effects; routing ignores them.
 			let _ = &rule.stmts;
 			match self.apply_verdict(&rule.verdict, ctx, depth) {
-				Resolution::Fallthrough => continue, // e.g. a verdict map with no hit
+				// e.g. a verdict map with no hit: scan this chain's next rule.
+				Resolution::Fallthrough => continue,
+				// `Return` pops out of this chain: its remaining rules must not
+				// run, so the outcome travels to the caller untouched.
 				other => return other,
 			}
 		}
@@ -73,10 +93,12 @@ impl Ruleset {
 			Verdict::Forward(o) => Resolution::Forward(o.clone()),
 			Verdict::Reject(r) => Resolution::Reject(r.clone()),
 			Verdict::Drop => Resolution::Drop,
-			Verdict::Return => Resolution::Fallthrough,
+			Verdict::Return => Resolution::Returned,
 			Verdict::Jump(name) => match self.chain_index(name) {
+				// A callee that falls through or returns resumes the caller at
+				// the rule after the jump.
 				Some(idx) => match self.eval_chain(idx, ctx, depth + 1) {
-					Resolution::Fallthrough => Resolution::Fallthrough,
+					Resolution::Fallthrough | Resolution::Returned => Resolution::Fallthrough,
 					other => other,
 				},
 				None => Resolution::Fallthrough,
@@ -117,7 +139,10 @@ impl Ruleset {
 			Match::Not(inner) => !self.match_expr(inner, ctx),
 			Match::Always => true,
 
-			Match::Ip { side, net } => side_ip(ctx, *side).is_some_and(|ip| net.contains(&ip)),
+			// `net_contains_ip` (not a bare `IpNet::contains`) so a mapped-v4
+			// destination is judged by the IPv4 CIDR it embeds, exactly as
+			// `Rule::matches` does for the `Predicate` escape hatch.
+			Match::Ip { side, net } => side_ip(ctx, *side).is_some_and(|ip| net_contains_ip(net, ip)),
 			Match::Port { side, range } => side_port(ctx, *side).is_some_and(|p| range.contains(&p)),
 			Match::Proto(n) => ctx.network.is_some_and(|nn| nn == *n),
 			Match::Domain(test) => ctx.domain.is_some_and(|d| domain_test_matches(test, d)),
@@ -131,7 +156,7 @@ impl Ruleset {
 	fn set_contains(&self, set: usize, side: Side, ctx: &MatchContext) -> bool {
 		match &self.sets[set].data {
 			SetData::Domains(ds) => ctx.domain.is_some_and(|d| domain_set_contains(ds, d)),
-			SetData::Ips(nets) => side_ip(ctx, side).is_some_and(|ip| nets.iter().any(|n| n.contains(&ip))),
+			SetData::Ips(nets) => side_ip(ctx, side).is_some_and(|ip| nets.iter().any(|n| net_contains_ip(n, ip))),
 			SetData::Ports(ranges) => side_port(ctx, side).is_some_and(|p| ranges.iter().any(|r| r.contains(&p))),
 		}
 	}

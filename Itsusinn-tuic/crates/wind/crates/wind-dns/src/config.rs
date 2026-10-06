@@ -53,11 +53,16 @@ pub struct DnsConfig {
 
 	/// Servers for `mode = "custom"`. Each entry is either a bare address or a
 	/// URL-style specifier:
-	///   * `1.1.1.1` or `1.1.1.1:53`        — UDP on port 53
-	///   * `udp://1.1.1.1[:port]`
-	///   * `tcp://1.1.1.1[:port]`
+	///   * `1.1.1.1` or `1.1.1.1:53`        — UDP, with a TCP fallback for
+	///     truncated answers (the historical behaviour)
+	///   * `udp://1.1.1.1[:port]`           — UDP only
+	///   * `tcp://1.1.1.1[:port]`           — TCP only
 	///   * `tls://1.1.1.1[:port][#sni]`     — DoT (port defaults to 853)
 	///   * `https://1.1.1.1[:port][#sni]`   — DoH (port defaults to 443)
+	///
+	/// The transport named by an explicit `udp://`/`tcp://` spec is honoured
+	/// literally: only that transport is opened. Omit the scheme to keep the
+	/// historical pair.
 	///
 	/// IPv6 literals must be bracketed when a port is present, e.g.
 	/// `tls://[2606:4700:4700::1111]:853#cloudflare-dns.com`.

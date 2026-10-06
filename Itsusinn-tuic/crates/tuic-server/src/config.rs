@@ -7,6 +7,7 @@ use std::{
 
 use clap::Parser;
 use educe::Educe;
+use eyre::WrapErr;
 use figment::{
 	Figment,
 	providers::{Format, Serialized, Toml, Yaml},
@@ -101,7 +102,9 @@ pub struct RestfulConfig {
 	pub addr: SocketAddr,
 
 	/// Bearer token secret for endpoint authentication. Empty string means no
-	/// auth required (not recommended if the API is exposed publicly).
+	/// auth required (not recommended if the API is exposed publicly); if the
+	/// API actually binds a non-loopback address while this is empty, the
+	/// server reports that exposure at startup.
 	pub secret: String,
 
 	/// Maximum concurrent connections per user (0 = unlimited).
@@ -740,6 +743,39 @@ impl Config {
 			..Default::default()
 		}
 	}
+
+	/// Reject outbound rules that cannot produce a working handler.
+	///
+	/// A `socks5` rule without a usable `addr` used to be accepted here and
+	/// silently lowered to an empty proxy address (`unwrap_or_default` in the
+	/// adapter), so every connection routed through that outbound failed later
+	/// with an opaque SOCKS5 error instead of the server refusing to start.
+	///
+	/// The reported error names the offending entry of `[outbound]`, with
+	/// `default` standing for `[outbound.default]`.
+	fn validate_outbound_rules(&self) -> eyre::Result<()> {
+		// `[outbound.default]` is always present (it has a built-in default),
+		// so it is validated together with the named rules.
+		let rules = std::iter::once(("default", &self.outbound.default))
+			.chain(self.outbound.named.iter().map(|(name, rule)| (name.as_str(), rule)));
+
+		for (name, rule) in rules {
+			if rule.kind != "socks5" {
+				continue;
+			}
+			match rule.addr.as_deref() {
+				Some(addr) if !addr.trim().is_empty() => {}
+				_ => {
+					eyre::bail!(
+						"outbound rule {name:?} has type \"socks5\" but no usable `addr`; set `addr = \"host:port\"` of the \
+						 SOCKS5 proxy"
+					);
+				}
+			}
+		}
+
+		Ok(())
+	}
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -852,12 +888,20 @@ async fn find_config_in_dir(dir: &PathBuf) -> eyre::Result<PathBuf> {
 	Ok(config_files[0].clone())
 }
 
+/// Serialize the example configuration written by `--init`.
+///
+/// `toml` rejects a few values a [`Config`] can hold — for example a path that
+/// is not valid UTF-8 — so the failure has to be reported instead of panicking
+/// inside the init path.
+fn serialize_example_config(config: &Config) -> eyre::Result<String> {
+	toml::to_string_pretty(config).wrap_err("failed to serialize the example configuration")
+}
+
 pub async fn parse_config(cli: Cli, env_state: EnvState) -> eyre::Result<Config> {
 	if cli.init {
 		warn!("Generating an example configuration to config.toml......");
 
-		let example = Config::full_example();
-		let example = toml::to_string_pretty(&example).unwrap();
+		let example = serialize_example_config(&Config::full_example())?;
 
 		let default_path = std::path::Path::new("config.toml");
 		if tokio::fs::try_exists(default_path).await? {
@@ -929,6 +973,8 @@ pub async fn parse_config(cli: Cli, env_state: EnvState) -> eyre::Result<Config>
 	let mut config: Config = figmet.extract()?;
 
 	config.migrate();
+
+	config.validate_outbound_rules()?;
 
 	if config.data_dir.to_str() == Some("") {
 		config.data_dir = std::env::current_dir()?
@@ -1175,6 +1221,78 @@ mod tests {
 		assert_eq!(socks5.addr, Some("127.0.0.1:1080".to_string()));
 		assert_eq!(socks5.username, Some("optional".to_string()));
 		assert_eq!(socks5.password, Some("optional".to_string()));
+	}
+
+	#[tokio::test]
+	async fn socks5_outbound_without_an_address_is_rejected_at_parse_time() {
+		// The server must refuse to start instead of silently lowering the
+		// rule to an empty proxy address that fails on every connection.
+		let config = r#"
+data_dir = "__test__socks5_addr_data"
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+
+[tls]
+self_sign = true
+
+[outbound.default]
+type = "direct"
+
+[outbound.through_socks5]
+type = "socks5"
+username = "optional"
+password = "optional"
+"#;
+
+		let result = test_parse_config(config, ".toml").await;
+		let _ = tokio::fs::remove_dir_all("__test__socks5_addr_data").await;
+
+		// `Config` intentionally has no `Debug`, so inspect the error instead
+		// of unwrapping the `Result` value.
+		let message = match result {
+			Err(err) => err.to_string(),
+			Ok(_) => panic!("a socks5 outbound without `addr` must fail config parsing"),
+		};
+		assert!(
+			message.contains("socks5") && message.contains("addr"),
+			"the error must name the offending rule field, got: {message}"
+		);
+		assert!(
+			message.contains("through_socks5"),
+			"the error must name the offending rule, got: {message}"
+		);
+	}
+
+	#[tokio::test]
+	async fn empty_socks5_address_is_rejected_at_parse_time() {
+		// An explicitly blank address is as unusable as a missing one, and it
+		// used to reach the SOCKS5 client verbatim.
+		let config = r#"
+data_dir = "__test__socks5_blank_addr_data"
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+
+[tls]
+self_sign = true
+
+[outbound.default]
+type = "socks5"
+addr = "   "
+"#;
+
+		let result = test_parse_config(config, ".toml").await;
+		let _ = tokio::fs::remove_dir_all("__test__socks5_blank_addr_data").await;
+
+		let message = match result {
+			Err(err) => err.to_string(),
+			Ok(_) => panic!("a blank socks5 address must fail config parsing"),
+		};
+		assert!(
+			message.contains("socks5") && message.contains("\"default\""),
+			"the error must name the offending rule field, got: {message}"
+		);
 	}
 
 	#[tokio::test]
@@ -2038,5 +2156,49 @@ self_sign = true
 		let parsed_empty = test_parse_config(cfg_empty, ".toml").await.unwrap();
 		assert!(parsed_empty.outbound.default.bind_ipv4.is_empty());
 		assert!(parsed_empty.outbound.default.bind_ipv6.is_empty());
+	}
+
+	/// The example written by `--init` must be loadable by the server itself.
+	#[test]
+	fn example_configuration_serializes_to_loadable_toml() {
+		let config = Config::full_example();
+
+		let text = serialize_example_config(&config).expect("the bundled example must serialize");
+
+		let reparsed: Config = toml::from_str(&text).expect("the generated example must be loadable again");
+
+		assert_eq!(reparsed.server, config.server);
+		assert_eq!(reparsed.users, config.users);
+	}
+
+	/// A value the serializer cannot represent must surface as an error from
+	/// the init path instead of panicking while generating the example.
+	#[test]
+	fn unrepresentable_example_configuration_is_reported_instead_of_panicking() {
+		let config = Config {
+			data_dir: unrepresentable_path(),
+			..Default::default()
+		};
+
+		let err = serialize_example_config(&config).unwrap_err();
+
+		assert!(
+			format!("{err:?}").contains("failed to serialize the example configuration"),
+			"a serializer failure must name the failing step, got: {err:?}"
+		);
+	}
+
+	#[cfg(windows)]
+	fn unrepresentable_path() -> PathBuf {
+		use std::os::windows::ffi::OsStringExt;
+
+		PathBuf::from(std::ffi::OsString::from_wide(&[0xD800]))
+	}
+
+	#[cfg(not(windows))]
+	fn unrepresentable_path() -> PathBuf {
+		use std::os::unix::ffi::OsStringExt;
+
+		PathBuf::from(std::ffi::OsString::from_vec(vec![0xFF]))
 	}
 }

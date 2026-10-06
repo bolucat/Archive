@@ -463,12 +463,8 @@ async fn assert_real_update_apis(client: &Client, mihomo: &Mihomo) {
 
 async fn assert_proxy_and_rule_apis(client: &Client, healthcheck_url: &str) {
     let groups = client.groups().await.unwrap();
-    assert!(groups.iter().any(|proxy| proxy.name.as_str() == GROUP));
-    assert!(
-        groups
-            .iter()
-            .any(|proxy| proxy.name.as_str() == AUTOMATIC_GROUP)
-    );
+    assert!(groups.contains_key(&ProxyName::from(GROUP)));
+    assert!(groups.contains_key(&ProxyName::from(AUTOMATIC_GROUP)));
     assert_eq!(
         client.group(&ProxyName::from(GROUP)).await.unwrap().name,
         ProxyName::from(GROUP)

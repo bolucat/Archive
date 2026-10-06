@@ -14,6 +14,7 @@ use wind_tuic::quinn::inbound::{TuicInbound, TuicInboundOpts};
 
 use crate::{
 	Config,
+	config::GeoDataConfig,
 	restful::{self, ConnectionTracker},
 	wind_adapter::{self, ServerInbound, TuicRouter, load_cert_from_files},
 };
@@ -22,7 +23,7 @@ use crate::{
 pub struct TuicServerPlugin {
 	cfg: Config,
 	bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
-	restful_bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
+	restful_bound_addr: Option<restful::RestfulAddrTx>,
 }
 
 impl TuicServerPlugin {
@@ -42,8 +43,9 @@ impl TuicServerPlugin {
 	}
 
 	/// Report the actually-bound RESTful API address (OS-assigned when
-	/// `restful.addr` binds to port 0) through this watch channel.
-	pub fn with_restful_bound_addr(mut self, tx: watch::Sender<Option<SocketAddr>>) -> Self {
+	/// `restful.addr` binds to port 0) through this watch channel, or the bind
+	/// failure that keeps the management API from coming up at all.
+	pub fn with_restful_bound_addr(mut self, tx: restful::RestfulAddrTx) -> Self {
 		self.restful_bound_addr = Some(tx);
 		self
 	}
@@ -66,8 +68,9 @@ impl Plugin<TuicRouter> for TuicServerPlugin {
 			}
 		};
 
-		// Geo data (blocking io: decode + mmap)
-		let geodata = load_geodata_blocking(&cfg);
+		// Geo data (blocking io: decode + mmap), off the runtime worker threads
+		// so a large database cannot stall every other task sharing them.
+		let geodata = load_geodata_blocking(cfg.geodata.clone(), cfg.data_dir.clone()).await;
 
 		// Router
 		let router = wind_adapter::TuicRouter::new(&cfg, resolver.clone(), geodata.clone())?;
@@ -278,31 +281,69 @@ impl Plugin<TuicRouter> for TuicServerPlugin {
 						}
 					}
 
-					let quiche_dir = std::env::temp_dir().join("tuic-server-quiche");
-					std::fs::create_dir_all(&quiche_dir)
-						.with_context(|| format!("create quiche temp cert dir {}", quiche_dir.display()))?;
+					// tokio-quiche loads credentials from file
+					// paths, so the private key must be staged
+					// on disk. Use a per-instance directory
+					// that only the server user can enter and
+					// read: a fixed shared path could be
+					// pre-created by another local user, and
+					// concurrent servers would overwrite each
+					// other's certificates.
+					let quiche_dir = quiche_cert_dir();
+					create_private_dir(&quiche_dir)
+						.with_context(|| format!("create quiche cert dir {}", quiche_dir.display()))?;
 					let quiche_cert_path = quiche_dir.join("cert.pem");
 					let quiche_key_path = quiche_dir.join("key.pem");
 
 					if tls_self_sign {
 						let generated = rcgen::generate_simple_self_signed(vec![hostname.clone()])
 							.with_context(|| format!("quiche self-signed cert generation for {hostname}"))?;
-						std::fs::write(&quiche_cert_path, generated.cert.pem())
+						write_private_file(&quiche_cert_path, generated.cert.pem().as_bytes())
 							.with_context(|| format!("write quiche cert.pem to {}", quiche_cert_path.display()))?;
-						std::fs::write(&quiche_key_path, generated.signing_key.serialize_pem())
+						write_private_file(&quiche_key_path, generated.signing_key.serialize_pem().as_bytes())
 							.with_context(|| format!("write quiche key.pem to {}", quiche_key_path.display()))?;
 					} else {
-						std::fs::copy(&cert_path, &quiche_cert_path).with_context(|| {
+						// `std::fs::copy` keeps the source mode
+						// and follows a pre-existing
+						// destination, so read once and write
+						// both files with owner-only modes.
+						let cert_bytes = std::fs::read(&cert_path)
+							.with_context(|| format!("read TLS certificate {}", cert_path.display()))?;
+						write_private_file(&quiche_cert_path, &cert_bytes).with_context(|| {
 							format!(
-								"copy quiche cert from {} to {}",
+								"write quiche cert from {} to {}",
 								cert_path.display(),
 								quiche_cert_path.display()
 							)
 						})?;
-						std::fs::copy(&key_path, &quiche_key_path).with_context(|| {
-							format!("copy quiche key from {} to {}", key_path.display(), quiche_key_path.display())
+						let key_bytes =
+							std::fs::read(&key_path).with_context(|| format!("read TLS private key {}", key_path.display()))?;
+						write_private_file(&quiche_key_path, &key_bytes).with_context(|| {
+							format!(
+								"write quiche key from {} to {}",
+								key_path.display(),
+								quiche_key_path.display()
+							)
 						})?;
 					}
+
+					// The listener hands these paths to
+					// tokio-quiche for its whole lifetime, so
+					// drop the staged key only once shutdown
+					// starts. Best effort: a cleanup failure
+					// must not fail an otherwise clean stop.
+					let cleanup_dir = quiche_dir.clone();
+					let cleanup_token = app.context().token.child_token();
+					app.context().tasks.spawn(async move {
+						cleanup_token.cancelled().await;
+						match std::fs::remove_dir_all(&cleanup_dir) {
+							Ok(()) => {}
+							Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+							Err(e) => {
+								tracing::warn!("failed to remove quiche cert dir {}: {e}", cleanup_dir.display());
+							}
+						}
+					});
 
 					let cert_pem = std::fs::read(&quiche_cert_path)
 						.with_context(|| format!("read quiche cert.pem {}", quiche_cert_path.display()))?;
@@ -366,28 +407,51 @@ impl Plugin<TuicRouter> for TuicServerPlugin {
 
 // Geo-data loading (blocking)
 
-fn load_geodata_blocking(cfg: &Config) -> Option<Arc<wind_geodata::GeoData>> {
-	if !cfg.geodata.is_enabled() {
+/// Decode the configured GeoIP/GeoSite databases and open the resulting cache.
+///
+/// Decoding and re-serialising a full `geosite.dat`/`geoip.dat` pair is
+/// CPU-bound and takes hundreds of milliseconds, so the work runs on the
+/// blocking pool instead of the async runtime: `Plugin::build` is awaited from
+/// a runtime worker thread, and occupying it would stall every other task
+/// scheduled on that thread (including the sockets of an already-running
+/// server during a config reload).
+///
+/// Failing to load the databases is not fatal: the caller keeps running
+/// without geodata, and geo rules simply cannot match. That is reported by the
+/// warnings below.
+async fn load_geodata_blocking(cfg: GeoDataConfig, data_dir: std::path::PathBuf) -> Option<Arc<wind_geodata::GeoData>> {
+	if !cfg.is_enabled() {
 		return None;
 	}
-	let geosite_path = cfg.geodata.geosite.as_ref().unwrap();
-	let geoip_path = cfg.geodata.geoip.as_ref().unwrap();
+	let geosite_path = cfg.geosite?;
+	let geoip_path = cfg.geoip?;
 
-	let geosite_bytes = std::fs::read(geosite_path).ok()?;
-	let geoip_bytes = std::fs::read(geoip_path).ok()?;
+	let loaded = tokio::task::spawn_blocking(move || {
+		let geosite_bytes = std::fs::read(&geosite_path).ok()?;
+		let geoip_bytes = std::fs::read(&geoip_path).ok()?;
 
-	let cache_path = cfg.data_dir.join("geodata.cache");
-	match wind_geodata::GeoData::build_and_open(&geosite_bytes, &geoip_bytes, &cache_path) {
-		Ok(geo) => {
-			tracing::info!(
-				"[geodata] loaded geosite ({}) + geoip ({})",
-				geosite_path.display(),
-				geoip_path.display()
-			);
-			Some(Arc::new(geo))
+		let cache_path = data_dir.join("geodata.cache");
+		match wind_geodata::GeoData::build_and_open(&geosite_bytes, &geoip_bytes, &cache_path) {
+			Ok(geo) => {
+				tracing::info!(
+					"[geodata] loaded geosite ({}) + geoip ({})",
+					geosite_path.display(),
+					geoip_path.display()
+				);
+				Some(Arc::new(geo))
+			}
+			Err(e) => {
+				tracing::warn!("[geodata] failed to build cache: {e}");
+				None
+			}
 		}
+	})
+	.await;
+
+	match loaded {
+		Ok(geodata) => geodata,
 		Err(e) => {
-			tracing::warn!("[geodata] failed to build cache: {e}");
+			tracing::warn!("[geodata] loading task failed to run to completion: {e}");
 			None
 		}
 	}
@@ -405,4 +469,274 @@ fn generate_self_signed(
 	let cert_der = rustls::pki_types::CertificateDer::from(generated.cert);
 	let priv_key = rustls::pki_types::PrivatePkcs8KeyDer::from(generated.signing_key.serialize_der());
 	Ok((vec![cert_der], rustls::pki_types::PrivateKeyDer::Pkcs8(priv_key)))
+}
+
+// Quiche certificate staging (private on-disk key)
+
+/// Directory that holds the PEM files the quiche backend loads at startup.
+///
+/// The name carries a fresh UUID so that two server instances (or two tests in
+/// the same process) never stage their key material at the same path.
+#[cfg(feature = "quiche")]
+fn quiche_cert_dir() -> std::path::PathBuf {
+	std::env::temp_dir().join(format!("tuic-server-quiche-{}", uuid::Uuid::new_v4()))
+}
+
+/// Create `dir` as a directory only its owner can enter (mode `0o700`).
+///
+/// Deliberately non-recursive and non-idempotent: an existing path is refused
+/// instead of being reused, so the caller never adopts a directory it did not
+/// create.
+#[cfg(all(feature = "quiche", unix))]
+fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+	use std::os::unix::fs::DirBuilderExt;
+
+	std::fs::DirBuilder::new().mode(0o700).create(dir)
+}
+
+/// Create `dir`. Non-Unix hosts have no portable owner-only mode to set, so
+/// this only guarantees the path is new; the platform's temporary directory is
+/// already per-user.
+#[cfg(all(feature = "quiche", not(unix)))]
+fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+	std::fs::create_dir(dir)
+}
+
+/// Write `contents` to `path` as a new file only its owner can read (mode
+/// `0o600`).
+///
+/// `create_new` refuses to follow an existing file or symlink at `path`, which
+/// keeps a raced-in path from being overwritten through.
+#[cfg(feature = "quiche")]
+fn write_private_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+	use std::io::Write;
+
+	let mut options = std::fs::OpenOptions::new();
+	options.write(true).create_new(true);
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::OpenOptionsExt;
+		options.mode(0o600);
+	}
+	let mut file = options.open(path)?;
+	file.write_all(contents)
+}
+
+#[cfg(all(test, feature = "quiche"))]
+mod tests {
+	use std::fs;
+
+	use super::*;
+
+	#[test]
+	fn quiche_cert_dir_is_unique_per_instance() {
+		let first = quiche_cert_dir();
+		let second = quiche_cert_dir();
+		assert_ne!(first, second, "each server instance needs its own certificate directory");
+		assert_eq!(first.parent(), Some(std::env::temp_dir().as_path()));
+		assert!(
+			first
+				.file_name()
+				.and_then(|name| name.to_str())
+				.is_some_and(|name| name.starts_with("tuic-server-quiche-")),
+			"unexpected certificate directory name: {}",
+			first.display()
+		);
+	}
+
+	#[test]
+	fn create_private_dir_refuses_an_existing_path() {
+		let root = tempfile::tempdir().unwrap();
+		let dir = root.path().join("certs");
+		create_private_dir(&dir).unwrap();
+		assert!(dir.is_dir());
+
+		let err = create_private_dir(&dir).expect_err("reusing an existing directory must fail");
+		assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+	}
+
+	#[test]
+	fn write_private_file_refuses_to_clobber_existing_content() {
+		let root = tempfile::tempdir().unwrap();
+		let key = root.path().join("key.pem");
+		write_private_file(&key, b"first").unwrap();
+
+		let err = write_private_file(&key, b"second").expect_err("overwriting key material must fail");
+		assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+		assert_eq!(fs::read(&key).unwrap(), b"first");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn private_dir_and_key_are_owner_only() {
+		use std::os::unix::fs::PermissionsExt;
+
+		let root = tempfile::tempdir().unwrap();
+		let dir = root.path().join("certs");
+		create_private_dir(&dir).unwrap();
+		let dir_mode = dir.metadata().unwrap().permissions().mode() & 0o777;
+		assert_eq!(
+			dir_mode, 0o700,
+			"other users must not be able to enter the certificate directory"
+		);
+
+		let key = dir.join("key.pem");
+		write_private_file(&key, b"secret").unwrap();
+		let key_mode = key.metadata().unwrap().permissions().mode() & 0o777;
+		assert_eq!(key_mode, 0o600, "other users must not be able to read the staged private key");
+	}
+}
+
+/// Regression guard for the geodata load: it must not occupy the async runtime
+/// worker thread the build future is polled on.
+///
+/// `Plugin::build` is awaited from a runtime worker thread, so decoding a large
+/// GeoIP/GeoSite pair inline would stall every other task scheduled on that
+/// thread. The test proves the work really ran somewhere else by capturing the
+/// thread that emits the loader's success event: it must not be the thread that
+/// called `load_geodata_blocking`.
+#[cfg(test)]
+mod geodata_load_tests {
+	use std::sync::OnceLock;
+
+	use geosite_rs::{Cidr, GeoIp, GeoIpList, GeoSiteList, encode_geoip, encode_geosite};
+	use tokio::runtime::{Builder, Runtime};
+
+	use super::*;
+	use crate::config::GeoDataConfig;
+
+	const EVENT_TARGET: &str = "tuic_server::plugin";
+
+	/// The thread that emitted the loader's "loaded geosite" event, recorded by
+	/// the process-wide capture subscriber below.
+	static LOADED_ON_THREAD: OnceLock<std::thread::ThreadId> = OnceLock::new();
+	static CAPTURE: OnceLock<()> = OnceLock::new();
+
+	/// Records the thread of the geodata event without pulling in a
+	/// `tracing-subscriber` dev-dependency (the capture must be global: the
+	/// event is emitted from a blocking-pool thread, where a thread-local
+	/// subscriber would not be visible).
+	struct LoadThreadCapture;
+
+	impl tracing::Subscriber for LoadThreadCapture {
+		fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+			metadata.target() == EVENT_TARGET && metadata.fields().field("message").is_some()
+		}
+
+		fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::Id {
+			tracing::Id::from_u64(1)
+		}
+
+		fn record(&self, _span: &tracing::Id, _values: &tracing::span::Record<'_>) {}
+
+		fn record_follows_from(&self, _span: &tracing::Id, _follows: &tracing::Id) {}
+
+		fn event(&self, event: &tracing::Event<'_>) {
+			if event.metadata().level() == &tracing::Level::INFO {
+				let _ = LOADED_ON_THREAD.set(std::thread::current().id());
+			}
+		}
+
+		fn enter(&self, _span: &tracing::Id) {}
+
+		fn exit(&self, _span: &tracing::Id) {}
+
+		fn register_callsite(&self, _metadata: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+			tracing::subscriber::Interest::always()
+		}
+
+		fn max_level_hint(&self) -> Option<tracing::level_filters::LevelFilter> {
+			Some(tracing::level_filters::LevelFilter::INFO)
+		}
+	}
+
+	/// Install the capture subscriber once for the whole test binary.
+	fn capture_geodata_events() {
+		CAPTURE.get_or_init(|| {
+			tracing::subscriber::set_global_default(LoadThreadCapture).expect("no other subscriber is installed");
+		});
+	}
+
+	/// Write a synthetic GeoIP/GeoSite pair large enough that an inline decode
+	/// is measurable, and return the configuration pointing at it.
+	fn write_fixture(dir: &std::path::Path) -> GeoDataConfig {
+		let mut entries = 40_000;
+		loop {
+			let geoip = GeoIpList {
+				entry: vec![GeoIp {
+					country_code: "CN".to_string(),
+					cidr: (0..entries)
+						.map(|i| Cidr {
+							ip: vec![10, ((i >> 16) & 0xff) as u8, ((i >> 8) & 0xff) as u8, (i & 0xff) as u8],
+							prefix: 32,
+						})
+						.collect(),
+					..Default::default()
+				}],
+			};
+			let geosite = GeoSiteList { entry: vec![] };
+			let geosite_path = dir.join(format!("geosite-{entries}.dat"));
+			let geoip_path = dir.join(format!("geoip-{entries}.dat"));
+			std::fs::write(&geosite_path, encode_geosite(geosite)).unwrap();
+			std::fs::write(&geoip_path, encode_geoip(geoip)).unwrap();
+
+			let cfg = GeoDataConfig {
+				geosite: Some(geosite_path),
+				geoip: Some(geoip_path),
+			};
+			let decode = std::time::Instant::now();
+			let loaded = load_geodata_inline(&cfg, dir);
+			if decode.elapsed() >= std::time::Duration::from_millis(300) || entries >= 640_000 {
+				assert!(loaded, "the synthetic database must load at all");
+				return cfg;
+			}
+			entries *= 2;
+		}
+	}
+
+	/// One inline decode, used only to size the fixture. It never runs on a
+	/// runtime.
+	fn load_geodata_inline(cfg: &GeoDataConfig, cache_dir: &std::path::Path) -> bool {
+		let geosite = std::fs::read(cfg.geosite.as_ref().unwrap()).unwrap();
+		let geoip = std::fs::read(cfg.geoip.as_ref().unwrap()).unwrap();
+		wind_geodata::GeoData::build_and_open(&geosite, &geoip, &cache_dir.join("sizing.cache")).is_ok()
+	}
+
+	fn current_thread_runtime() -> Runtime {
+		Builder::new_current_thread().enable_all().build().unwrap()
+	}
+
+	#[test]
+	fn geodata_is_decoded_off_the_runtime_thread() {
+		capture_geodata_events();
+		let dir = tempfile::tempdir().unwrap();
+		let cache_dir = dir.path().to_path_buf();
+		let cfg = write_fixture(&cache_dir);
+
+		// A current-thread runtime is the strictest case: the build future and
+		// every other task share exactly one thread, and an inline decode would
+		// hold it for the whole size of the database.
+		let (geodata, caller_thread) = current_thread_runtime().block_on(async move {
+			let caller_thread = std::thread::current().id();
+			let loaded = tokio::time::timeout(std::time::Duration::from_secs(60), load_geodata_blocking(cfg, cache_dir))
+				.await
+				.expect("loading the geodata must not run forever");
+			(loaded, caller_thread)
+		});
+
+		let geodata = geodata.expect("the fixture geodata must load through the async loader");
+		assert!(geodata.geoip_lookup()("CN", "10.0.0.1".parse().unwrap()));
+		assert!(
+			dir.path().join("geodata.cache").is_file(),
+			"the loader must publish its cache in the configured data dir"
+		);
+
+		let decode_thread = LOADED_ON_THREAD
+			.get()
+			.expect("the loader must report the databases it loaded");
+		assert_ne!(
+			*decode_thread, caller_thread,
+			"the geodata must be decoded on a blocking thread, not on the runtime thread that awaits the build future"
+		);
+	}
 }

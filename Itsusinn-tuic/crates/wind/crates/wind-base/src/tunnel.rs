@@ -35,6 +35,27 @@ fn next_assoc_id() -> u16 {
 	0x8000 | (NEXT_ASSOC_ID.fetch_add(1, Ordering::Relaxed) & 0x7fff)
 }
 
+/// Smallest idle timeout accepted by [`TunnelUdpInbound::new`].
+///
+/// Session GC runs at `timeout / 4`, and `tokio::time::interval` panics on a
+/// zero period. `Duration` division truncates, so 3 ns / 4 already rounds the
+/// tick down to zero — the guard has to cover that, not only exactly zero.
+const MIN_UDP_TUNNEL_TIMEOUT: std::time::Duration = std::time::Duration::from_nanos(4);
+
+/// Ceiling on concurrently tracked per-source UDP tunnel sessions.
+///
+/// The session table is keyed by the client's source address, which a UDP peer
+/// can spoof freely, and every entry pins two tasks plus two 64-slot channels.
+/// Idle sessions are only reclaimed by the GC tick (`timeout / 4`), so without
+/// a ceiling a burst from spoofed addresses would grow the table — and its
+/// background work — without bound until the next tick. Once the table is full
+/// a packet from a *new* source is dropped instead of allocating another
+/// session; sources that already own a session keep working and the GC tick
+/// frees the slots of idle ones. Tests override the private
+/// [`TunnelUdpInbound::max_sessions`] field to reach the ceiling without
+/// opening thousands of sockets.
+const MAX_UDP_TUNNEL_SESSIONS: usize = 4096;
+
 // ── TCP tunnel ─────────────────────────────────────────────────────────────
 
 /// TCP port forwarder as a wind-core inbound.
@@ -123,20 +144,43 @@ struct UdpTunnelSession {
 /// Packets from different source addresses get separate UDP relay sessions.
 /// Each session is routed through the dispatcher via
 /// [`InboundCallback::handle_udpstream`].
+///
+/// At most [`MAX_UDP_TUNNEL_SESSIONS`] sources are tracked at once; packets
+/// from further new sources are dropped until the idle GC frees a slot, so a
+/// peer cannot grow the session table without bound by spoofing source
+/// addresses.
 pub struct TunnelUdpInbound {
 	socket: Arc<UdpSocket>,
 	remote: (String, u16),
 	timeout: std::time::Duration,
+	/// Concurrent-session ceiling; see [`MAX_UDP_TUNNEL_SESSIONS`].
+	max_sessions: usize,
 	cancel: CancellationToken,
 }
 
 impl TunnelUdpInbound {
+	/// Bind the UDP tunnel socket.
+	///
+	/// `timeout` is the per-source idle timeout; it must be at least
+	/// [`MIN_UDP_TUNNEL_TIMEOUT`] so that the session GC period `timeout / 4`
+	/// stays representable as a non-zero [`std::time::Duration`]. Anything
+	/// smaller is rejected with [`std::io::ErrorKind::InvalidInput`] instead of
+	/// panicking later inside `tokio::time::interval`.
 	pub fn new(
 		listen: SocketAddr,
 		remote: (String, u16),
 		timeout: std::time::Duration,
 		cancel: CancellationToken,
 	) -> std::io::Result<Self> {
+		if timeout < MIN_UDP_TUNNEL_TIMEOUT {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				format!(
+					"tunnel UDP idle timeout must be at least {MIN_UDP_TUNNEL_TIMEOUT:?} so the GC tick is non-zero, got \
+					 {timeout:?}"
+				),
+			));
+		}
 		let socket = std::net::UdpSocket::bind(listen)?;
 		socket.set_nonblocking(true)?;
 		let socket = UdpSocket::from_std(socket)?;
@@ -144,6 +188,7 @@ impl TunnelUdpInbound {
 			socket: Arc::new(socket),
 			remote,
 			timeout,
+			max_sessions: MAX_UDP_TUNNEL_SESSIONS,
 			cancel,
 		})
 	}
@@ -174,6 +219,18 @@ impl<R: Router> AbstractInbound<R> for TunnelUdpInbound {
 					Ok((n, src_addr)) => {
 						let pkt = Bytes::copy_from_slice(&buf[..n]);
 						let target = TargetAddr::Domain(self.remote.0.clone(), self.remote.1);
+
+						// The table key is an attacker-controlled source address,
+						// so the idle GC tick alone cannot bound it: refuse a new
+						// source once the ceiling is reached instead of allocating
+						// another session (and its two tasks) for it.
+						if !may_open_session(&sessions, src_addr, self.max_sessions) {
+							debug!(
+								"[tunnel-udp] session table full ({} sessions); dropping packet from {src_addr}",
+								sessions.len()
+							);
+							continue;
+						}
 
 						let session = sessions.entry(src_addr).or_insert_with(|| {
 							let assoc_id = next_assoc_id();
@@ -261,6 +318,16 @@ impl<R: Router> AbstractInbound<R> for TunnelUdpInbound {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/// Admission control for the per-source UDP tunnel session table.
+///
+/// A source that already owns a session is always admitted (it refreshes an
+/// existing entry); a new source is admitted only while the table is below
+/// `max_sessions`. Keeping this a free function makes the ceiling invariant
+/// testable without opening thousands of sockets.
+fn may_open_session(sessions: &HashMap<SocketAddr, UdpTunnelSession>, src_addr: SocketAddr, max_sessions: usize) -> bool {
+	sessions.contains_key(&src_addr) || sessions.len() < max_sessions
+}
 
 fn create_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
 	let domain = match addr {
@@ -607,6 +674,35 @@ mod tests {
 	}
 
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn udp_tunnel_rejects_idle_timeouts_that_would_zero_the_gc_tick() {
+		let cancel = CancellationToken::new();
+		let err = match TunnelUdpInbound::new(free_udp_addr(), ("zero.test".into(), 53), Duration::ZERO, cancel.clone()) {
+			Ok(_) => panic!("a zero idle timeout must be rejected, not accepted and then panicked on"),
+			Err(err) => err,
+		};
+		assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+		// `Duration` division truncates, so 3 ns / 4 == 0: the guard has to
+		// cover sub-nanosecond-tick periods, not only exactly zero.
+		let err = match TunnelUdpInbound::new(
+			free_udp_addr(),
+			("tiny.test".into(), 53),
+			Duration::from_nanos(3),
+			cancel.clone(),
+		) {
+			Ok(_) => panic!("3 ns / 4 == 0 would panic the GC tick"),
+			Err(err) => err,
+		};
+		assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+		// The smallest accepted timeout still yields a non-zero GC tick.
+		assert!(
+			TunnelUdpInbound::new(free_udp_addr(), ("tiny.test".into(), 53), Duration::from_nanos(4), cancel).is_ok(),
+			"4 ns / 4 == 1 ns is a valid GC tick"
+		);
+	}
+
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn udp_tunnel_session_idle_expiry() {
 		// Use a short timeout so sessions expire quickly.
 		let cancel = CancellationToken::new();
@@ -666,5 +762,96 @@ mod tests {
 
 		// Join handle still alive (listening, stalled).
 		assert!(!_join.is_finished());
+	}
+
+	/// Send `payload` to the tunnel and report whether an echo came back within
+	/// `wait`. A source that was not admitted never gets a reply.
+	async fn udp_echo_within(client: &UdpSocket, addr: SocketAddr, payload: &[u8], wait: Duration) -> bool {
+		if client.send_to(payload, addr).await.is_err() {
+			return false;
+		}
+		let mut buf = [0u8; 128];
+		tokio::time::timeout(wait, client.recv_from(&mut buf)).await.is_ok()
+	}
+
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn udp_tunnel_rejects_new_sources_when_the_session_table_is_full() {
+		// A short idle timeout lets the test show that a rejected source is
+		// admitted again once the GC frees a slot.
+		let cancel = CancellationToken::new();
+		let addr = free_udp_addr();
+		let mut inbound = TunnelUdpInbound::new(addr, ("cap.test".into(), 53), Duration::from_millis(400), cancel).unwrap();
+		// Reach the ceiling with real sockets instead of thousands of them.
+		inbound.max_sessions = 2;
+
+		let _join = tokio::spawn(async move { inbound.listen(&dispatcher(TestHandler::UdpEcho)).await });
+		tokio::time::sleep(Duration::from_millis(50)).await;
+
+		let c1 = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+		let c2 = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+		let c3 = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+		// Two distinct sources fill the table.
+		assert!(
+			udp_echo_within(&c1, addr, b"c1", Duration::from_secs(2)).await,
+			"the first source must open a session"
+		);
+		assert!(
+			udp_echo_within(&c2, addr, b"c2", Duration::from_secs(2)).await,
+			"the second source must open a session"
+		);
+
+		// The table is full: a new source must be dropped, not allocated.
+		assert!(
+			!udp_echo_within(&c3, addr, b"c3", Duration::from_millis(150)).await,
+			"a new source must be rejected while the session table is full"
+		);
+		// ...while a source that already owns a session keeps being served.
+		assert!(
+			udp_echo_within(&c1, addr, b"c1-again", Duration::from_secs(2)).await,
+			"the ceiling must not disturb an existing session"
+		);
+
+		// The ceiling is not a permanent lockout: once the idle GC reclaims the
+		// full-table sessions, a new source is admitted again.
+		tokio::time::sleep(Duration::from_millis(700)).await;
+		assert!(
+			udp_echo_within(&c3, addr, b"c3-retry", Duration::from_secs(2)).await,
+			"a source must be admitted again after the GC frees a slot"
+		);
+	}
+
+	#[tokio::test]
+	async fn session_admission_stops_at_the_configured_ceiling() {
+		let mut sessions: HashMap<SocketAddr, UdpTunnelSession> = HashMap::new();
+		for i in 0..MAX_UDP_TUNNEL_SESSIONS {
+			let (tx_to_out, _rx) = tokio::sync::mpsc::channel::<UdpPacket>(1);
+			let src = SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, (i + 1) as u16));
+			sessions.insert(
+				src,
+				UdpTunnelSession {
+					assoc_id: next_assoc_id(),
+					tx_to_out,
+					last_seen: std::time::Instant::now(),
+				},
+			);
+		}
+
+		let newcomer = SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 60000));
+		assert_eq!(sessions.len(), MAX_UDP_TUNNEL_SESSIONS);
+		assert!(
+			!may_open_session(&sessions, newcomer, MAX_UDP_TUNNEL_SESSIONS),
+			"the production ceiling must reject a new source at capacity"
+		);
+
+		let existing = SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 1));
+		assert!(
+			may_open_session(&sessions, existing, MAX_UDP_TUNNEL_SESSIONS),
+			"an existing source must stay admitted at capacity"
+		);
+
+		// One reclaimed slot admits exactly one more source.
+		sessions.remove(&existing);
+		assert!(may_open_session(&sessions, newcomer, MAX_UDP_TUNNEL_SESSIONS));
 	}
 }

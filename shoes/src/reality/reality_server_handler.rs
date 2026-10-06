@@ -9,13 +9,14 @@ use crate::address::NetLocation;
 use crate::async_stream::AsyncStream;
 use crate::client_proxy_chain::ClientProxyChain;
 use crate::client_proxy_selector::ClientProxySelector;
-use crate::crypto::{CryptoConnection, CryptoTlsStream, perform_crypto_handshake};
+use crate::crypto::tls_deframer::TlsDeframer;
+use crate::crypto::{CryptoConnection, CryptoTlsStream, TlsReadMode};
+use crate::prepend_stream::PrependStream;
 use crate::resolver::Resolver;
 use crate::shadow_tls::{ParsedClientHello, parse_server_hello};
 use crate::tcp::tcp_handler::{TcpClientSetupResult, TcpServerSetupResult};
 use crate::tls_server_handler::InnerProtocol;
 use crate::util::{allocate_vec, write_all};
-use crate::vless::tls_deframer::TlsDeframer;
 
 use super::{RealityServerConfig, RealityServerConnection};
 
@@ -53,12 +54,13 @@ pub struct RealityServerTarget {
 ///   - Auth succeeded: build REALITY response matching dest's structure
 #[inline]
 pub async fn setup_reality_server_stream(
-    mut server_stream: Box<dyn AsyncStream>,
+    server_stream: Box<dyn AsyncStream>,
     target: &RealityServerTarget,
     parsed_client_hello: ParsedClientHello,
     resolver: &Arc<dyn Resolver>,
 ) -> std::io::Result<TcpServerSetupResult> {
     let client_hello_frame = &parsed_client_hello.client_hello_frame;
+    let client_pending = Bytes::copy_from_slice(parsed_client_hello.client_reader.unparsed_data());
     log::debug!(
         "REALITY ClientHello frame length: {}",
         client_hello_frame.len()
@@ -95,10 +97,12 @@ pub async fn setup_reality_server_stream(
 
     if !parsed_client_hello.supports_tls13 {
         log::warn!("REALITY: Client does not support TLS 1.3, falling back to dest");
-        start_forward_to_dest(server_stream, dest_stream, vec![], Bytes::new());
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "REALITY: Client does not support TLS 1.3, forwarding to dest",
+        return Ok(start_forward_to_dest(
+            server_stream,
+            dest_stream,
+            vec![],
+            Bytes::new(),
+            client_pending,
         ));
     }
 
@@ -162,34 +166,25 @@ pub async fn setup_reality_server_stream(
                             "REALITY: Dest {} is TLS 1.2, falling back to transparent forward",
                             target.dest
                         );
-                        start_forward_to_dest(
+                        return Ok(start_forward_to_dest(
                             server_stream,
                             dest_stream,
                             new_records,
                             deframer.into_remaining_data(),
-                        );
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Unsupported,
-                            format!(
-                                "REALITY: Dest {} does not support TLS 1.3, forwarding to dest",
-                                target.dest
-                            ),
+                            client_pending,
                         ));
                     }
                     log::debug!("REALITY: Dest confirmed TLS 1.3");
                 }
                 Err(e) => {
                     log::error!("REALITY: Failed to parse dest ServerHello: {}", e);
-                    start_forward_to_dest(
+                    return Ok(start_forward_to_dest(
                         server_stream,
                         dest_stream,
                         new_records,
                         deframer.into_remaining_data(),
-                    );
-                    return Err(std::io::Error::other(format!(
-                        "REALITY: Failed to parse dest ServerHello: {}, forwarding to dest",
-                        e
-                    )));
+                        client_pending,
+                    ));
                 }
             }
         }
@@ -229,10 +224,12 @@ pub async fn setup_reality_server_stream(
             "REALITY: Dest handshake failed (got {} records), falling back to transparent forward",
             dest_records.len()
         );
-        start_forward_to_dest(server_stream, dest_stream, dest_records, remaining_data);
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::ConnectionReset,
-            "REALITY: Dest TLS handshake incomplete, forwarding to dest",
+        return Ok(start_forward_to_dest(
+            server_stream,
+            dest_stream,
+            dest_records,
+            remaining_data,
+            client_pending,
         ));
     }
 
@@ -250,13 +247,12 @@ pub async fn setup_reality_server_stream(
                 "REALITY: Auth failed ({}), forwarding to dest transparently",
                 e
             );
-            start_forward_to_dest(server_stream, dest_stream, dest_records, remaining_data);
-
-            // Return auth error with forwarding note so clients see a meaningful error
-            // instead of connecting to the camouflage site and getting "reality verification failed".
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!("REALITY: Auth failed ({}), forwarding to dest", e),
+            return Ok(start_forward_to_dest(
+                server_stream,
+                dest_stream,
+                dest_records,
+                remaining_data,
+                client_pending,
             ));
         }
 
@@ -273,10 +269,13 @@ pub async fn setup_reality_server_stream(
     drop(dest_stream);
     reality_conn.build_server_response(dest_records)?;
 
-    let mut connection = CryptoConnection::new_reality_server(reality_conn);
-    perform_crypto_handshake(&mut connection, &mut server_stream, 16384).await?;
-
-    let tls_stream = CryptoTlsStream::new(server_stream, connection);
+    let connection = CryptoConnection::new_reality_server(reality_conn);
+    let mode = match target.inner_protocol {
+        InnerProtocol::VisionVless(_) => TlsReadMode::PreserveRecords,
+        _ => TlsReadMode::Stream,
+    };
+    let tls_stream =
+        CryptoTlsStream::handshake(server_stream, connection, mode, &client_pending).await?;
     log::debug!("REALITY: TLS 1.3 handshake completed successfully");
 
     match &target.inner_protocol {
@@ -304,27 +303,37 @@ pub async fn setup_reality_server_stream(
     }
 }
 
-/// Forward dest records to client and spawn bidirectional copy.
-///
-/// Used when Reality auth fails or client doesn't support TLS 1.3.
-/// Forwards any already-read dest records to the client, then spawns
-/// bidirectional copy for the rest of the connection.
+/// Return an owned fallback transfer after forwarding the ClientHello.
 fn start_forward_to_dest(
-    mut client_stream: Box<dyn AsyncStream>,
+    client_stream: Box<dyn AsyncStream>,
     mut dest_stream: Box<dyn AsyncStream>,
     dest_records: Vec<Bytes>,
     remaining_data: Bytes,
-) {
-    tokio::spawn(async move {
+    client_pending: Bytes,
+) -> TcpServerSetupResult {
+    TcpServerSetupResult::Session(Box::pin(async move {
+        // Replay preread bytes through the bidirectional pump so a blocked client
+        // write cannot prevent the destination's response from reaching the client.
+        let mut client_stream = PrependStream::new(
+            client_stream,
+            (!client_pending.is_empty()).then(|| client_pending.to_vec().into_boxed_slice()),
+        );
+
         for record in &dest_records {
             if let Err(e) = write_all(&mut client_stream, record).await {
                 log::debug!("REALITY FALLBACK: Error forwarding record: {}", e);
-                let _ = futures::join!(client_stream.shutdown(), dest_stream.shutdown());
+                futures::join!(
+                    crate::util::shutdown_stream(&mut client_stream),
+                    crate::util::shutdown_stream(&mut dest_stream),
+                );
                 return;
             }
             if let Err(e) = client_stream.flush().await {
                 log::debug!("REALITY FALLBACK: Error flushing record: {}", e);
-                let _ = futures::join!(client_stream.shutdown(), dest_stream.shutdown());
+                futures::join!(
+                    crate::util::shutdown_stream(&mut client_stream),
+                    crate::util::shutdown_stream(&mut dest_stream),
+                );
                 return;
             }
         }
@@ -333,7 +342,10 @@ fn start_forward_to_dest(
             && let Err(e) = write_all(&mut client_stream, &remaining_data).await
         {
             log::debug!("REALITY FALLBACK: Error forwarding remaining data: {}", e);
-            let _ = futures::join!(client_stream.shutdown(), dest_stream.shutdown());
+            futures::join!(
+                crate::util::shutdown_stream(&mut client_stream),
+                crate::util::shutdown_stream(&mut dest_stream),
+            );
             return;
         }
 
@@ -344,17 +356,281 @@ fn start_forward_to_dest(
         );
 
         let result = crate::copy_bidirectional::copy_bidirectional(
-            &mut *client_stream,
+            &mut client_stream,
             &mut dest_stream,
             !remaining_data.is_empty(), // flush the client if we wrote remaining data
             false,
         )
         .await;
 
-        let _ = futures::join!(client_stream.shutdown(), dest_stream.shutdown());
+        futures::join!(
+            crate::util::shutdown_stream(&mut client_stream),
+            crate::util::shutdown_stream(&mut dest_stream),
+        );
 
         if let Err(e) = result {
             log::debug!("REALITY FALLBACK: Connection ended with error: {}", e);
         }
-    });
+    }))
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+    use std::io;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+    #[tokio::test]
+    async fn authenticated_non_vision_oversized_preread_returns_error_without_panicking() {
+        use crate::client_proxy_chain::InitialHopEntry;
+        use crate::port_forward_handler::PortForwardServerHandler;
+        use crate::reality::{RealityClientConfig, RealityClientConnection};
+        use crate::tcp::socket_connector_impl::SocketConnectorImpl;
+        use aws_lc_rs::agreement;
+
+        let private_key = [1; 32];
+        let public_key = agreement::PrivateKey::from_private_key(&agreement::X25519, &private_key)
+            .unwrap()
+            .compute_public_key()
+            .unwrap();
+        let mut client = RealityClientConnection::new(RealityClientConfig {
+            public_key: public_key.as_ref().try_into().unwrap(),
+            short_id: [0; 8],
+            server_name: "localhost".into(),
+            cipher_suites: Vec::new(),
+        })
+        .unwrap();
+        let mut hello = Vec::new();
+        client.write_tls(&mut hello).unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let dest = NetLocation::new(
+            crate::address::Address::Hostname("localhost".into()),
+            address.port(),
+        );
+        let cert = rcgen::generate_simple_self_signed(
+            (0..100)
+                .map(|index| format!("host-{index}.example.test"))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let decoy_config =
+            rustls::ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![cert.cert.der().clone()],
+                    rustls::pki_types::PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der())
+                        .into(),
+                )
+                .unwrap();
+        let mut decoy = CryptoConnection::new_rustls_server(
+            rustls::ServerConnection::new(Arc::new(decoy_config)).unwrap(),
+        );
+        crate::crypto::feed_crypto_connection(&mut decoy, &hello).unwrap();
+        decoy.process_new_packets().unwrap();
+        let mut response = Vec::new();
+        decoy.write_tls(&mut response).unwrap();
+        let selector = Arc::new(ClientProxySelector::new(Vec::new()));
+        let target = RealityServerTarget {
+            private_key,
+            short_ids: vec![[0; 8]],
+            dest: dest.clone(),
+            max_time_diff: None,
+            min_client_version: None,
+            max_client_version: None,
+            cipher_suites: Vec::new(),
+            effective_selector: selector.clone(),
+            inner_protocol: InnerProtocol::Normal(Box::new(PortForwardServerHandler::new(
+                vec![dest],
+                selector,
+            ))),
+            dest_client_chain: ClientProxyChain::new(
+                vec![InitialHopEntry::Direct(Box::new(
+                    SocketConnectorImpl::from_config(&crate::config::ClientConfig::default(), None)
+                        .unwrap(),
+                ))],
+                Vec::new(),
+            ),
+        };
+        let resolver: Arc<dyn Resolver> = Arc::new(crate::resolver::NativeResolver::new());
+        let (io, mut peer) = tokio::io::duplex(65540);
+        let mut flight = hello.clone();
+        flight.extend_from_slice(&[0x17, 0x03, 0x03, 0, 1, 0].repeat(6000));
+        peer.write_all(&flight).await.unwrap();
+        let mut io: Box<dyn AsyncStream> = Box::new(io);
+        let parsed = crate::shadow_tls::read_client_hello(&mut io).await.unwrap();
+        assert!(parsed.client_reader.unparsed_data().len() > 33290);
+
+        let decoy_io = async {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut forwarded_hello = vec![0; hello.len()];
+            socket.read_exact(&mut forwarded_hello).await.unwrap();
+            assert_eq!(forwarded_hello, hello);
+            socket.write_all(&response).await.unwrap();
+        };
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(
+                setup_reality_server_stream(io, &target, parsed, &resolver),
+                decoy_io,
+            )
+        })
+        .await
+        .unwrap();
+        let error = result.err().expect("invalid encrypted records must fail");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData, "{error}");
+    }
+
+    #[tokio::test]
+    async fn fallback_preread_backpressure_does_not_block_server_response() {
+        let (client, mut client_peer) = tokio::io::duplex(64);
+        let (dest, mut dest_peer) = tokio::io::duplex(64);
+        let pending = vec![42; 128];
+        let TcpServerSetupResult::Session(session) = start_forward_to_dest(
+            Box::new(client),
+            Box::new(dest),
+            vec![Bytes::from_static(b"server")],
+            Bytes::new(),
+            Bytes::copy_from_slice(&pending),
+        ) else {
+            panic!("expected fallback session");
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(session, async {
+                let mut response = [0; 6];
+                client_peer.read_exact(&mut response).await.unwrap();
+                assert_eq!(&response, b"server");
+                let mut received = vec![0; pending.len()];
+                dest_peer.read_exact(&mut received).await.unwrap();
+                assert_eq!(received, pending);
+                client_peer.shutdown().await.unwrap();
+                dest_peer.shutdown().await.unwrap();
+            });
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn fallback_preserves_preread_client_bytes() {
+        let (client, mut client_peer) = tokio::io::duplex(64);
+        let (dest, mut dest_peer) = tokio::io::duplex(64);
+        let TcpServerSetupResult::Session(session) = start_forward_to_dest(
+            Box::new(client),
+            Box::new(dest),
+            vec![Bytes::from_static(b"server")],
+            Bytes::from_static(b"-tail"),
+            Bytes::from_static(b"client"),
+        ) else {
+            panic!("expected fallback session");
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(session, async {
+                client_peer.write_all(b"-live").await.unwrap();
+                client_peer.shutdown().await.unwrap();
+                let mut received = [0; 11];
+                dest_peer.read_exact(&mut received).await.unwrap();
+                assert_eq!(&received, b"client-live");
+                dest_peer.write_all(b"-reply").await.unwrap();
+                dest_peer.shutdown().await.unwrap();
+                let mut response = Vec::new();
+                client_peer.read_to_end(&mut response).await.unwrap();
+                assert_eq!(response, b"server-tail-reply");
+            });
+        })
+        .await
+        .unwrap();
+    }
+
+    struct StalledShutdown {
+        fail_write: bool,
+        fail_flush: bool,
+        _marker: Arc<()>,
+    }
+
+    impl AsyncRead for StalledShutdown {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            _: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncWrite for StalledShutdown {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            bytes: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            if self.fail_write {
+                Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
+            } else {
+                Poll::Ready(Ok(bytes.len()))
+            }
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            if self.fail_flush {
+                Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
+            } else {
+                Poll::Ready(Ok(()))
+            }
+        }
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Pending
+        }
+    }
+
+    impl crate::async_stream::AsyncPing for StalledShutdown {
+        fn supports_ping(&self) -> bool {
+            false
+        }
+        fn poll_write_ping(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<bool>> {
+            Poll::Ready(Ok(false))
+        }
+    }
+
+    impl AsyncStream for StalledShutdown {}
+
+    #[tokio::test(start_paused = true)]
+    async fn fallback_cleanup_is_bounded_after_copy_and_early_errors() {
+        let bytes = Bytes::from_static(b"handshake");
+        let cases = [
+            (false, false, vec![], Bytes::new(), 10),
+            (true, false, vec![bytes.clone()], Bytes::new(), 5),
+            (false, true, vec![bytes.clone()], Bytes::new(), 5),
+            (true, false, vec![], bytes, 5),
+        ];
+        for (fail_write, fail_flush, records, remaining, seconds) in cases {
+            let marker = Arc::new(());
+            let client = StalledShutdown {
+                fail_write,
+                fail_flush,
+                _marker: marker.clone(),
+            };
+            let dest = StalledShutdown {
+                fail_write: false,
+                fail_flush: false,
+                _marker: marker.clone(),
+            };
+            let TcpServerSetupResult::Session(session) = start_forward_to_dest(
+                Box::new(client),
+                Box::new(dest),
+                records,
+                remaining,
+                Bytes::new(),
+            ) else {
+                panic!("fallback must remain owned by its caller")
+            };
+            let started = tokio::time::Instant::now();
+            tokio::time::timeout(std::time::Duration::from_secs(11), session)
+                .await
+                .expect("fallback cleanup retained the streams indefinitely");
+            assert_eq!(started.elapsed(), std::time::Duration::from_secs(seconds));
+            assert_eq!(Arc::strong_count(&marker), 1);
+        }
+    }
 }

@@ -112,9 +112,9 @@ impl Plugin<WindRouter> for WindPlugin {
 						children,
 					);
 					let lb_arc = Arc::new(lb_out);
-					if !opts.lazy {
-						lb_arc.start_health_check(opts.interval);
-					}
+					// The outbound itself decides whether to probe: it is a
+					// no-op for `lazy` groups.
+					lb_arc.start_health_check();
 					handlers.insert(tag.clone(), lb_arc);
 					info!(target: "wind_boot", "outbound '{tag}' [load-balance]");
 				}

@@ -1,6 +1,6 @@
 [package]
 name = "shoes"
-version = "0.2.8"
+version = "0.3.1"
 edition = "2024"
 autotests = false
 license = "MIT"
@@ -99,7 +99,7 @@ rustls = "*"
 serde = { version = "*", features = ["derive", "std"] }
 serde_yaml = "*"
 shake = "*"
-smoltcp = { version = "*", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "socket-tcp-cubic", "phy-tuntap_interface", "assembler-max-segment-count-32"] }
+smoltcp = { version = "*", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-icmp", "auto-icmp-echo-reply", "socket-udp", "socket-tcp", "socket-tcp-cubic", "phy-tuntap_interface", "assembler-max-segment-count-32"] }
 socket2 = "*"
 subtle = "*"
 tokio = { version = "*", features = [
@@ -111,13 +111,14 @@ tokio = { version = "*", features = [
     "sync",
     "time",
 ] }
-tokio-util = { version = "*", features = ["time"] }
+tokio-util = { version = "*", features = ["time", "io"] }
 tun = { version = "*", features = ["async"] }
 url = "*"
 webpki-roots = { version = "*" }
 x509-parser = { version = "*", default-features = false, features = ["verify-aws"] }
 
 [dev-dependencies]
+tokio = { version = "*", features = ["test-util"] }
 rcgen = { version = "*", default-features = false, features = ["aws_lc_rs", "pem"] }
 rustls-pemfile = "*"
 serde_json = "*"

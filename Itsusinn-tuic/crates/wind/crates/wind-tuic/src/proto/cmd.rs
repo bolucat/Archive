@@ -41,7 +41,7 @@ impl Decoder for CmdCodec {
 				Ok(Some(command))
 			}
 			Err(nom::Err::Incomplete(_)) => Ok(None),
-			Err(_) => BytesRemainingSnafu.fail(),
+			Err(nom::Err::Error(err) | nom::Err::Failure(err)) => Err(err.into()),
 		}
 	}
 

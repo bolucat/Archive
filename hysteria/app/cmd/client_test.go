@@ -141,13 +141,11 @@ func TestClientConfig(t *testing.T) {
 				IPv6 string `mapstructure:"ipv6"`
 			}{IPv4: "100.100.100.101/30", IPv6: "2001::ffff:ffff:ffff:fff1/126"},
 			Route: &struct {
-				Strict      bool     `mapstructure:"strict"`
 				IPv4        []string `mapstructure:"ipv4"`
 				IPv6        []string `mapstructure:"ipv6"`
 				IPv4Exclude []string `mapstructure:"ipv4Exclude"`
 				IPv6Exclude []string `mapstructure:"ipv6Exclude"`
 			}{
-				Strict:      true,
 				IPv4:        []string{"0.0.0.0/0"},
 				IPv6:        []string{"2000::/3"},
 				IPv4Exclude: []string{"192.0.2.1/32"},
