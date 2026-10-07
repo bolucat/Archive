@@ -557,7 +557,7 @@ mod tests {
                     PortStrategyPatch,
                 },
             },
-            overrides::{ClashGuardOverridesPatch, LogLevel, Mode},
+            overrides::{ClashGuardOverridesPatch, LogLevel, ManageableField, Mode},
         },
         profile::{
             ConfigDefinition, ProfileId, ProfileMetadata, ProfileSource, TransformDefinition,
@@ -846,6 +846,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "default_latency_timeout_ms",
+                mutate: |app| app.default_latency_timeout_ms = 10000,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "proxy_layout_column",
                 mutate: |app| app.proxy_layout_column = 3,
                 impact: RuntimeImpact::None,
@@ -1030,7 +1036,7 @@ mod tests {
             field: "overrides.unified_delay",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    unified_delay: Some(false),
+                    unified_delay: Some(ManageableField::Managed(false)),
                     ..ClashGuardOverridesPatch::default()
                 })
             },
@@ -1040,7 +1046,7 @@ mod tests {
             field: "overrides.tcp_concurrent",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    tcp_concurrent: Some(false),
+                    tcp_concurrent: Some(ManageableField::Unmanaged),
                     ..ClashGuardOverridesPatch::default()
                 })
             },

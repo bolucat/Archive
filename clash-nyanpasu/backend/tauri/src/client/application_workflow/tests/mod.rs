@@ -100,14 +100,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
-    {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_core::enhance::RuntimeBuildError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_core::enhance::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -345,12 +344,10 @@ async fn workflow_graph_with_clients(
     )
     .await
     .unwrap();
-    let paths =
-        runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap();
+    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+        dir.path(),
+        dir.path().join("data"),
+    ));
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();
     // The graph's router already drives the host it was built on, and these
@@ -360,6 +357,7 @@ async fn workflow_graph_with_clients(
     };
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
+            core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,
             scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),

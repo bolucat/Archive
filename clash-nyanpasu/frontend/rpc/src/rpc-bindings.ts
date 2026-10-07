@@ -89,9 +89,15 @@ export function createRpcClient(
       name: string,
       provider: string | null,
       url: string | null,
+      expected: string | null,
     ) =>
       typedError<Delay, IpcError>(
-        __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
+        __RPC_INVOKE('clash_api_get_proxy_delay', {
+          name,
+          provider,
+          url,
+          expected,
+        }),
       ),
     clashApiGetConfigs: () =>
       typedError<ClashApiConfig, IpcError>(
@@ -105,9 +111,13 @@ export function createRpcClient(
       typedError<ProvidersRulesRes, IpcError>(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
-    clashApiGetGroupDelay: (group: string, url: string | null) =>
+    clashApiGetGroupDelay: (
+      group: string,
+      url: string | null,
+      expected: string | null,
+    ) =>
       typedError<{ [key in ProxyName]: number }, IpcError>(
-        __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
+        __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
       typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
@@ -538,9 +548,17 @@ export function createRpcClient(
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
+    clearProxyFixed: (group: string) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('clear_proxy_fixed', { group }),
+      ),
     updateProxyProvider: (name: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('update_proxy_provider', { name }),
+      ),
+    clashApiHealthcheckProxyProvider: (name: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('clash_api_healthcheck_proxy_provider', { name }),
       ),
     restartApplication: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
@@ -933,8 +951,8 @@ export type ClashGuardOverrides = {
   'allow-lan': boolean
   mode: Mode
   secret: string
-  'unified-delay': boolean
-  'tcp-concurrent': boolean
+  'unified-delay': ManageableField<boolean>
+  'tcp-concurrent': ManageableField<boolean>
   ipv6: boolean
 }
 
@@ -946,8 +964,8 @@ export type ClashGuardOverridesPatch_Deserialize = {
   'allow-lan'?: boolean | null
   mode?: Mode | null
   secret?: string | null
-  'unified-delay'?: boolean | null
-  'tcp-concurrent'?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
   ipv6?: boolean | null
 }
 
@@ -956,8 +974,8 @@ export type ClashGuardOverridesPatch_Serialize = {
   'allow-lan'?: boolean | null
   mode?: Mode | null
   secret?: string | null
-  'unified-delay'?: boolean | null
-  'tcp-concurrent'?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
   ipv6?: boolean | null
 }
 
@@ -1173,6 +1191,7 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
@@ -1654,9 +1673,7 @@ export type CoreLogsChanged = {
 }
 
 /**  A failure of locating the binary a core is started from. */
-export type CoreSpecError =
-  | { kind: 'find_core_binary'; core: string }
-  | { kind: 'core_binary_path_not_utf8'; core: string; path: string }
+export type CoreSpecError = { kind: 'find_core_binary'; core: string }
 
 export type CoreState = 'Running' | { Stopped: string | null }
 
@@ -2498,6 +2515,16 @@ export type LoggingLevel_Deserialize =
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
+/**  A runtime config field that Nyanpasu may take over from the profiles. */
+export type ManageableField<T> =
+  /**
+   *  Written into the runtime config over whatever the profiles and
+   *  transforms produced.
+   */
+  | { kind: 'managed'; value: T }
+  /**  Left to the profiles and transforms, subject to the field filter. */
+  | { kind: 'unmanaged' }
+
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string
 
@@ -2615,6 +2642,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       theme_color?: string
       hotkeys?: string[] | null
       default_latency_test?: string | null
+      default_latency_timeout_ms?: number | null
       enable_builtin_enhanced?: boolean | null
       proxy_layout_column?: number | null
       max_log_files?: number | null
@@ -2670,6 +2698,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   core?: ClashCore_Serialize | null
   hotkeys?: string[] | null
   default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
   enable_builtin_enhanced?: boolean | null
   proxy_layout_column?: number | null
   max_log_files?: number | null
@@ -2736,6 +2765,8 @@ export type NyanpasuAppConfig_Deserialize = {
   hotkeys: string[]
   /**  默认的延迟测试连接 */
   default_latency_test: string
+  /**  Latency test timeout in milliseconds. */
+  default_latency_timeout_ms?: number
   /**  是否使用内部的脚本支持，默认为真 */
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
@@ -2837,6 +2868,8 @@ export type NyanpasuAppConfig_Serialize = {
   hotkeys: string[]
   /**  默认的延迟测试连接 */
   default_latency_test: string
+  /**  Latency test timeout in milliseconds. */
+  default_latency_timeout_ms: number
   /**  是否使用内部的脚本支持，默认为真 */
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
@@ -3686,6 +3719,10 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
+  /**  The URL the core tests this group's members with; `None` when unset. */
+  testUrl: string | null
+  /**  The status codes a test must return, in the core's range syntax. */
+  expectedStatus: string | null
   hidden: boolean
   icon: string | null
   capabilities: ProxyGroupCapabilities

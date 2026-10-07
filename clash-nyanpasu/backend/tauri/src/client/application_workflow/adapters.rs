@@ -4,15 +4,22 @@ use crate::{
     enhance::runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
-use nyanpasu_application::enhance::{
+use nyanpasu_core::enhance::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use snafu::ResultExt;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+pub(in crate::client) type CoreSpecResolver = dyn Fn(
+        &nyanpasu_config::application::ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, CoreSpecError>
+    + Send
+    + Sync;
+
 pub(in crate::client) struct FsRuntimeBuildAdapter {
     pub profiles_dir: PathBuf,
+    pub core_specs: Arc<CoreSpecResolver>,
     pub paths: runtime::RuntimePaths,
     pub scripts: ScriptDirs,
 }
@@ -44,7 +51,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         &self,
         core: &nyanpasu_config::application::ClashCore,
     ) -> Result<nyanpasu_core_manager::CoreSpec, CoreSpecError> {
-        super::super::runtime_core_spec(core)
+        (self.core_specs)(core)
     }
 
     async fn build(

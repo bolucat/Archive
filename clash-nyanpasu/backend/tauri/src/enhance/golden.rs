@@ -16,7 +16,7 @@ use nyanpasu_config::{
 };
 
 use super::golden_support::{composition, file_config, overlay};
-use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
+use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 const SUB_A: &str =
@@ -32,7 +32,7 @@ const BASE_CONFIG: &str = "mode: direct\nproxies: []\nextra-key: keep\ncustom-fi
 /// nyanpasu-config overrides/mod.rs:75;先例 executor tests/builtin.rs:19-24)。
 fn fixed_overrides() -> ClashGuardOverrides {
     serde_yaml::from_str(
-        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: true\ntcp-concurrent: true\nipv6: false\n",
+        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
     )
     .unwrap()
 }

@@ -75,8 +75,11 @@ export const STATIC_KEYWORD_RE = /(?<![\w'#$])static(?!\w)/g;
 export const STATIC_ITEM_RE =
   /static\s+(?:(?:mut|ref)\s+)?((?:r#)?[A-Za-z_][A-Za-z0-9_]*)\s*:/y;
 
-/** Only the app crate is gated; the other backend crates are libraries. */
-export const STATIC_GATE_PREFIX = "backend/tauri/src/";
+/** Gate the GUI and application core sources, not other backend libraries. */
+export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
+  "backend/tauri/src/",
+  "backend/nyanpasu-core/src/",
+];
 
 /**
  * Why a static may exist (docs/development/architecture.md):
@@ -131,7 +134,7 @@ function migrationModuleStatics(
 }
 
 /**
- * Every static the app crate may declare. The type of a static cannot show
+ * Every static the gated crates may declare. The type of a static cannot show
  * that it is immutable (an alias, a newtype or a wrapper hides it), so every
  * non-`const` static counts against the gate until a reviewer lists it here
  * with its category and reason.
@@ -151,29 +154,10 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "launch-environment flag read once",
   },
   {
-    path: "backend/tauri/src/consts.rs",
-    name: "IS_PORTABLE",
-    category: "immutable",
-    reason:
-      "install-layout flag; base-dir resolution reads it before BundleMetadata exists",
-  },
-  {
-    path: "backend/tauri/src/utils/dirs.rs",
-    name: "APP_DIR_PLACEHOLDER",
-    category: "immutable",
-    reason: "app dir name derived from constants",
-  },
-  {
     path: "backend/tauri/src/utils/dirs.rs",
     name: "APP_VERSION",
     category: "immutable",
     reason: "version string from a compile-time env var",
-  },
-  {
-    path: "backend/tauri/src/utils/winreg.rs",
-    name: "SOFTWARE_KEY",
-    category: "immutable",
-    reason: "registry key derived from constants",
   },
   {
     path: "backend/tauri/src/utils/hwid.rs",
@@ -194,6 +178,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "LANGUAGE_CASE",
   ]),
   ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
+  ...migrationModuleStatics("clash_config", ["MANAGEABLE_GUARD_FIELDS"]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

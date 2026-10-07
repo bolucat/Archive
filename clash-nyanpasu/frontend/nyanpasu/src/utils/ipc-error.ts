@@ -209,6 +209,8 @@ export function configErrorMessage(
       return m.error_config_invalid_update_sources({ reason: error.reason })
     case 'invalid_core_logs':
       return m.error_config_invalid_core_logs({ reason: error.reason })
+    case 'invalid_latency_timeout':
+      return m.error_config_invalid_latency_timeout({ reason: error.reason })
     case 'validate_hotkeys':
       return hotkeyParseMessage(error.source)
     case 'workflow_not_ready':
@@ -438,9 +440,7 @@ export function runtimeErrorMessage(
     case 'resolve_port':
       return portMessage(error.source.field, error.source.source)
     case 'resolve_core_binary':
-      return error.source.kind === 'find_core_binary'
-        ? m.error_runtime_find_core_binary({ core: error.source.core })
-        : m.error_runtime_path_not_utf8({ path: error.source.path })
+      return m.error_runtime_find_core_binary({ core: error.source.core })
     case 'install_core_binary':
       return installCoreBinaryMessage(error.source)
     case 'prepare_service_install_prompt':

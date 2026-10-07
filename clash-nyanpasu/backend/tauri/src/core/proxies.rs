@@ -5,7 +5,7 @@ use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
 };
 use anyhow::{Context, Result};
-use clash_api::{IndexMap, ProviderName, ProxyProvider};
+use clash_api::{IndexMap, ProviderName, ProxyName, ProxyProvider};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use seahash::SeaHasher;
@@ -36,12 +36,40 @@ enum Message {
         strategy: ProxyChangeBreakMode,
         reply: RpcReplyPort<Result<MutationOutcome<()>>>,
     },
-    UpdateProvider {
+    ClearFixed {
+        group: String,
+        strategy: ProxyChangeBreakMode,
+        reply: RpcReplyPort<Result<MutationOutcome<()>>>,
+    },
+    Provider {
         name: String,
+        action: ProviderAction,
         reply: RpcReplyPort<Result<()>>,
     },
     Refresh,
     Invalidated(u64),
+}
+
+/// A provider-wide request whose result changes the cached nodes.
+enum ProviderAction {
+    Update,
+    Healthcheck,
+}
+
+/// A user's change to which member carries a group's traffic.
+enum RouteChange {
+    Select { name: String },
+    ClearFixed,
+}
+
+impl RouteChange {
+    /// What a degradation message reports as done.
+    fn done(&self) -> &'static str {
+        match self {
+            Self::Select { .. } => "proxy selected",
+            Self::ClearFixed => "pinned selection cleared",
+        }
+    }
 }
 
 struct ProxiesActor;
@@ -174,15 +202,15 @@ impl State {
         mutation
     }
 
-    async fn select(
+    async fn change_route(
         &mut self,
         actor: &ActorRef<Message>,
         group: String,
-        name: String,
+        change: RouteChange,
         strategy: ProxyChangeBreakMode,
     ) -> Result<MutationOutcome<()>> {
         // The published snapshot stays until the core answers: clearing it first would hand every
-        // subscriber an empty proxy list, and a rejected selection would leave it empty.
+        // subscriber an empty proxy list, and a rejected change would leave it empty.
         let api = match self.core.api_client().await {
             Ok(api) => api,
             Err(error) => {
@@ -190,13 +218,17 @@ impl State {
                 return Err(error.into());
             }
         };
-        let selected = api
-            .select_proxy(&group.clone().into(), &name.into())
-            .await
-            .map_err(anyhow::Error::from);
-        self.reread_after_rejection(actor, api.clone(), selected)
+        let group_name = ProxyName::from(group.clone());
+        let applied = match &change {
+            RouteChange::Select { name } => {
+                api.select_proxy(&group_name, &name.clone().into()).await
+            }
+            RouteChange::ClearFixed => api.clear_proxy_selection(&group_name).await,
+        }
+        .map_err(anyhow::Error::from);
+        self.reread_after_rejection(actor, api.clone(), applied)
             .await?;
-        // Keep every follow-up on the selection's revocable source capability.
+        // Keep every follow-up on the change's revocable source capability.
         let interruption =
             match super::connections::ConnectionScope::for_proxy_change(strategy, group) {
                 Some(scope) => super::connections::interrupt_connections(&api, &scope).await,
@@ -210,7 +242,8 @@ impl State {
                     cause: InterruptFailure::from(&error),
                 },
                 message: format!(
-                    "proxy selected, but source-instance connection interruption failed: {error}"
+                    "{}, but source-instance connection interruption failed: {error}",
+                    change.done()
                 ),
                 retryable: false,
             });
@@ -219,7 +252,7 @@ impl State {
             degradations.push(Degradation {
                 phase: DegradationPhase::UiEffect,
                 reason: DegradationReason::ProxyCacheRefreshFailed,
-                message: format!("proxy selected, but cache refresh failed: {error}"),
+                message: format!("{}, but cache refresh failed: {error}", change.done()),
                 retryable: true,
             });
         }
@@ -280,7 +313,10 @@ impl Actor for ProxiesActor {
                 Message::Select { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
-                Message::UpdateProvider { reply, .. } => {
+                Message::ClearFixed { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Provider { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
                 Message::Refresh | Message::Invalidated(_) => {}
@@ -303,9 +339,31 @@ impl Actor for ProxiesActor {
                 if reply.is_closed() {
                     return Ok(());
                 }
-                let _ = reply.send(state.select(&actor, group, name, strategy).await);
+                let _ = reply.send(
+                    state
+                        .change_route(&actor, group, RouteChange::Select { name }, strategy)
+                        .await,
+                );
             }
-            Message::UpdateProvider { name, reply } => {
+            Message::ClearFixed {
+                group,
+                strategy,
+                reply,
+            } => {
+                if reply.is_closed() {
+                    return Ok(());
+                }
+                let _ = reply.send(
+                    state
+                        .change_route(&actor, group, RouteChange::ClearFixed, strategy)
+                        .await,
+                );
+            }
+            Message::Provider {
+                name,
+                action,
+                reply,
+            } => {
                 if reply.is_closed() {
                     return Ok(());
                 }
@@ -317,17 +375,23 @@ impl Actor for ProxiesActor {
                             return Err(error.into());
                         }
                     };
-                    let updated = api
-                        .update_proxy_provider(&name.into())
-                        .await
-                        .map_err(anyhow::Error::from);
+                    let name = name.into();
+                    let requested = match action {
+                        ProviderAction::Update => api.update_proxy_provider(&name).await,
+                        ProviderAction::Healthcheck => api.healthcheck_proxy_provider(&name).await,
+                    }
+                    .map_err(anyhow::Error::from);
                     state
-                        .reread_after_rejection(&actor, api.clone(), updated)
+                        .reread_after_rejection(&actor, api.clone(), requested)
                         .await?;
-                    state
-                        .refresh(&actor, api)
-                        .await
-                        .context("provider update succeeded but cache refresh failed")?;
+                    state.refresh(&actor, api).await.context(match action {
+                        ProviderAction::Update => {
+                            "provider update succeeded but cache refresh failed"
+                        }
+                        ProviderAction::Healthcheck => {
+                            "provider health check succeeded but cache refresh failed"
+                        }
+                    })?;
                     Ok(())
                 }
                 .await;
@@ -443,9 +507,33 @@ impl ProxiesClient {
         })
         .await
     }
+    pub async fn clear_fixed(
+        &self,
+        group: String,
+        strategy: ProxyChangeBreakMode,
+    ) -> Result<MutationOutcome<()>> {
+        self.call(|reply| Message::ClearFixed {
+            group,
+            strategy,
+            reply,
+        })
+        .await
+    }
     pub async fn update_provider(&self, name: String) -> Result<()> {
-        self.call(|reply| Message::UpdateProvider { name, reply })
-            .await
+        self.call(|reply| Message::Provider {
+            name,
+            action: ProviderAction::Update,
+            reply,
+        })
+        .await
+    }
+    pub async fn healthcheck_provider(&self, name: String) -> Result<()> {
+        self.call(|reply| Message::Provider {
+            name,
+            action: ProviderAction::Healthcheck,
+            reply,
+        })
+        .await
     }
     pub fn request_refresh(&self) {
         let _ = self.0.actor.cast(Message::Refresh);
@@ -490,6 +578,7 @@ mod tests {
         reads: AtomicUsize,
         fail_reads: AtomicBool,
         fail_mutation: AtomicBool,
+        accepted: AtomicBool,
         fail_close: AtomicBool,
         hold_connections: AtomicBool,
         closed: Mutex<Vec<uuid::Uuid>>,
@@ -500,6 +589,7 @@ mod tests {
         calls: Mutex<Vec<&'static str>>,
         selected: Mutex<String>,
         subscription_expire: AtomicUsize,
+        fixed: Mutex<String>,
         group_list: Mutex<Option<serde_json::Value>>,
     }
     async fn proxies(HttpState(f): HttpState<Arc<Fixture>>) -> Response {
@@ -517,13 +607,14 @@ mod tests {
             ("DIRECT", "Direct"),
             ("REJECT", "Reject"),
             ("GLOBAL", "Selector"),
-            (GROUP, "Selector"),
+            (GROUP, "URLTest"),
         ] {
             proxies[name] = serde_json::json!({"name":name,"type":kind,"udp":true,"history":[]});
         }
         proxies["GLOBAL"]["all"] = serde_json::json!([GROUP]);
         proxies[GROUP]["all"] = serde_json::json!([NODE, "DIRECT"]);
         proxies[GROUP]["now"] = serde_json::json!(f.selected.lock().unwrap().clone());
+        proxies[GROUP]["fixed"] = serde_json::json!(f.fixed.lock().unwrap().clone());
         Json(serde_json::json!({"proxies":proxies})).into_response()
     }
     async fn groups(HttpState(f): HttpState<Arc<Fixture>>) -> Response {
@@ -553,6 +644,16 @@ mod tests {
             return StatusCode::SERVICE_UNAVAILABLE;
         }
         *f.selected.lock().unwrap() = NODE.into();
+        *f.fixed.lock().unwrap() = NODE.into();
+        StatusCode::NO_CONTENT
+    }
+    async fn clear(HttpState(f): HttpState<Arc<Fixture>>, Path(group): Path<String>) -> StatusCode {
+        assert_eq!(group, GROUP);
+        f.calls.lock().unwrap().push("clear");
+        if f.fail_mutation.load(Ordering::SeqCst) {
+            return StatusCode::SERVICE_UNAVAILABLE;
+        }
+        f.fixed.lock().unwrap().clear();
         StatusCode::NO_CONTENT
     }
     async fn update(HttpState(f): HttpState<Arc<Fixture>>, Path(name): Path<String>) -> StatusCode {
@@ -560,6 +661,20 @@ mod tests {
         f.calls.lock().unwrap().push("update");
         if f.fail_mutation.load(Ordering::SeqCst) {
             StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::NO_CONTENT
+        }
+    }
+    async fn healthcheck(
+        HttpState(f): HttpState<Arc<Fixture>>,
+        Path(name): Path<String>,
+    ) -> StatusCode {
+        assert_eq!(name, PROVIDER);
+        f.calls.lock().unwrap().push("healthcheck");
+        if f.fail_mutation.load(Ordering::SeqCst) {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else if f.accepted.load(Ordering::SeqCst) {
+            StatusCode::ACCEPTED
         } else {
             StatusCode::NO_CONTENT
         }
@@ -613,8 +728,9 @@ mod tests {
             .route("/group", get(groups))
             .route("/proxies", get(proxies))
             .route("/providers/proxies", get(providers))
-            .route("/proxies/{group}", put(select))
+            .route("/proxies/{group}", put(select).delete(clear))
             .route("/providers/proxies/{name}", put(update))
+            .route("/providers/proxies/{name}/healthcheck", get(healthcheck))
             .route("/connections", get(connections).delete(close))
             .route("/connections/{id}", delete(close_one))
             .with_state(fixture.clone());
@@ -626,6 +742,94 @@ mod tests {
                 .await
                 .unwrap();
         (client, core, endpoint, fixture, server)
+    }
+    #[tokio::test]
+    async fn clearing_a_pin_follows_the_break_strategy_then_refreshes() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
+            .await
+            .unwrap();
+        assert_eq!(
+            client.snapshot().groups[0]
+                .fixed
+                .as_ref()
+                .map(ProxyName::as_str),
+            Some(NODE)
+        );
+        fixture.calls.lock().unwrap().clear();
+        client
+            .clear_fixed(GROUP.into(), ProxyChangeBreakMode::All)
+            .await
+            .unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["clear", "close", "read"]);
+        assert_eq!(client.snapshot().groups[0].fixed, None);
+        fixture.calls.lock().unwrap().clear();
+        client
+            .clear_fixed(GROUP.into(), ProxyChangeBreakMode::Off)
+            .await
+            .unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["clear", "read"]);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn clearing_a_pin_closes_only_the_group_chains() {
+        let (client, _core, _, fixture, server) = setup().await;
+        let outcome = client
+            .clear_fixed(GROUP.into(), ProxyChangeBreakMode::ProxyGroup)
+            .await
+            .unwrap();
+        assert!(outcome.degradations().is_empty());
+        assert_eq!(
+            *fixture.closed.lock().unwrap(),
+            [uuid::Uuid::from_u128(1), uuid::Uuid::from_u128(3)]
+        );
+        assert_eq!(
+            *fixture.calls.lock().unwrap(),
+            ["clear", "connections", "close", "close", "read"]
+        );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_rejected_unpin_rereads_the_core_and_keeps_the_snapshot() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        fixture.fail_mutation.store(true, Ordering::SeqCst);
+        fixture.calls.lock().unwrap().clear();
+        let error = client
+            .clear_fixed(GROUP.into(), ProxyChangeBreakMode::All)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("clear_proxy_selection"),
+            "{error:#}"
+        );
+        assert_eq!(*fixture.calls.lock().unwrap(), ["clear", "read"]);
+        assert!(!client.snapshot().groups.is_empty());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn an_unpin_whose_interruption_fails_is_degraded_not_failed() {
+        let (client, _core, _, fixture, server) = setup().await;
+        fixture.fail_close.store(true, Ordering::SeqCst);
+        let outcome = client
+            .clear_fixed(GROUP.into(), ProxyChangeBreakMode::All)
+            .await
+            .unwrap();
+        assert_eq!(outcome.degradations().len(), 1);
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ProxyInterruptionFailed { .. }
+        ));
+        assert!(
+            outcome.degradations()[0]
+                .message
+                .starts_with("pinned selection cleared, but"),
+            "{}",
+            outcome.degradations()[0].message
+        );
+        assert!(!client.snapshot().nodes.is_empty());
+        server.abort();
     }
     #[tokio::test]
     async fn cache_ttl_and_provider_metadata_are_shared() {
@@ -818,6 +1022,35 @@ mod tests {
             "{error:#}"
         );
         assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
+        assert!(!client.snapshot().groups.is_empty());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_provider_health_check_rereads_the_core() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.healthcheck_provider(PROVIDER.into()).await.unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
+        fixture.calls.lock().unwrap().clear();
+        fixture.accepted.store(true, Ordering::SeqCst);
+        client.healthcheck_provider(PROVIDER.into()).await.unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_rejected_health_check_rereads_and_reports() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        fixture.fail_mutation.store(true, Ordering::SeqCst);
+        fixture.calls.lock().unwrap().clear();
+        let error = client
+            .healthcheck_provider(PROVIDER.into())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("healthcheck_proxy_provider"),
+            "{error:#}"
+        );
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
         assert!(!client.snapshot().groups.is_empty());
         server.abort();
     }

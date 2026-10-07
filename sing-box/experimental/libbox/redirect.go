@@ -52,7 +52,7 @@ func encodeAutoRedirectOptions(options adapter.AutoRedirectOptions) ([]byte, err
 		Inet4Address:             tunOptions.Inet4Address,
 		Inet6Address:             tunOptions.Inet6Address,
 		MTU:                      tunOptions.MTU,
-		DNSMode:                  tunOptions.DNSMode,
+		DNSMode:                  tunOptions.DNSModeOrDefault(),
 		DNSAddress:               tunOptions.DNSAddress,
 		IPRoute2TableIndex:       tunOptions.IPRoute2TableIndex,
 		IPRoute2RuleIndex:        tunOptions.IPRoute2RuleIndex,

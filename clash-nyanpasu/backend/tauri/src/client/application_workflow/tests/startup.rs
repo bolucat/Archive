@@ -396,17 +396,16 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     .await;
     let clash = manager(temp_path(&dir, "clash-config.yaml"), setup.clash).await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
-    let paths =
-        runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap();
+    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+        dir.path(),
+        dir.path().join("data"),
+    ));
     let ports = Arc::new(SessionPortResolver::new(
         runtime::RuntimeSnapshotStore::default(),
     ));
     let notifications = Arc::new(RecordingNotifications::default());
     let builder = Arc::new(adapters::FsRuntimeBuildAdapter {
+        core_specs: Arc::new(crate::client::runtime_core_spec),
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),
         scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
@@ -619,11 +618,7 @@ fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         },
         ..ClashConfig::default()
     };
-    std::fs::write(
-        args.paths.clash_config_path(),
-        serde_yaml::to_string(&clash).unwrap(),
-    )
-    .unwrap();
+    crate::client::tests::write_clash_config(args.paths.clash_config_path(), &clash);
     let files = [
         args.paths.application_config_path(),
         args.paths.clash_config_path(),
