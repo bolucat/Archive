@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,22 +16,15 @@ import (
 	"github.com/nadoo/glider/proxy"
 )
 
-// forwarder slice orderd by priority.
-type priSlice []*Forwarder
-
-func (p priSlice) Len() int           { return len(p) }
-func (p priSlice) Less(i, j int) bool { return p[i].Priority() > p[j].Priority() }
-func (p priSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
 // FwdrGroup is a forwarder group.
 type FwdrGroup struct {
 	name     string
 	config   *Strategy
-	fwdrs    priSlice
+	fwdrs    []*Forwarder
 	avail    []*Forwarder // available forwarders
 	mu       sync.RWMutex
-	index    uint32
-	priority uint32
+	index    atomic.Uint32
+	priority atomic.Uint32
 	next     func(addr string) *Forwarder
 }
 
@@ -66,7 +59,16 @@ func NewFwdrGroup(rulePath string, s []string, c *Strategy) *FwdrGroup {
 // newFwdrGroup returns a new FwdrGroup.
 func newFwdrGroup(name string, fwdrs []*Forwarder, c *Strategy) *FwdrGroup {
 	p := &FwdrGroup{name: name, fwdrs: fwdrs, config: c}
-	sort.Sort(p.fwdrs)
+	slices.SortFunc(p.fwdrs, func(a, b *Forwarder) int {
+		switch {
+		case a.Priority() > b.Priority():
+			return -1
+		case a.Priority() < b.Priority():
+			return 1
+		default:
+			return 0
+		}
+	})
 
 	p.init()
 
@@ -121,17 +123,17 @@ func (p *FwdrGroup) NextDialer(dstAddr string) proxy.Dialer {
 	defer p.mu.RUnlock()
 
 	if len(p.avail) == 0 {
-		return p.fwdrs[atomic.AddUint32(&p.index, 1)%uint32(len(p.fwdrs))]
+		return p.fwdrs[p.index.Add(1)%uint32(len(p.fwdrs))]
 	}
 
 	return p.next(dstAddr)
 }
 
 // Priority returns the active priority of dialer.
-func (p *FwdrGroup) Priority() uint32 { return atomic.LoadUint32(&p.priority) }
+func (p *FwdrGroup) Priority() uint32 { return p.priority.Load() }
 
 // SetPriority sets the active priority of daler.
-func (p *FwdrGroup) SetPriority(pri uint32) { atomic.StoreUint32(&p.priority, pri) }
+func (p *FwdrGroup) SetPriority(pri uint32) { p.priority.Store(pri) }
 
 // init traverse d.fwdrs and init the available forwarder slice.
 func (p *FwdrGroup) init() {
@@ -285,7 +287,7 @@ func (p *FwdrGroup) setLatency(fwdr *Forwarder, elapsed time.Duration) {
 
 // Round Robin.
 func (p *FwdrGroup) scheduleRR(dstAddr string) *Forwarder {
-	return p.avail[atomic.AddUint32(&p.index, 1)%uint32(len(p.avail))]
+	return p.avail[p.index.Add(1)%uint32(len(p.avail))]
 }
 
 // High Availability.

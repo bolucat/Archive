@@ -27,6 +27,12 @@ const STATE_OPTIONS: { value: ConnectionStateFilter; label: MessageKey }[] = [
   { value: "all", label: "All" },
 ];
 
+const EMPTY_MESSAGES: Record<ConnectionStateFilter, MessageKey> = {
+  active: "No active connections",
+  closed: "No closed connections",
+  all: "No connections",
+};
+
 const SORT_OPTIONS: { value: ConnectionSortMode; label: MessageKey }[] = [
   { value: "date", label: "By date" },
   { value: "traffic", label: "By traffic" },
@@ -160,7 +166,7 @@ export function ConnectionsView() {
         loaded={connections.data.loaded}
         empty={rows.length === 0}
         emptyIcon="swap_vert"
-        emptyMessage={t("Empty connections")}
+        emptyMessage={t(search.trim() !== "" ? "No matching connections" : EMPTY_MESSAGES[stateFilter])}
       />
       {connections.errorCode === Code.Unimplemented && connections.phase === "error" && (
         <div className="hint" style={{ marginBottom: 12 }}>

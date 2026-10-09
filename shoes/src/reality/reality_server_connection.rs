@@ -379,13 +379,10 @@ impl RealityServerConnection {
         });
 
         if !short_id_ok {
-            log::warn!(
-                "REALITY: Client short_id {:02x?} not in configured list",
-                client_short_id
-            );
+            log::warn!("REALITY: Client short_id not in configured list");
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                format!("Invalid short_id: {:02x?}", client_short_id),
+                "Invalid short_id",
             ));
         }
 
@@ -454,8 +451,7 @@ impl RealityServerConnection {
         }
 
         log::debug!(
-            "REALITY: Client authentication successful - short_id: {:02x?}, version: {:?}, timestamp: {}",
-            client_short_id,
+            "REALITY: Client authentication successful - version: {:?}, timestamp: {}",
             client_version,
             client_timestamp
         );
@@ -738,15 +734,26 @@ impl RealityServerConnection {
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Buffer too short"))?
                 as usize;
 
-            // Need complete ChangeCipherSpec record
-            if self.ciphertext_read_buf.len() < TLS_RECORD_HEADER_SIZE + ccs_len {
+            let record_size = super::common::checked_record_size(ccs_len)?;
+            if ccs_len != 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid ChangeCipherSpec length",
+                ));
+            }
+            if self.ciphertext_read_buf.len() < record_size {
                 return Ok(false); // Need more data
+            }
+            if self.ciphertext_read_buf[TLS_RECORD_HEADER_SIZE] != 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid ChangeCipherSpec payload",
+                ));
             }
 
             // Skip ChangeCipherSpec (compatibility message)
             log::debug!("REALITY: Skipping ChangeCipherSpec (compatibility message)");
-            self.ciphertext_read_buf
-                .consume(TLS_RECORD_HEADER_SIZE + ccs_len);
+            self.ciphertext_read_buf.consume(record_size);
 
             // Check if we have the next record header
             if self.ciphertext_read_buf.len() < TLS_RECORD_HEADER_SIZE {
@@ -762,7 +769,7 @@ impl RealityServerConnection {
             as usize;
 
         // Check if we have the complete record
-        let total_record_len = TLS_RECORD_HEADER_SIZE + record_len;
+        let total_record_len = super::common::checked_record_size(record_len)?;
         if self.ciphertext_read_buf.len() < total_record_len {
             return Ok(false); // Need more data
         }
@@ -903,7 +910,7 @@ impl RealityServerConnection {
                 as usize;
 
             // Check if we have the complete record
-            let total_record_len = TLS_RECORD_HEADER_SIZE + record_len;
+            let total_record_len = super::common::checked_record_size(record_len)?;
             if self.ciphertext_read_buf.len() < total_record_len {
                 break; // Need more data
             }
@@ -1111,6 +1118,165 @@ pub fn feed_reality_server_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[track_caller]
+    fn complete_tls_records(flight: &[u8]) -> Vec<bytes::Bytes> {
+        let mut deframer = crate::crypto::tls_deframer::TlsDeframer::new();
+        deframer.feed(flight);
+        let records = deframer.next_records().unwrap();
+        assert!(deframer.into_remaining_data().is_empty());
+        records
+    }
+
+    #[test]
+    fn fragmented_tls_template_completes_separate_mode_handshake() {
+        use crate::reality::reality_client_connection::feed_reality_client_connection;
+        use crate::reality::{RealityClientConfig, RealityClientConnection};
+        use crate::shadow_tls::parse_server_hello;
+        use shoes_test_support::test_servers::reality_tls_template_config;
+
+        let private_key = [1; 32];
+        let public_key = agreement::PrivateKey::from_private_key(&agreement::X25519, &private_key)
+            .unwrap()
+            .compute_public_key()
+            .unwrap();
+        let mut client = RealityClientConnection::new(RealityClientConfig {
+            public_key: public_key.as_ref().try_into().unwrap(),
+            short_id: [2; 8],
+            server_name: "localhost".into(),
+            cipher_suites: vec![CipherSuite::AES_128_GCM_SHA256],
+        })
+        .unwrap();
+        let mut client_hello = Vec::new();
+        client.write_tls(&mut client_hello).unwrap();
+
+        let mut template =
+            rustls::ServerConnection::new(reality_tls_template_config().unwrap()).unwrap();
+        assert_eq!(
+            template.read_tls(&mut &client_hello[..]).unwrap(),
+            client_hello.len()
+        );
+        template.process_new_packets().unwrap();
+        let mut template_flight = Vec::new();
+        while template.wants_write() {
+            assert!(template.write_tls(&mut template_flight).unwrap() > 0);
+        }
+        assert!(template.is_handshaking());
+        assert_eq!(
+            template.protocol_version(),
+            Some(rustls::ProtocolVersion::TLSv1_3)
+        );
+
+        let template_records = complete_tls_records(&template_flight);
+        assert!(
+            template_records.len() >= 6,
+            "template must emit its full flight before client Finished"
+        );
+        let server_hello = &template_records[0];
+        assert_eq!(server_hello[0], CONTENT_TYPE_HANDSHAKE);
+        assert_eq!(server_hello[5], 2);
+        let handshake_length =
+            u32::from_be_bytes([0, server_hello[6], server_hello[7], server_hello[8]]) as usize;
+        assert_eq!(
+            server_hello.len(),
+            TLS_RECORD_HEADER_SIZE + 4 + handshake_length
+        );
+        assert!(parse_server_hello(server_hello).unwrap().is_tls13);
+        assert_eq!(
+            &template_records[1][..],
+            &[CONTENT_TYPE_CHANGE_CIPHER_SPEC, 3, 3, 0, 1, 1]
+        );
+        for record in &template_records[2..] {
+            assert_eq!(record[0], CONTENT_TYPE_APPLICATION_DATA);
+            assert!(record.len() <= 512);
+        }
+
+        let mut server = RealityServerConnection::new(RealityServerConfig {
+            private_key,
+            short_ids: vec![[2; 8]],
+            dest: NetLocation::new(Address::Hostname("localhost".into()), 443),
+            max_time_diff: None,
+            min_client_version: None,
+            max_client_version: None,
+            cipher_suites: vec![CipherSuite::AES_128_GCM_SHA256],
+        })
+        .unwrap();
+        server.validate_client_hello(&client_hello).unwrap();
+        server.build_server_response(template_records).unwrap();
+        let mut server_flight = Vec::new();
+        server.write_tls(&mut server_flight).unwrap();
+        let server_records = complete_tls_records(&server_flight);
+        assert_eq!(server_records.len(), 6);
+        assert!(parse_server_hello(&server_records[0]).unwrap().is_tls13);
+        assert_eq!(
+            &server_records[1][..],
+            &[CONTENT_TYPE_CHANGE_CIPHER_SPEC, 3, 3, 0, 1, 1]
+        );
+        for record in &server_records[2..] {
+            assert_eq!(record[0], CONTENT_TYPE_APPLICATION_DATA);
+        }
+
+        for (index, record) in server_records.iter().enumerate() {
+            feed_reality_client_connection(&mut client, record).unwrap();
+            client.process_new_packets().unwrap();
+            assert_eq!(client.is_handshaking(), index + 1 < server_records.len());
+        }
+        let mut finished = Vec::new();
+        client.write_tls(&mut finished).unwrap();
+        feed_reality_server_connection(&mut server, &finished).unwrap();
+        server.process_new_packets().unwrap();
+        assert!(!server.is_handshaking());
+
+        client.writer().write_all(b"request").unwrap();
+        let mut wire = Vec::new();
+        client.write_tls(&mut wire).unwrap();
+        feed_reality_server_connection(&mut server, &wire).unwrap();
+        server.process_new_packets().unwrap();
+        let mut request = [0; 7];
+        server.reader().read_exact(&mut request).unwrap();
+        assert_eq!(&request, b"request");
+
+        server.writer().write_all(b"response").unwrap();
+        wire.clear();
+        server.write_tls(&mut wire).unwrap();
+        feed_reality_client_connection(&mut client, &wire).unwrap();
+        client.process_new_packets().unwrap();
+        let mut response = [0; 8];
+        client.reader().read_exact(&mut response).unwrap();
+        assert_eq!(&response, b"response");
+    }
+
+    #[test]
+    fn fragmented_change_cipher_spec_rejects_invalid_length_before_buffering_payload() {
+        for length in [0u16, 2, 65535] {
+            let mut connection = RealityServerConnection::new(RealityServerConfig {
+                private_key: [0; 32],
+                short_ids: vec![[0; 8]],
+                dest: NetLocation::new(Address::UNSPECIFIED, 443),
+                max_time_diff: None,
+                min_client_version: None,
+                max_client_version: None,
+                cipher_suites: vec![],
+            })
+            .unwrap();
+            let header = [
+                CONTENT_TYPE_CHANGE_CIPHER_SPEC,
+                3,
+                3,
+                (length >> 8) as u8,
+                length as u8,
+            ];
+            for byte in &header[..4] {
+                connection.read_tls(&mut &[*byte][..]).unwrap();
+                assert!(!connection.process_client_finished().unwrap());
+            }
+            connection.read_tls(&mut &header[4..]).unwrap();
+            assert_eq!(
+                connection.process_client_finished().unwrap_err().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
+    }
 
     #[test]
     fn test_reality_server_connection_creation() {

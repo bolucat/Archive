@@ -28,6 +28,7 @@
 //!   Use `TunServerConfig::packet_information(true)` if using the socket FD
 //!   directly, or `false` if using the readPackets/writePackets API.
 
+mod offload;
 mod packet;
 mod tcp_conn;
 mod tcp_stack_direct;
@@ -63,6 +64,8 @@ pub use platform::{
 pub use tun_server::TunServerConfig;
 
 use std::net::SocketAddr;
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
 use std::os::fd::{BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::sync::Arc;
 
@@ -89,30 +92,55 @@ use udp_manager::TunUdpManager;
 /// 3. The stack thread reads packets directly from TUN using poll()
 /// 4. Handles TCP connections through the proxy chain
 /// 5. Handles UDP packets through tokio (forwarded from stack thread)
+#[allow(dead_code)]
 pub async fn run_tun_server(
     config: TunServerConfig,
     proxy_selector: Arc<ClientProxySelector>,
     resolver: Arc<dyn Resolver>,
+    shutdown_rx: oneshot::Receiver<()>,
+) -> std::io::Result<()> {
+    run_tun_server_inner(config, proxy_selector, resolver, shutdown_rx, &mut None).await
+}
+
+async fn run_tun_server_inner(
+    config: TunServerConfig,
+    proxy_selector: Arc<ClientProxySelector>,
+    resolver: Arc<dyn Resolver>,
     mut shutdown_rx: oneshot::Receiver<()>,
+    ready: &mut Option<oneshot::Sender<std::io::Result<()>>>,
 ) -> std::io::Result<()> {
     config.resource_limits.validate()?;
+    let offload = config.offload_enabled()?;
     info!(
         "Starting TUN server (direct mode): mtu={}, tcp={}, udp={}, icmp={}",
         config.mtu, config.tcp_enabled, config.udp_enabled, config.icmp_enabled
     );
 
-    let fd = if let Some(fd) = config.raw_fd {
+    let (fd, offload) = if let Some(fd) = config.raw_fd {
         info!("Using provided raw FD: {}", fd);
-        if config.close_fd_on_drop {
+        let fd = if config.close_fd_on_drop {
             unsafe { OwnedFd::from_raw_fd(fd) }
         } else {
             unsafe { BorrowedFd::borrow_raw(fd) }.try_clone_to_owned()?
-        }
+        };
+        (fd, false)
     } else {
-        let tun_device = config.create_sync_device()?;
-        let fd = tun_device.into_raw_fd();
-        info!("Created TUN device with FD: {}", fd);
-        unsafe { OwnedFd::from_raw_fd(fd) }
+        let create = |offload| -> std::io::Result<OwnedFd> {
+            let device = config.create_device(offload)?;
+            #[cfg(target_os = "linux")]
+            if offload {
+                offload::configure(device.as_raw_fd())?;
+            }
+            Ok(unsafe { OwnedFd::from_raw_fd(device.into_raw_fd()) })
+        };
+        match create(offload) {
+            Ok(fd) => (fd, offload),
+            Err(error) if offload && config.segmentation_offload.is_none() => {
+                log::warn!("TUN transmit offload unavailable: {error}; using ordinary packets");
+                (create(false)?, false)
+            }
+            Err(error) => return Err(error),
+        }
     };
 
     // Creates the direct TCP stack in a dedicated thread.
@@ -120,7 +148,7 @@ pub async fn run_tun_server(
     if config.raw_fd.is_none() && cfg!(any(target_os = "macos", target_os = "ios")) {
         stack_config.packet_information = true;
     }
-    let mut tcp_stack = TcpStackDirect::with_config(fd, stack_config)?;
+    let mut tcp_stack = TcpStackDirect::with_offload(fd, stack_config, offload)?;
 
     // Get UDP receiver (stack thread filters UDP and sends here)
     let udp_from_stack_rx = tcp_stack.take_udp_rx().expect("udp_rx already taken");
@@ -190,6 +218,9 @@ pub async fn run_tun_server(
     }
 
     info!("TUN server started successfully");
+    if let Some(ready) = ready.take() {
+        let _ = ready.send(Ok(()));
+    }
 
     // Wait for shutdown signal or stack thread exit
     tokio::select! {
@@ -248,21 +279,25 @@ async fn handle_tcp_connection(
                 remote_location.location()
             );
 
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                chain_group.connect_tcp(remote_location.clone(), &resolver),
-            )
+            match tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                let setup = chain_group
+                    .connect_tcp(remote_location.clone(), &resolver)
+                    .await?;
+                if let Some(data) = setup.early_data {
+                    tokio::io::AsyncWriteExt::write_all(&mut connection, &data).await?;
+                }
+                Ok::<_, std::io::Error>(setup.client_stream)
+            })
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "TUN TCP setup timed out")
             })? {
-                Ok(setup_result) => {
+                Ok(mut remote) => {
                     debug!(
                         "TCP: connected to {}, starting bidirectional copy",
                         remote_location.location()
                     );
 
-                    let mut remote = setup_result.client_stream;
                     let result = tokio::io::copy_bidirectional(&mut connection, &mut remote).await;
 
                     match result {
@@ -332,23 +367,45 @@ pub async fn start_tun_server(
     resolver: std::sync::Arc<dyn crate::resolver::Resolver>,
 ) -> std::io::Result<JoinHandle<()>> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let (ready_tx, ready_rx) = oneshot::channel();
 
     let handle = tokio::spawn(async move {
         let _keep_alive = shutdown_tx;
-        if let Err(e) = run_tun_from_config(config, shutdown_rx, true, resolver).await {
-            warn!("TUN server error: {}", e);
+        let mut ready = Some(ready_tx);
+        if let Err(error) =
+            run_tun_from_config_inner(config, shutdown_rx, true, resolver, &mut ready).await
+        {
+            if let Some(ready) = ready.take() {
+                let _ = ready.send(Err(error));
+            } else {
+                warn!("TUN server error: {error}");
+            }
         }
     });
-
-    Ok(handle)
+    let handle = tokio_util::task::AbortOnDropHandle::new(handle);
+    ready_rx
+        .await
+        .map_err(|_| std::io::Error::other("TUN task exited before startup completed"))??;
+    Ok(handle.detach())
 }
 
 /// Run TUN server from config with external shutdown control.
+#[allow(dead_code)]
 pub async fn run_tun_from_config(
     config: TunConfig,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     close_fd_on_drop: bool,
     resolver: Arc<dyn Resolver>,
+) -> std::io::Result<()> {
+    run_tun_from_config_inner(config, shutdown_rx, close_fd_on_drop, resolver, &mut None).await
+}
+
+async fn run_tun_from_config_inner(
+    config: TunConfig,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    close_fd_on_drop: bool,
+    resolver: Arc<dyn Resolver>,
+    ready: &mut Option<oneshot::Sender<std::io::Result<()>>>,
 ) -> std::io::Result<()> {
     let mut tun_server_config = TunServerConfig::new()
         .mtu(config.mtu)
@@ -357,6 +414,7 @@ pub async fn run_tun_from_config(
         .icmp_enabled(config.icmp_enabled)
         .close_fd_on_drop(close_fd_on_drop);
     tun_server_config.resource_limits = config.resource_limits;
+    tun_server_config.segmentation_offload = config.segmentation_offload;
 
     if let Some(ref name) = config.device_name {
         tun_server_config = tun_server_config.tun_name(name.clone());
@@ -384,13 +442,15 @@ pub async fn run_tun_from_config(
     }
 
     let rules = config.rules.map(ConfigSelection::unwrap_config).into_vec();
-    let client_proxy_selector = Arc::new(create_tcp_client_proxy_selector(rules, resolver.clone()));
+    let client_proxy_selector =
+        Arc::new(create_tcp_client_proxy_selector(rules, resolver.clone())?);
 
-    run_tun_server(
+    run_tun_server_inner(
         tun_server_config,
         client_proxy_selector,
         resolver,
         shutdown_rx,
+        ready,
     )
     .await
 }
@@ -399,6 +459,154 @@ pub async fn run_tun_from_config(
 mod tests {
     use super::*;
     use std::os::fd::AsRawFd;
+
+    #[tokio::test]
+    async fn startup_acknowledges_initialization_and_returns_errors() {
+        use std::os::fd::IntoRawFd;
+        let resolver: Arc<dyn Resolver> = Arc::new(crate::resolver::NativeResolver::new());
+        let invalid = serde_yaml::from_str("resource_limits: {tcp_buffer_size: 0}").unwrap();
+        assert_eq!(
+            start_tun_server(invalid, resolver.clone())
+                .await
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        let (_peer, device) = std::os::unix::net::UnixDatagram::pair().unwrap();
+        let fd = device.into_raw_fd();
+        let config = serde_yaml::from_str(&format!("device_fd: {fd}")).unwrap();
+        let task = start_tun_server(config, resolver).await.unwrap();
+        assert!(!task.is_finished());
+        assert!(unsafe { libc::fcntl(fd, libc::F_GETFD) } >= 0);
+        task.abort();
+        let _ = task.await;
+    }
+
+    #[tokio::test]
+    async fn proxy_handshake_bytes_reach_the_tun_connection_before_relay_data() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let rule: crate::config::RuleConfig = serde_yaml::from_str(&format!(
+            "masks: '0.0.0.0/0'\nclient_proxy:\n  address: '{}'\n  protocol:\n    type: socks\n",
+            proxy.local_addr().unwrap()
+        ))
+        .unwrap();
+        let resolver: Arc<dyn Resolver> = Arc::new(crate::resolver::NativeResolver::new());
+        let selector =
+            Arc::new(create_tcp_client_proxy_selector(vec![rule], resolver.clone()).unwrap());
+        let control = Arc::new(tcp_conn::TcpConnectionControl::new(1024, 1024));
+        let (wake, _wake_rx) = wake::Wake::new().unwrap();
+        let connection = tcp_conn::TcpConnection::new(control.clone(), wake);
+        let (release, released) = tokio::sync::oneshot::channel();
+        let mut tasks = JoinSet::new();
+        tasks.spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let mut greeting = [0; 3];
+            socket.read_exact(&mut greeting).await.unwrap();
+            socket.write_all(&[5, 0]).await.unwrap();
+            let mut request = [0; 10];
+            socket.read_exact(&mut request).await.unwrap();
+            socket
+                .write_all(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00greeting")
+                .await
+                .unwrap();
+            released.await.unwrap();
+            socket.write_all(b"later").await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        tasks.spawn(async move {
+            handle_tcp_connection(
+                connection,
+                NetLocation::from_str("127.0.0.1:80", None).unwrap(),
+                selector,
+                resolver,
+            )
+            .await
+            .unwrap();
+        });
+        let mut received = Vec::new();
+        receive_tun_bytes(&control, &mut received, b"greeting").await;
+        release.send(()).unwrap();
+        receive_tun_bytes(&control, &mut received, b"greetinglater").await;
+        tasks.shutdown().await;
+    }
+
+    async fn receive_tun_bytes(
+        control: &tcp_conn::TcpConnectionControl,
+        received: &mut Vec<u8>,
+        expected: &[u8],
+    ) {
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while received.len() < expected.len() {
+                let mut bytes = [0; 64];
+                let count = control.dequeue_send_data(&mut bytes);
+                received.extend_from_slice(&bytes[..count]);
+                control.wake_sender();
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(received, expected);
+    }
+
+    #[tokio::test]
+    async fn startup_propagates_required_offload_validation_failure() {
+        let (_peer, device) = std::os::unix::net::UnixDatagram::pair().unwrap();
+        let config: TunConfig = serde_yaml::from_str(&format!(
+            "device_fd: {}\nsegmentation_offload: true\n",
+            device.as_raw_fd()
+        ))
+        .unwrap();
+        let result =
+            start_tun_server(config, Arc::new(crate::resolver::NativeResolver::new())).await;
+        match result {
+            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput),
+            Ok(handle) => {
+                handle.abort();
+                let _ = handle.await;
+                panic!("TUN startup incorrectly succeeded");
+            }
+        }
+        assert!(unsafe { libc::fcntl(device.as_raw_fd(), libc::F_GETFD) } >= 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn startup_propagates_device_creation_failure() {
+        let config: TunConfig = serde_yaml::from_str(&format!(
+            "device_name: {}\nsegmentation_offload: true\n",
+            "x".repeat(libc::IFNAMSIZ + 1)
+        ))
+        .unwrap();
+        let result =
+            start_tun_server(config, Arc::new(crate::resolver::NativeResolver::new())).await;
+        match result {
+            Err(error) => assert!(error.to_string().contains("Failed to create TUN device")),
+            Ok(handle) => {
+                handle.abort();
+                let _ = handle.await;
+                panic!("TUN startup incorrectly succeeded");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_initializes_device_before_returning_and_abort_releases_it() {
+        use std::io::Read;
+        let (mut peer, device) = std::os::unix::net::UnixStream::pair().unwrap();
+        peer.set_nonblocking(true).unwrap();
+        let fd = device.into_raw_fd();
+        let config: TunConfig = serde_yaml::from_str(&format!("device_fd: {fd}\n")).unwrap();
+        let handle = start_tun_server(config, Arc::new(crate::resolver::NativeResolver::new()))
+            .await
+            .unwrap();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        handle.abort();
+        assert!(handle.await.unwrap_err().is_cancelled());
+        assert!(flags >= 0 && flags & libc::O_NONBLOCK != 0);
+        assert_eq!(peer.read(&mut [0]).unwrap(), 0);
+    }
 
     #[tokio::test]
     async fn borrowed_tun_fd_remains_open_after_stop() {
@@ -417,5 +625,27 @@ mod tests {
         .await
         .unwrap();
         assert!(unsafe { libc::fcntl(client.as_raw_fd(), libc::F_GETFD) } >= 0);
+    }
+
+    #[tokio::test]
+    async fn explicit_offload_rejects_provided_fd_before_taking_ownership() {
+        for close in [false, true] {
+            let (_peer, client) = std::os::unix::net::UnixDatagram::pair().unwrap();
+            let config = TunServerConfig::new()
+                .raw_fd(client.as_raw_fd())
+                .close_fd_on_drop(close)
+                .segmentation_offload(true);
+            let (_tx, rx) = oneshot::channel();
+            let error = run_tun_server(
+                config,
+                Arc::new(ClientProxySelector::new(Vec::new())),
+                Arc::new(crate::resolver::NativeResolver::new()),
+                rx,
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+            assert!(unsafe { libc::fcntl(client.as_raw_fd(), libc::F_GETFD) } >= 0);
+        }
     }
 }

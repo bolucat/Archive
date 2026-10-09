@@ -15,17 +15,20 @@
         TerminalSurfacePwdDelegate,
         TerminalSurfaceCommandFinishedDelegate,
         TerminalSurfaceLifecycleDelegate,
+        TerminalSurfaceColorChangeDelegate,
         TerminalSurfaceOpenURLDelegate,
         TerminalSurfaceHoverLinkDelegate,
-        TerminalSurfaceProgressReportDelegate,
-        TerminalSurfaceTextSelectionRequestDelegate
+        TerminalSurfaceProgressReportDelegate
     {
         public weak var state: TerminalViewState?
+        #if os(iOS)
+            var onCommandKey: ((String) -> Bool)?
+            var alwaysShowsSymbolBar = false
+        #endif
 
         public var onClose: ((Bool) -> Void)?
         public var onOpenURL: ((String, TerminalOpenURLKind) -> Void)?
         public var onDesktopNotification: ((String, String) -> Void)?
-        public var onRequestTextSelection: ((TerminalTextSelectionRequest) -> Void)?
 
         @Published public var title: String = ""
         @Published public var hoveredLink: String?
@@ -79,6 +82,10 @@
             state?.terminalDidDetachSurface()
         }
 
+        public func terminalDidChangeColor(_ change: TerminalColorChange) {
+            state?.terminalDidChangeColor(change)
+        }
+
         public func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
             onOpenURL?(url, kind)
         }
@@ -90,10 +97,6 @@
         public func terminalDidReportProgress(state: TerminalProgressState, percent: Int?) {
             lastProgressState = state
             lastProgressPercent = percent
-        }
-
-        public func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
-            onRequestTextSelection?(request)
         }
     }
 #endif

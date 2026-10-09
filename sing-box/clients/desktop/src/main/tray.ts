@@ -18,6 +18,7 @@ const DOUBLE_ACTIVATE_INTERVAL_MILLISECONDS = 500;
 let tray: Tray | null = null;
 let x11Tray: X11Tray | null = null;
 let openWindow: () => void = () => {};
+let serviceStarted = false;
 
 function cursorAnchor(): Rectangle {
   const cursor = screen.getCursorScreenPoint();
@@ -152,8 +153,37 @@ export function rebuildTrayMenu() {
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayTemplate()));
 }
 
+function trayIconPath(): string {
+  if (process.platform === "darwin") {
+    return resourcePath(serviceStarted ? "trayTemplate.png" : "trayStoppedTemplate.png");
+  }
+  if (process.platform === "win32") {
+    return resourcePath(serviceStarted ? "tray.ico" : "trayStopped.ico");
+  }
+  return resourcePath(serviceStarted ? "tray.png" : "trayStopped.png");
+}
+
+function trayIcon(): NativeImage {
+  const icon = nativeImage.createFromPath(trayIconPath());
+  if (process.platform === "darwin") {
+    icon.setTemplateImage(true);
+  }
+  return icon;
+}
+
+function updateTrayIcon() {
+  const started = daemonState.status === ServiceStatus_Type.STARTED;
+  if (started === serviceStarted) {
+    return;
+  }
+  serviceStarted = started;
+  tray?.setImage(trayIcon());
+  x11Tray?.setIcon(trayIconPath());
+}
+
 export function initializeTray(open: () => void) {
   openWindow = open;
+  daemonState.on("change", updateTrayIcon);
   if (process.platform !== "win32") {
     daemonState.on("change", rebuildTrayMenu);
     onProfilesChanged(rebuildTrayMenu);
@@ -167,16 +197,7 @@ export function initializeTray(open: () => void) {
 }
 
 function createElectronTray() {
-  let icon: NativeImage;
-  if (process.platform === "darwin") {
-    icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
-    icon.setTemplateImage(true);
-  } else {
-    icon = nativeImage.createFromPath(
-      resourcePath(process.platform === "win32" ? "tray.ico" : "tray.png"),
-    );
-  }
-  tray = new Tray(icon);
+  tray = new Tray(trayIcon());
   tray.setToolTip("sing-box");
   if (process.platform === "win32") {
     prepareTrayMenuWindow(tray.getBounds());
@@ -220,7 +241,7 @@ export function updateTrayVisibility(enabled: boolean) {
   let lastActivateAt = 0;
   let currentTray: X11Tray;
   try {
-    currentTray = new X11Tray(popMenu, (x, y) => {
+    currentTray = new X11Tray(trayIconPath(), popMenu, (x, y) => {
       const now = Date.now();
       if (now - lastActivateAt < DOUBLE_ACTIVATE_INTERVAL_MILLISECONDS) {
         lastActivateAt = 0;

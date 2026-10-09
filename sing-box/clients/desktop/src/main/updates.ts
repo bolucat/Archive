@@ -24,7 +24,6 @@ import { desktopService } from "./daemon";
 import { userAgent } from "./userAgent";
 
 const RELEASES_URL = "https://api.github.com/repos/SagerNet/sing-box/releases";
-const RELEASES_PER_PAGE = 100;
 const RELEASES_REQUEST_TIMEOUT_MILLISECONDS = 30_000;
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
@@ -195,34 +194,28 @@ interface GitHubRelease {
 }
 
 async function fetchReleases(track: UpdateTrack, githubToken: string): Promise<GitHubRelease[]> {
-  const releases: GitHubRelease[] = [];
   const headers = new Headers({
     "Accept": "application/vnd.github+json",
     "User-Agent": userAgent(),
   });
   const token = githubToken.trim();
   if (token !== "") {
-    headers.set("Authorization", `token ${token}`);
+    headers.set("Authorization", `Bearer ${token}`);
   }
-  let page = 1;
-  for (;;) {
-    const response = await fetch(
-      `${RELEASES_URL}?per_page=${RELEASES_PER_PAGE}&page=${page}`,
-      {
-        headers,
-        signal: AbortSignal.timeout(RELEASES_REQUEST_TIMEOUT_MILLISECONDS),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`fetch releases: HTTP ${response.status}`);
-    }
-    const pageReleases = (await response.json()) as GitHubRelease[];
-    releases.push(...pageReleases);
-    if (track !== "stable" || pageReleases.length < RELEASES_PER_PAGE) {
-      return releases;
-    }
-    page += 1;
+  const response = await fetch(
+    track === "stable" ? `${RELEASES_URL}/latest` : `${RELEASES_URL}?per_page=3`,
+    {
+      headers,
+      signal: AbortSignal.timeout(RELEASES_REQUEST_TIMEOUT_MILLISECONDS),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`fetch releases: HTTP ${response.status}`);
   }
+  if (track === "stable") {
+    return [(await response.json()) as GitHubRelease];
+  }
+  return (await response.json()) as GitHubRelease[];
 }
 
 function findWindowsAsset(assets: GitHubAsset[]): GitHubAsset | null {

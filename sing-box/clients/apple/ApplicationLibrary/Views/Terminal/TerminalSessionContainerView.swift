@@ -2,9 +2,6 @@
     import GhosttyTerminal
     import Library
     import SwiftUI
-    #if !targetEnvironment(macCatalyst)
-        import UIKit
-    #endif
 
     @MainActor
     struct TerminalSessionContainerView: View {
@@ -89,49 +86,19 @@
                 openURL(url)
             }
             #if !targetEnvironment(macCatalyst)
-                managed.viewModel.extras.onRequestTextSelection = { request in
-                    presentTerminalSelectionSheet(request: request)
+                managed.viewModel.extras.onCommandKey = { key in
+                    switch key {
+                    case "n":
+                        sessionManager.createDuplicateSession()
+                        return true
+                    case "w":
+                        sessionManager.closeSession(id: managed.id)
+                        return true
+                    default:
+                        return false
+                    }
                 }
             #endif
         }
-
-        #if !targetEnvironment(macCatalyst)
-            @MainActor
-            private func presentTerminalSelectionSheet(request: TerminalTextSelectionRequest) {
-                guard let presenter = topmostViewController() else { return }
-                let selectionVC = TailsshTerminalSelectionViewController(
-                    text: request.text,
-                    anchorRange: request.anchorRange
-                )
-                selectionVC.onOpenURL = { url in
-                    openURL(url)
-                }
-                let nav = UINavigationController(rootViewController: selectionVC)
-                nav.modalPresentationStyle = .pageSheet
-                if let sheet = nav.sheetPresentationController {
-                    sheet.detents = [.medium(), .large()]
-                    sheet.prefersGrabberVisible = true
-                }
-                presenter.present(nav, animated: true)
-            }
-
-            @MainActor
-            private func topmostViewController() -> UIViewController? {
-                let scene = UIApplication.shared.connectedScenes
-                    .compactMap { $0 as? UIWindowScene }
-                    .first { $0.activationState == .foregroundActive }
-                    ?? UIApplication.shared.connectedScenes
-                    .compactMap { $0 as? UIWindowScene }
-                    .first
-                guard let root = scene?.windows.first(where: { $0.isKeyWindow })?.rootViewController
-                    ?? scene?.windows.first?.rootViewController
-                else { return nil }
-                var top = root
-                while let presented = top.presentedViewController {
-                    top = presented
-                }
-                return top
-            }
-        #endif
     }
 #endif

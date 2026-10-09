@@ -15,6 +15,7 @@ class ApplicationDelegate: NSObject, UIApplicationDelegate {
         LibboxPrepareCrashSignalHandlers()
         NativeCrashReporter.installForCurrentProcess()
         LibboxReinstallCrashSignalHandlers()
+        HangWatchdog.installForCurrentProcess()
         NSLog("Here I stand")
         setup()
         setupTask = Task {
@@ -49,6 +50,7 @@ class ApplicationDelegate: NSObject, UIApplicationDelegate {
         options.crashReportSource = "Application"
         options.appVersion = Bundle.application.versionNumber
         options.appMarketingVersion = Bundle.application.version
+        options.platformMetadata = PlatformMetadata.json()
         await BlockingIO.run {
             var error: NSError?
             LibboxSetup(options, &error)

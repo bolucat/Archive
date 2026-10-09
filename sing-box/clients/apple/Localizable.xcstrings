@@ -197,63 +197,35 @@
         }
       }
     },
-    "Add" : {
+    "Add DNS Server" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "افزودن"
+            "value" : "افزودن سرور DNS"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Добавить"
+            "value" : "Добавить DNS-сервер"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加"
+            "value" : "添加 DNS 服务器"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加"
+            "value" : "添加 DNS 服務器"
           }
         }
       }
     },
-    "Add DNS server IP" : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "افزودن IP سرور DNS"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Добавить IP DNS-сервера"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加 DNS 服务器 IP"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加 DNS 伺服器 IP"
-          }
-        }
-      }
-    },
-    "Add domain" : {
+    "Add Domain" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
@@ -281,30 +253,86 @@
         }
       }
     },
-    "Add domain (e.g., example.com)" : {
+    "Add Domain Rule" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "افزودن دامنه (مثلاً example.com)"
+            "value" : "افزودن قانون دامنه"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Добавить домен (например, example.com)"
+            "value" : "Добавить правило домена"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加域名（例如 example.com）"
+            "value" : "添加域名规则"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加域名（例如 example.com）"
+            "value" : "添加域名規則"
+          }
+        }
+      }
+    },
+    "Add Rule" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "افزودن قانون"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить правило"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加规则"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加規則"
+          }
+        }
+      }
+    },
+    "Add Search Domain" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "افزودن دامنه جستجو"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить домен поиска"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加搜索域"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加搜索域"
           }
         }
       }
@@ -421,6 +449,34 @@
         }
       }
     },
+    "Always Show Symbol Bar" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "همیشه نوار نمادها را نشان بده"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всегда показывать панель символов"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终显示符号栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始終顯示符號列"
+          }
+        }
+      }
+    },
     "Any" : {
       "localizations" : {
         "fa" : {
@@ -445,6 +501,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "任意"
+          }
+        }
+      }
+    },
+    "Any network" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هر شبکه‌ای"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Любая сеть"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任意网络"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任意網絡"
           }
         }
       }
@@ -2167,62 +2251,6 @@
         }
       }
     },
-    "Connection Rule" : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "قوانین اتصال"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Правила подключения"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接规则"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連接規則"
-          }
-        }
-      }
-    },
-    "Connection Rules" : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "قوانین اتصال"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Правила подключения"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接规则"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連接規則"
-          }
-        }
-      }
-    },
     "Connections" : {
       "localizations" : {
         "fa" : {
@@ -2787,6 +2815,34 @@
         }
       }
     },
+    "Decide for each connection by its destination domain, using the domain rules below." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "برای هر اتصال بر اساس دامنه مقصد و با استفاده از قوانین دامنه زیر تصمیم بگیر."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Решать для каждого подключения по домену назначения с помощью правил доменов ниже."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "根据每个连接的目标域名，按下方的域名规则决定是否连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "根據每個連接的目標域名，按下方的域名規則決定是否連接。"
+          }
+        }
+      }
+    },
     "Default" : {
       "comment" : "Log level filter default option",
       "localizations" : {
@@ -2896,6 +2952,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全部刪除"
+          }
+        }
+      }
+    },
+    "Delete Rule" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف قانون"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить правило"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除规则"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除規則"
           }
         }
       }
@@ -3239,18 +3323,18 @@
     "DNS" : {
       "shouldTranslate" : false
     },
-    "DNS Search Domain" : {
+    "DNS Search Domains" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "دامنه جست‌وجوی DNS"
+            "value" : "دامنه‌های جستجوی DNS"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Домен поиска DNS"
+            "value" : "Домены поиска DNS"
           }
         },
         "zh-Hans" : {
@@ -3267,30 +3351,58 @@
         }
       }
     },
-    "DNS Server Address" : {
+    "DNS Server" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "نشانی سرور DNS"
+            "value" : "سرور DNS"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "IP-адрес DNS-сервера"
+            "value" : "DNS-сервер"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DNS 服务器地址"
+            "value" : "DNS 服务器"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DNS 伺服器地址"
+            "value" : "DNS 服務器"
+          }
+        }
+      }
+    },
+    "DNS server: %@" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سرور DNS: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS-сервер: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS 服务器：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS 服務器：%@"
           }
         }
       }
@@ -3463,30 +3575,114 @@
         }
       }
     },
-    "Domains that trigger this rule. The rule matches if the destination host shares a suffix with any domain in this list." : {
+    "Domain Rule" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "دامنه‌ای که این قانون را فعال می‌کند. اگر میزبان مقصد با هر پسوند دامنه در فهرست منطبق باشد، قانون اعمال می‌شود."
+            "value" : "قانون دامنه"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Домен, который запускает это правило. Правило срабатывает, если целевой хост совпадает с любым суффиксом домена в списке."
+            "value" : "Правило домена"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "触发此规则的域名。如果目标主机与列表中任何域名后缀匹配，则规则生效。"
+            "value" : "域名规则"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "觸發此規則的域名。如果目標主機與列表中任何域名後綴匹配，則規則生效。"
+            "value" : "域名規則"
+          }
+        }
+      }
+    },
+    "Domain Rules" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قوانین دامنه"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Правила доменов"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名规则"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名規則"
+          }
+        }
+      }
+    },
+    "Domains" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دامنه‌ها"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Домены"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名"
+          }
+        }
+      }
+    },
+    "Domains: %@" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دامنه‌ها: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Домены: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "域名：%@"
           }
         }
       }
@@ -3683,6 +3879,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拖放檔案到此處傳送，或輕點選擇"
+          }
+        }
+      }
+    },
+    "Each new connection is checked against these rules by its destination domain, from top to bottom." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هر اتصال جدید بر اساس دامنه مقصد، از بالا به پایین با این قوانین بررسی می‌شود."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое новое подключение проверяется по этим правилам сверху вниз по домену назначения."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个新连接会按目标域名从上到下依次匹配这些规则。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個新連接會按目標域名從上到下依次匹配這些規則。"
           }
         }
       }
@@ -3935,34 +4159,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無配置"
-          }
-        }
-      }
-    },
-    "Empty rules" : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "بدون قانون"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нет правил"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无规则"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無規則"
           }
         }
       }
@@ -4250,33 +4446,8 @@
         }
       }
     },
-    "Evaluate the destination host before deciding to connect." : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "پیش از تصمیم به اتصال، میزبان مقصد را ارزیابی کن."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Оценивать целевой хост перед принятием решения о подключении."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在决定连接之前评估目标主机。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在決定連接之前評估目標主機。"
-          }
-        }
-      }
+    "example.com" : {
+      "shouldTranslate" : false
     },
     "Exclude APNs Route" : {
       "localizations" : {
@@ -5375,6 +5546,40 @@
         }
       }
     },
+    "Hang" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هنگ"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зависание"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡顿"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡頓"
+          }
+        }
+      }
+    },
+    "Hang (Go)" : {
+      "shouldTranslate" : false
+    },
+    "Hang (Swift)" : {
+      "shouldTranslate" : false
+    },
     "Helper Service" : {
       "localizations" : {
         "fa" : {
@@ -5486,29 +5691,6 @@
           }
         }
       }
-    },
-    "http://..." : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "http://..."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "http://..."
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "http://..."
-          }
-        }
-      },
-      "shouldTranslate" : false
     },
     "HTTP/3" : {
       "shouldTranslate" : false
@@ -6382,6 +6564,34 @@
         }
       }
     },
+    "Invalid IP address" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نشانی IP نامعتبر"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недопустимый IP-адрес"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无效的 IP 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無效的 IP 地址"
+          }
+        }
+      }
+    },
     "Invalid QR code" : {
       "localizations" : {
         "fa" : {
@@ -6406,6 +6616,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無效的二維碼"
+          }
+        }
+      }
+    },
+    "IP address" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نشانی IP"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IP-адрес"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IP 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IP 地址"
           }
         }
       }
@@ -6524,6 +6762,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "金鑰到期已停用"
+          }
+        }
+      }
+    },
+    "Keyboard" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفحه‌کلید"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Клавиатура"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鍵盤"
           }
         }
       }
@@ -7173,34 +7439,6 @@
         }
       }
     },
-    "Match Domains" : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "دامنه منطبق"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Совпадающий домен"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "匹配域名"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "匹配域名"
-          }
-        }
-      }
-    },
     "Match Rule" : {
       "localizations" : {
         "fa" : {
@@ -7223,6 +7461,118 @@
         }
       },
       "shouldTranslate" : false
+    },
+    "Matches only when a request to this URL returns HTTP 200." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فقط وقتی تطبیق می‌یابد که درخواست به این URL پاسخ HTTP 200 بدهد."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Совпадает, только если запрос к этому URL возвращает HTTP 200."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当请求此 URL 返回 HTTP 200 时匹配。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅當請求此 URL 返回 HTTP 200 時匹配。"
+          }
+        }
+      }
+    },
+    "Matches when every DNS server of the network is in this list." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وقتی تطبیق می‌یابد که همه سرورهای DNS شبکه در این فهرست باشند."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Совпадает, если все DNS-серверы сети есть в этом списке."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当网络的所有 DNS 服务器都在此列表中时匹配。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當網絡的所有 DNS 服務器都在此列表中時匹配。"
+          }
+        }
+      }
+    },
+    "Matches when the default search domain of the network is one of these." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وقتی تطبیق می‌یابد که دامنه جستجوی پیش‌فرض شبکه یکی از این‌ها باشد."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Совпадает, если домен поиска сети по умолчанию есть в этом списке."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当网络的默认搜索域是其中之一时匹配。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當網絡的默認搜索域是其中之一時匹配。"
+          }
+        }
+      }
+    },
+    "Matches when the destination host name ends with one of these domains." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وقتی تطبیق می‌یابد که نام میزبان مقصد به یکی از این دامنه‌ها ختم شود."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Совпадает, если имя целевого хоста заканчивается одним из этих доменов."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当目标主机名以其中任一域名结尾时匹配。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當目標主機名以其中任一域名結尾時匹配。"
+          }
+        }
+      }
     },
     "Max Runtime" : {
       "localizations" : {
@@ -7532,6 +7882,34 @@
         }
       }
     },
+    "Move Down" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتقال به پایین"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переместить вниз"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下移"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下移"
+          }
+        }
+      }
+    },
     "Move to Applications" : {
       "localizations" : {
         "fa" : {
@@ -7556,6 +7934,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移動到 Applications"
+          }
+        }
+      }
+    },
+    "Move Up" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتقال به بالا"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переместить вверх"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上移"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上移"
           }
         }
       }
@@ -7989,30 +8395,86 @@
         }
       }
     },
-    "No connection rules. Add rules to specify which domains trigger VPN connection." : {
+    "No active connections" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "قانون اتصال وجود ندارد. قانونی اضافه کنید تا مشخص شود کدام دامنه‌ها اتصال VPN را فعال می‌کنند."
+            "value" : "اتصال فعالی وجود ندارد"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Нет правил подключения. Добавьте правило, чтобы указать, какие домены запускают VPN-подключение."
+            "value" : "Нет активных подключений"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无连接规则。添加规则以指定哪些域名触发 VPN 连接。"
+            "value" : "暂无活动连接"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無連接規則。添加規則以指定哪些域名觸發 VPN 連接。"
+            "value" : "暫無活動連接"
+          }
+        }
+      }
+    },
+    "No closed connections" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اتصال بسته‌شده‌ای وجود ندارد"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет закрытых подключений"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无已关闭连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無已關閉連接"
+          }
+        }
+      }
+    },
+    "No connections" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اتصالی وجود ندارد"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет подключений"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無連接"
           }
         }
       }
@@ -8104,6 +8566,34 @@
     "No documentation.\n\n[Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/excludedevicecommunication)" : {
       "shouldTranslate" : false
     },
+    "No domains" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بدون دامنه"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет доменов"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无域名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無域名"
+          }
+        }
+      }
+    },
     "No local devices available" : {
       "localizations" : {
         "fa" : {
@@ -8128,6 +8618,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有可用的本機裝置"
+          }
+        }
+      }
+    },
+    "No matching connections" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اتصال منطبقی یافت نشد"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Совпадающих подключений нет"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有匹配的連接"
           }
         }
       }
@@ -9121,6 +9639,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "探測 URL"
+          }
+        }
+      }
+    },
+    "Probe: %@" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بررسی: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探测：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探測：%@"
           }
         }
       }
@@ -10211,6 +10757,62 @@
         }
       }
     },
+    "Search Domain" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دامنه جستجو"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Домен поиска"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索域"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索域"
+          }
+        }
+      }
+    },
+    "Search domain: %@" : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دامنه جستجو: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Домен поиска: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索域：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索域：%@"
+          }
+        }
+      }
+    },
     "Secret" : {
       "localizations" : {
         "fa" : {
@@ -11102,30 +11704,33 @@
         }
       }
     },
-    "SSID Match" : {
+    "SSID" : {
+      "shouldTranslate" : false
+    },
+    "SSID: %@" : {
       "localizations" : {
         "fa" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "تطبیق SSID"
+            "value" : "SSID: %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Совпадение SSID"
+            "value" : "SSID: %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SSID 匹配"
+            "value" : "SSID：%@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SSID 匹配"
+            "value" : "SSID：%@"
           }
         }
       }
@@ -12022,6 +12627,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "sing-box 服務需要輔助服務來提供進程查找功能，以支持 `process_name` 和 `process_path` 路由規則。"
+          }
+        }
+      }
+    },
+    "The symbol bar is hidden while a hardware keyboard is connected unless this is enabled." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هنگام اتصال صفحه‌کلید سخت‌افزاری، نوار نمادها پنهان می‌شود مگر اینکه این گزینه فعال باشد."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока подключена аппаратная клавиатура, панель символов скрыта, если этот параметр не включён."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接硬件键盘时隐藏符号栏，除非开启此选项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接硬體鍵盤時隱藏符號列，除非開啟此選項。"
           }
         }
       }
@@ -13251,34 +13884,6 @@
         }
       }
     },
-    "When action is 'Evaluate Connection', these rules determine whether to connect based on the destination host." : {
-      "localizations" : {
-        "fa" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "وقتی عمل «ارزیابی اتصال» است، این قوانین بر اساس میزبان مقصد تصمیم می‌گیرند وصل شود یا نه."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Когда действие — «Оценить подключение», эти правила решают подключаться ли по целевому хосту."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当操作为「评估连接」时，这些规则根据目标主机决定是否连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "當操作爲「評估連接」時，這些規則根據目標主機決定是否連接。"
-          }
-        }
-      }
-    },
     "When memory limit is enabled, you will receive a report if the service memory exceeds the limit. You can also manually trigger report collection." : {
       "localizations" : {
         "fa" : {
@@ -13415,6 +14020,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "附帶日誌"
+          }
+        }
+      }
+    },
+    "Without rules, the VPN connects on any network." : {
+      "localizations" : {
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بدون قانون، VPN در هر شبکه‌ای وصل می‌شود."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без правил VPN подключается в любой сети."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有规则时，VPN 会在任意网络上连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有規則時，VPN 會在任意網絡上連接。"
           }
         }
       }

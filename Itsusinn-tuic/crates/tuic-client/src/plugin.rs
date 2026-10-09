@@ -14,8 +14,10 @@ use wind_tuic::quinn::outbound::{ReconnectConfig, TuicOutbound, TuicOutboundOpts
 
 use crate::{
 	config::{BackendMode, Relay},
+	tcp_forward::BoundTcpForwardInbound,
 	tls::{TlsConfigError, build_client_config},
-	tunnel::{TunnelTcpInbound, TunnelUdpInbound},
+	tunnel::TunnelUdpInbound,
+	upstream_proxy::ProxyBridge,
 };
 
 /// Simple router: everything goes to the TUIC outbound.
@@ -70,10 +72,20 @@ async fn resolve_peer(relay: &Relay) -> eyre::Result<(SocketAddr, String)> {
 
 /// Build the outbound selected by `backend.mode`.
 async fn build_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::Result<Arc<dyn Outbound>> {
+	validate_proxy_backend(&relay)?;
 	match relay.backend_mode {
 		BackendMode::Quinn => build_quinn_outbound(ctx, relay).await,
 		BackendMode::Quiche => build_quiche_outbound(ctx, relay).await,
 	}
+}
+
+fn validate_proxy_backend(relay: &Relay) -> eyre::Result<()> {
+	if relay.proxy.is_some() && relay.backend_mode == BackendMode::Quiche {
+		return Err(eyre::eyre!(
+			"upstream SOCKS5 proxy requires backend.mode = \"quinn\"; the quiche backend does not support it"
+		));
+	}
+	Ok(())
 }
 
 /// Install the process-wide rustls crypto provider exactly once. Mirrors
@@ -121,8 +133,12 @@ pub async fn build_quinn_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::R
 		err => eyre::Report::new(err),
 	})?;
 
+	let proxy_bridge = match relay.proxy.clone() {
+		Some(proxy) => Some(ProxyBridge::new(&ctx, proxy, server_addr, relay.timeout, reconnect.clone()).await?),
+		None => None,
+	};
 	let opts = TuicOutboundOpts {
-		peer_addr: server_addr,
+		peer_addr: proxy_bridge.as_ref().map_or(server_addr, |bridge| bridge.peer_addr),
 		peer_resolver: None,
 		sni,
 		auth: (relay.uuid, password),
@@ -145,14 +161,25 @@ pub async fn build_quinn_outbound(ctx: Arc<AppContext>, relay: Relay) -> eyre::R
 		stream_receive_window: Some(u64::from(relay.receive_window)),
 		max_idle_time: None,
 		udp_relay_mode: relay.udp_relay_mode,
-		socket_factory: None,
+		socket_factory: proxy_bridge.as_ref().map(|bridge| bridge.socket_factory.clone()),
 	};
 
-	let outbound: TuicOutbound = TuicOutbound::new(ctx, opts).await?;
+	let outbound = match &proxy_bridge {
+		Some(bridge) => tokio::select! {
+			_ = bridge.ctx.token.cancelled() => return Err(eyre::eyre!("proxied TUIC setup cancelled")),
+			result = tokio::time::timeout(relay.timeout, TuicOutbound::new(bridge.ctx.clone(), opts)) => {
+				result.wrap_err("proxied TUIC handshake timed out")??
+			}
+		},
+		None => TuicOutbound::new(ctx, opts).await?,
+	};
 
 	outbound.start_poll().await?;
 
-	Ok(Arc::new(outbound) as Arc<dyn Outbound>)
+	Ok(match proxy_bridge {
+		Some(bridge) => bridge.wrap(outbound),
+		None => Arc::new(outbound) as Arc<dyn Outbound>,
+	})
 }
 
 /// Build a `wind-tuic` quiche-backend outbound.
@@ -252,7 +279,28 @@ impl TuicClientPlugin {
 
 impl Plugin<ClientRouter> for TuicClientPlugin {
 	async fn build(self, app: App<ClientRouter>) -> eyre::Result<App<ClientRouter>> {
+		// Reject an unsupported proxy even in lazy mode, before any listener
+		// is bound or a factory can accidentally dial the relay directly.
+		validate_proxy_backend(&self.cfg.relay)?;
 		let ctx = app.context().clone();
+		let local = self.cfg.local;
+		// Bind every forwarder before eager relay setup can start background
+		// tasks. These owned inbounds release their sockets if any later bind
+		// or relay setup fails, and reserve the ports continuously on success.
+		let mut tcp_inbounds = Vec::new();
+		for entry in local.tcp_forward {
+			let listen = entry.listen;
+			let inbound = BoundTcpForwardInbound::bind(listen, entry.remote, ctx.token.clone())
+				.wrap_err_with(|| format!("failed to bind the TCP forward listener {listen}"))?;
+			tcp_inbounds.push(inbound);
+		}
+		let mut udp_inbounds = Vec::new();
+		for entry in local.udp_forward {
+			let listen = entry.listen;
+			let inbound = TunnelUdpInbound::new(listen, entry.remote, entry.timeout, ctx.token.clone())
+				.wrap_err_with(|| format!("failed to bind the UDP forward listener {listen}"))?;
+			udp_inbounds.push(inbound);
+		}
 		let relay = self.cfg.relay;
 		let lazy = relay.lazy;
 		// Kept for the error context below: `relay` is moved into the factory.
@@ -281,7 +329,6 @@ impl Plugin<ClientRouter> for TuicClientPlugin {
 		let app = app.set_router(ClientRouter);
 
 		// SOCKS5 inbound
-		let local = self.cfg.local;
 		let auth = match (&local.username, &local.password) {
 			(Some(u), Some(p)) => AuthMode::Password {
 				username: String::from_utf8_lossy(u).into_owned(),
@@ -308,31 +355,12 @@ impl Plugin<ClientRouter> for TuicClientPlugin {
 
 		// TCP tunnel inbounds
 		let mut app = app;
-		for entry in local.tcp_forward {
-			let listen = entry.listen;
-			let remote = entry.remote;
-			app = app.add_inbound_with(move |_: InboundHooks, ctx: Arc<AppContext>| {
-				TunnelTcpInbound::new(listen, remote, ctx.token.clone())
-			});
+		for inbound in tcp_inbounds {
+			app = app.add_inbound_with(move |_: InboundHooks, _: Arc<AppContext>| inbound);
 		}
 
 		// UDP tunnel inbounds
-		//
-		// The forwarder socket is bound here, while `build` can still return an
-		// error, and the bound inbound is then moved into the factory.
-		// `App::add_inbound_with` only accepts an infallible factory and
-		// `App::run` merely logs a `listen` failure, so binding inside the
-		// factory turned a taken port into a panic in the run task — or, with
-		// the panic removed, into a forwarder that silently never starts.
-		// Binding here reports the conflict as a startup error, and handing the
-		// already-bound socket over keeps the port continuously reserved
-		// instead of unbinding and rebinding it.
-		for entry in local.udp_forward {
-			let listen = entry.listen;
-			let remote = entry.remote;
-			let timeout = entry.timeout;
-			let inbound = TunnelUdpInbound::new(listen, remote, timeout, ctx.token.clone())
-				.map_err(|e| eyre::Report::new(e).wrap_err(format!("failed to bind the UDP forward listener {listen}")))?;
+		for inbound in udp_inbounds {
 			app = app.add_inbound_with(move |_: InboundHooks, _: Arc<AppContext>| inbound);
 		}
 

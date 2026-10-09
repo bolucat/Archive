@@ -1,4 +1,5 @@
 import { app, BrowserWindow, crashReporter, dialog, ipcMain, screen, session, shell } from "electron";
+import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -91,6 +92,9 @@ process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", r
 // custom tray menu window cannot be positioned; under XWayland it can. Ozone
 // is initialized before the main script runs and the resolved platform is
 // appended to the command line, so appendSwitch cannot change it anymore.
+// app.relaunch() starts its relauncher with Chromium's default launch options,
+// which set no_new_privs; the relaunched app inherits it and pkexec can no
+// longer gain root.
 if (
   process.platform === "linux" &&
   process.env.DISPLAY !== undefined &&
@@ -98,8 +102,11 @@ if (
   !process.argv.some((argument) => argument.startsWith("--ozone-platform")) &&
   process.env.ELECTRON_OZONE_PLATFORM_HINT === undefined
 ) {
-  app.relaunch({ args: process.argv.slice(1).concat("--ozone-platform=x11") });
-  app.exit(0);
+  spawn(process.execPath, process.argv.slice(1).concat("--ozone-platform=x11"), {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+  process.exit(0);
 }
 
 if (process.platform === "linux" && app.commandLine.getSwitchValue("ozone-platform") === "x11") {

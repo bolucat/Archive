@@ -51,9 +51,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
                     dnsServers.append(dnsServerIterator.next())
                 }
                 if !dnsServers.isEmpty {
-                    let newDNSSettings = NEDNSSettings(servers: dnsServers)
-                    settings.dnsSettings = newDNSSettings
-                    dnsSettings = newDNSSettings
+                    dnsSettings = NEDNSSettings(servers: dnsServers)
                 }
             }
 
@@ -169,6 +167,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
                 dnsSettings?.matchDomains = [""]
                 dnsSettings?.matchDomainsNoSearch = true
             }
+            settings.dnsSettings = dnsSettings
         }
 
         if options.isHTTPProxyEnabled() {
@@ -744,7 +743,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
 
     public func lookupSFTPServer(_ error: NSErrorPointer) -> String {
         #if JAILBREAK
-            return "\(JailbreakConfiguration.rootlessPrefix)/usr/libexec/sftp-server"
+            return JailbreakConfiguration.sftpServerPath
         #else
             error?.pointee = NSError(domain: "ExtensionPlatformInterface", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "lookupSFTPServer is not supported on Apple platforms",

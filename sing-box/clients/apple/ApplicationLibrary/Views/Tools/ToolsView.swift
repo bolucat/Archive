@@ -19,6 +19,7 @@ public struct ToolsView: View {
         @State private var showOOMReportList = false
         @State private var showPowerReportList = false
         @State private var remoteServers: [RemoteServer] = []
+        @Environment(\.remoteControlInToolbar) private var remoteControlInToolbar
     #endif
     #if !os(tvOS)
         @EnvironmentObject private var sendManager: TaildropSendManager
@@ -27,9 +28,6 @@ public struct ToolsView: View {
         @State private var sshPresentedSession: TailscaleSSHPresentedSession?
         @State private var pendingSSHSession: TailscaleSSHPresentedSession?
         @State private var taildropEndpointTag: String?
-    #endif
-    #if os(macOS)
-        @Environment(\.openWindow) private var openWindow
     #endif
 
     public init() {}
@@ -74,7 +72,7 @@ public struct ToolsView: View {
                             } else if sshPeers.count > 1 {
                                 Section("Connect via SSH") {
                                     ForEach(sshPeers) { info in
-                                        Button(info.peer.hostName) {
+                                        Button(info.peer.displayName) {
                                             handleSSH(info)
                                         }
                                     }
@@ -260,7 +258,7 @@ public struct ToolsView: View {
         #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if !remoteServers.isEmpty {
+                    if !remoteServers.isEmpty, !remoteControlInToolbar {
                         othersMenu
                     }
                 }
@@ -304,19 +302,7 @@ public struct ToolsView: View {
         }) { peer in
             TailscaleSSHPromptView(peer: peer, endpointTag: sshPromptEndpointTag, onConnect: { session in pendingSSHSession = session })
         }
-            #if os(iOS)
-        .sheet(item: $sshPresentedSession) { presented in
-            NavigationStackCompat {
-                TerminalSessionContainerView(presented)
-            }
-        }
-            #elseif os(macOS)
-        .onChangeCompat(of: sshPresentedSession) { newValue in
-            guard let newValue else { return }
-            openWindow(value: newValue)
-            sshPresentedSession = nil
-        }
-            #endif
+        .terminalPresentation(item: $sshPresentedSession)
         #endif
     }
 
@@ -375,7 +361,7 @@ public struct ToolsView: View {
                     #endif
                     sshPresentedSession = TailscaleSSHPresentedSession(
                         endpointTag: info.endpointTag,
-                        peerHostName: info.peer.hostName,
+                        peerDisplayName: info.peer.displayName,
                         peerAddress: info.peer.tailscaleIPs.first!,
                         username: usernames[info.peer.stableID] ?? "root",
                         terminalType: termTypes[info.peer.stableID] ?? "xterm-256color",

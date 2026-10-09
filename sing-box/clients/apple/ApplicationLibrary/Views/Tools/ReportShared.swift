@@ -11,6 +11,7 @@ struct ReportLabel: View {
     let date: Date
     let isRead: Bool
     let origin: String?
+    var kind: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -23,6 +24,10 @@ struct ReportLabel: View {
                 HStack(spacing: 4) {
                     Image(systemName: origin == ReportArchive.tvOSDeviceOrigin ? "appletv.fill" : Self.localDeviceIcon)
                     Text(origin == ReportArchive.tvOSDeviceOrigin ? "Apple TV" : "Local")
+                    if kind == CrashReportMetadata.hangKind {
+                        Image(systemName: "hourglass")
+                        Text("Hang")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -237,10 +242,14 @@ struct ReportFileContentView: View {
             while let presented = topViewController.presentedViewController {
                 topViewController = presented
             }
-            topViewController.present(
-                UIActivityViewController(activityItems: [item], applicationActivities: nil),
-                animated: true
-            )
+            let activityViewController = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+            if let popoverPresentationController = activityViewController.popoverPresentationController {
+                let sourceView: UIView = topViewController.view
+                popoverPresentationController.sourceView = sourceView
+                popoverPresentationController.sourceRect = CGRect(x: sourceView.bounds.midX, y: sourceView.bounds.midY, width: 0, height: 0)
+                popoverPresentationController.permittedArrowDirections = []
+            }
+            topViewController.present(activityViewController, animated: true)
         }
     #endif
 #endif

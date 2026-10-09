@@ -67,10 +67,12 @@ shoes [OPTIONS] <config.yaml> [config.yaml...]
 
 OPTIONS:
     -t, --threads NUM    Set the number of worker threads (default: CPU count)
-    -d, --dry-run        Parse the config and exit
+    -d, --dry-run        Validate the config and certificates, then exit
     --no-reload          Disable automatic config reloading on file changes
 
 COMMANDS:
+    check <config.yaml>                       Alias for --dry-run
+    version                                  Alias for --version
     generate-reality-keypair                  Generate a new Reality X25519 keypair
     generate-shadowsocks-2022-password <cipher>    Generate a Shadowsocks password
 ```
@@ -260,6 +262,14 @@ See the [examples](./examples) directory for all examples.
             type: vless
             user_id: b85798ef-e9dc-46a4-9a87-8da4499d36d0
 ```
+
+On created Linux devices, TCPv4 transmit segmentation offload is selected
+automatically when available. IPv6 continues using ordinary MTU-sized packets;
+the configured MTU and TCP buffer sizes are unchanged. Set
+`segmentation_offload: false` to disable it, or `true` to require it at startup.
+Explicit enablement is not supported with `device_fd`, packet-information
+headers, or non-Linux devices. Automatic setup falls back to ordinary packets
+if offload initialization fails.
 
 ## Similar Projects
 

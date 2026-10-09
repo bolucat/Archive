@@ -45,6 +45,22 @@ function runChecked(command: string, commandArguments: string[]) {
   }
 }
 
+function imageSize(imagePath: string): { width: number; height: number } {
+  const result = spawnSync("magick", ["identify", "-format", "%w %h", imagePath], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  if (result.error) {
+    console.error(`magick: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+  const [width, height] = result.stdout.trim().split(" ").map(Number);
+  return { width, height };
+}
+
 function centerOnCanvas(glyphPath: string, canvasSize: number, outputPath: string) {
   runChecked("magick", [
     glyphPath,
@@ -89,8 +105,18 @@ function renderColorTrayIcon(size: number, workingDirectory: string, outputPath:
 }
 
 // The source is an SF Symbols template sheet; Regular-M is the variant AppKit
-// renders for the Apple client's status item.
-function renderTrayIcon(contentSize: number, canvasSize: number, workingDirectory: string, outputPath: string) {
+// renders for the Apple client's status item. The stopped variant reproduces
+// drawStatusItemIcon in the Apple client's StatusBarController: a slash across
+// the glyph from top-left to bottom-right with the knockout gap on its
+// upper-right side only, as SF Symbols slash variants are built.
+function renderTrayIcons(
+  contentSize: number,
+  canvasSize: number,
+  scale: number,
+  workingDirectory: string,
+  outputPath: string,
+  stoppedOutputPath: string,
+) {
   const glyphPath = path.join(workingDirectory, `tray-glyph-${canvasSize}.png`);
   runChecked("rsvg-convert", [
     "--export-id=Regular-M",
@@ -104,6 +130,54 @@ function renderTrayIcon(contentSize: number, canvasSize: number, workingDirector
     statusBarIconSource,
   ]);
   centerOnCanvas(glyphPath, canvasSize, outputPath);
+  const glyph = imageSize(glyphPath);
+  const lineWidth = Math.max(1.5, (0.09 * glyph.height) / scale) * scale;
+  const left = (canvasSize - glyph.width) / 2 - 0.5;
+  const top = (canvasSize - glyph.height) / 2 - 0.5;
+  const right = left + glyph.width;
+  const bottom = top + glyph.height;
+  const knockoutOffset = lineWidth / (2 * Math.SQRT2);
+  const strokeArguments = [
+    "-size",
+    `${canvasSize}x${canvasSize}`,
+    "xc:none",
+    "-fill",
+    "none",
+    "-stroke",
+    "black",
+  ];
+  const knockoutLine = [
+    `${left + knockoutOffset},${top - knockoutOffset}`,
+    `${right + knockoutOffset},${bottom - knockoutOffset}`,
+  ].join(" ");
+  runChecked("magick", [
+    outputPath,
+    "(",
+    ...strokeArguments,
+    "-strokewidth",
+    String(lineWidth * 2),
+    "-draw",
+    `stroke-linecap round line ${knockoutLine}`,
+    ")",
+    "-compose",
+    "DstOut",
+    "-composite",
+    "(",
+    ...strokeArguments,
+    "-strokewidth",
+    String(lineWidth),
+    "-draw",
+    `stroke-linecap round line ${left},${top} ${right},${bottom}`,
+    ")",
+    "-compose",
+    "Over",
+    "-composite",
+    stoppedOutputPath,
+  ]);
+}
+
+function desaturateIcon(inputPath: string, outputPath: string) {
+  runChecked("magick", [inputPath, "-modulate", "100,0", outputPath]);
 }
 
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "sing-box-icons-"));
@@ -124,8 +198,23 @@ try {
   for (const size of linuxSizes) {
     renderApplicationIcon(size, temporaryDirectory, path.join(linuxDirectory, `${size}x${size}.png`));
   }
-  renderTrayIcon(14, 16, temporaryDirectory, path.join(repositoryRoot, "resources", "trayTemplate.png"));
-  renderTrayIcon(28, 32, temporaryDirectory, path.join(repositoryRoot, "resources", "trayTemplate@2x.png"));
+  const resourcesDirectory = path.join(repositoryRoot, "resources");
+  renderTrayIcons(
+    14,
+    16,
+    1,
+    temporaryDirectory,
+    path.join(resourcesDirectory, "trayTemplate.png"),
+    path.join(resourcesDirectory, "trayStoppedTemplate.png"),
+  );
+  renderTrayIcons(
+    28,
+    32,
+    2,
+    temporaryDirectory,
+    path.join(resourcesDirectory, "trayTemplate@2x.png"),
+    path.join(resourcesDirectory, "trayStoppedTemplate@2x.png"),
+  );
   const windowsTrayImages = windowsTraySizes.map((size) => {
     const imagePath = path.join(temporaryDirectory, `tray-color-${size}.png`);
     renderColorTrayIcon(size, temporaryDirectory, imagePath);
@@ -135,10 +224,27 @@ try {
     ...windowsTrayImages,
     "-type",
     "TrueColorAlpha",
-    path.join(repositoryRoot, "resources", "tray.ico"),
+    path.join(resourcesDirectory, "tray.ico"),
   ]);
-  renderColorTrayIcon(24, temporaryDirectory, path.join(repositoryRoot, "resources", "tray.png"));
-  renderColorTrayIcon(48, temporaryDirectory, path.join(repositoryRoot, "resources", "tray@2x.png"));
+  const windowsStoppedTrayImages = windowsTrayImages.map((imagePath) => {
+    const stoppedPath = imagePath.replace(/\.png$/, "-stopped.png");
+    desaturateIcon(imagePath, stoppedPath);
+    return stoppedPath;
+  });
+  runChecked("magick", [
+    ...windowsStoppedTrayImages,
+    "-type",
+    "TrueColorAlpha",
+    path.join(resourcesDirectory, "trayStopped.ico"),
+  ]);
+  for (const [size, name] of [
+    [24, "tray.png"],
+    [48, "tray@2x.png"],
+  ] as const) {
+    const imagePath = path.join(resourcesDirectory, name);
+    renderColorTrayIcon(size, temporaryDirectory, imagePath);
+    desaturateIcon(imagePath, path.join(resourcesDirectory, name.replace("tray", "trayStopped")));
+  }
   // electron-builder's assisted installer sidebar (MUI_WELCOMEFINISHPAGE_BITMAP,
   // 164x314 per app-builder-lib nsisOptions) is picked up from
   // build/installerSidebar.bmp by file name convention; a flat panel, so the

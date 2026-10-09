@@ -9,6 +9,7 @@ public struct DashboardView: View {
     @StateObject private var cardConfiguration = DashboardCardConfiguration()
 
     #if os(iOS)
+        @Environment(\.remoteControlInToolbar) private var remoteControlInToolbar
         @State private var showCardManagement = false
         @State private var remoteServers: [RemoteServer] = []
     #endif
@@ -66,8 +67,8 @@ public struct DashboardView: View {
         }
         #else
         .sheet(item: $environments.pendingImportRemoteProfile) { request in
-                    importRemoteProfileSheet(for: request)
-                }
+            importRemoteProfileSheet(for: request)
+        }
         #endif
         #if os(macOS)
             .onChangeCompat(of: controlActiveState) { state in
@@ -81,16 +82,25 @@ public struct DashboardView: View {
     }
 
     #if os(iOS)
+        @ViewBuilder
         private var othersMenu: some View {
-            Menu {
+            if remoteControlInToolbar {
                 Button {
                     showCardManagement = true
                 } label: {
                     Label("Dashboard Items", systemImage: "square.grid.2x2")
                 }
-                RemoteControlMenuItems(servers: remoteServers)
-            } label: {
-                Label("Others", systemImage: "line.3.horizontal.circle")
+            } else {
+                Menu {
+                    Button {
+                        showCardManagement = true
+                    } label: {
+                        Label("Dashboard Items", systemImage: "square.grid.2x2")
+                    }
+                    RemoteControlMenuItems(servers: remoteServers)
+                } label: {
+                    Label("Others", systemImage: "line.3.horizontal.circle")
+                }
             }
         }
 

@@ -37,8 +37,10 @@
 
         @Published public private(set) var phase: Phase = .connecting
         @Published public private(set) var authBanner: String?
+        @Published public private(set) var hasReceivedOutput = false
 
         @Published public private(set) var terminalState: TerminalViewState?
+        @Published public private(set) var backgroundColor: TerminalColor?
         public let extras = TailsshTerminalExtras()
         public var onWindowClose: (() -> Void)?
         private let terminalSession: InMemoryTerminalSession
@@ -114,6 +116,9 @@
             let darkTheme = await SharedPreferences.tailscaleSSHGhosttyDarkTheme.get()
             let darkConfig = await SharedPreferences.tailscaleSSHGhosttyDarkConfig.get()
             let fontOverlay = await Self.resolveFontOverlay()
+            #if os(iOS)
+                extras.alwaysShowsSymbolBar = await SharedPreferences.tailscaleSSHAlwaysShowSymbolBar.get()
+            #endif
             guard !isDisconnected, !Task.isCancelled else { return }
 
             let inputs = AsyncStream<Data> { inputContinuation = $0 }
@@ -130,6 +135,7 @@
             )
             state.configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
             extras.state = state
+            state.$backgroundColor.map { Optional($0) }.assign(to: &$backgroundColor)
             terminalState = state
 
             let options = LibboxTailscaleSSHOptions()
@@ -402,6 +408,11 @@
         fileprivate func handleOutput(_ data: Data) {
             guard !isDisconnected else { return }
             terminalSession.receive(data)
+            guard !hasReceivedOutput else { return }
+            // The surface shows uninitialized cells until its first redraw after content arrives.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.hasReceivedOutput = true
+            }
         }
     }
 

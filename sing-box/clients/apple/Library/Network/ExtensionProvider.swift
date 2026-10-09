@@ -26,6 +26,9 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     }
 
     public var overridePreferences: OverridePreferences?
+    #if os(iOS)
+        private var screenStateObserver: ScreenStateObserver?
+    #endif
 
     private func applyStartOptions(_ options: [String: NSObject]) throws {
         try ApplicationLocale.apply(options["locale"] as? String)
@@ -37,6 +40,34 @@ open class ExtensionProvider: NEPacketTunnelProvider {
             autoRouteUseSubRangesByDefault: (options["autoRouteUseSubRangesByDefault"] as? NSNumber)?.boolValue ?? false,
             excludeAPNsRoute: (options["excludeAPNsRoute"] as? NSNumber)?.boolValue ?? false
         )
+    }
+
+    private func platformMetadata() -> String {
+        var metadata: [String: Any] = [:]
+        #if !os(tvOS)
+            var networkExtension: [String: Any] = [
+                "includeAllNetworks": protocolConfiguration.includeAllNetworks,
+                "excludeLocalNetworks": protocolConfiguration.excludeLocalNetworks,
+                "enforceRoutes": protocolConfiguration.enforceRoutes,
+            ]
+            if #available(iOS 16.4, macOS 13.3, *) {
+                networkExtension["excludeAPNs"] = protocolConfiguration.excludeAPNs
+                networkExtension["excludeCellularServices"] = protocolConfiguration.excludeCellularServices
+            }
+            if #available(iOS 17.4, macOS 14.4, *) {
+                networkExtension["excludeDeviceCommunication"] = protocolConfiguration.excludeDeviceCommunication
+            }
+            metadata["networkExtension"] = networkExtension
+        #endif
+        if let overridePreferences {
+            metadata["profileOverride"] = [
+                "systemProxyEnabled": overridePreferences.systemProxyEnabled,
+                "excludeDefaultRoute": overridePreferences.excludeDefaultRoute,
+                "autoRouteUseSubRangesByDefault": overridePreferences.autoRouteUseSubRangesByDefault,
+                "excludeAPNsRoute": overridePreferences.excludeAPNsRoute,
+            ]
+        }
+        return PlatformMetadata.json(metadata)
     }
 
     private func persistStartOptions(_ options: [String: NSObject]) throws {
@@ -153,6 +184,7 @@ open class ExtensionProvider: NEPacketTunnelProvider {
         options.crashReportSource = "NetworkExtension"
         options.appVersion = Bundle.application.versionNumber
         options.appMarketingVersion = Bundle.application.version
+        options.platformMetadata = platformMetadata()
 
         #if os(tvOS)
             if let port = effectiveOptions["commandServerPort"] as? NSNumber {
@@ -179,7 +211,7 @@ open class ExtensionProvider: NEPacketTunnelProvider {
             throw ExtensionStartupError("(packet-tunnel) error: setup service: \(setupError.localizedDescription)")
         }
         LibboxPromoteOOMDraft()
-        LibboxPromotePowerReportDraft()
+        LibboxDiscardPowerReportDraft()
 
         var error: NSError?
         commandServer = LibboxNewCommandServer(platformInterface, platformInterface, &error)
@@ -211,6 +243,11 @@ open class ExtensionProvider: NEPacketTunnelProvider {
             throw error
         }
         writeMessage("(packet-tunnel): Here I stand")
+        #if os(iOS)
+            if let commandServer {
+                screenStateObserver = ScreenStateObserver(commandServer: commandServer)
+            }
+        #endif
         #if os(macOS)
             if Variant.useSystemExtension {
                 xpcService.markServiceReady()
@@ -282,6 +319,10 @@ open class ExtensionProvider: NEPacketTunnelProvider {
 
     override open func stopTunnel(with reason: NEProviderStopReason) async {
         writeMessage("(packet-tunnel) stopping, reason: \(reason)")
+        #if os(iOS)
+            screenStateObserver?.cancel()
+            screenStateObserver = nil
+        #endif
         stopService()
         if let server = commandServer {
             try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)

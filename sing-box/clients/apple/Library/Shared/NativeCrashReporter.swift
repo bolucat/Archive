@@ -53,6 +53,23 @@ public enum NativeCrashReporter {
         return data
     }
 
+    public static func liveReportText(thread: thread_t) throws -> String {
+        installLock.lock()
+        let reporter = reporter
+        installLock.unlock()
+        guard let reporter else {
+            throw NSError(domain: "NativeCrashReporter", code: 1, userInfo: [NSLocalizedDescriptionKey: "Native crash reporter is not installed"])
+        }
+        let data = try reporter.generateLiveReport(withThread: thread, exception: nil)
+        let crashReport = try PLCrashReport(data: data)
+        guard let text = PLCrashReportTextFormatter.stringValue(for: crashReport, with: PLCrashReportTextFormatiOS),
+              !text.isEmpty
+        else {
+            throw NSError(domain: "NativeCrashReporter", code: 2, userInfo: [NSLocalizedDescriptionKey: "Native crash report is empty"])
+        }
+        return text
+    }
+
     public static func archiveLiveReportForCurrentProcess() {
         installLock.lock()
         guard let reporter else {

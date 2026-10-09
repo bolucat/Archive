@@ -15,6 +15,7 @@ use wind_tuic::quinn::inbound::{TuicInbound, TuicInboundOpts};
 use crate::{
 	Config,
 	config::GeoDataConfig,
+	connection_limit::PerUserConnectionLimit,
 	restful::{self, ConnectionTracker},
 	wind_adapter::{self, ServerInbound, TuicRouter, load_cert_from_files},
 };
@@ -80,11 +81,17 @@ impl Plugin<TuicRouter> for TuicServerPlugin {
 		let stream_timeout = cfg.stream_timeout;
 		let app = app.add_outbound(
 			"default",
-			wind_adapter::make_outbound_action(&cfg.outbound.default, resolver.clone(), stream_timeout),
+			wind_adapter::make_guarded_outbound_action(
+				&cfg.outbound.default,
+				resolver.clone(),
+				stream_timeout,
+				&cfg.experimental,
+			),
 		);
 		let mut app = app;
 		for (name, rule) in std::mem::take(&mut cfg.outbound.named) {
-			let handler = wind_adapter::make_outbound_action(&rule, resolver.clone(), stream_timeout);
+			let handler =
+				wind_adapter::make_guarded_outbound_action(&rule, resolver.clone(), stream_timeout, &cfg.experimental);
 			app = app.add_outbound(name, handler);
 		}
 
@@ -105,6 +112,9 @@ impl Plugin<TuicRouter> for TuicServerPlugin {
 		};
 
 		let mut app = app;
+		if cfg.restful.maximum_clients_per_user > 0 {
+			app = app.add_connection_hooks(Arc::new(PerUserConnectionLimit::new(cfg.restful.maximum_clients_per_user)));
+		}
 		if let Some(t) = &tracker {
 			app = app.add_connection_hooks(t.clone() as Arc<dyn wind_core::ConnectionHooks>);
 		}

@@ -1,8 +1,6 @@
 import { nativeImage } from "electron";
 import * as dbus from "dbus-next";
 
-import { resourcePath } from "./resources";
-
 const DBUS_SERVICE = "org.freedesktop.DBus";
 const DBUS_PATH = "/org/freedesktop/DBus";
 const DBUS_INTERFACE = "org.freedesktop.DBus";
@@ -15,8 +13,8 @@ const STATUS_NOTIFIER_ITEM_INTERFACE = "org.kde.StatusNotifierItem";
 type IconPixmap = [width: number, height: number, pixels: Buffer];
 type ToolTip = [iconName: string, iconPixmap: IconPixmap[], title: string, description: string];
 
-function iconPixmaps(): IconPixmap[] {
-  const image = nativeImage.createFromPath(resourcePath("tray.png"));
+function iconPixmaps(iconPath: string): IconPixmap[] {
+  const image = nativeImage.createFromPath(iconPath);
   return image.getScaleFactors().map((scaleFactor) => {
     const size = image.getSize(scaleFactor);
     const bitmap = image.toBitmap({ scaleFactor });
@@ -46,7 +44,7 @@ class StatusNotifierItem extends dbus.interface.Interface {
   readonly Status = "Active";
   readonly WindowId = 0;
   readonly IconName = "";
-  readonly IconPixmap = iconPixmaps();
+  IconPixmap: IconPixmap[];
   readonly OverlayIconName = "";
   readonly OverlayIconPixmap: IconPixmap[] = [];
   readonly AttentionIconName = "";
@@ -58,10 +56,12 @@ class StatusNotifierItem extends dbus.interface.Interface {
   readonly ItemIsMenu = false;
 
   constructor(
+    iconPath: string,
     private readonly menu: (x: number, y: number) => void,
     private readonly primaryActivate: (x: number, y: number) => void,
   ) {
     super(STATUS_NOTIFIER_ITEM_INTERFACE);
+    this.IconPixmap = iconPixmaps(iconPath);
   }
 
   ContextMenu(x: number, y: number) {
@@ -142,8 +142,12 @@ export class X11Tray {
   private readonly item: StatusNotifierItem;
   private destroyed = false;
 
-  constructor(menu: (x: number, y: number) => void, activate: (x: number, y: number) => void) {
-    this.item = new StatusNotifierItem(menu, activate);
+  constructor(
+    iconPath: string,
+    menu: (x: number, y: number) => void,
+    activate: (x: number, y: number) => void,
+  ) {
+    this.item = new StatusNotifierItem(iconPath, menu, activate);
     this.bus.export(STATUS_NOTIFIER_ITEM_PATH, this.item);
     this.bus.on("error", (error: unknown) => {
       if (!this.destroyed) {
@@ -187,6 +191,11 @@ export class X11Tray {
     if (reply === null) {
       throw new Error("StatusNotifierWatcher returned no registration response");
     }
+  }
+
+  setIcon(iconPath: string) {
+    this.item.IconPixmap = iconPixmaps(iconPath);
+    this.item.NewIcon();
   }
 
   destroy() {

@@ -769,6 +769,29 @@ FunctionEnd
   ${endif}
 !macroend
 
+!macro preInit
+  !ifndef BUILD_UNINSTALLER
+    !insertmacro restoreInstallerRegistryView
+    ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+    ${if} $0 != ""
+      StrLen $1 $0
+      StrCpy $1 $EXEPATH $1
+      # Previously released uninstallers terminate every process whose image path starts with the install location string.
+      ${if} $1 == $0
+        InitPluginsDir
+        CopyFiles /SILENT "$EXEPATH" "$PLUGINSDIR\installer.exe"
+        ${GetParameters} $1
+        ClearErrors
+        ExecWait '"$PLUGINSDIR\installer.exe" $1' $2
+        ${ifNot} ${Errors}
+          SetErrorLevel $2
+          Quit
+        ${endif}
+      ${endif}
+    ${endif}
+  !endif
+!macroend
+
 !macro customInit
   !insertmacro confirmNativeArchitecture
   !insertmacro setInstallationLayoutRegistryView

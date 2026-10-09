@@ -79,7 +79,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -927,12 +929,7 @@ class MainActivity :
             }
         }
         val showGroupsInNav = dashboardUiState.hasGroups
-        val showConnectionsInNav =
-            if (isRemote) {
-                remoteConnected
-            } else {
-                currentServiceStatus == Status.Started || currentServiceStatus == Status.Starting
-            }
+        val connectionsAvailable = if (isRemote) remoteConnected else currentServiceStatus == Status.Started
 
         val railScreens =
             buildList {
@@ -940,7 +937,7 @@ class MainActivity :
                 if (showGroupsInNav) {
                     add(Screen.Groups)
                 }
-                if (showConnectionsInNav) {
+                if (connectionsAvailable) {
                     add(Screen.Connections)
                 }
                 add(Screen.Log)
@@ -957,7 +954,7 @@ class MainActivity :
                 if (useNavigationRail && showGroupsInNav) {
                     add(Screen.Groups.route)
                 }
-                if (useNavigationRail && showConnectionsInNav) {
+                if (useNavigationRail && connectionsAvailable) {
                     add(Screen.Connections.route)
                 }
             }
@@ -1369,7 +1366,6 @@ class MainActivity :
                 showGroupsSheet = false
             }
         }
-        val connectionsAvailable = if (isRemote) remoteConnected else currentServiceStatus == Status.Started
         LaunchedEffect(connectionsAvailable) {
             if (!connectionsAvailable) {
                 showConnectionsSheet = false
@@ -1616,7 +1612,7 @@ class MainActivity :
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.location_permission_title)) },
-            text = { Text(stringResource(R.string.location_permission_description)) },
+            text = { Text(AnnotatedString.fromHtml(stringResource(R.string.location_permission_description))) },
             confirmButton = {
                 TextButton(onClick = onConfirm) {
                     Text(stringResource(R.string.ok))
@@ -1635,7 +1631,7 @@ class MainActivity :
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.location_permission_title)) },
-            text = { Text(stringResource(R.string.location_permission_background_description)) },
+            text = { Text(AnnotatedString.fromHtml(stringResource(R.string.location_permission_background_description))) },
             confirmButton = {
                 TextButton(onClick = onConfirm) {
                     Text(stringResource(R.string.ok))

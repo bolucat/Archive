@@ -12,6 +12,7 @@ public struct CrashReport: Identifiable, Hashable, Sendable {
     public let fileURL: URL
     public var isRead: Bool
     public let origin: String?
+    public let kind: String?
 }
 
 public struct CrashReportFile: Identifiable, Hashable, Sendable {
@@ -19,6 +20,7 @@ public struct CrashReportFile: Identifiable, Hashable, Sendable {
         case goLog
         case nativeLog
         case metadata
+        case hangReport
         case configContent
     }
 
@@ -197,13 +199,14 @@ public class CrashReportManager: ObservableObject {
                 let date = CrashReportArchive.crashDate(for: url)
                     ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
                     ?? Date.distantPast
-                let origin = CrashReportArchive.readMetadata(for: url)?.deviceOrigin
+                let metadata = CrashReportArchive.readMetadata(for: url)
                 return CrashReport(
                     id: url.lastPathComponent,
                     date: date,
                     fileURL: url,
                     isRead: FileManager.default.fileExists(atPath: url.appendingPathComponent(ReportArchive.readMarkerFileName).path),
-                    origin: origin
+                    origin: metadata?.deviceOrigin,
+                    kind: metadata?.kind
                 )
             }
             .sorted { $0.date > $1.date }
@@ -250,7 +253,7 @@ public class CrashReportManager: ObservableObject {
     }
 
     private nonisolated static func coalesceArchivedCrashReports() {
-        let records = loadArchivedReportRecords()
+        let records = loadArchivedReportRecords().filter { $0.metadata.kind != CrashReportMetadata.hangKind }
         let goOnlyRecords = records.filter { $0.contents.goLog != nil && $0.contents.nativeLog == nil }
         let nativeOnlyRecords = records.filter { $0.contents.nativeLog != nil && $0.contents.goLog == nil }
         guard !goOnlyRecords.isEmpty, !nativeOnlyRecords.isEmpty else {
@@ -296,6 +299,10 @@ public class CrashReportManager: ObservableObject {
             let metadataURL = CrashReportArchive.metadataURL(for: report.fileURL)
             if fm.fileExists(atPath: metadataURL.path) {
                 files.append(CrashReportFile(id: .metadata, displayName: "Metadata", fileURL: metadataURL))
+            }
+            let hangURL = CrashReportArchive.hangReportURL(for: report.fileURL)
+            if fm.fileExists(atPath: hangURL.path) {
+                files.append(CrashReportFile(id: .hangReport, displayName: "Hang", fileURL: hangURL))
             }
             let nativeURL = CrashReportArchive.nativeLogURL(for: report.fileURL)
             if fm.fileExists(atPath: nativeURL.path) {
@@ -525,7 +532,18 @@ enum CrashReportMetadataBuilder {
             signalName: firstNonEmpty(metadata.signalName, parsedDetails.signalName),
             signalCode: firstNonEmpty(metadata.signalCode, parsedDetails.signalCode),
             exceptionName: firstNonEmpty(metadata.exceptionName, parsedDetails.exceptionName),
-            exceptionReason: firstNonEmpty(metadata.exceptionReason, parsedDetails.exceptionReason)
+            exceptionReason: firstNonEmpty(metadata.exceptionReason, parsedDetails.exceptionReason),
+            kind: normalizedString(metadata.kind),
+            hangDuration: normalizedString(metadata.hangDuration),
+            hangResolved: normalizedString(metadata.hangResolved),
+            hangOutcome: normalizedString(metadata.hangOutcome),
+            applicationState: normalizedString(metadata.applicationState),
+            mainThreadState: normalizedString(metadata.mainThreadState),
+            mainThreadCPUUsage: normalizedString(metadata.mainThreadCPUUsage),
+            mainThreadCPUTime: normalizedString(metadata.mainThreadCPUTime),
+            mainThreadCPURatio: normalizedString(metadata.mainThreadCPURatio),
+            sinceLaunch: normalizedString(metadata.sinceLaunch),
+            sinceForeground: normalizedString(metadata.sinceForeground)
         )
     }
 

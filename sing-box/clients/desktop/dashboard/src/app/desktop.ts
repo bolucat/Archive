@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
-import type { Code, Transport } from "@connectrpc/connect";
+import type { Transport } from "@connectrpc/connect";
 
-import { isTerminalCode, type StreamPhase, type StreamSnapshot } from "../api/stream";
+import type { StreamSnapshot } from "../api/stream";
 import type { NetworkQualityTestProgress, STUNTestProgress } from "../gen/daemon/started_service_pb";
 import type { PreferenceStorage } from "../lib/storage";
 import { showError } from "./errorStore";
@@ -407,47 +407,9 @@ export function useDaemonConnection(host: DesktopHost): DaemonConnectionState {
   return state;
 }
 
-const REMOTE_RECONNECT_ATTEMPTS = 3;
-const REMOTE_STABLE_CONNECTION_MS = 5000;
-
 export interface RemoteSessionFailure {
   hadConnected: boolean;
   message: string;
-}
-
-export class RemoteSessionMonitor {
-  private hadConnected = false;
-  private cycleActive = false;
-  private connectedAt = 0;
-  private attempts = 0;
-
-  constructor(private onEnd: (failure: RemoteSessionFailure) => void) {}
-
-  update(phase: StreamPhase, errorMessage: string | undefined, errorCode: Code | undefined) {
-    if (phase === "active") {
-      if (!this.cycleActive) {
-        this.cycleActive = true;
-        this.hadConnected = true;
-        this.connectedAt = Date.now();
-      }
-      return;
-    }
-    if (phase !== "error") {
-      return;
-    }
-    const established = this.cycleActive;
-    this.cycleActive = false;
-    if (established && !isTerminalCode(errorCode)) {
-      if (Date.now() - this.connectedAt >= REMOTE_STABLE_CONNECTION_MS) {
-        this.attempts = 0;
-      }
-      if (this.attempts < REMOTE_RECONNECT_ATTEMPTS) {
-        this.attempts += 1;
-        return;
-      }
-    }
-    this.onEnd({ hadConnected: this.hadConnected, message: errorMessage ?? "" });
-  }
 }
 
 export function useRemoteSession(
@@ -455,16 +417,17 @@ export function useRemoteSession(
   onEnd: (failure: RemoteSessionFailure) => void,
 ) {
   const onEndRef = useLatestRef(onEnd);
-  const [session] = useState(() => new RemoteSessionMonitor((failure) => onEndRef.current(failure)));
+  const hadConnected = useRef(false);
   const phase = monitor?.phase ?? null;
   const errorMessage = monitor?.error;
-  const errorCode = monitor?.errorCode;
 
   useEffect(() => {
-    if (phase !== null) {
-      session.update(phase, errorMessage, errorCode);
+    if (phase === "active") {
+      hadConnected.current = true;
+    } else if (phase === "error") {
+      onEndRef.current({ hadConnected: hadConnected.current, message: errorMessage ?? "" });
     }
-  }, [session, phase, errorMessage, errorCode]);
+  }, [onEndRef, phase, errorMessage]);
 }
 
 export function useDesktopProfiles(host: DesktopHost): DesktopProfilesState {

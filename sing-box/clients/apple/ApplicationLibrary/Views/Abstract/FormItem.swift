@@ -146,7 +146,7 @@ public func FormButton(action: @escaping () -> Void, @ViewBuilder label: () -> s
     #endif
 }
 
-public func FormButton(_ titleKey: some StringProtocol, action: @escaping () -> Void) -> some View {
+public func FormButton(_ titleKey: LocalizedStringKey, action: @escaping () -> Void) -> some View {
     Button(titleKey, action: action)
     #if os(macOS)
         .buttonStyle(.plain)
@@ -156,6 +156,14 @@ public func FormButton(_ titleKey: some StringProtocol, action: @escaping () -> 
 
 public func FormButton(role: ButtonRole?, action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
     Button(role: role, action: action, label: label)
+    #if os(macOS)
+        .buttonStyle(.plain)
+        .foregroundColor(.accentColor)
+    #endif
+}
+
+public func FormLink(destination: URL, @ViewBuilder label: () -> some View) -> some View {
+    Link(destination: destination, label: label)
     #if os(macOS)
         .buttonStyle(.plain)
         .foregroundColor(.accentColor)

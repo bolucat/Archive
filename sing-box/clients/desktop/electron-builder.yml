@@ -33,6 +33,10 @@ extraResources:
     to: trayTemplate.png
   - from: resources/trayTemplate@2x.png
     to: trayTemplate@2x.png
+  - from: resources/trayStoppedTemplate.png
+    to: trayStoppedTemplate.png
+  - from: resources/trayStoppedTemplate@2x.png
+    to: trayStoppedTemplate@2x.png
   - from: dashboard/public/licenses/NotoColorEmoji-OFL.txt
     to: licenses/NotoColorEmoji-OFL.txt
   - from: resources/icons/512x512.png
@@ -52,6 +56,8 @@ win:
   extraResources:
     - from: resources/tray.ico
       to: tray.ico
+    - from: resources/trayStopped.ico
+      to: trayStopped.ico
     - from: bin/windows/${arch}/sing-box-daemon.exe
       to: daemon/sing-box-daemon.exe
     - from: bin/windows/${arch}
@@ -108,6 +114,10 @@ linux:
       to: tray.png
     - from: resources/tray@2x.png
       to: tray@2x.png
+    - from: resources/trayStopped.png
+      to: trayStopped.png
+    - from: resources/trayStopped@2x.png
+      to: trayStopped@2x.png
     - from: bin/sing-box-daemon
       to: daemon/sing-box-daemon
   desktop:
