@@ -12,19 +12,20 @@ let window
 app.whenReady().then(async () => {
   window = new BrowserWindow({ show: false, width: 640, height: 360 })
   process.stderr.write('[mpv-smoke-electron] before create\n')
-  mpv.create({ headless: false, width: 640, height: 360, hwdec: 'no' })
+  await mpv.create({ headless: false, width: 640, height: 360, hwdec: 'no' })
   process.stderr.write('[mpv-smoke-electron] after create\n')
   mpv.onFrame((frame) => {
-    if (frame?.pixels?.length === frame.width * frame.height * 4) frames++
+    if (frame?.pixels || frame?.handle || frame?.nativePixmap) frames++
+    frame?.release?.()
   })
   mpv.onError((error) => process.stderr.write(`[mpv-smoke-electron] ${error}\n`))
   await mpv.load(sample)
   process.stderr.write('[mpv-smoke-electron] after load\n')
   const deadline = Date.now() + 10_000
   while (frames === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100))
-  if (frames === 0) throw new Error('Electron native addon produced no software frames')
+  if (frames === 0) throw new Error('Electron native addon produced no frames')
   process.stderr.write(`[mpv-smoke-electron] frames=${frames}\n`)
-  mpv.destroy()
+  await mpv.destroy()
   window.destroy()
   app.exit(0)
 }).catch((error) => {

@@ -21,6 +21,17 @@ export interface IMusicTrack {
   duration_ms?: number
   lyric_source?: string
   metadata_source?: string
+  metadata_version?: number
+  metadata_provider?: string
+  metadata_confidence?: number
+  artwork_origin?: string
+  album_artist?: string
+  genre?: string
+  track_number?: number
+  disc_number?: number
+  release_date?: string
+  musicbrainz_recording_id?: string
+  musicbrainz_release_id?: string
   scanned_at: number
   updated_at?: number
   enriched_at?: number

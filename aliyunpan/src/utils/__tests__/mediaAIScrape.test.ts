@@ -105,7 +105,7 @@ describe('mediaAIScrape', () => {
     )
 
     expect(item).toMatchObject({
-      id: '42',
+      id: 'movie_42',
       type: 'movie',
       name: 'Arrival',
       folderId: 'folder-1',
@@ -140,7 +140,7 @@ describe('mediaAIScrape', () => {
         name: 'Season 2',
         episode_count: 10,
         episodes: [
-          { id: 203, name: 'Episode 3', season_number: 2, episode_number: 3 }
+          { id: 203, name: 'Episode 3', season_number: 2, episode_number: 3, vote_average: 7.8 }
         ]
       }
     }
@@ -156,6 +156,7 @@ describe('mediaAIScrape', () => {
     expect(item?.seasons?.[0].episodes?.[0]).toMatchObject({
       seasonNumber: 2,
       episodeNumber: 3,
+      rating: 7.8,
       driveFiles: [file]
     })
     expect(item?.folderId).toBe('folder-2')

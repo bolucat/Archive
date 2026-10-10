@@ -8,9 +8,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <future>
 
 #if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <gl/GL.h>
 // WGL function types (wglGetProcAddress is in wingdi.h)
@@ -24,7 +26,7 @@ typedef PROC(WINAPI* PFNWGLGETPROCADDRESSPROC)(LPCSTR);
 #include <dlfcn.h>
 #else
 #include <GL/gl.h>
-#include <GL/glx.h>
+#include <EGL/egl.h>
 #endif
 #endif
 
@@ -225,30 +227,6 @@ bool MpvContext::create(const MpvConfig& config) {
 
     m_config = config;
 
-#if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
-    if (!config.headless) {
-#ifdef _WIN32
-    // Create Windows GL context first (required for WGL extensions)
-    if (!createWindowsGLContext()) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to create Windows GL context");
-        }
-        return false;
-    }
-    m_glContext = static_cast<void*>(g_hglrc);
-#elif defined(__APPLE__)
-    // Create macOS CGL context for IOSurface sharing
-    if (!createMacOSGLContext()) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to create macOS GL context");
-        }
-        return false;
-    }
-    m_glContext = static_cast<void*>(g_cglContext);
-#endif
-    }
-#endif
-
     // Create mpv handle
     m_mpv = mpv_create();
     if (!m_mpv) {
@@ -264,9 +242,16 @@ bool MpvContext::create(const MpvConfig& config) {
     mpv_set_option_string(m_mpv, "keep-open", "yes");
     mpv_set_option_string(m_mpv, "idle", "yes");
     mpv_set_option_string(m_mpv, "terminal", "no");
-    mpv_set_option_string(m_mpv, "msg-level", "all=v");
+    mpv_set_option_string(m_mpv, "msg-level", "all=warn");
+    mpv_set_option_string(m_mpv, "network-timeout", "15");
+    mpv_set_option_string(m_mpv, "secondary-sub-pos", "96");
     if (const char* audioOutput = std::getenv("BOXPLAYER_MPV_AUDIO_OUTPUT")) {
         if (*audioOutput) mpv_set_option_string(m_mpv, "ao", audioOutput);
+    }
+
+    if (!config.fontsDir.empty()) {
+        mpv_set_option_string(m_mpv, "sub-fonts-dir", config.fontsDir.c_str());
+        mpv_set_option_string(m_mpv, "sub-font", "Noto Sans CJK SC");
     }
 
     // Initialize mpv
@@ -278,91 +263,6 @@ bool MpvContext::create(const MpvConfig& config) {
         m_mpv = nullptr;
         return false;
     }
-
-#ifdef BOXPLAYER_MPV_SOFTWARE
-    if (!config.headless) {
-        mpv_render_param params[] = {
-            {MPV_RENDER_PARAM_API_TYPE, const_cast<char*>(MPV_RENDER_API_TYPE_SW)},
-            {MPV_RENDER_PARAM_INVALID, nullptr}
-        };
-        if (mpv_render_context_create(&m_renderCtx, m_mpv, params) < 0) {
-            mpv_terminate_destroy(m_mpv);
-            m_mpv = nullptr;
-            return false;
-        }
-        mpv_render_context_set_update_callback(m_renderCtx, renderUpdateCallback, this);
-    }
-#elif !defined(BOXPLAYER_MPV_HEADLESS)
-    if (!config.headless) {
-    // Create texture sharing
-    m_textureShare = createTextureShare();
-    if (!m_textureShare) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to create texture share");
-        }
-        mpv_terminate_destroy(m_mpv);
-        m_mpv = nullptr;
-        return false;
-    }
-#ifdef __APPLE__
-    m_textureShare->setSoftwareReadback(g_softwareCGLFallback);
-#endif
-
-    // Initialize texture sharing with current GL context
-    // Note: The GL context must be created and made current before calling this
-    if (!m_textureShare->initialize(m_glContext)) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to initialize texture sharing");
-        }
-        delete m_textureShare;
-        m_textureShare = nullptr;
-        mpv_terminate_destroy(m_mpv);
-        m_mpv = nullptr;
-        return false;
-    }
-
-    // Create shared texture
-    if (!m_textureShare->createTexture(config.width, config.height)) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to create shared texture");
-        }
-        m_textureShare->destroy();
-        delete m_textureShare;
-        m_textureShare = nullptr;
-        mpv_terminate_destroy(m_mpv);
-        m_mpv = nullptr;
-        return false;
-    }
-
-    // Create render context
-    mpv_opengl_init_params gl_init_params{};
-    gl_init_params.get_proc_address = getProcAddress;
-    gl_init_params.get_proc_address_ctx = this;
-
-    int advanced_control = 1;
-    mpv_render_param params[] = {
-        {MPV_RENDER_PARAM_API_TYPE, const_cast<char*>(MPV_RENDER_API_TYPE_OPENGL)},
-        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
-        {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced_control},
-        {MPV_RENDER_PARAM_INVALID, nullptr}
-    };
-
-    if (mpv_render_context_create(&m_renderCtx, m_mpv, params) < 0) {
-        if (m_errorCallback) {
-            m_errorCallback("Failed to create mpv render context");
-        }
-        m_textureShare->destroy();
-        delete m_textureShare;
-        m_textureShare = nullptr;
-        mpv_terminate_destroy(m_mpv);
-        m_mpv = nullptr;
-        return false;
-    }
-
-    // Set up render update callback
-    mpv_render_context_set_update_callback(m_renderCtx, renderUpdateCallback, this);
-    }
-#endif
 
     // Set up wakeup callback for event handling
     mpv_set_wakeup_callback(m_mpv, wakeupCallback, this);
@@ -379,24 +279,41 @@ bool MpvContext::create(const MpvConfig& config) {
     // The Linux renderer runs libmpv in an isolated child process. Notify the
     // parent whenever tracks are discovered, added, or selected so its cached
     // track list cannot remain at the pre-load empty value.
-    mpv_observe_property(m_mpv, 9, "track-list", MPV_FORMAT_NONE);
+    mpv_observe_property(m_mpv, 9, "track-list", MPV_FORMAT_NODE);
+
+    mpv_observe_property(m_mpv, 10, "aid", MPV_FORMAT_INT64);
+    mpv_observe_property(m_mpv, 11, "sid", MPV_FORMAT_INT64);
+    mpv_observe_property(m_mpv, 14, "secondary-sid", MPV_FORMAT_INT64);
+    mpv_observe_property(m_mpv, 15, "secondary-sub-text", MPV_FORMAT_STRING);
+    mpv_observe_property(m_mpv, 12, "paused-for-cache", MPV_FORMAT_FLAG);
+    mpv_observe_property(m_mpv, 13, "eof-reached", MPV_FORMAT_FLAG);
 
     // Start threads
     m_running = true;
     m_eventThread = std::thread(&MpvContext::eventLoop, this);
 
-#if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
-#ifdef _WIN32
-    // Release GL context from main thread so render thread can use it
-    // (OpenGL contexts can only be current on one thread at a time)
-    wglMakeCurrent(nullptr, nullptr);
-#elif defined(__APPLE__)
-    // Release CGL context from main thread so render thread can use it
-    CGLSetCurrentContext(nullptr);
-#endif
-
-#endif
-    if (!config.headless && m_renderCtx) m_renderThread = std::thread(&MpvContext::renderLoop, this);
+    if (!config.headless) {
+        std::promise<bool> ready;
+        auto result = ready.get_future();
+        m_renderThread = std::thread([this, &ready] {
+            bool initialized = initializeRenderer();
+            ready.set_value(initialized);
+            if (initialized) {
+                if (m_softwareRenderer) renderSoftwareLoop();
+                else renderLoop();
+            }
+            destroyRenderer();
+        });
+        if (!result.get()) {
+            m_running = false;
+            mpv_wakeup(m_mpv);
+            m_eventThread.join();
+            m_renderThread.join();
+            mpv_terminate_destroy(m_mpv);
+            m_mpv = nullptr;
+            return false;
+        }
+    }
 
     m_initialized = true;
     return true;
@@ -408,6 +325,7 @@ void MpvContext::destroy() {
     }
 
     m_running = false;
+    cancelTrackCommands();
     m_needsRender = true;
     m_renderCV.notify_one();
 
@@ -424,14 +342,71 @@ void MpvContext::destroy() {
         m_renderThread.join();
     }
 
-    if (m_renderCtx) {
-        mpv_render_context_free(m_renderCtx);
-        m_renderCtx = nullptr;
-    }
-
     if (m_mpv) {
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
+    }
+    m_initialized = false;
+}
+
+bool MpvContext::initializeRenderer() {
+    bool gpuReady = false;
+#if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
+    const char* forced = std::getenv("BOXPLAYER_MPV_RENDERER");
+    if (!forced || std::string(forced) != "software") {
+        gpuReady = [&]() -> bool {
+#ifdef _WIN32
+            if (!createWindowsGLContext()) return false;
+            m_glContext = static_cast<void*>(g_hglrc);
+#elif defined(__APPLE__)
+            if (!createMacOSGLContext()) return false;
+            m_glContext = static_cast<void*>(g_cglContext);
+#endif
+            m_textureShare = createTextureShare();
+            if (!m_textureShare) return false;
+#ifdef __APPLE__
+            m_textureShare->setSoftwareReadback(g_softwareCGLFallback);
+#endif
+            if (!m_textureShare->initialize(m_glContext)) return false;
+            if (!m_textureShare->createTexture(m_config.width, m_config.height)) return false;
+            mpv_opengl_init_params glParams{};
+            glParams.get_proc_address = getProcAddress;
+            glParams.get_proc_address_ctx = this;
+            mpv_render_param params[] = {
+                {MPV_RENDER_PARAM_API_TYPE, const_cast<char*>(MPV_RENDER_API_TYPE_OPENGL)},
+                {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &glParams},
+                {MPV_RENDER_PARAM_INVALID, nullptr}
+            };
+            if (mpv_render_context_create(&m_renderCtx, m_mpv, params) < 0) return false;
+            mpv_render_context_set_update_callback(m_renderCtx, renderUpdateCallback, this);
+            return true;
+        }();
+    }
+#endif
+    if (gpuReady) return true;
+    destroyRenderer();
+    m_softwareRenderer = true;
+    setProperty("hwdec", "auto-copy");
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_API_TYPE, const_cast<char*>(MPV_RENDER_API_TYPE_SW)},
+        {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+    if (mpv_render_context_create(&m_renderCtx, m_mpv, params) < 0) return false;
+    mpv_render_context_set_update_callback(m_renderCtx, renderUpdateCallback, this);
+    return true;
+}
+
+void MpvContext::destroyRenderer() {
+#if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
+#ifdef __APPLE__
+    if (g_cglContext) CGLSetCurrentContext(g_cglContext);
+#elif defined(_WIN32)
+    if (g_hglrc) wglMakeCurrent(g_hdc, g_hglrc);
+#endif
+#endif
+    if (m_renderCtx) {
+        mpv_render_context_free(m_renderCtx);
+        m_renderCtx = nullptr;
     }
 
     if (m_textureShare) {
@@ -450,28 +425,29 @@ void MpvContext::destroy() {
 #endif
 #endif
 
-    m_initialized = false;
-}
+ }
 
 bool MpvContext::load(const std::string& url, const std::string& options) {
     if (!m_mpv) return false;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
+    cancelTrackCommands();
+    { std::lock_guard<std::mutex> lock(m_tracksMutex); m_tracks = {}; }
+    { std::lock_guard<std::mutex> lock(m_statusMutex);
+      m_status.loading = true; m_status.ended = false; m_status.position = 0; m_status.duration = 0; }
 
     if (!options.empty()) {
         const char* cmd[] = {"loadfile", url.c_str(), "replace", "-1", options.c_str(), nullptr};
-        int result = mpv_command(m_mpv, cmd);
+        int result = mpv_command_async(m_mpv, 0, cmd);
         return result >= 0;
     }
     const char* cmd[] = {"loadfile", url.c_str(), nullptr};
-    int result = mpv_command(m_mpv, cmd);
+    int result = mpv_command_async(m_mpv, 0, cmd);
     return result >= 0;
 }
 
 void MpvContext::play() {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> renderLock(m_renderApiMutex);
     int flag = 0;
-    if (mpv_set_property(m_mpv, "pause", MPV_FORMAT_FLAG, &flag) >= 0) {
+    if (mpv_set_property_async(m_mpv, 0, "pause", MPV_FORMAT_FLAG, &flag) >= 0) {
         std::lock_guard<std::mutex> lock(m_statusMutex);
         m_status.playing = true;
     }
@@ -479,9 +455,8 @@ void MpvContext::play() {
 
 void MpvContext::pause() {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> renderLock(m_renderApiMutex);
     int flag = 1;
-    if (mpv_set_property(m_mpv, "pause", MPV_FORMAT_FLAG, &flag) >= 0) {
+    if (mpv_set_property_async(m_mpv, 0, "pause", MPV_FORMAT_FLAG, &flag) >= 0) {
         std::lock_guard<std::mutex> lock(m_statusMutex);
         m_status.playing = false;
     }
@@ -489,69 +464,62 @@ void MpvContext::pause() {
 
 void MpvContext::stop() {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     const char* cmd[] = {"stop", nullptr};
-    mpv_command(m_mpv, cmd);
+    mpv_command_async(m_mpv, 0, cmd);
 }
 
 void MpvContext::seek(double position) {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     std::string pos_str = std::to_string(position);
     const char* cmd[] = {"seek", pos_str.c_str(), "absolute", nullptr};
-    mpv_command(m_mpv, cmd);
+    mpv_command_async(m_mpv, 0, cmd);
 }
 
 void MpvContext::setVolume(double volume) {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
-    mpv_set_property(m_mpv, "volume", MPV_FORMAT_DOUBLE, &volume);
+    mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &volume);
 }
 
 void MpvContext::setSpeed(double speed) {
     if (!m_mpv || speed < 0.25 || speed > 4.0) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
-    mpv_set_property(m_mpv, "speed", MPV_FORMAT_DOUBLE, &speed);
+    mpv_set_property_async(m_mpv, 0, "speed", MPV_FORMAT_DOUBLE, &speed);
 }
 
 void MpvContext::setAudioTrack(int id) {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     if (id < 0) {
-        mpv_set_property_string(m_mpv, "aid", "no");
+        setProperty("aid", "no");
         return;
     }
     std::string value = std::to_string(id);
-    mpv_set_property_string(m_mpv, "aid", value.c_str());
+    setProperty("aid", value.c_str());
 }
 
 void MpvContext::setSubtitleTrack(int id) {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     if (id < 0) {
-        mpv_set_property_string(m_mpv, "sid", "no");
+        setProperty("sid", "no");
         return;
     }
     std::string value = std::to_string(id);
-    mpv_set_property_string(m_mpv, "sid", value.c_str());
+    setProperty("sid", value.c_str());
 }
 
 void MpvContext::setSubtitleStyle(const MpvSubtitleStyle& style) {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     if (style.fontSize > 0) {
         std::string value = std::to_string(style.fontSize);
-        mpv_set_property_string(m_mpv, "sub-font-size", value.c_str());
+        setProperty("sub-font-size", value.c_str());
     }
     if (!style.color.empty()) {
-        mpv_set_property_string(m_mpv, "sub-color", style.color.c_str());
+        setProperty("sub-color", style.color.c_str());
     }
     if (style.position >= 0) {
         std::string value = std::to_string(style.position);
-        mpv_set_property_string(m_mpv, "sub-pos", value.c_str());
+        setProperty("sub-pos", value.c_str());
     }
-    mpv_set_property_string(m_mpv, "sub-bold", style.bold ? "yes" : "no");
-  mpv_set_property_string(m_mpv, "sub-italic", style.italic ? "yes" : "no");
+    setProperty("sub-bold", style.bold ? "yes" : "no");
+  setProperty("sub-italic", style.italic ? "yes" : "no");
 }
 
 void MpvContext::setVideoProperty(const std::string& name, const std::string& value) {
@@ -563,7 +531,7 @@ void MpvContext::setVideoProperty(const std::string& name, const std::string& va
         "hwdec", "deinterlace", "tone-mapping", "brightness", "contrast",
         "saturation", "gamma", "hue", "audio-delay", "af", "sub-delay",
         "sub-scale", "sub-pos", "sub-font-size", "sub-color", "sub-border-color",
-        "sub-border-size", "sub-back-color", "sub-font", "secondary-sid"
+        "sub-border-size", "sub-back-color", "sub-font", "secondary-sid", "secondary-sub-pos"
     };
     bool supported = false;
     for (const char* property : allowed) {
@@ -573,24 +541,24 @@ void MpvContext::setVideoProperty(const std::string& name, const std::string& va
         }
     }
     if (!supported) return;
-#ifdef BOXPLAYER_MPV_SOFTWARE
     // libmpv's software render backend can retain a crop rectangle from the
     // previous frame while video-crop/video-rotate reconfigure the source.
     // That upstream path aborts inside mp_image_crop instead of returning an
     // error. Windows/Linux apply these two presentation-only transforms to
     // the received RGBA frame in MpvEmbeddedSurface, while all other video
     // properties continue to be handled by libmpv here.
-    if (name == "video-crop" || name == "video-rotate") return;
-#endif
+    if (m_softwareRenderer && (name == "video-crop" || name == "video-rotate")) return;
     // Crop/rotation/aspect and filter changes reconfigure libmpv's render
     // destination. Do not let the software render thread use the previous
     // destination rectangle while the property update is being applied.
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
-    mpv_set_property_string(m_mpv, name.c_str(), value.c_str());
+    setProperty(name.c_str(), m_softwareRenderer && name == "hwdec" && value == "auto" ? "auto-copy" : value);
 }
 
-int MpvContext::addAudio(const std::string& url, const std::string& title) {
-    if (!m_mpv || url.empty()) return MPV_ERROR_INVALID_PARAMETER;
+void MpvContext::addAudio(const std::string& url, const std::string& title, CommandCallback completion) {
+    if (!m_mpv || url.empty()) {
+        completion(MPV_ERROR_INVALID_PARAMETER);
+        return;
+    }
     const char* cmd[] = {
         "audio-add",
         url.c_str(),
@@ -598,17 +566,14 @@ int MpvContext::addAudio(const std::string& url, const std::string& title) {
         title.empty() ? nullptr : title.c_str(),
         nullptr
     };
-    // Software rendering and external-track graph rebuilds can overlap in
-    // libmpv even though the client API itself is thread-safe. Keep the render
-    // API idle until the synchronous mutation has completed; this also means
-    // callers can immediately refresh track-list without observing a queued
-    // command that has not run yet.
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
-    return mpv_command(m_mpv, cmd);
+    submitTrackCommand(cmd, std::move(completion));
 }
 
-int MpvContext::addSubtitle(const std::string& url, const std::string& title) {
-    if (!m_mpv || url.empty()) return MPV_ERROR_INVALID_PARAMETER;
+void MpvContext::addSubtitle(const std::string& url, const std::string& title, CommandCallback completion) {
+    if (!m_mpv || url.empty()) {
+        completion(MPV_ERROR_INVALID_PARAMETER);
+        return;
+    }
 
     const char* cmd[] = {
         "sub-add",
@@ -617,28 +582,82 @@ int MpvContext::addSubtitle(const std::string& url, const std::string& title) {
         title.empty() ? nullptr : title.c_str(),
         nullptr
     };
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
-    return mpv_command(m_mpv, cmd);
+    submitTrackCommand(cmd, std::move(completion));
+}
+
+void MpvContext::submitTrackCommand(const char** command, CommandCallback completion) {
+    uint64_t id;
+    int result;
+    {
+        std::lock_guard<std::mutex> commandLock(m_commandMutex);
+        id = ++m_nextCommandId;
+        m_trackCommands.emplace(id, std::move(completion));
+        m_commandDeadlines[id] = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        // sub-add/audio-add can spend seconds opening a URL. A synchronous
+        // mpv_command here blocks Electron's Cocoa event loop, including the
+        // native close button. Resolve the JS promise only on COMMAND_REPLY.
+        result = mpv_command_async(m_mpv, id, command);
+    }
+    if (result < 0) completeTrackCommand(id, result);
+}
+
+void MpvContext::completeTrackCommand(uint64_t id, int error) {
+    CommandCallback completion;
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        const auto found = m_trackCommands.find(id);
+        if (found == m_trackCommands.end()) return;
+        completion = std::move(found->second);
+        m_trackCommands.erase(found);
+        m_commandDeadlines.erase(id);
+    }
+#ifndef BOXPLAYER_MPV_HEADLESS
+    onRenderUpdate();
+#endif
+    completion(error);
+}
+
+void MpvContext::cancelTrackCommands() {
+    std::unordered_map<uint64_t, CommandCallback> commands;
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        commands.swap(m_trackCommands);
+        m_commandDeadlines.clear();
+    }
+    for (auto& entry : commands) {
+        mpv_abort_async_command(m_mpv, entry.first);
+        entry.second(MPV_ERROR_UNINITIALIZED);
+    }
+}
+
+void MpvContext::setProperty(const char* name, const std::string& value) {
+    const char* data = value.c_str();
+    mpv_set_property_async(m_mpv, 0, name, MPV_FORMAT_STRING, &data);
+}
+
+void MpvContext::expireTrackCommands() {
+    std::vector<uint64_t> expired;
+    {
+        std::lock_guard<std::mutex> lock(m_commandMutex);
+        for (const auto& item : m_commandDeadlines) {
+            if (item.second <= std::chrono::steady_clock::now()) expired.push_back(item.first);
+        }
+    }
+    for (auto id : expired) {
+        mpv_abort_async_command(m_mpv, id);
+        completeTrackCommand(id, MPV_ERROR_GENERIC);
+    }
 }
 
 MpvTrackStatus MpvContext::getTrackStatus() const {
-    MpvTrackStatus status;
-    if (!m_mpv) return status;
+    std::lock_guard<std::mutex> lock(m_tracksMutex);
+    return m_tracks;
+}
 
-    int64_t aid = -1;
-    if (mpv_get_property(m_mpv, "aid", MPV_FORMAT_INT64, &aid) >= 0) status.audioId = static_cast<int>(aid);
-
-    int64_t sid = -1;
-    if (mpv_get_property(m_mpv, "sid", MPV_FORMAT_INT64, &sid) >= 0) status.subtitleId = static_cast<int>(sid);
-
-    // `track-list/N/property` is accepted by some libmpv builds but is not a
-    // portable client-API property path. In particular, the Linux builds used
-    // by BoxPlayer returned an empty list even though the file contained audio
-    // and subtitle tracks. Read the documented node-array value instead so the
-    // same enumeration works on macOS, Windows and Linux.
-    mpv_node trackList{};
-    if (mpv_get_property(m_mpv, "track-list", MPV_FORMAT_NODE, &trackList) < 0) return status;
-
+void MpvContext::cacheTracks(const mpv_node& trackList) {
+    std::lock_guard<std::mutex> lock(m_tracksMutex);
+    auto& status = m_tracks;
+    status.tracks.clear();
     auto mapValue = [](const mpv_node& map, const char* key) -> const mpv_node* {
         if (map.format != MPV_FORMAT_NODE_MAP || !map.u.list) return nullptr;
         const mpv_node_list* values = map.u.list;
@@ -670,18 +689,19 @@ MpvTrackStatus MpvContext::getTrackStatus() const {
             track.codec = nodeString(mapValue(item, "codec"));
             track.selected = nodeFlag(mapValue(item, "selected"));
             track.external = nodeFlag(mapValue(item, "external"));
+            if (track.selected && track.type == "audio") status.audioId = track.id;
+            // selected is true for BOTH subtitle slots; preserve each observed sid.
+            // The track list alone cannot identify the primary subtitle.
             if (track.id >= 0 && !track.type.empty()) status.tracks.push_back(track);
         }
     }
-    mpv_free_node_contents(&trackList);
-    return status;
+
 }
 
 void MpvContext::toggleMute() {
     if (!m_mpv) return;
-    std::lock_guard<std::mutex> lock(m_renderApiMutex);
     const char* cmd[] = {"cycle", "mute", nullptr};
-    mpv_command(m_mpv, cmd);
+    mpv_command_async(m_mpv, 0, cmd);
 }
 
 void MpvContext::setFrameCallback(FrameCallback callback) {
@@ -714,6 +734,7 @@ MpvStatus MpvContext::getStatus() const {
 
 void MpvContext::eventLoop() {
     while (m_running) {
+        expireTrackCommands();
         mpv_event* event = mpv_wait_event(m_mpv, 0.1);
         if (event->event_id == MPV_EVENT_NONE) {
             continue;
@@ -727,11 +748,34 @@ void MpvContext::eventLoop() {
 
 void MpvContext::handleEvent(mpv_event* event) {
     switch (event->event_id) {
+        case MPV_EVENT_SET_PROPERTY_REPLY:
+        case MPV_EVENT_COMMAND_REPLY:
+            if (event->reply_userdata) completeTrackCommand(event->reply_userdata, event->error);
+            else if (event->event_id == MPV_EVENT_COMMAND_REPLY && event->error < 0) {
+                std::lock_guard<std::mutex> lock(m_callbackMutex);
+                if (m_errorCallback) m_errorCallback(mpv_error_string(event->error));
+            }
+            break;
+        case MPV_EVENT_START_FILE: {
+            std::lock_guard<std::mutex> lock(m_statusMutex);
+            m_status.loading = true;
+            m_status.ended = false;
+            m_status.position = 0;
+            m_status.duration = 0;
+            break;
+        }
+        case MPV_EVENT_FILE_LOADED: {
+            std::lock_guard<std::mutex> lock(m_statusMutex);
+            m_status.loading = false;
+            break;
+        }
+            break;
         case MPV_EVENT_PROPERTY_CHANGE:
             handlePropertyChange(static_cast<mpv_event_property*>(event->data));
             break;
         case MPV_EVENT_END_FILE: {
             auto* end_file = static_cast<mpv_event_end_file*>(event->data);
+            { std::lock_guard<std::mutex> lock(m_statusMutex); m_status.loading = false; }
             if (end_file->reason == MPV_END_FILE_REASON_ERROR) {
                 std::lock_guard<std::mutex> lock(m_callbackMutex);
                 if (m_errorCallback) {
@@ -806,7 +850,27 @@ void MpvContext::handlePropertyChange(mpv_event_property* prop) {
                 }
             }
             statusChanged = true;
-        } else if (strcmp(prop->name, "track-list") == 0) {
+        } else if (strcmp(prop->name, "track-list") == 0 && prop->format == MPV_FORMAT_NODE && prop->data) {
+            cacheTracks(*static_cast<mpv_node*>(prop->data));
+            statusChanged = true;
+        } else if (strcmp(prop->name, "secondary-sub-text") == 0) {
+            const char* text = prop->format == MPV_FORMAT_STRING && prop->data ? *static_cast<char**>(prop->data) : nullptr;
+            int lines = text && *text ? 1 + static_cast<int>(std::count(text, text + std::strlen(text), '\n')) : 0;
+            std::lock_guard<std::mutex> tracksLock(m_tracksMutex);
+            statusChanged = m_tracks.secondarySubtitleLines != lines;
+            m_tracks.secondarySubtitleLines = lines;
+        } else if (strcmp(prop->name, "aid") == 0 || strcmp(prop->name, "sid") == 0 || strcmp(prop->name, "secondary-sid") == 0) {
+            std::lock_guard<std::mutex> tracksLock(m_tracksMutex);
+            int id = prop->format == MPV_FORMAT_INT64 && prop->data ? static_cast<int>(*static_cast<int64_t*>(prop->data)) : -1;
+            if (strcmp(prop->name, "aid") == 0) m_tracks.audioId = id;
+            else if (strcmp(prop->name, "sid") == 0) m_tracks.subtitleId = id;
+            else m_tracks.secondarySubtitleId = id;
+            statusChanged = true;
+        } else if (prop->format == MPV_FORMAT_FLAG && prop->data && strcmp(prop->name, "paused-for-cache") == 0) {
+            m_status.buffering = *static_cast<int*>(prop->data) != 0;
+            statusChanged = true;
+        } else if (prop->format == MPV_FORMAT_FLAG && prop->data && strcmp(prop->name, "eof-reached") == 0) {
+            m_status.ended = *static_cast<int*>(prop->data) != 0;
             statusChanged = true;
         }
     }
@@ -827,9 +891,8 @@ void MpvContext::handlePropertyChange(mpv_event_property* prop) {
     }
 }
 
-#ifdef BOXPLAYER_MPV_SOFTWARE
-void MpvContext::renderLoop() {
-    auto lastFrame = std::chrono::steady_clock::time_point::min();
+void MpvContext::renderSoftwareLoop() {
+    std::vector<std::shared_ptr<std::vector<uint8_t>>> pool(3);
     while (m_running) {
         {
             std::unique_lock<std::mutex> lock(m_renderMutex);
@@ -837,16 +900,10 @@ void MpvContext::renderLoop() {
             if (!m_running) break;
             m_needsRender = false;
         }
-        // Hold the render API lock from update through report_swap. External
-        // audio/subtitle additions take the same lock while libmpv rebuilds
-        // its track graph, preventing the software render path from entering
-        // the context halfway through that mutation.
-        std::unique_lock<std::mutex> renderApiLock(m_renderApiMutex);
         if (!(mpv_render_context_update(m_renderCtx) & MPV_RENDER_UPDATE_FRAME)) continue;
-        const auto now = std::chrono::steady_clock::now();
-        if (lastFrame != std::chrono::steady_clock::time_point::min() &&
-            now - lastFrame < std::chrono::milliseconds(50)) continue;
-        lastFrame = now;
+        // Render every frame requested by libmpv. The former 50 ms throttle
+        // limited Windows/Linux software presentation to 20 FPS even for
+        // 24/30/60 FPS media and skipped render/report_swap for those frames.
 
         // The software render target must remain stable across source
         // reconfiguration. Properties such as video-crop and video-rotate can
@@ -871,7 +928,18 @@ void MpvContext::renderLoop() {
         }
         width = std::max(width, 1);
         height = std::max(height, 1);
-        auto pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(width) * height * 4);
+        std::shared_ptr<std::vector<uint8_t>> pixels;
+        for (auto& buffer : pool) {
+            if (!buffer) buffer = std::make_shared<std::vector<uint8_t>>();
+            if (buffer.use_count() == 1) { pixels = buffer; break; }
+        }
+        if (!pixels) {
+            int skip = 1;
+            mpv_render_param params[] = {{MPV_RENDER_PARAM_SKIP_RENDERING, &skip}, {MPV_RENDER_PARAM_INVALID, nullptr}};
+            mpv_render_context_render(m_renderCtx, params);
+            continue;
+        }
+        pixels->resize(static_cast<size_t>(width) * height * 4);
         int size[2] = {width, height};
         size_t stride = static_cast<size_t>(width) * 4;
         mpv_render_param params[] = {
@@ -883,7 +951,6 @@ void MpvContext::renderLoop() {
         };
         if (mpv_render_context_render(m_renderCtx, params) < 0) continue;
         mpv_render_context_report_swap(m_renderCtx);
-        renderApiLock.unlock();
         for (size_t i = 3; i < pixels->size(); i += 4) (*pixels)[i] = 255;
         TextureInfo frame{};
         frame.width = static_cast<uint32_t>(width);
@@ -896,17 +963,7 @@ void MpvContext::renderLoop() {
     }
 }
 
-void MpvContext::onRenderUpdate() {
-    m_needsRender = true;
-    m_renderCV.notify_one();
-}
-
-void* MpvContext::getProcAddress(void*, const char*) { return nullptr; }
-
-void MpvContext::renderUpdateCallback(void* ctx) {
-    static_cast<MpvContext*>(ctx)->onRenderUpdate();
-}
-#elif !defined(BOXPLAYER_MPV_HEADLESS)
+#if !defined(BOXPLAYER_MPV_HEADLESS) && !defined(BOXPLAYER_MPV_SOFTWARE)
 void MpvContext::renderLoop() {
 #ifdef _WIN32
     // Make GL context current on this thread (required for WGL operations)
@@ -937,6 +994,8 @@ void MpvContext::renderLoop() {
     }
 #endif
 
+    uint32_t targetWidth = m_config.width;
+    uint32_t targetHeight = m_config.height;
     while (m_running) {
         // Wait for render update or resize request
         {
@@ -946,15 +1005,26 @@ void MpvContext::renderLoop() {
             m_needsRender = false;
         }
 
-        // Handle texture resize on render thread (GL context is current here)
-        if (m_needsResize && m_textureShare) {
-            uint32_t newWidth = m_pendingWidth.load();
-            uint32_t newHeight = m_pendingHeight.load();
-            if (newWidth > 0 && newHeight > 0) {
-                std::cout << "[MpvContext] Resizing texture to " << newWidth << "x" << newHeight << std::endl;
-                m_textureShare->resizeTexture(newWidth, newHeight);
+        if (m_forceReadback && m_textureShare) m_textureShare->setSoftwareReadback(true);
+
+        // Read a consistent source-size snapshot, but render only into the
+        // dimensions actually allocated. Property events may arrive mid-frame.
+        if (m_needsResize.exchange(false) && m_textureShare) {
+            uint32_t newWidth, newHeight;
+            {
+                std::lock_guard<std::mutex> lock(m_statusMutex);
+                newWidth = m_status.width;
+                newHeight = m_status.height;
             }
-            m_needsResize = false;
+            if (newWidth > 0 && newHeight > 0) {
+                if (!m_textureShare->resizeTexture(newWidth, newHeight)) {
+                    std::lock_guard<std::mutex> lock(m_callbackMutex);
+                    if (m_errorCallback) m_errorCallback("Could not allocate video render target");
+                    return;
+                }
+                targetWidth = newWidth;
+                targetHeight = newHeight;
+            }
         }
 
         // Check if we can render
@@ -963,28 +1033,19 @@ void MpvContext::renderLoop() {
             continue;
         }
 
-        // No m_frameInUse check needed — triple buffering eliminates contention.
-        // macOS: IOSurface uses glFlush for GPU-to-GPU sync.
-        // Windows (future): keyed mutex / AcquireSync will handle sync instead.
+        // Only slots whose exported leases have been released may be reused.
 
         // Lock texture for rendering
         if (!m_textureShare->lockTexture()) {
-            static int lockFailCount = 0;
-            if (lockFailCount < 5) {
-                std::cout << "[MpvContext] Failed to lock texture" << std::endl;
-                lockFailCount++;
-            }
+            int skip = 1;
+            mpv_render_param skipParams[] = {{MPV_RENDER_PARAM_SKIP_RENDERING, &skip}, {MPV_RENDER_PARAM_INVALID, nullptr}};
+            mpv_render_context_render(m_renderCtx, skipParams);
             continue;
         }
 
         // Get FBO and dimensions
         int fbo = m_textureShare->getGLFBO();
-        int width, height;
-        {
-            std::lock_guard<std::mutex> lock(m_statusMutex);
-            width = m_status.width > 0 ? m_status.width : m_config.width;
-            height = m_status.height > 0 ? m_status.height : m_config.height;
-        }
+        int width = targetWidth, height = targetHeight;
 
         // Render
         mpv_opengl_fbo fbo_params{};
@@ -1009,12 +1070,12 @@ void MpvContext::renderLoop() {
         // Report swap
         mpv_render_context_report_swap(m_renderCtx);
 
-        // Flush GL commands to ensure rendering is complete before export.
-        // macOS: glFlush is sufficient for GPU-to-GPU IOSurface sharing.
+        // Exporters provide the completion fence before handing a texture to Electron.
         glFlush();
 
         // Unlock and export texture
         TextureInfo info = m_textureShare->unlockAndExport();
+        info.transformed = true;
         if (info.is_valid) {
             static int frameCount = 0;
             if (frameCount < 10) {
@@ -1024,8 +1085,7 @@ void MpvContext::renderLoop() {
             frameCount++;
 
             std::lock_guard<std::mutex> lock(m_frameMutex);
-            m_currentFrame = info;
-            m_frameInUse = true;
+
 
             // Notify callback
             std::lock_guard<std::mutex> cbLock(m_callbackMutex);
@@ -1034,6 +1094,7 @@ void MpvContext::renderLoop() {
             }
         }
     }
+
 }
 
 void MpvContext::onRenderUpdate() {
@@ -1058,7 +1119,7 @@ void* MpvContext::getProcAddress(void* ctx, const char* name) {
 #elif defined(__APPLE__)
     return dlsym(RTLD_DEFAULT, name);
 #else
-    return reinterpret_cast<void*>(glXGetProcAddressARB(reinterpret_cast<const GLubyte*>(name)));
+    return reinterpret_cast<void*>(eglGetProcAddress(name));
 #endif
 }
 
@@ -1066,6 +1127,14 @@ void MpvContext::renderUpdateCallback(void* ctx) {
     auto* self = static_cast<MpvContext*>(ctx);
     self->onRenderUpdate();
 }
+#else
+void MpvContext::renderLoop() { renderSoftwareLoop(); }
+void MpvContext::onRenderUpdate() {
+    m_needsRender = true;
+    m_renderCV.notify_one();
+}
+void* MpvContext::getProcAddress(void*, const char*) { return nullptr; }
+void MpvContext::renderUpdateCallback(void* ctx) { static_cast<MpvContext*>(ctx)->onRenderUpdate(); }
 #endif
 
 void MpvContext::wakeupCallback(void* ctx) {

@@ -61,6 +61,15 @@ describe('网盘主列表分页注册表', () => {
 describe('统一分页状态机', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('rejects an invalid account/drive pairing rather than returning an empty successful scan', async () => {
+    const collect = async () => {
+      for await (const _page of iterateProviderFolderPages({ folder: { file_id: '0' } as any, userId: 'cloud123_test', driveId: 'quark' })) { /* no writes */ }
+    }
+    await expect(collect()).rejects.toThrow()
+    expect(adapters.cloud123).not.toHaveBeenCalled()
+    expect(adapters.quark).not.toHaveBeenCalled()
+  })
+
   it('retries the same provider cursor after a 429 instead of abandoning the folder', async () => {
     vi.useFakeTimers()
     try {

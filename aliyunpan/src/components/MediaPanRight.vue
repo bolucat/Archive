@@ -1,8 +1,17 @@
 <!-- MediaPanRight.vue - 媒体库专用的文件列表组件 -->
 <template>
   <div class='media-pan-right'>
+    <div v-if="props.unifiedFiles" class="folder-browser" :class="{ 'folder-browser-list': props.browseMode === 'list' }">
+      <template v-for="item in browserItems" :key="item.file_id">
+        <LocalMediaFileCard v-if="item.drive_id === 'local'" :name="item.name" :path="item.file_id" :thumbnail="item.thumbnail" :duration="item.media_duration" :height="item.media_height" :directory="item.isDir" :mode="props.browseMode" :selection="props.browseSelection" :selected="mediaPanFileStore.ListSelected.has(item.file_id)" :watched="localFileWatched(item)" @open="props.browseSelection ? handleSelect(item.file_id, {} as MouseEvent, true) : handleOpenFile({} as Event, item)" @watched="toggleLocalFileWatched(item)" @context="openFileMenu($event, item)" />
+      <button v-else :key="item.file_id" class="folder-browser-card" @contextmenu.prevent="openFileMenu($event, item)" @click="props.browseSelection ? handleSelect(item.file_id, $event, true) : handleOpenFile($event, item)">
+        <div class="folder-browser-art"><Folder v-if="item.isDir" :size="props.browseMode === 'list' ? 28 : 56" /><img v-else-if="item.thumbnail" :src="item.thumbnail" /><FileVideo v-else :size="props.browseMode === 'list' ? 28 : 56" /><input v-if="props.browseSelection" type="checkbox" :checked="mediaPanFileStore.ListSelected.has(item.file_id)" tabindex="-1" :aria-label="item.name" /></div>
+        <strong>{{ item.name }}</strong>
+      </button>
+      </template>
+    </div>
     <!-- 加载状态 -->
-    <a-skeleton v-if='mediaPanFileStore.ListLoading && mediaPanFileStore.ListDataCount == 0' :loading='true' :animation='true'>
+    <a-skeleton v-else-if='mediaPanFileStore.ListLoading && mediaPanFileStore.ListDataCount == 0' :loading='true' :animation='true'>
       <a-skeleton-line :rows='10' :line-height='50' :line-spacing='50' />
     </a-skeleton>
 
@@ -127,11 +136,20 @@
         </div>
       </template>
     </a-list>
+    <a-dropdown trigger="contextMenu" :popup-visible="!!menuFile" :style="{ position: 'fixed', left: menuPosition.x + 'px', top: menuPosition.y + 'px' }" @popup-visible-change="(visible: boolean) => { if (!visible) menuFile = undefined }"><span /><template #content><div class="file-browser-context-menu"><button v-for="action in fileMenuActions" :key="action.id" :disabled="action.disabled" @click="runFileAction(action.id)"><component :is="action.icon" :size="16" /><span>{{ t(action.label) }}</span></button></div></template></a-dropdown>
   </div>
 </template>
 
 <script setup lang='ts'>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { t } from '../i18n'
+import { localWatchedKey, localWatchedKeys } from '../utils/localWatchedState'
+import { isContinueWatchingMember } from '../utils/continueWatchingAction'
+import DB from '../utils/db'
+import { Play, RefreshCw, Shuffle, Star, SquareCheck, Share2, Download, Pencil, Eye, Bookmark, ListPlus, Library, Trash2 } from 'lucide-vue-next'
+import LocalMediaFileCard from './LocalMediaFileCard.vue'
+import { useMediaLibraryStore } from '../store/medialibrary'
+import { Folder, FileVideo } from 'lucide-vue-next'
 import { IAliGetFileModel } from '../aliapi/alimodels'
 import { useMediaPanFileStore } from './stores'
 import { menuOpenFile } from '../utils/openfile'
@@ -139,10 +157,45 @@ import { menuOpenFile } from '../utils/openfile'
 // 定义 emit 事件
 const emit = defineEmits<{
   enterFolder: [file: IAliGetFileModel]
+  fileAction: [action: string, file: IAliGetFileModel]
 }>()
 
+const menuFile = ref<IAliGetFileModel>()
+const closeFileMenu = (event: Event) => { if (event instanceof KeyboardEvent ? event.key === 'Escape' : !(event.target as HTMLElement)?.closest('.file-browser-context-menu')) menuFile.value = undefined }
+onMounted(() => { document.addEventListener('keydown', closeFileMenu); document.addEventListener('click', closeFileMenu) })
+onUnmounted(() => { document.removeEventListener('keydown', closeFileMenu); document.removeEventListener('click', closeFileMenu) })
+const menuPosition = ref({ x: 0, y: 0 })
+const openFileMenu = (event: MouseEvent, file: IAliGetFileModel) => { menuFile.value = file; menuPosition.value = { x: event.clientX, y: event.clientY } }
+const fileMenuActions = computed<Array<{ id: string; icon: typeof Play; label: Parameters<typeof t>[0]; disabled?: boolean }>>(() => menuFile.value?.isDir ? [
+  { id: 'play', icon: Play, label: 'unified.play' }, { id: 'loop', icon: RefreshCw, label: 'unified.loopPlay' }, { id: 'shuffle', icon: Shuffle, label: 'unified.shufflePlay' }, { id: 'favorite', icon: Star, label: 'unified.addToFavorites' }
+] : [
+  { id: 'play', icon: Play, label: 'unified.play' }, { id: 'loop', icon: RefreshCw, label: 'unified.loopPlay' }, { id: 'select', icon: SquareCheck, label: 'unified.selectItems' }, { id: 'rating', icon: Star, label: 'media.rating' },
+  { id: 'share', icon: Share2, label: 'fileContext.share' }, { id: 'download', icon: Download, label: 'fileContext.download', disabled: true },
+  { id: 'metadata', icon: Pencil, label: 'fileContext.editMetadata' }, { id: 'watched', icon: Eye, label: localFileWatched(menuFile.value!) ? 'mediaServer.markUnwatched' : 'mediaServer.markWatched' },
+  { id: 'continue', icon: Bookmark, label: fileInContinueWatching.value ? 'fileContext.removeContinue' : 'fileContext.continue' }, { id: 'playlist', icon: ListPlus, label: 'media.playlist' }, { id: 'series', icon: Library, label: 'fileContext.series' }, { id: 'delete', icon: Trash2, label: 'common.delete', disabled: true }
+])
+const runFileAction = (action: string) => { const file = menuFile.value; menuFile.value = undefined; if (!file) return; if (action === 'select') handleSelect(file.file_id, {} as MouseEvent, true); else if (action === 'watched') toggleLocalFileWatched(file); else emit('fileAction', action, file) }
 const viewlist = ref()
 const mediaPanFileStore = useMediaPanFileStore()
+const props = defineProps<{ unifiedFiles?: boolean; browseMode?: 'grid' | 'list'; browseSelection?: boolean; descending?: boolean }>()
+const library = useMediaLibraryStore()
+const fileInContinueWatching = computed(() => {
+  const file = menuFile.value
+  if (!file) return false
+  const target = library.mediaItems.find(item => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))].some(candidate => candidate.id === file.file_id || candidate.path === file.file_id))
+  return !!target && library.continueWatching.some(entry => isContinueWatchingMember(entry, target))
+})
+const localFileMediaId = (file: IAliGetFileModel) => library.mediaItems.find(item => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))].some(candidate => candidate.driveId === 'local' && (candidate.path === file.file_id || candidate.id === file.file_id)))?.id || 'local-file:' + file.file_id
+const localFileWatched = (file: IAliGetFileModel) => library.isWatched(localFileMediaId(file)) || library.isWatched(localWatchedKey(file.file_id))
+const toggleLocalFileWatched = async (file: IAliGetFileModel) => {
+  const watched = !localFileWatched(file)
+  library.markWatched(localFileMediaId(file), watched)
+  library.markWatched(localWatchedKey(file.file_id), watched)
+  const matches = await DB.getMediaLibraryPage({ predicate: item => localWatchedKeys(item).includes(localWatchedKey(file.file_id)), limit: Number.MAX_SAFE_INTEGER })
+  if (library.isWatched(localWatchedKey(file.file_id)) !== watched) return
+  for (const item of matches) library.markWatched(item.id, watched)
+}
+const browserItems = computed(() => [...mediaPanFileStore.ListDataShow].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }) * (props.descending ? -1 : 1)))
 const listViewportHeight = computed(() => Math.min(500, Math.max(50, mediaPanFileStore.ListDataShow.length * 50)))
 
 const handleListScroll = () => {
@@ -180,6 +233,18 @@ defineExpose({
 </script>
 
 <style scoped>
+.folder-browser{display:grid;grid-template-columns:repeat(auto-fill,174px);gap:24px 20px;padding:20px;align-content:start}
+.folder-browser-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:0;border:0;background:transparent;color:var(--color-text-1);text-align:left;cursor:pointer}
+.folder-browser-art{position:relative;width:174px;aspect-ratio:2/3;background:var(--color-fill-2);border-radius:16px;display:grid;place-items:center;color:#ff8b25;overflow:hidden}
+.folder-browser-art img{width:100%;height:100%;object-fit:cover}
+.folder-browser-art input{position:absolute;top:8px;right:8px;accent-color:#ff8b25}
+.folder-browser-card strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.folder-browser-list{display:flex;flex-direction:column;gap:0;padding:0 16px}
+.folder-browser-list .folder-browser-card{flex-direction:row;align-items:center;gap:16px;padding:16px;border-bottom:1px solid var(--color-border-2)}
+.folder-browser-list .folder-browser-art{width:86px;height:129px;flex-shrink:0;border-radius:8px}
+.folder-browser-list strong{font-size:14px}
+:global(body[arco-theme='dark']) .folder-browser-art{background:#222!important}
+:global(body[arco-theme='dark']) .folder-browser-list .folder-browser-art{background:#333!important}
 .media-pan-right {
   width: 100%;
   height: 100%;
@@ -335,4 +400,13 @@ defineExpose({
     margin-right: 8px;
   }
 }
+</style>
+<style>
+body[arco-theme='dark'] #xbybody .folder-browser .folder-browser-art{background:#222!important}
+body[arco-theme='dark'] #xbybody .folder-browser-list .folder-browser-art{background:#333!important}
+</style>
+
+<style>
+.arco-dropdown:has(.file-browser-context-menu),.arco-dropdown-list:has(.file-browser-context-menu){max-height:none!important;overflow:visible!important}
+.file-browser-context-menu{padding:5px;min-width:174px;background:var(--color-bg-popup);border:1px solid var(--color-border-2);border-radius:12px;box-shadow:0 8px 24px #0004}.file-browser-context-menu button{display:flex;align-items:center;gap:7px;width:100%;border:0;border-radius:5px;background:transparent;padding:5px 9px;text-align:left;color:var(--color-text-1);font-size:13px;cursor:pointer}.file-browser-context-menu button svg{color:#ff8b25}.file-browser-context-menu button:hover:not(:disabled){background:var(--color-fill-2)}.file-browser-context-menu button:disabled{opacity:.4;cursor:not-allowed}body[arco-theme=dark] .file-browser-context-menu{background:#191919}
 </style>

@@ -14,6 +14,7 @@
       @confirm="handleConfirmPlexResources"
     />
 
+    <template v-if="!formOnly">
     <div class="toolbar">
       <div class="toolbar-left">
         <a-button class="toolbar-btn" @click="handleAddServer">
@@ -163,6 +164,7 @@
       </div>
     </div>
 
+    </template>
     <a-modal
       v-model:visible="renameModalVisible"
       :title="t('mediaServer.renameServer')"
@@ -323,8 +325,10 @@ import { fetchMediaServerLoginProfile, signInMediaServer } from '../../media-ser
 import { createPlexServerConfigs, signInPlex, verifyPlexServerConfig } from '../../media-server/plexAuth'
 import { t } from '../../i18n'
 
+defineProps<{ formOnly?: boolean }>()
 const registry = useMediaServerRegistryStore()
 const navigation = useMediaServerNavigationStore()
+const emit = defineEmits<{ (event: 'open-server', id: string): void }>()
 const MEDIA_SERVER_ICON_SET_URLS_KEY = 'MediaServer_IconSetUrls'
 const showServerModal = ref(false)
 const showPlexResourcesModal = ref(false)
@@ -460,6 +464,7 @@ const handleQuickAdd = (type: MediaServerType) => {
 const handleUseServer = (id: string) => {
   registry.setCurrentServer(id)
   navigation.goHome()
+  emit('open-server', id)
 }
 
 const handleEditServer = (id: string) => {
@@ -696,6 +701,7 @@ const runBackgroundServerLogin = async (serverId: string, payload: {
   username?: string
   password?: string
   useHttps?: boolean
+  libraryMode?: boolean
   syncFlag?: boolean
   backupAddresses?: Record<string, string>
   nameCustomized?: boolean
@@ -765,6 +771,7 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
     if (firstServerId) {
       registry.setCurrentServer(firstServerId)
       navigation.goHome()
+      emit('open-server', firstServerId)
     }
     showPlexResourcesModal.value = false
     plexResources.value = []
@@ -788,6 +795,7 @@ const handleSubmitServer = async (payload: {
   username?: string
   password?: string
   useHttps?: boolean
+  libraryMode?: boolean
   syncFlag?: boolean
   backupAddresses?: Record<string, string>
   nameCustomized?: boolean
@@ -855,6 +863,7 @@ const handleSubmitServer = async (payload: {
     submitting.value = false
   }
 }
+defineExpose({ openAddServer: handleAddServer, openProvider: handleQuickAdd, editServer: handleEditServer, deleteServer: handleDeleteServer, openIconManager })
 </script>
 
 <style scoped>

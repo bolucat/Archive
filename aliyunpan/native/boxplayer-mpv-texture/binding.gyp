@@ -54,12 +54,13 @@
         ["OS=='win' and enable_libmpv=='true'", {
           "sources": [
             "src/native/addon.cpp",
-            "src/native/mpv_context.cpp"
+            "src/native/mpv_context.cpp",
+            "src/native/win32/dxgi_texture.cpp"
           ],
-          "defines": ["BOXPLAYER_MPV_SOFTWARE"],
           "include_dirs": ["deps/mpv/include"],
           "libraries": [
-            "<(module_root_dir)/deps/mpv/win32/<(target_arch)/mpv.lib"
+            "<(module_root_dir)/deps/mpv/win32/<(target_arch)/mpv.lib",
+            "opengl32.lib", "d3d11.lib", "dxgi.lib"
           ],
           "msvs_settings": {
             "VCCLCompilerTool": { "AdditionalOptions": ["/std:c++17"] }
@@ -68,18 +69,29 @@
         ["OS=='linux' and enable_libmpv=='true'", {
           "sources": [
             "src/native/addon.cpp",
-            "src/native/mpv_context.cpp"
+            "src/native/mpv_context.cpp",
+            "src/native/linux/dmabuf_texture.cpp"
           ],
-          "defines": ["BOXPLAYER_MPV_SOFTWARE"],
           "include_dirs": ["deps/mpv/include"],
           "libraries": [
             "-L<(module_root_dir)/deps/mpv/linux/<(target_arch)",
-            "-lmpv"
+            "-lmpv", "-lEGL", "-lGL"
           ],
           "ldflags": ["-Wl,-rpath,\\$$ORIGIN"],
           "cflags_cc": ["-std=c++17"]
         }]
       ]
+    },
+    {
+      "target_name": "mpv_transport",
+      "type": "none",
+      "conditions": [["OS=='linux'", {
+        "type": "loadable_module",
+        "sources": ["src/native/linux/texture_transport.cpp"],
+        "include_dirs": ["<!@(node -p \"require('node-addon-api').include\")"],
+        "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
+        "cflags_cc": ["-std=c++17"]
+      }]]
     }
   ]
 }

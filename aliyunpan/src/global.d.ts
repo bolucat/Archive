@@ -62,9 +62,11 @@ declare global {
     WebMpvEmbeddedStatus: () => Promise<any>
     WebMpvSharedTextureCapability: () => { available: boolean; platform: string; reason?: string }
     WebMpvSharedTexture: {
+    onStatus?: (callback: (status: any) => void) => void
+    removeStatusListener?: () => void
       isAvailable: () => boolean
       onFrame: (callback: (videoFrame: VideoFrame, index: number) => void) => void
-      onSoftwareFrame: (callback: (pixels: Uint8Array, width: number, height: number, index: number) => void) => void
+      onSoftwareFrame: (callback: (pixels: Uint8Array, width: number, height: number, index: number, transformed?: boolean) => void) => void
       removeSoftwareFrameListener: () => void
       removeFrameListener: () => void
       onClear: (callback: () => void) => void

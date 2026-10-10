@@ -24,6 +24,7 @@ struct IOSurfaceSlot {
     IOSurfaceRef ioSurface = nullptr;
     GLuint glTexture = 0;
     GLuint glFBO = 0;
+    std::weak_ptr<void> lease;
 };
 
 class IOSurfaceTextureShare : public ITextureShare {
@@ -54,7 +55,7 @@ public:
 
         for (int i = 0; i < BUFFER_COUNT; i++) {
             if (!createSlot(m_slots[i], width, height)) {
-                for (int j = 0; j < i; j++) {
+                for (int j = 0; j <= i; j++) {
                     destroySlot(m_slots[j]);
                 }
                 return false;
@@ -72,16 +73,9 @@ public:
             return true;
         }
 
-        // Electron may still import a previously exported IOSurface when mpv
-        // reports the video's actual dimensions. Keep those surfaces alive
-        // until this playback context is destroyed.
-        std::array<IOSurfaceRef, BUFFER_COUNT> retired{};
-        for (int i = 0; i < BUFFER_COUNT; i++) {
-            retired[i] = m_slots[i].ioSurface;
-            m_slots[i].ioSurface = nullptr;
-            destroySlot(m_slots[i]);
-        }
-        m_retiredSurfaces.push_back(retired);
+        // Exported frames retain their own IOSurface reference. Retire only
+        // GL objects here; the last consumer releases the underlying surface.
+        for (auto& slot : m_slots) destroySlot(slot);
 
         return createTexture(width, height);
     }
@@ -95,7 +89,16 @@ public:
     }
 
     bool lockTexture() override {
-        if (!m_slots[m_writeIndex].ioSurface) return false;
+        bool available = false;
+        for (int offset = 0; offset < BUFFER_COUNT; ++offset) {
+            int index = (m_writeIndex + offset) % BUFFER_COUNT;
+            if (m_slots[index].ioSurface && m_slots[index].lease.expired()) {
+                m_writeIndex = index;
+                available = true;
+                break;
+            }
+        }
+        if (!available) return false;
         // No IOSurfaceLock needed — GPU-to-GPU sharing uses glFlush for sync
         m_locked = true;
         return true;
@@ -130,6 +133,13 @@ public:
             return info;
         }
 
+        // Complete producer GPU work before another GL context reads it.
+        // This is conservative; a future explicit GPU fence can avoid waiting.
+        glFinish();
+        CFRetain(slot.ioSurface);
+        info.lease = std::shared_ptr<void>(slot.ioSurface, [](void* surface) { CFRelease(surface); });
+        slot.lease = info.lease;
+
         // Pass IOSurfaceRef as raw pointer — Electron's importSharedTexture expects
         // the ioSurface Buffer to contain the IOSurfaceRef pointer, not the IOSurfaceID.
         info.handle = reinterpret_cast<uint64_t>(slot.ioSurface);
@@ -150,7 +160,7 @@ public:
     }
 
     void releaseTexture() override {
-        // No-op with triple buffering - mpv always has a free slot to write to
+        // Export leases, rather than a global frame flag, own occupied slots.
     }
 
     void destroy() override {
@@ -159,13 +169,6 @@ public:
         for (int i = 0; i < BUFFER_COUNT; i++) {
             destroySlot(m_slots[i]);
         }
-        for (const auto& generation : m_retiredSurfaces) {
-            for (IOSurfaceRef surface : generation) {
-                if (surface) CFRelease(surface);
-            }
-        }
-        m_retiredSurfaces.clear();
-
         m_initialized = false;
     }
 
@@ -259,6 +262,7 @@ private:
         if (slot.ioSurface) {
             CFRelease(slot.ioSurface);
             slot.ioSurface = nullptr;
+            slot.lease.reset();
         }
     }
 
@@ -272,7 +276,6 @@ private:
 
     // Triple-buffered texture slots
     IOSurfaceSlot m_slots[BUFFER_COUNT];
-    std::vector<std::array<IOSurfaceRef, BUFFER_COUNT>> m_retiredSurfaces;
     int m_writeIndex = 0;
 };
 

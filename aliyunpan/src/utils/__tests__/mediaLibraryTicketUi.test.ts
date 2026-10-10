@@ -45,9 +45,10 @@ describe('media library ticket regressions', () => {
 
   it('mounts the music sound-effect control in the player', () => {
     const source = read('src/layout/PageMusic.vue')
-
-    expect(source).toContain("import SoundEffectBtn from '../components/SoundEffectBtn.vue'")
-    expect(source).toContain('<SoundEffectBtn />')
+    const console = read('src/layout/music/MusicBottomConsole.vue')
+    expect(source).toContain('<MusicBottomConsole')
+    expect(console).toContain("import SoundEffectBtn from '../../components/SoundEffectBtn.vue'")
+    expect(console).toContain('<SoundEffectBtn class="sound-effect-btn" />')
   })
 
   it('keeps 115 root folders selectable and protects list requests from bursts', () => {
@@ -57,7 +58,7 @@ describe('media library ticket regressions', () => {
     expect(picker).toContain('isDrive115User(userId)')
     expect(picker).toContain("file_id: driveType.key")
     expect(picker).toContain('isDir: true')
-    expect(picker).toContain("const parentCid = key.includes('root') ? 0 : Number(key)")
+    expect(picker).toContain("const parentCid = String(key).includes('root') ? '0' : String(key)")
     expect(list).toContain('const LIST_REQUEST_GAP_MS = 900')
     expect(list).toContain('const enqueueListRequest')
     expect(list).toContain("params.set('show_dir', showDir ? '1' : '0')")
@@ -75,7 +76,10 @@ describe('media library ticket regressions', () => {
     const library = read('src/components/MediaLibrary.vue')
     const fileList = read('src/components/MediaPanRight.vue')
 
-    expect(library).toContain('v-if="!showingDetail && !isHomeView && !props.selectedFolder"')
+    expect(library).toContain('v-if="!props.unifiedBrowse && !showingDetail && !props.selectedFolder"')
+    expect(library).not.toContain('library-home-page')
+    expect(library).not.toContain('isHomeView')
+    expect(library).not.toContain('localHomePreferences')
     expect(library).toContain('v-else-if="props.selectedFolder && folderFileList.length > 0"')
     expect(fileList).not.toContain(":max-height='500'")
     expect(fileList).not.toContain('height: 500,')

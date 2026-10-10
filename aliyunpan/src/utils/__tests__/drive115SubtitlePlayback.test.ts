@@ -5,13 +5,13 @@ import { describe, expect, it } from 'vitest'
 const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
 describe('115 subtitle playback', () => {
-  it('routes every authenticated MPV quality through the MPV-only proxy without changing web playback', () => {
+  it('passes ordinary authenticated URLs directly to MPV while retaining Quark and encrypted proxies', () => {
     const source = readSource('src/layout/PageVideo.vue')
 
-    expect(source).toContain('const useAuthenticatedMpvProxy = !pageVideo.encType && hasPlaybackHeaders(defaultHeaders)')
-    expect(source).toContain("useAuthenticatedMpvProxy ? 'mpv' : ''")
+    expect(source).toContain('const transport = resolveMpvPlaybackTransport(provider, Boolean(pageVideo.encType))')
+    expect(source).toContain('? resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || \'\', transport.proxyKind)')
+    expect(source).toContain(': defaultQuality.url')
     expect(source).toContain("const resolveRawMpvQualitySource = (data: IRawUrl")
-    expect(source).toContain("const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '', useAuthenticatedMpvProxy")
     expect(source).toContain('const mpvHeaders = defaultUrl === defaultQuality.url ? defaultHeaders : undefined')
     expect(source).toContain('headers: mpvHeaders')
     expect(source).toContain("const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '')")
@@ -80,7 +80,7 @@ describe('115 subtitle playback', () => {
     const source = readSource('src/layout/PageVideo.vue')
 
     expect(source).toContain('const getSubtitleFileList = async (includeSubfolders = false)')
-    expect(source).toContain('if (includeSubfolders) {')
+    expect(source).toContain('discoverSubtitleFiles(parentId, includeSubfolders,')
     expect(source).toContain('const getSubTitleList = async (art: Artplayer, autoLoad = true)')
     expect(source).toContain("useSettingStore().mediaLibrarySubtitleScope === 'include-subfolders'")
     expect(source).not.toContain('subTitleListMode')

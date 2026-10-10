@@ -4,6 +4,7 @@ import type { IMusicTrack } from '../types/music'
 import type { ILibrarySource } from '../types/librarySource'
 import DB from '../utils/db'
 import { loadMusicTrackList } from '../utils/musicPlayerStorage'
+import { musicCatalogHints } from '../utils/musicCatalog'
 
 const LS_AUTOSCAN = 'musicLibrary.autoScan'
 const LS_LASTSCAN = 'musicLibrary.lastScanAt'
@@ -12,8 +13,6 @@ const MUSIC_CACHE_PAGE_SIZE = 100
 
 export type MusicSubTab = 'home' | 'all' | 'artists' | 'albums' | 'folders' | 'fav' | 'server'
 
-const ARTIST_TITLE_RE = /^(.+?)\s*[-–—_]\s*(.+)$/
-const COMMON_BRACKETS = /[\(\[（【][^\)\]）】]*[\)\]）】]/g
 const TRACK_NUM_PREFIX_RE = /^\s*(?:CD\s*\d+\s*[-_.]\s*)?\d+\s*[.\-_、)]\s*/i
 
 function stripExt(name: string): string {
@@ -22,20 +21,9 @@ function stripExt(name: string): string {
   return i > 0 ? name.slice(0, i) : name
 }
 
-function stripTrackNumber(s: string): string {
-  if (!s) return s
-  return s.replace(TRACK_NUM_PREFIX_RE, '').trim()
-}
-
 function parseArtistTitle(file_name: string): { artist: string; title: string } {
-  const baseRaw = stripExt(file_name).replace(COMMON_BRACKETS, ' ').replace(/\s+/g, ' ').trim()
-  if (!baseRaw) return { artist: '', title: '' }
-  const base = stripTrackNumber(baseRaw)
-  const m = base.match(ARTIST_TITLE_RE)
-  if (m && m[1] && m[2]) {
-    return { artist: stripTrackNumber(m[1].trim()), title: m[2].trim() }
-  }
-  return { artist: '', title: base }
+  const { artist, title } = musicCatalogHints({ file_name } as IMusicTrack)
+  return { artist, title }
 }
 
 function ensureArtistTitle(t: IMusicTrack): IMusicTrack {
@@ -307,6 +295,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
       if (!existing) return track
       const sourceIds = Array.from(new Set([...(existing.source_ids || (existing.source_id ? [existing.source_id] : [])), ...(track.source_ids || (track.source_id ? [track.source_id] : []))]))
       return {
+        ...existing,
         ...track,
         source_ids: sourceIds,
         source_id: sourceIds[0],

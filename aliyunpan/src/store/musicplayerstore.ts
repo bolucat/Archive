@@ -12,14 +12,17 @@ export interface MusicPlayerState {
   duration: number
   progressPercent: number
   hasTrack: boolean
+  volume: number
+  mode: 'list' | 'loop-list' | 'loop-one' | 'shuffle'
 }
 
-export type MusicPlayerCommand = 'toggle' | 'prev' | 'next'
+export type MusicPlayerCommand = 'toggle' | 'prev' | 'next' | 'seek' | 'volume' | 'mode' | 'queue'
 
 export default defineStore('musicplayer', {
   state: () => ({
     panelVisible: false,
     commandSeq: 0,
+    commandValue: 0,
     command: '' as MusicPlayerCommand | '',
     loadSeq: 0,
     pendingLoad: null as IPageMusic | null,
@@ -33,15 +36,18 @@ export default defineStore('musicplayer', {
       currentTime: 0,
       duration: 0,
       progressPercent: 0,
-      hasTrack: false
+      hasTrack: false,
+      volume: 1,
+      mode: 'loop-list'
     } as MusicPlayerState
   }),
   actions: {
     updateState(state: MusicPlayerState) {
       this.state = state
     },
-    sendCommand(command: MusicPlayerCommand) {
+    sendCommand(command: MusicPlayerCommand, value = 0) {
       this.command = command
+      this.commandValue = value
       this.commandSeq += 1
     },
     loadMusic(pageMusic: IPageMusic) {

@@ -10,6 +10,18 @@ export function hasPlaybackHeaders(headers?: PlaybackHeaders): boolean {
   return !!headers && Object.entries(headers).some(([key, value]) => Boolean(key.trim() && String(value || '').trim()))
 }
 
+export type MpvPlaybackTransport = { proxy: boolean; proxyKind: '' | 'mpv' }
+
+export function resolveMpvPlaybackTransport(provider: string, encrypted = false): MpvPlaybackTransport {
+  // Native MPV accepts most provider headers directly. Quark is the exception:
+  // its rotating cookie/x-urlp contract and redirected media requests must stay
+  // behind the provider-aware proxy. Encrypted files also require the proxy so
+  // the response body can be decrypted before MPV consumes it.
+  if (encrypted) return { proxy: true, proxyKind: '' }
+  if (provider === 'quark') return { proxy: true, proxyKind: 'mpv' }
+  return { proxy: false, proxyKind: '' }
+}
+
 /**
  * Merge download headers without allowing an empty quality-level object to hide
  * the provider-level authentication headers. Header names are case-insensitive;

@@ -5,6 +5,8 @@ const mpv = mpvModule.mpvTexture || mpvModule
 let waitingForFrameAck = false
 let pendingFrame = null
 let statusTimer = null
+let nextTextureId = 0
+const textures = new Map()
 
 function send(message) {
   if (process.connected) process.send(message)
@@ -12,6 +14,7 @@ function send(message) {
 
 process.on('message', async (message) => {
   try {
+    if (message.type === 'texture-release') { textures.get(message.id)?.release?.(); textures.delete(message.id); return }
     if (message.type === 'frame-ack') {
       waitingForFrameAck = false
       if (pendingFrame) {
@@ -23,10 +26,20 @@ process.on('message', async (message) => {
       return
     }
     if (message.type === 'create') {
-      mpv.create(message.config)
+      const transport = message.transportPath ? require(path.join(__dirname, 'mpv_transport.node')) : null
+      if (!transport) process.env.BOXPLAYER_MPV_RENDERER = 'software'
+      await mpv.create(message.config)
       mpv.onFrame((frame) => {
-        if (!frame?.pixels) return
-        const copiedFrame = { ...frame, pixels: Buffer.from(frame.pixels) }
+        if (frame?.nativePixmap && transport) {
+          const id = ++nextTextureId
+          const { release, handle, ...metadata } = frame
+          const descriptors = frame.nativePixmap.planes.map((plane) => plane.fd)
+          if (transport.send(message.transportPath, JSON.stringify({ ...metadata, id }), descriptors)) textures.set(id, frame)
+          else { release?.(); mpv.useSoftwareReadback() }
+          return
+        }
+        if (!frame?.pixels) { frame?.release?.(); return }
+        const copiedFrame = frame
         if (waitingForFrameAck) pendingFrame = copiedFrame
         else {
           waitingForFrameAck = true
@@ -35,22 +48,19 @@ process.on('message', async (message) => {
       })
       mpv.onStatus((status) => send({ type: 'status', status, tracks: mpv.getTrackStatus?.() }))
       mpv.onError((error) => send({ type: 'error', error: String(error) }))
-      // Track discovery and async audio-add/sub-add do not always change an
-      // observed scalar property. Poll while isolated so the Electron-side
-      // cache remains current when playback is paused or already at EOF.
-      statusTimer = setInterval(() => send({ type: 'status', status: mpv.getStatus(), tracks: mpv.getTrackStatus?.() }), 250)
-      statusTimer.unref?.()
       send({ type: 'ready' })
       return
     }
     if (message.type === 'destroy') {
       if (statusTimer) clearInterval(statusTimer)
-      mpv.destroy()
+      for (const frame of textures.values()) frame.release?.()
+      textures.clear()
+      await mpv.destroy()
       process.exit(0)
     }
     if (message.type !== 'command') return
     const { id, method, args = [] } = message
-    const allowed = new Set(['load', 'play', 'pause', 'stop', 'seek', 'setVolume', 'setSpeed', 'setAudioTrack', 'setSubtitleTrack', 'setSubtitleStyle', 'setVideoProperty', 'addAudio', 'addSubtitle', 'getTrackStatus'])
+    const allowed = new Set(['load', 'play', 'pause', 'stop', 'seek', 'setVolume', 'setSpeed', 'setAudioTrack', 'setSubtitleTrack', 'setSubtitleStyle', 'setVideoProperty', 'addAudio', 'addSubtitle', 'getTrackStatus', 'useSoftwareReadback'])
     if (!allowed.has(method) || typeof mpv[method] !== 'function') throw new Error(`Unsupported MPV command: ${method}`)
     process.stderr.write(`[mpv-host] command ${method} start\n`)
     await mpv[method](...args)
@@ -61,8 +71,8 @@ process.on('message', async (message) => {
   }
 })
 
-process.on('disconnect', () => {
+process.on('disconnect', async () => {
   if (statusTimer) clearInterval(statusTimer)
-  mpv.destroy()
+  await mpv.destroy()
   process.exit(0)
 })

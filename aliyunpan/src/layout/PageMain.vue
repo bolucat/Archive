@@ -1,5 +1,5 @@
 <script setup lang='ts'>
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   KeyboardState,
   useAppStore,
@@ -20,6 +20,7 @@ import { onHideRightMenu, TestAlt, TestCtrl, TestKey, TestShift } from '../utils
 import { copyToClipboard, getFromClipboard, openExternal } from '../utils/electronhelper'
 import { bootstrapMusicLibrary, shutdownMusicLibrary } from '../utils/musicLibraryBootstrap'
 import { bootstrapMediaLibrary, shutdownMediaLibrary } from '../utils/mediaLibraryBootstrap'
+import MediaLibraryLoading from '../components/MediaLibraryLoading.vue'
 import { bootstrapBookLibrary, shutdownBookLibrary } from '../utils/bookLibraryBootstrap'
 import { QRCode as AntQRCode } from 'ant-design-vue'
 import { Modal } from '@arco-design/web-vue'
@@ -45,26 +46,21 @@ const Setting = defineAsyncComponent(() => import('../setting/index.vue'))
 const Rss = defineAsyncComponent(() => import('../rss/index.vue'))
 const Share = defineAsyncComponent(() => import('../share/index.vue'))
 const Down = defineAsyncComponent(() => import('../down/index.vue'))
-const MediaLibraryView = defineAsyncComponent(() => import('../views/MediaLibraryView.vue'))
-const MediaServerView = defineAsyncComponent(() => import('../views/MediaServerView.vue'))
-const PageMusicLibrary = defineAsyncComponent(() => import('./PageMusicLibrary.vue'))
-const PageBookLibrary = defineAsyncComponent(() => import('./PageBookLibrary.vue'))
+const UnifiedMediaLibraryView = defineAsyncComponent({ loader: () => import('../views/UnifiedMediaLibraryView.vue'), loadingComponent: MediaLibraryLoading, delay: 0 })
 const PageGlobalSearch = defineAsyncComponent(() => import('./PageGlobalSearch.vue'))
 const PageAIWorkspace = defineAsyncComponent(() => import('./PageAIWorkspace.vue'))
+const LibraryMusicPlayer = defineAsyncComponent(() => import('./PageMusic.vue'))
 
 const wechatPayImage = 'images/wechat_pay.jpg'
 const alipayImage = 'images/alipay.jpg'
 const cryptoDonationAddress = '0xb0a3f7254e97a8bd398b1ab7f70eb48b0dc68eaf'
 const panVisible = ref(true)
 const mediaNavVisible = ref(true)
-const mediaServerNavVisible = ref(true)
-const sidebarVisibility = ref<Record<'down' | 'share' | 'rss' | 'setting' | 'music' | 'book' | 'ai-workspace', boolean>>({
+const sidebarVisibility = ref<Record<'down' | 'share' | 'rss' | 'setting' | 'ai-workspace', boolean>>({
   down: true,
   share: true,
   rss: true,
   setting: true,
-  music: true,
-  book: true,
   'ai-workspace': true
 })
 const showLimitModal = ref(false)
@@ -86,6 +82,24 @@ let lastShareClipboardSignature = ''
 let shareClipboardPromptOpen = false
 const musicStore = useMusicLibraryStore()
 const musicPlayerStore = useMusicPlayerStore()
+const musicViewBounds = ref<Record<string, string>>({})
+let musicViewObserver: ResizeObserver | undefined
+const musicNowPlayingVisible = computed(() => musicPlayerStore.panelVisible && appStore.appTab === 'media' && appStore.mediaLibrarySection === 'music')
+function updateMusicViewBounds() {
+  const pane = document.querySelector('.music-pane')
+  if (!pane) return
+  const rect = pane.getBoundingClientRect()
+  musicViewBounds.value = { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` }
+}
+watch(musicNowPlayingVisible, async (visible) => {
+  musicViewObserver?.disconnect()
+  document.querySelector('.music-pane')?.toggleAttribute('inert', visible)
+  if (!visible) return
+  await nextTick()
+  updateMusicViewBounds()
+  const pane = document.querySelector('.music-pane')
+  if (pane) { musicViewObserver = new ResizeObserver(updateMusicViewBounds); musicViewObserver.observe(pane) }
+})
 const bookStore = useBookLibraryStore()
 const mediaStore = useMediaLibraryStore()
 
@@ -198,18 +212,16 @@ const handleMediaLibraryClick = () => {
   appStore.toggleTab('media')
 }
 
-const sidebarTabs = new Set(['pan', 'down', 'share', 'rss', 'media', 'media-server', 'music', 'book', 'ai-workspace', 'setting'])
+const sidebarTabs = new Set(['pan', 'down', 'share', 'rss', 'media', 'ai-workspace', 'setting'])
 const hasActiveSidebar = computed(() => sidebarTabs.has(appStore.appTab))
 const activeSidebarVisible = computed(() => {
   if (appStore.appTab === 'pan') return panVisible.value
   if (appStore.appTab === 'media') return mediaNavVisible.value
-  if (appStore.appTab === 'media-server') return mediaServerNavVisible.value
   return sidebarVisibility.value[appStore.appTab as keyof typeof sidebarVisibility.value] ?? true
 })
 const handleToggleSidebar = () => {
   if (appStore.appTab === 'pan') panVisible.value = !panVisible.value
   else if (appStore.appTab === 'media') mediaNavVisible.value = !mediaNavVisible.value
-  else if (appStore.appTab === 'media-server') mediaServerNavVisible.value = !mediaServerNavVisible.value
   else if (appStore.appTab in sidebarVisibility.value) {
     const tab = appStore.appTab as keyof typeof sidebarVisibility.value
     sidebarVisibility.value = { ...sidebarVisibility.value, [tab]: !sidebarVisibility.value[tab] }
@@ -246,16 +258,14 @@ const themeTitle = computed(() => {
 
 const primaryTabDefinitions = [
   { key: 'pan', title: 'Alt+1', labelKey: 'nav.pan' },
-  { key: 'media-server', title: 'Alt+6', labelKey: 'nav.mediaServer' },
+  { key: 'media', title: 'Alt+5', labelKey: 'media.library' },
   { key: 'search', title: 'Ctrl+K', labelKey: 'nav.search' },
-  { key: 'ai-workspace', title: 'AI Workspace', labelKey: 'nav.aiWorkspace' },
-  { key: 'media', title: 'Alt+5', labelKey: 'nav.video' },
-  { key: 'music', title: 'Alt+8', labelKey: 'nav.music' },
-  { key: 'book', title: 'Alt+9', labelKey: 'nav.books' }
+  { key: 'ai-workspace', title: 'AI Workspace', labelKey: 'nav.aiWorkspace' }
 ]
 
 const orderedPrimaryTabs = computed(() => {
-  const preferred = settingStore.uiDefaultTab || 'pan'
+  const saved = settingStore.uiDefaultTab || 'pan'
+  const preferred = ['media-server', 'music', 'book'].includes(saved) ? 'media' : saved
   return [...primaryTabDefinitions].sort((a, b) => {
     if (a.key === preferred) return -1
     if (b.key === preferred) return 1
@@ -331,6 +341,12 @@ const onResize = throttle(() => {
 }, 50)
 
 const onKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && musicNowPlayingVisible.value) {
+    musicPlayerStore.hidePanel()
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return
+  }
   const ele = (event.srcElement || event.target) as any
   const nodeName = ele && ele.nodeName
   if (event.key === 'Tab') {
@@ -374,26 +390,6 @@ const handleAsyncDelete = (key: string) => {
 }
 const handleAudioStop = () => {
   footStore.mSaveAudioUrl('')
-}
-
-const formatFooterMusicTime = (sec: number): string => {
-  if (!isFinite(sec) || sec < 0) sec = 0
-  const total = Math.floor(sec)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-const handleFooterMusicToggle = () => {
-  musicPlayerStore.sendCommand('toggle')
-}
-
-const handleFooterMusicPrev = () => {
-  musicPlayerStore.sendCommand('prev')
-}
-
-const handleFooterMusicNext = () => {
-  musicPlayerStore.sendCommand('next')
 }
 
 const handleMineradioFilesDropped = (files: File[]) => {
@@ -444,6 +440,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  musicViewObserver?.disconnect()
+  document.querySelector('.music-pane')?.removeAttribute('inert')
   window.clearTimeout(shareClipboardTimer)
   window.clearInterval(pricingPollTimer)
   window.removeEventListener('resize', onResize)
@@ -501,6 +499,10 @@ onUnmounted(() => {
       </div>
     </a-layout-header>
     <a-layout-content id='xbybody'>
+      <div v-if="musicPlayerStore.pendingLoad" v-show="musicNowPlayingVisible" :style="musicViewBounds" class="library-music-player-panel" role="region" aria-label="正在播放">
+        <button class="library-music-player-close" @click="musicPlayerStore.hidePanel()">返回音乐库</button>
+        <LibraryMusicPlayer side-panel embedded full-page @state-change="musicPlayerStore.updateState" />
+      </div>
       <a-tabs type='text' :direction="'horizontal'" class='hidetabs' :justify='true' :active-key='appStore.appTab' lazy-load>
         <a-tab-pane key='pan' title='1'>
           <Pan :visible='panVisible' />
@@ -515,16 +517,7 @@ onUnmounted(() => {
           <Rss :sidebar-visible="sidebarVisibility.rss" />
         </a-tab-pane>
         <a-tab-pane key='media' title='5'>
-          <MediaLibraryView :navVisible="mediaNavVisible" />
-        </a-tab-pane>
-        <a-tab-pane key='media-server' title='6'>
-          <MediaServerView :navVisible="mediaServerNavVisible" />
-        </a-tab-pane>
-        <a-tab-pane key='music' title='8'>
-          <PageMusicLibrary :sidebar-visible="sidebarVisibility.music" />
-        </a-tab-pane>
-        <a-tab-pane key='book' title='9'>
-          <PageBookLibrary :sidebar-visible="sidebarVisibility.book" />
+          <UnifiedMediaLibraryView :nav-visible="mediaNavVisible" />
         </a-tab-pane>
         <a-tab-pane key='search' title='0'>
           <PageGlobalSearch />
@@ -553,38 +546,6 @@ onUnmounted(() => {
         </div>
         <div class='footinfo'>
           {{ footStore.GetSpaceInfo }}
-        </div>
-        <div
-          v-if="musicPlayerStore.state.hasTrack"
-          class='footer-music-player'
-          :title="musicPlayerStore.state.title || t('music.player')"
-        >
-          <div class='footer-music-cover' @click='musicPlayerStore.togglePanel()'>
-            <img v-if='musicPlayerStore.state.coverUrl' :src='musicPlayerStore.state.coverUrl' alt='' />
-            <Music v-else :size='14' :stroke-width='1.8' />
-          </div>
-          <div class='footer-music-meta' @click='musicPlayerStore.togglePanel()'>
-            <div class='footer-music-title'>{{ musicPlayerStore.state.title || t('music.player') }}</div>
-            <div class='footer-music-bar'>
-              <div class='footer-music-bar-fill' :style="{ width: musicPlayerStore.state.progressPercent + '%' }"></div>
-            </div>
-          </div>
-          <span class='footer-music-time'>
-            {{ formatFooterMusicTime(musicPlayerStore.state.currentTime) }}
-          </span>
-          <button class='footer-music-btn' :title="t('music.previousTrack')" @click.stop='handleFooterMusicPrev'>
-            <SkipBack :size='13' :stroke-width='2' />
-          </button>
-          <button class='footer-music-btn primary' :title="musicPlayerStore.state.isPlaying ? t('music.pause') : t('music.play')" @click.stop='handleFooterMusicToggle'>
-            <Pause v-if='musicPlayerStore.state.isPlaying' :size='13' :stroke-width='2' :fill="'currentColor'" />
-            <Play v-else :size='13' :stroke-width='2' :fill="'currentColor'" />
-          </button>
-          <button class='footer-music-btn' :title="t('music.nextTrack')" @click.stop='handleFooterMusicNext'>
-            <SkipForward :size='13' :stroke-width='2' />
-          </button>
-          <button class='footer-music-toggle' :title="musicPlayerStore.panelVisible ? t('music.collapse') : t('music.expand')" @click.stop='musicPlayerStore.togglePanel()'>
-            {{ musicPlayerStore.panelVisible ? t('music.collapse') : t('music.expand') }}
-          </button>
         </div>
         <div
           v-if="musicStore.isScanning && appStore.appTab !== 'music'"
@@ -761,6 +722,8 @@ onUnmounted(() => {
   </template>
 
 <style>
+.library-music-player-panel { position:fixed; z-index:100; background:var(--color-bg-1); overflow:hidden; }
+.library-music-player-close { position:absolute; top:16px; left:20px; z-index:100; padding:9px 16px; border:1px solid #ffffff40; border-radius:20px; background:#171b20d9; color:white; cursor:pointer; }
 body {
   --app-type-caption: 12px;
   --app-type-control: 13px;
@@ -1036,13 +999,7 @@ body {
 }
 
 #xbybody::after {
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px);
-  background-size: 58px 58px;
-  mask-image: radial-gradient(circle at 50% 20%, #000 0, transparent 64%);
-  opacity: .55;
+  display: none;
 }
 
 .hidetabs {
@@ -1134,8 +1091,6 @@ body {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255,255,255,.030) 0 1px, transparent 1px 44px),
-    linear-gradient(0deg, rgba(255,255,255,.020) 0 1px, transparent 1px 42px),
     linear-gradient(180deg, rgba(255,255,255,.07), transparent 18%),
     radial-gradient(circle at 50% 22%, rgba(255,255,255,.06), transparent 34%);
   opacity: .9;
@@ -2545,5 +2500,28 @@ body[arco-theme='dark'] #footer2 audio::-webkit-media-controls-time-remaining-di
     transform: rotate(0deg);
     transition-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
   }
+}
+
+/* Plain black page canvas in dark mode; controls/cards retain their own surfaces. */
+body[arco-theme='dark'] #xbybody {
+  --app-mineradio-bg: #000;
+  --app-mineradio-paper: #000;
+  --app-detail-bg: #000;
+  background: #000 !important;
+}
+body[arco-theme='dark'] #xbybody::before,
+body[arco-theme='dark'] #xbybody::after { display: none; }
+body[arco-theme='dark'] #xbybody .rightbg,
+body[arco-theme='dark'] #xbybody .media-library,
+body[arco-theme='dark'] #xbybody .media-library-pane,
+body[arco-theme='dark'] #xbybody .media-server-workspace,
+body[arco-theme='dark'] #xbybody .workspace-page,
+body[arco-theme='dark'] #xbybody .unified-library,
+body[arco-theme='dark'] #xbybody .unified-pane,
+body[arco-theme='dark'] #xbybody .unified-home,
+body[arco-theme='dark'] #xbybody .category-collection,
+body[arco-theme='dark'] #xbybody .embedded-workspace {
+  background: #000 !important;
+  background-image: none !important;
 }
 </style>

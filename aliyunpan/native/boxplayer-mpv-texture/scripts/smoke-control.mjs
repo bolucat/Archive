@@ -25,7 +25,7 @@ async function waitForTrackCount(type, expected, timeout = 5_000) {
 }
 
 try {
-  mpv.create({ headless: true })
+  await mpv.create({ headless: true })
   if (mpv.isInitialized?.() === false) throw new Error('libmpv did not initialize')
   mpv.setVolume(50)
   mpv.setSpeed(1.25)
@@ -54,14 +54,26 @@ try {
       ['tone-mapping', 'auto'],
       ['brightness', '10']
     ]) mpv.setVideoProperty(name, value)
-    mpv.addAudio(audioSamplePath, 'external-smoke-audio')
+    await mpv.addAudio(audioSamplePath, 'external-smoke-audio')
     await waitForTrackCount('audio', 2)
     const audioTracks = (mpv.getTrackStatus()?.tracks || []).filter((track) => track.type === 'audio')
     if (audioTracks.length < 2 || !audioTracks.some((track) => track.external || track.title === 'external-smoke-audio')) {
       throw new Error(`libmpv audio-add returned before exposing the external track: ${JSON.stringify(audioTracks)}`)
     }
   }
+  // Regression for a released N-API ThreadSafeFunction retaining a non-null
+  // native handle across player-window destroy/create cycles. Also exercise
+  // callback replacement while the mpv event thread is still running.
+  for (let cycle = 0; cycle < 3; cycle++) {
+    mpv.onFrame(() => {})
+    mpv.onStatus(() => {})
+    mpv.onError(() => {})
+    mpv.onFrame(() => {})
+    await mpv.destroy()
+    await mpv.destroy()
+    await mpv.create({ headless: true })
+  }
   console.log(`libmpv controls OK: ${process.platform}/${process.arch} ${addonPath}`)
 } finally {
-  mpv.destroy()
+  await mpv.destroy()
 }

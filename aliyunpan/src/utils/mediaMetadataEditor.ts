@@ -112,6 +112,7 @@ export function applyTmdbMovieMatch(item: MediaLibraryItem, movie: MovieItem, up
     type: 'movie',
     name: movie.title || movie.original_title || item.name,
     year: movie.release_date?.slice(0, 4) || undefined,
+    certification: movie.certification || (item.tmdbId === movie.id ? item.certification : undefined),
     rating: movie.vote_average,
     genres: (movie.genres || []).map((genre) => genre.name),
     productionCountries: (movie.production_countries || []).map((country) => country.name),
@@ -129,6 +130,7 @@ export function applyTmdbMovieMatch(item: MediaLibraryItem, movie: MovieItem, up
 const mapTmdbEpisode = (episode: Episode, driveFiles: MediaEpisode['driveFiles'], updatedAt: number): MediaEpisode => ({
   id: episode.id,
   episodeNumber: episode.episode_number,
+  rating: episode.vote_average,
   seasonNumber: episode.season_number,
   name: episode.name,
   overview: episode.overview,
@@ -168,6 +170,7 @@ function applyTvSeriesFields(item: MediaLibraryItem, result: MediaLibraryTvSerie
     type: 'tv',
     name: tv.name || tv.original_name || item.name,
     year: tv.first_air_date?.slice(0, 4) || undefined,
+    certification: tv.certification || (item.tmdbId === tv.id ? item.certification : undefined),
     rating: tv.vote_average,
     genres: (tv.genres || []).map((genre) => genre.name),
     productionCountries: (tv.production_countries || []).map((country) => country.name),

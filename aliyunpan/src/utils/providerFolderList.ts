@@ -25,7 +25,7 @@ export const isThirdPartyProviderFolder = (userId: string, driveId: string): boo
 export async function* iterateProviderFolderPages(options: ProviderFolderListOptions): AsyncGenerator<IAliGetFileModel[]> {
   const { folder, userId, driveId } = options
   const route = resolveDriveProvider(userId, driveId)
-  if (!route.isValid || !isScanProvider(route.provider)) return
+  if (!route.isValid || !isScanProvider(route.provider)) throw new Error(route.error || `无法扫描网盘类型: ${route.provider}`)
   const scope = libraryScanRateLimitScope(userId, driveId)
   yield* iterateProviderPages(cursor => runRateLimitedScanRequest(scope, async () => {
     const page = await listProviderItems(route.provider, userId, driveId, folder.file_id, true, cursor, { skipThumbnailHydration: true })

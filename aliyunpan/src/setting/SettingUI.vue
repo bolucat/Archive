@@ -16,8 +16,7 @@ import { t } from '../i18n'
 const platform = window.platform
 const settingStore = useSettingStore()
 const topTabOptions = [
-  { key: 'pan', labelKey: 'nav.pan' }, { key: 'media-server', labelKey: 'nav.mediaServer' }, { key: 'search', labelKey: 'nav.search' }, { key: 'ai-workspace', labelKey: 'nav.aiWorkspace' },
-  { key: 'media', labelKey: 'nav.video' }, { key: 'music', labelKey: 'nav.music' }, { key: 'book', labelKey: 'nav.books' },
+  { key: 'pan', labelKey: 'nav.pan' }, { key: 'media', labelKey: 'media.library' }, { key: 'search', labelKey: 'nav.search' }, { key: 'ai-workspace', labelKey: 'nav.aiWorkspace' },
   { key: 'share', labelKey: 'nav.share' }, { key: 'rss', labelKey: 'nav.plugins' }
 ]
 
@@ -455,12 +454,11 @@ const handleImportAsar = () => {
       <a-radio-group
         type='button'
         tabindex='-1'
-        :model-value='settingStore.uiDefaultTab'
+        :model-value="['media-server', 'music', 'book'].includes(settingStore.uiDefaultTab) ? 'media' : settingStore.uiDefaultTab"
         @update:model-value='cb({ uiDefaultTab: $event })'
       >
         <a-radio tabindex='-1' value='pan'>{{ t('nav.pan') }}</a-radio>
-        <a-radio tabindex='-1' value='media-server'>{{ t('nav.mediaServer') }}</a-radio>
-        <a-radio tabindex='-1' value='media'>{{ t('nav.video') }}</a-radio>
+        <a-radio tabindex='-1' value='media'>{{ t('media.library') }}</a-radio>
       </a-radio-group>
     </div>
     <template v-if="['win32', 'darwin'].includes(platform)">

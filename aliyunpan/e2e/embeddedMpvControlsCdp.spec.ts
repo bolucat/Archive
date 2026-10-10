@@ -117,14 +117,18 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     await playlistToggle.click()
 
     await player.getByRole('button', { name: '设置', exact: true }).click()
+    const originalFrame = await player.locator('.mpv-fallback-canvas').evaluate((canvas: HTMLCanvasElement) => ({ width: canvas.width, height: canvas.height }))
     await player.getByRole('button', { name: '16:9' }).first().click()
     await player.getByRole('button', { name: '16:10' }).nth(1).click()
     await player.getByRole('button', { name: '90°' }).click()
     if (process.platform !== 'darwin') {
       await expect.poll(async () => player.locator('.mpv-fallback-canvas').evaluate((canvas: HTMLCanvasElement) => ({ width: canvas.width, height: canvas.height })), {
         message: '软件帧应实际应用 16:10 中心裁剪和 90° 旋转'
-      }).toMatchObject({ width: 360, height: 576 })
+      }).toMatchObject({ width: originalFrame.height, height: Math.round(originalFrame.height * 16 / 10) })
     }
+    // The short fixture must not reach EOF while exercising settings and tracks.
+    // Pause only after checking the transformed frames and retain all control checks.
+    await player.evaluate(() => window.WebMpvEmbeddedControl({ action: 'pause' }))
     await player.getByRole('combobox', { name: '倍速' }).selectOption('1.5')
     for (const label of ['硬件解码', '反交错', 'HDR 色调映射']) await player.getByText(label, { exact: true }).locator('..').getByRole('checkbox').click()
     const videoSection = player.locator('.mpv-side-settings-content').filter({ hasText: '均衡器' })
@@ -135,7 +139,8 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     await expect.poll(() => player.evaluate(() => (window as any).__mpvControlLog.filter((entry: any) => entry.request.action === 'addAudio').length), { message: '加载外置音频按钮必须调用 MPV addAudio', timeout: 10_000 }).toBeGreaterThan(0)
     const addAudioResult = await player.evaluate(() => (window as any).__mpvControlLog.findLast((entry: any) => entry.request.action === 'addAudio')?.result)
     expect(addAudioResult?.ok, JSON.stringify(addAudioResult, null, 2)).toBe(true)
-    expect((addAudioResult?.trackStatus?.tracks || []).filter((track: any) => track.type === 'audio').length, JSON.stringify(addAudioResult?.trackStatus, null, 2)).toBeGreaterThan(1)
+    // The command reply precedes MPV's asynchronous track-list observation.
+    await expect.poll(async () => (await player.evaluate(() => window.WebMpvEmbeddedStatus())).trackStatus?.tracks.filter((track: any) => track.type === 'audio').length || 0, { timeout: 10_000 }).toBeGreaterThan(1)
     const audioSelect = player.locator('select[title="音轨"]')
     await expect.poll(() => audioSelect.locator('option').count(), { timeout: 10_000 }).toBeGreaterThan(1)
     const audioValues = await audioSelect.locator('option').evaluateAll((items) => items.map((item) => (item as HTMLOptionElement).value))

@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures/boxPlayer'
+import { expect, test, sanitizeConsoleText } from './fixtures/boxPlayer'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import os from 'os'
@@ -64,7 +64,7 @@ async function searchForFixture(page: Page, fileName: string, provider: string):
 }
 
 async function openCloudRoot(page: Page): Promise<void> {
-  const cloudNav = page.locator('#xbyhead2 .arco-menu-item').getByText('网盘', { exact: true })
+  const cloudNav = page.getByTestId('top-nav-pan')
   if (await cloudNav.isVisible()) await cloudNav.click()
   const rootNode = page.locator('.dirtree:visible .dirtitle').getByText('根目录', { exact: true })
   if (await rootNode.isVisible()) await rootNode.click()
@@ -366,8 +366,26 @@ if (!enabled) {
         if (consoleErrors.length) console.warn(`${target.provider} handled console diagnostics:\n${consoleErrors.join('\n')}`)
       } catch (error) {
         const errorText = error instanceof Error ? error.stack || error.message : String(error)
-        const apiDiagnostics = [...pageErrors, ...consoleErrors, ...electronStderr].join('\n')
-        throw new Error(`${target.provider} [${stage}]: ${errorText}${apiDiagnostics ? `\n\nElectron diagnostics:\n${apiDiagnostics}` : ''}`, { cause: error })
+        // Background root loading records its error in the app log rather
+        // than the browser console. Include only relevant failure messages,
+        // never account tokens or the whole user database.
+        const rootDiagnostics = await page.evaluate(async () => {
+          return await new Promise<string[]>((resolve) => {
+            const request = indexedDB.open('XBYDB3Cache')
+            request.onerror = () => resolve([])
+            request.onsuccess = () => {
+              const db = request.result
+              if (!db.objectStoreNames.contains('ilog')) { db.close(); resolve([]); return }
+              const transaction = db.transaction('ilog', 'readonly')
+              const logs = transaction.objectStore('ilog').getAll()
+              logs.onsuccess = () => resolve(logs.result.filter((entry: any) => /UserLogin LoadPanData|UserChange|后台刷新账号/.test(entry.logmessage || '')).slice(-10).map((entry: any) => entry.logmessage))
+              logs.onerror = () => resolve([])
+              transaction.oncomplete = () => db.close()
+            }
+          })
+        }).catch(() => [] as string[])
+        const apiDiagnostics = sanitizeConsoleText([...pageErrors, ...consoleErrors, ...electronStderr, ...rootDiagnostics].join('\n'))
+        throw new Error(`${target.provider} [${stage}]: ${sanitizeConsoleText(errorText)}${apiDiagnostics ? `\n\nElectron diagnostics:\n${apiDiagnostics}` : ''}`, { cause: error })
       } finally {
         stderr?.off('data', onStderr)
         if (player && !player.isClosed()) await player.close().catch(() => undefined)

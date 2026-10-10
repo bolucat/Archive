@@ -271,6 +271,7 @@ function normalizeMpvEmbeddedLoadData(data: any) {
     headers[String(key)] = String(value)
   }
   return {
+    sessionId: String(data?.sessionId || ''),
     url: String(data?.url || ''),
     headers,
     title: String(data?.title || ''),
@@ -278,9 +279,11 @@ function normalizeMpvEmbeddedLoadData(data: any) {
   }
 }
 
+let currentMpvSessionId = ''
 window.WebMpvEmbeddedLoad = async function(data: any) {
+  currentMpvSessionId = String(data?.sessionId || crypto.randomUUID())
   try {
-    return await ipcRenderer.invoke('MpvEmbedded:load', normalizeMpvEmbeddedLoadData(data))
+    return await ipcRenderer.invoke('MpvEmbedded:load', normalizeMpvEmbeddedLoadData({ ...data, sessionId: currentMpvSessionId }))
   } catch (error: any) {
     return { ok: false, error: error?.message || 'mpv embedded load ipc failed' }
   }
@@ -303,9 +306,6 @@ window.WebMpvEmbeddedStatus = async function() {
 }
 
 window.WebMpvSharedTextureCapability = function() {
-  if (process.platform !== 'darwin') {
-    return { available: true, platform: process.platform, reason: 'software frame receiver' }
-  }
   try {
     const sharedTexture = (require('electron') as any).sharedTexture
     return {
@@ -319,29 +319,31 @@ window.WebMpvSharedTextureCapability = function() {
 }
 
 let mpvSharedTextureFrameCallback: ((videoFrame: VideoFrame, index: number) => void) | null = null
-let mpvSoftwareFrameCallback: ((pixels: Uint8Array, width: number, height: number, index: number) => void) | null = null
+let mpvSoftwareFrameCallback: ((pixels: Uint8Array, width: number, height: number, index: number, transformed?: boolean) => void) | null = null
 let mpvSharedTextureClearCallback: (() => void) | null = null
 let mpvSharedTextureReceiverReady = false
+let mpvStatusCallback: ((status: any) => void) | null = null
+ipcRenderer.on('MpvEmbedded:status', (_event, status) => mpvStatusCallback?.(status))
 
 ipcRenderer.on('MpvEmbedded:clearTexture', () => {
   mpvSharedTextureClearCallback?.()
 })
-ipcRenderer.on('MpvEmbedded:softwareFrame', (_event, frame: { pixels: Uint8Array; width: number; height: number; index: number }) => {
+ipcRenderer.on('MpvEmbedded:softwareFrame', (_event, frame: { pixels: Uint8Array; width: number; height: number; index: number; sessionId?: string; transformed?: boolean }) => {
   try {
-    if (frame?.pixels && mpvSoftwareFrameCallback) mpvSoftwareFrameCallback(frame.pixels, frame.width, frame.height, frame.index)
+    if ((!frame.sessionId || frame.sessionId === currentMpvSessionId) && frame?.pixels && mpvSoftwareFrameCallback) mpvSoftwareFrameCallback(frame.pixels, frame.width, frame.height, frame.index, frame.transformed)
   } finally {
-    ipcRenderer.send('MpvEmbedded:softwareFrameConsumed')
+    ipcRenderer.send('MpvEmbedded:softwareFrameConsumed', { sessionId: frame.sessionId, index: frame.index })
   }
 })
 
 const registerMpvSharedTextureReceiver = (): boolean => {
   try {
     const sharedTexture = (require('electron') as any).sharedTexture
-    if (process.platform !== 'darwin' || !sharedTexture?.setSharedTextureReceiver) return false
+    if (!sharedTexture?.setSharedTextureReceiver) return false
     sharedTexture.setSharedTextureReceiver(async (data: { importedSharedTexture?: { getVideoFrame: () => VideoFrame; release: () => void } }, ...args: unknown[]) => {
       const imported = data?.importedSharedTexture
       try {
-        if (imported && mpvSharedTextureFrameCallback) {
+        if ((!args[1] || args[1] === currentMpvSessionId) && imported && mpvSharedTextureFrameCallback) {
           const frameIndex = typeof args[0] === 'number' ? args[0] : 0
           const videoFrame = imported.getVideoFrame()
           mpvSharedTextureFrameCallback(videoFrame, frameIndex)
@@ -367,8 +369,10 @@ const registerMpvSharedTextureReceiver = (): boolean => {
 registerMpvSharedTextureReceiver()
 
 window.WebMpvSharedTexture = {
+  onStatus: (callback: (status: any) => void) => { mpvStatusCallback = callback },
+  removeStatusListener: () => { mpvStatusCallback = null },
   isAvailable: () => process.platform === 'darwin' ? mpvSharedTextureReceiverReady : true,
-  onSoftwareFrame: (callback: (pixels: Uint8Array, width: number, height: number, index: number) => void) => {
+  onSoftwareFrame: (callback: (pixels: Uint8Array, width: number, height: number, index: number, transformed?: boolean) => void) => {
     mpvSoftwareFrameCallback = callback
   },
   removeSoftwareFrameListener: () => {

@@ -17,7 +17,7 @@ function syncConfigsToMain(servers: MediaServerConfig[]): void {
       servers.map((s) => ({
         id: s.id,
         type: s.type,
-        baseUrl: s.baseUrl,
+        baseUrl: s.backupAddresses?.[s.selectedLineName || ''] || s.baseUrl,
         accessToken: s.accessToken,
         userId: s.userId,
         deviceId: s.deviceId
@@ -165,6 +165,7 @@ const useMediaServerRegistryStore = defineStore('media-server-registry', {
       username?: string
       password?: string
       useHttps?: boolean
+  libraryMode?: boolean
       syncFlag?: boolean
       backupAddresses?: Record<string, string>
       accessToken?: string
@@ -236,6 +237,7 @@ const useMediaServerRegistryStore = defineStore('media-server-registry', {
         updatedAt: Date.now()
       }
       this.save()
+      syncConfigsToMain(this.servers)
     },
     setServerSearchText(value: string) {
       this.preferences.serverSearchText = value

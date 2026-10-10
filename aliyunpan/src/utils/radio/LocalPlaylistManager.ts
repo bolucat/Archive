@@ -4,6 +4,7 @@
  */
 
 import type { IPageMusicTrack } from '../../store/appstore'
+import { musicTrackKey } from '../musicPlayerStorage'
 
 export interface LocalPlaylist {
   id: string
@@ -38,8 +39,13 @@ export function createPlaylist(name: string, tracks: IPageMusicTrack[] = []): Lo
 }
 
 export function addTracksToList(list: LocalPlaylist, tracks: IPageMusicTrack[]): LocalPlaylist {
-  const existingIds = new Set(list.tracks.map(t => t.file_id))
-  const newTracks = tracks.filter(t => !existingIds.has(t.file_id))
+  const existingIds = new Set(list.tracks.map(musicTrackKey))
+  const newTracks = tracks.filter(t => {
+    const key = musicTrackKey(t)
+    if (existingIds.has(key)) return false
+    existingIds.add(key)
+    return true
+  })
   return { ...list, tracks: [...list.tracks, ...newTracks], updatedAt: Date.now() }
 }
 

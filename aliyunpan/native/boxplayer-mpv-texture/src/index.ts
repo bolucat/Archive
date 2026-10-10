@@ -106,6 +106,8 @@ export interface MpvTrack {
 export interface MpvTrackStatus {
   audioId: number;
   subtitleId: number;
+  secondarySubtitleId: number;
+  secondarySubtitleLines: number;
   tracks: MpvTrack[];
 }
 
@@ -121,6 +123,8 @@ export interface MpvSubtitleStyle {
  * Configuration options for creating the context
  */
 export interface MpvConfig {
+  /** Directory containing bundled subtitle fonts (outside ASAR). */
+  fontsDir?: string;
   /** Initial texture width (default: 1920) */
   width?: number;
   /** Initial texture height (default: 1080) */
@@ -133,8 +137,8 @@ export interface MpvConfig {
  * Native addon interface
  */
 interface NativeAddon {
-  create(config?: MpvConfig): void;
-  destroy(): void;
+  create(config?: MpvConfig): Promise<void>;
+  destroy(): Promise<void>;
   load(url: string, options?: string): Promise<void>;
   play(): void;
   pause(): void;
@@ -144,7 +148,7 @@ interface NativeAddon {
   setAudioTrack(id: number): void;
   setSubtitleTrack(id: number): void;
   setSubtitleStyle(style: MpvSubtitleStyle): void;
-  addSubtitle(url: string, title?: string): void;
+  addSubtitle(url: string, title?: string): Promise<void>;
   toggleMute(): void;
   getStatus(): MpvStatus | undefined;
   getTrackStatus(): MpvTrackStatus | undefined;
@@ -204,22 +208,22 @@ export class MpvTexture {
    * @param config - Configuration options
    * @throws Error if context creation fails
    */
-  create(config?: MpvConfig): void {
+  async create(config?: MpvConfig): Promise<void> {
     if (this._initialized) {
       throw new Error('Context already created');
     }
 
-    addon.create(config);
+    await addon.create(config);
     this._initialized = true;
   }
 
   /**
    * Destroy the mpv context and release all resources
    */
-  destroy(): void {
+  async destroy(): Promise<void> {
     if (!this._initialized) return;
 
-    addon.destroy();
+    await addon.destroy();
     this._initialized = false;
   }
 
@@ -306,9 +310,9 @@ export class MpvTexture {
    * @param url - Subtitle URL or file path
    * @param title - Optional display title
    */
-  addSubtitle(url: string, title?: string): void {
+  addSubtitle(url: string, title?: string): Promise<void> {
     this.ensureInitialized();
-    addon.addSubtitle(url, title || '');
+    return addon.addSubtitle(url, title || '');
   }
 
   /**

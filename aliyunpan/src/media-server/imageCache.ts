@@ -4,6 +4,7 @@
  */
 export function toMsCacheUrl(serverId: string | undefined, originalUrl: string): string {
   if (!serverId || !originalUrl) return originalUrl
+  if (/^(?:data|blob):/i.test(originalUrl)) return originalUrl
   // btoa 只接受 latin1，先用 encodeURIComponent 转义再 btoa
   const encoded = btoa(encodeURIComponent(originalUrl))
     .replace(/\+/g, '-')

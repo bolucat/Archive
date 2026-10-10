@@ -15,6 +15,7 @@ export interface RealMediaServerFixture {
   name: string
   baseUrl: string
   mediaTitle: string
+  directPlayback?: { url: string; headers: Record<string, string>; itemId: string; sourceId: string }
 }
 
 export interface BoxPlayerFixture {
@@ -25,7 +26,7 @@ export interface BoxPlayerFixture {
   mediaServer?: RealMediaServerFixture
 }
 
-function sanitizeConsoleText(value: string): string {
+export function sanitizeConsoleText(value: string): string {
   return value
     .replace(/([?&](?:access_token|refresh_token|provider_token|provider_refresh_token|api_key|apikey|key|token|x-oss-signature|x-amz-signature|x-amz-credential)=)[^&#\s)]+/gi, '$1[redacted]')
     .replace(/(["']?(?:access_token|refresh_token|provider_token|provider_refresh_token|authorization|cookie|set-cookie|signature)["']?\s*:\s*["'])[^"'\r\n]+(["'])/gi, '$1[redacted]$2')
@@ -92,7 +93,7 @@ function configureRealCloudMpv(userData: string): void {
 async function seedRealCloudAccounts(page: Page, provider?: string): Promise<void> {
   const value = process.env.BOXPLAYER_E2E_ACCOUNTS_JSON
   if (!value?.trim()) return
-  const parsedAccounts = parseRealCloudAccounts(value)
+  const parsedAccounts = parseRealCloudAccounts(value, process.env.BOXPLAYER_E2E_CLOUD123_ACCOUNT_JSON)
   // The main drive view bootstraps most reliably from the Aliyun account. Keep
   // it as a stable anchor, then inject only the provider under test so unrelated
   // OAuth refreshes cannot invalidate another provider's rotating token.
@@ -112,6 +113,13 @@ async function seedRealCloudAccounts(page: Page, provider?: string): Promise<voi
 async function seedRealMediaServer(page: Page): Promise<RealMediaServerFixture | undefined> {
   if (!process.env.BOXPLAYER_E2E_EMBY_JSON?.trim()) return undefined
   const config = await resolveRealMediaServerE2EConfig()
+  if (config.directPlayback) {
+    // Finish the renderer's first-run initialization before loading MPV.
+    // Direct mode intentionally does not persist the Emby token in the app profile.
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    return { name: config.name, baseUrl: config.baseUrl, mediaTitle: config.mediaTitle, directPlayback: config.directPlayback }
+  }
   const now = Date.now()
   await page.evaluate(({ config, now }) => {
     const server = {
@@ -292,7 +300,23 @@ export const test = base.extend<{ boxPlayer: BoxPlayerFixture }, { realAccountRe
       }
       const loginDialog = page.locator('.userloginmodal')
       await loginDialog.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => undefined)
-      if (await loginDialog.isVisible()) await loginDialog.getByRole('button', { name: 'Close' }).click()
+      if (await loginDialog.isVisible().catch(() => false)) {
+        const closeDeadline = Date.now() + 10_000
+        while (Date.now() < closeDeadline && await loginDialog.isVisible().catch(() => false)) {
+          await page.evaluate(() => {
+            ;(document.querySelector('.userloginmodal .arco-modal-close-btn') as HTMLElement | null)?.click()
+            const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: any }).__vue_app__
+            const userStore = app?.config.globalProperties.$pinia?._s.get('user')
+            if (!userStore) throw new Error('User store is unavailable while closing the login dialog')
+            userStore.userShowLogin = false
+          })
+          await page.waitForTimeout(250)
+        }
+        if (await loginDialog.isVisible().catch(() => false)) {
+          await page.addStyleTag({ content: '.userloginmodal, .arco-modal-mask { display: none !important; pointer-events: none !important; } #xbybody { display: block !important; }' })
+        }
+        await loginDialog.waitFor({ state: 'hidden', timeout: 3_000 })
+      }
       await use({ app, page, pageErrors, consoleErrors, mediaServer })
       if (testInfo.status !== testInfo.expectedStatus) {
         await testInfo.attach('renderer-errors', { body: JSON.stringify({ url: page.url(), pageErrors, consoleErrors }), contentType: 'application/json' })
@@ -303,30 +327,30 @@ export const test = base.extend<{ boxPlayer: BoxPlayerFixture }, { realAccountRe
       // instead of replacing it with an internal disposed-handle error.
       let electronProcess: ChildProcess | undefined
       try { electronProcess = app.process() } catch {}
-      if (path.basename(testInfo.file).startsWith('embeddedMpv')) {
+      if (path.basename(testInfo.file).startsWith('embeddedMpv') || (process.platform === 'win32' && realAccountTest)) {
         // BoxPlayer's window-close handler can hide to tray. Quit the app
         // explicitly so MPV receives will-quit and its native threads stop.
         // Remove only the test process' window close interception first;
         // otherwise app.quit() is cancelled on Windows, the forced kill leaves
         // Chromium profile files locked, and Playwright's worker cannot tear
-        // down even though every playback assertion already passed.
-        // Do not race app.close(): the abandoned close promise retains the
-        // Playwright transport and makes an otherwise-passing worker time out.
-        await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+        // down even though every real-provider playback assertion passed.
+        await app.evaluate(({ BrowserWindow }) => {
           for (const window of BrowserWindow.getAllWindows()) window.removeAllListeners('close')
-          electronApp.quit()
         }).catch(() => undefined)
-        if (electronProcess && electronProcess.exitCode === null && electronProcess.signalCode === null) {
-          await Promise.race([
-            new Promise<void>((resolve) => electronProcess.once('exit', () => resolve())),
-            new Promise<void>((resolve) => setTimeout(resolve, 5_000))
-          ])
-        }
-      } else {
-        await Promise.race([
-          app.close(),
-          new Promise<void>((resolve) => setTimeout(resolve, 5_000))
-        ])
+      }
+      // Playwright owns both Chromium and Node inspector connections. Calling
+      // app.quit() ourselves leaves its Node transport attached, which can hang
+      // worker teardown even when Electron's windows have closed. Await the
+      // public close API; a watchdog kills only this isolated test process if
+      // native shutdown stalls, letting close settle without abandoning it.
+      const shutdownWatchdog = setTimeout(() => {
+        if (electronProcess && electronProcess.exitCode === null && electronProcess.signalCode === null) electronProcess.kill('SIGKILL')
+      }, 5_000)
+      shutdownWatchdog.unref()
+      try {
+        await app.close().catch(() => undefined)
+      } finally {
+        clearTimeout(shutdownWatchdog)
       }
       if (electronProcess && electronProcess.exitCode === null && !electronProcess.killed) {
         electronProcess.kill('SIGKILL')

@@ -70,6 +70,25 @@ test('Windows production Electron displays embedded MPV software frames', async 
     await expect.poll(() => page.evaluate(() => (window as any).__mpvVisibleFrame), { timeout: 15_000 }).toBe(true)
     const stop = await page.evaluate(() => window.WebMpvEmbeddedControl({ action: 'stop' }))
     expect(stop.ok, stop.error).toBe(true)
+
+    // The former native software path silently capped output at 20 FPS. The
+    // original 15 FPS smoke sample could not reveal that regression.
+    const highFrameRateSample = path.resolve('e2e/assets/mpv-30fps.mp4')
+    const highFrameRateLoad = await page.evaluate((url) => window.WebMpvEmbeddedLoad({ url, title: 'Windows MPV 30 FPS regression' }), highFrameRateSample)
+    expect(highFrameRateLoad.ok, highFrameRateLoad.error).toBe(true)
+    await expect.poll(async () => {
+      const status = await page.evaluate(() => window.WebMpvEmbeddedStatus())
+      return Number(status.status?.position || 0)
+    }, { timeout: 15_000 }).toBeGreaterThan(1)
+    const before = await page.evaluate(() => window.WebMpvEmbeddedStatus())
+    const start = Date.now()
+    await page.waitForTimeout(5_000)
+    const after = await page.evaluate(() => window.WebMpvEmbeddedStatus())
+    const elapsedSeconds = (Date.now() - start) / 1_000
+    const deliveredFps = (Number(after.presentedFrames || 0) - Number(before.presentedFrames || 0)) / elapsedSeconds
+    expect(deliveredFps, `30 FPS sample delivered only ${deliveredFps.toFixed(1)} FPS`).toBeGreaterThan(22)
+    const finalStop = await page.evaluate(() => window.WebMpvEmbeddedControl({ action: 'stop' }))
+    expect(finalStop.ok, finalStop.error).toBe(true)
   } finally {
     if (electronProcess.pid) {
       try { execFileSync('taskkill', ['/PID', String(electronProcess.pid), '/T', '/F'], { stdio: 'ignore' }) } catch {}

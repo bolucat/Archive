@@ -5,6 +5,7 @@ const dbMock = vi.hoisted(() => ({
   getMediaLibrary: vi.fn(),
   getMediaLibraryFolders: vi.fn(),
   getMediaLibraryPage: vi.fn(),
+  getMediaLibraryItemsByIds: vi.fn(),
   countMediaLibraryItems: vi.fn(),
   saveMediaLibrary: vi.fn(),
   upsertMediaLibraryItems: vi.fn(),
@@ -38,6 +39,7 @@ describe('media-library Dexie migration', () => {
     dbMock.getMediaLibrary.mockResolvedValue({ items: [], folders: [] })
     dbMock.getMediaLibraryFolders.mockResolvedValue([])
     dbMock.getMediaLibraryPage.mockResolvedValue([])
+    dbMock.getMediaLibraryItemsByIds.mockResolvedValue([])
     dbMock.countMediaLibraryItems.mockResolvedValue(0)
     dbMock.saveMediaLibrary.mockResolvedValue(undefined)
     dbMock.upsertMediaLibraryItems.mockResolvedValue(undefined)
@@ -45,6 +47,65 @@ describe('media-library Dexie migration', () => {
     dbMock.upsertMediaLibraryFolders.mockResolvedValue(undefined)
     dbMock.deleteMediaLibraryFolders.mockResolvedValue(undefined)
     setActivePinia(createPinia())
+  })
+
+  it('recovers missing recent records only for existing sources and keeps a backup', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    localStorage.setItem('MediaLibrary_RecentlyAdded', JSON.stringify([
+      { ...item('missing', '2026-07-01'), folderId: 'source', driveFiles: [{ id: 'file' }] },
+      { ...item('deleted-source', '2026-07-01'), folderId: 'gone', driveFiles: [{ id: 'gone-file' }] }
+    ]))
+    dbMock.getMediaLibraryFolders.mockResolvedValue([folder('source', '2026-07-01')])
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    expect(dbMock.upsertMediaLibraryItems.mock.calls.every(([items]) => items.every((entry: any) => entry.id === 'missing'))).toBe(true)
+    expect(dbMock.upsertMediaLibraryItems).toHaveBeenCalled()
+    expect(localStorage.getItem('MediaLibrary_RecentRecovery_v1_backup')).toContain('missing')
+    expect(localStorage.getItem('MediaLibrary_RecentRecovery_v1')).toBe('1')
+  })
+
+  it('reports failed writes to callers and keeps records available for retry', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    dbMock.upsertMediaLibraryItems.mockRejectedValue(new Error('disk failure'))
+    store.addMediaItem(item('retry', '2026-07-01'))
+    await expect(store.flushPersistence()).rejects.toThrow('disk failure')
+    dbMock.upsertMediaLibraryItems.mockResolvedValue(undefined)
+    await expect(store.flushPersistence()).resolves.toBeUndefined()
+    expect(dbMock.upsertMediaLibraryItems.mock.calls.at(-1)?.[0][0].id).toBe('retry')
+  })
+
+  it('saves a merged reactive TV record and its movie batch as cloneable snapshots', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    const tv = { ...item('tv', '2026-07-01'), type: 'tv' as const, genres: ['Drama'], credits: { cast: [], crew: [] }, seasons: [{ id: 1, name: 'Season 1', episodeCount: 0, seasonNumber: 1, episodes: [] }] }
+    store.beginPersistenceBatch()
+    store.addOrMergeTvSeries(tv)
+    store.addOrMergeTvSeries(tv)
+    store.addMediaItem(item('movie', '2026-07-01'))
+    await store.flushPersistence()
+    const saved = dbMock.upsertMediaLibraryItems.mock.calls.at(-1)?.[0]
+    expect(saved.map((entry: any) => entry.id)).toEqual(['tv', 'movie'])
+    expect(() => structuredClone(saved)).not.toThrow()
+    expect(saved[0].addedAt).toBeInstanceOf(Date)
+    store.endPersistenceBatch()
+  })
+
+  it('does not restore over existing manually corrected metadata', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    localStorage.setItem('MediaLibrary_RecentlyAdded', JSON.stringify([{ ...item('existing', '2026-07-01'), folderId: 'source', driveFiles: [{ id: 'file' }] }]))
+    dbMock.getMediaLibraryFolders.mockResolvedValue([folder('source', '2026-07-01')])
+    dbMock.getMediaLibraryItemsByIds.mockResolvedValue([{ ...item('existing', '2026-07-01'), name: 'Manual correction', metadataSource: 'manual' }])
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    expect(dbMock.upsertMediaLibraryItems).not.toHaveBeenCalled()
+    expect(store.recentlyAdded[0].name).toBe('Manual correction')
   })
 
   it('merges legacy localStorage with a partially populated Dexie library, keeping newer records', async () => {

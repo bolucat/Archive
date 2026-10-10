@@ -27,6 +27,7 @@ const selectDir = (drive_id: string, file_id: string, album_id: string) => {
           </template>
         </a-dropdown>
         <span v-else @click='() => selectDir(item.drive_id, item.file_id, item.album_id || "")'>
+          <IconFont class="pan-path-separator" name="iconarrow-right-1-icon" :size="16" aria-hidden="true" />
           {{ item.name.length > 30 ? item.name.substring(0, 27) + '...' : item.name }}
         </span>
       </div>
@@ -73,24 +74,15 @@ const selectDir = (drive_id: string, file_id: string, album_id: string) => {
   border-radius: 4px;
 }
 
-.toppannavitem::before {
+.pan-path-separator {
   color: var(--color-text-3);
-  font-size: 16px;
-  font-family: 'iconfont' !important;
-  font-style: normal;
-  vertical-align: bottom;
-  content: '\e660';
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  vertical-align: middle;
+  margin-right: 2px;
 }
 
 .toppannavitem:first-child,
 .toppannavitem:last-child {
   flex-shrink: 0 !important;
-}
-
-.toppannavitem:first-child::before {
-  content: '';
 }
 
 .toppannavitem:last-child {

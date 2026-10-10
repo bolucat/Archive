@@ -1,18 +1,4 @@
-/*
- * REFERENCE CODE — NOT CURRENTLY COMPILED
- *
- * Windows DXGI texture sharing implementation using WGL_NV_DX_interop.
- * Triple-buffered: mpv writes to one texture while Electron reads another.
- *
- * Kept as reference for future Windows native mpv porting.
- * Currently, Windows uses external mpv via --wid flag (see main.ts).
- * This file is excluded from the build — binding.gyp compiles stub.cpp
- * on non-macOS platforms.
- *
- * To activate: add to binding.gyp OS=='win' condition and provide
- * mpv dev libraries via scripts/setup-mpv-win.ps1.
- */
-
+// OpenGL/D3D11 shared textures; unsupported adapters fall back to software.
 #ifdef _WIN32
 
 #include "../texture_share.h"
@@ -69,6 +55,7 @@ struct TextureSlot {
     GLuint glTexture = 0;
     GLuint glFBO = 0;
     HANDLE wglDxObject = nullptr;
+    std::weak_ptr<void> lease;
 };
 
 class DXGITextureShare : public ITextureShare {
@@ -91,84 +78,26 @@ public:
             return false;
         }
 
-        // Create D3D11 device on the NVIDIA adapter (required for WGL_NV_DX_interop)
-        D3D_FEATURE_LEVEL featureLevels[] = {
-            D3D_FEATURE_LEVEL_11_1,
-            D3D_FEATURE_LEVEL_11_0,
-            D3D_FEATURE_LEVEL_10_1,
-            D3D_FEATURE_LEVEL_10_0
-        };
-
-        UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#ifdef _DEBUG
-        flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-        // Enumerate adapters to find NVIDIA GPU
+        // Probe every adapter against the current WGL context. Never select
+        // a vendor by name: hybrid GPUs must share the same rendering device.
         IDXGIFactory1* factory = nullptr;
-        IDXGIAdapter1* nvidiaAdapter = nullptr;
-        HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory);
-
-        if (SUCCEEDED(hr)) {
+        if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory))) return false;
+        for (UINT index = 0; !m_wglDxDevice; ++index) {
             IDXGIAdapter1* adapter = nullptr;
-            for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; i++) {
-                DXGI_ADAPTER_DESC1 desc;
-                adapter->GetDesc1(&desc);
-
-                // Check for NVIDIA in the description
-                std::wstring descStr(desc.Description);
-                if (descStr.find(L"NVIDIA") != std::wstring::npos) {
-                    nvidiaAdapter = adapter;
-                    std::wcout << L"[DXGI] Using NVIDIA adapter: " << desc.Description << std::endl;
-                    break;
-                }
-                adapter->Release();
+            if (factory->EnumAdapters1(index, &adapter) == DXGI_ERROR_NOT_FOUND) break;
+            D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1};
+            HRESULT result = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 2, D3D11_SDK_VERSION,
+                &m_d3dDevice, nullptr, &m_d3dContext);
+            adapter->Release();
+            if (SUCCEEDED(result)) m_wglDxDevice = m_wglDXOpenDeviceNV(m_d3dDevice);
+            if (!m_wglDxDevice) {
+                if (m_d3dContext) { m_d3dContext->Release(); m_d3dContext = nullptr; }
+                if (m_d3dDevice) { m_d3dDevice->Release(); m_d3dDevice = nullptr; }
             }
-            factory->Release();
         }
-
-        // Create device on NVIDIA adapter, or fall back to default
-        if (nvidiaAdapter) {
-            hr = D3D11CreateDevice(
-                nvidiaAdapter,
-                D3D_DRIVER_TYPE_UNKNOWN,  // Must be UNKNOWN when specifying adapter
-                nullptr,
-                flags,
-                featureLevels,
-                ARRAYSIZE(featureLevels),
-                D3D11_SDK_VERSION,
-                &m_d3dDevice,
-                nullptr,
-                &m_d3dContext
-            );
-            nvidiaAdapter->Release();
-        } else {
-            std::cerr << "[DXGI] NVIDIA adapter not found, using default" << std::endl;
-            hr = D3D11CreateDevice(
-                nullptr,
-                D3D_DRIVER_TYPE_HARDWARE,
-                nullptr,
-                flags,
-                featureLevels,
-                ARRAYSIZE(featureLevels),
-                D3D11_SDK_VERSION,
-                &m_d3dDevice,
-                nullptr,
-                &m_d3dContext
-            );
-        }
-
-        if (FAILED(hr)) {
-            std::cerr << "[DXGI] Failed to create D3D11 device: " << std::hex << hr << std::endl;
-            return false;
-        }
-
-        // Open WGL/DX interop device
-        m_wglDxDevice = m_wglDXOpenDeviceNV(m_d3dDevice);
-        if (!m_wglDxDevice) {
-            std::cerr << "[DXGI] Failed to open WGL/DX interop device" << std::endl;
-            return false;
-        }
+        factory->Release();
+        if (!m_wglDxDevice) return false;
 
         m_initialized = true;
         return true;
@@ -183,7 +112,7 @@ public:
         for (int i = 0; i < BUFFER_COUNT; i++) {
             if (!createSlot(m_slots[i], width, height)) {
                 // Clean up any slots already created
-                for (int j = 0; j < i; j++) {
+                for (int j = 0; j <= i; j++) {
                     destroySlot(m_slots[j]);
                 }
                 return false;
@@ -218,6 +147,12 @@ public:
     }
 
     bool lockTexture() override {
+        bool available = false;
+        for (int offset = 0; offset < BUFFER_COUNT; ++offset) {
+            int index = (m_writeIndex + offset) % BUFFER_COUNT;
+            if (m_slots[index].lease.expired()) { m_writeIndex = index; available = true; break; }
+        }
+        if (!available) return false;
         auto& slot = m_slots[m_writeIndex];
         if (!slot.wglDxObject) {
             std::cerr << "[DXGI] lockTexture: No DX object" << std::endl;
@@ -248,6 +183,13 @@ public:
 
         auto& slot = m_slots[m_writeIndex];
 
+        if (m_softwareReadback) {
+            info.pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(m_width) * m_height * 4);
+            m_glBindFramebuffer(GL_FRAMEBUFFER, slot.glFBO);
+            glReadPixels(0, 0, m_width, m_height, GL_RGBA, GL_UNSIGNED_BYTE, info.pixels->data());
+            m_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+        glFinish();
         // Unlock via WGL interop
         HANDLE objects[] = { slot.wglDxObject };
         if (!m_wglDXUnlockObjectsNV(m_wglDxDevice, 1, objects)) {
@@ -256,8 +198,20 @@ public:
 
         m_locked = false;
 
+        HANDLE leasedHandle = nullptr;
+        if (!info.pixels && !DuplicateHandle(GetCurrentProcess(), slot.sharedHandle, GetCurrentProcess(),
+            &leasedHandle, 0, FALSE, DUPLICATE_SAME_ACCESS)) return info;
+        if (leasedHandle) {
+            slot.d3dTexture->AddRef();
+            auto* texture = slot.d3dTexture;
+            info.lease = std::shared_ptr<void>(leasedHandle, [texture](void* handle) {
+                CloseHandle(static_cast<HANDLE>(handle));
+                texture->Release();
+            });
+            slot.lease = info.lease;
+        }
         // Export this slot's handle
-        info.handle = reinterpret_cast<uint64_t>(slot.sharedHandle);
+        info.handle = reinterpret_cast<uint64_t>(leasedHandle);
         info.width = m_width;
         info.height = m_height;
         info.format = TextureFormat::RGBA8;
@@ -269,8 +223,10 @@ public:
         return info;
     }
 
+    void setSoftwareReadback(bool enabled) override { m_softwareReadback = enabled; }
+
     void releaseTexture() override {
-        // No-op with triple buffering - mpv always has a free slot to write to
+        // Slots are retained by the exported frame lease.
     }
 
     void destroy() override {
@@ -317,7 +273,7 @@ private:
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;
 
         HRESULT hr = m_d3dDevice->CreateTexture2D(&desc, nullptr, &slot.d3dTexture);
         if (FAILED(hr)) {
@@ -343,23 +299,6 @@ private:
         if (FAILED(hr)) {
             std::cerr << "[DXGI] Failed to create NT shared handle: " << std::hex << hr << std::endl;
             return false;
-        }
-
-        // Get keyed mutex (required by D3D11 for NT shared handles)
-        hr = slot.d3dTexture->QueryInterface(__uuidof(IDXGIKeyedMutex), (void**)&slot.keyedMutex);
-        if (FAILED(hr)) {
-            std::cerr << "[DXGI] Failed to get keyed mutex: " << std::hex << hr << std::endl;
-            return false;
-        }
-
-        // Set the share handle on the D3D resource BEFORE registering with WGL
-        // Required by WGL_NV_DX_interop spec for shared resources
-        if (m_wglDXSetResourceShareHandleNV) {
-            if (!m_wglDXSetResourceShareHandleNV(slot.d3dTexture, slot.sharedHandle)) {
-                DWORD err = GetLastError();
-                std::cerr << "[DXGI] Failed to set share handle, error: " << err << std::endl;
-                // Continue anyway - some drivers may not require this
-            }
         }
 
         // Create OpenGL texture
@@ -491,6 +430,7 @@ private:
     }
 
     // State
+    bool m_softwareReadback = false;
     bool m_initialized = false;
     bool m_locked = false;
     uint32_t m_width = 0;

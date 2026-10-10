@@ -103,8 +103,8 @@ onMounted(() => {
       <div class='settingrow play-setting-row play-setting-row--stack'>
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiVideoPlayer'
                      @update:model-value='cb({ uiVideoPlayer: $event })'>
-        <a-radio tabindex='-1' value='web'>{{ t('settings.play.webPlayer') }}</a-radio>
         <a-radio v-if='supportsEmbeddedMpv' tabindex='-1' value='mpv'>{{ t('settings.play.mpvPlayer') }}</a-radio>
+        <a-radio tabindex='-1' value='web'>{{ t('settings.play.webPlayer') }}</a-radio>
         <a-radio tabindex='-1' value='other'>{{ t('settings.play.customPlayer') }}</a-radio>
       </a-radio-group>
       <a-popover position='bottom'>

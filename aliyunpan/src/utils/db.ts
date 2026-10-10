@@ -10,6 +10,9 @@ import { buildLibrarySourceId, type ILibrarySource, type LibrarySourceKind } fro
 import type { AIConversation, AIMessage, BookIndexMeta } from '../services/ai/types'
 import type { TextChunk } from './bookAI'
 import { mediaDriveFileKey, reconcileMediaItemSource } from './mediaSourceMembership'
+import { mediaPersistenceSnapshot } from './mediaPersistenceSnapshot'
+import { associateScrapedFiles, mergeScrapedMedia } from './mediaScrapeMerge'
+import { shouldEnrichMusic, musicCohortKey } from './musicCatalog'
 
 type AIConversationRecord = AIConversation
 type AIMessageRecord = AIMessage
@@ -357,6 +360,8 @@ class XBYDB3 extends Dexie {
   }
 
   async saveMediaLibrary(items: MediaLibraryItem[], folders: MediaLibraryFolder[]): Promise<void> {
+    items = mediaPersistenceSnapshot(items)
+    folders = mediaPersistenceSnapshot(folders)
     if (!this.isOpen()) await this.open()
     const files = items.flatMap((item) => {
       const all = [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))]
@@ -382,7 +387,7 @@ class XBYDB3 extends Dexie {
     return { items, folders }
   }
 
-  async getMediaLibraryPage(options: { offset?: number; limit?: number; folderId?: string; type?: MediaLibraryItem['type']; predicate?: (item: MediaLibraryItem) => boolean } = {}): Promise<MediaLibraryItem[]> {
+  async getMediaLibraryPage(options: { offset?: number; limit?: number; folderId?: string; type?: MediaLibraryItem['type']; predicate?: (item: MediaLibraryItem) => boolean; sort?: (a: MediaLibraryItem, b: MediaLibraryItem) => number } = {}): Promise<MediaLibraryItem[]> {
     if (!this.isOpen()) await this.open()
     const { offset = 0, limit = 100, folderId, type, predicate } = options
     let collection: Dexie.Collection<MediaLibraryItem, string>
@@ -391,6 +396,7 @@ class XBYDB3 extends Dexie {
     else collection = this.imedia_item.orderBy('addedAt')
     const filtered = type && folderId ? collection.filter(item => item.type === type) : collection
     const matched = predicate ? filtered.filter(predicate) : filtered
+    if (options.sort) return (await matched.toArray()).sort(options.sort).slice(offset, offset + limit)
     return matched.reverse().offset(offset).limit(limit).toArray()
   }
 
@@ -420,8 +426,27 @@ class XBYDB3 extends Dexie {
     if (!this.isOpen()) await this.open()
     const records = await this.imedia_file.where('fileId').anyOf(ids).toArray()
     const mediaItems = await this.imedia_item.bulkGet([...new Set(records.map(record => record.mediaId))])
-    const retryingMediaIds = new Set(mediaItems.filter((item): item is MediaLibraryItem => !!item?.scrapeRetrying).map(item => item.id))
-    return new Set(records.filter(record => !retryingMediaIds.has(record.mediaId)).map(record => record.fileId))
+    const indexedMediaIds = new Set(mediaItems.filter((item): item is MediaLibraryItem => !!item && item.type !== 'unmatched' && !item.scrapeRetrying).map(item => item.id))
+    return new Set(records.filter(record => indexedMediaIds.has(record.mediaId)).map(record => record.fileId))
+  }
+
+  async getScrapedMediaItem(item: MediaLibraryItem): Promise<MediaLibraryItem | undefined> {
+    if (!this.isOpen()) await this.open()
+    if (item.collectionId) return this.imedia_item.get(item.id)
+    if (!item.tmdbId || item.type === 'unmatched') return this.imedia_item.get(item.id)
+    return this.imedia_item.where('tmdbId').equals(item.tmdbId).filter(existing => existing.type === item.type && !existing.collectionId).first()
+  }
+
+  async associateMediaFilesWithFolder(files: MediaLibraryItem['driveFiles'], folderId: string): Promise<MediaLibraryItem[]> {
+    if (!files.length) return []
+    if (!this.isOpen()) await this.open()
+    return this.transaction('rw', this.imedia_item, this.imedia_file, async () => {
+      const mappings = await this.imedia_file.where('fileId').anyOf(files.map(mediaDriveFileKey)).toArray()
+      const items = await this.getMediaLibraryItemsByIds([...new Set(mappings.map(mapping => mapping.mediaId))])
+      const associated = items.map(item => associateScrapedFiles(item, files, folderId))
+      await this.upsertMediaLibraryItems(associated)
+      return associated
+    })
   }
 
   async getMediaLibraryFolderFileIds(folderId: string): Promise<string[]> {
@@ -429,40 +454,19 @@ class XBYDB3 extends Dexie {
     return (await this.imedia_file.where('folderId').equals(folderId).toArray()).map(record => record.fileId)
   }
 
-  async upsertMediaLibraryItems(items: MediaLibraryItem[]): Promise<void> {
+  async upsertMediaLibraryItems(items: MediaLibraryItem[], mergeExisting = true): Promise<void> {
+    items = mediaPersistenceSnapshot(items)
     if (!items.length) return
     if (!this.isOpen()) await this.open()
-    const existingItems = await this.imedia_item.bulkGet(items.map(item => item.id))
-    const mergedItems = items.map((item, index) => {
-      const existing = existingItems[index]
-      if (!item.collectionId || !existing?.collectionId) return item
-
-      const driveFileKey = (file: MediaLibraryItem['driveFiles'][number]) => [file.driveServerId, file.userId, file.driveId, file.id].join(':')
-      const mergeDriveFiles = (left: MediaLibraryItem['driveFiles'], right: MediaLibraryItem['driveFiles']) => {
-        const files = new Map(left.map(file => [driveFileKey(file), file]))
-        right.forEach(file => files.set(driveFileKey(file), file))
-        return Array.from(files.values())
-      }
-      const movies = new Map((existing.collectionMovies || []).map(movie => [movie.tmdbId || movie.id, movie]))
-      for (const movie of item.collectionMovies || []) {
-        const key = movie.tmdbId || movie.id
-        const previous = movies.get(key)
-        movies.set(key, previous ? { ...previous, ...movie, driveFiles: mergeDriveFiles(previous.driveFiles || [], movie.driveFiles || []) } : movie)
-      }
-      return {
-        ...existing,
-        ...item,
-        driveFiles: mergeDriveFiles(existing.driveFiles || [], item.driveFiles || []),
-        collectionMovies: Array.from(movies.values()).sort((a, b) => Number(a.year || 0) - Number(b.year || 0))
-      }
-    })
-    const files = mergedItems.flatMap((item) => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))]
-      .filter(file => !!file.id).flatMap((file) => {
-        const fileId = mediaDriveFileKey(file)
-        const sourceIds = file.sourceFolderIds?.length ? file.sourceFolderIds : (item.folderId ? [item.folderId] : [])
-        return sourceIds.map(folderId => ({ id: `${encodeURIComponent(folderId)}|${fileId}`, fileId, mediaId: item.id, folderId }))
-      }))
     await this.transaction('rw', this.imedia_item, this.imedia_file, async () => {
+      const existingItems = await this.imedia_item.bulkGet(items.map(item => item.id))
+      const mergedItems = items.map((item, index) => mergeExisting && existingItems[index] ? mergeScrapedMedia(existingItems[index]!, item) : item)
+      const files = mergedItems.flatMap(item => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || [])), ...(item.collectionMovies || []).flatMap(movie => movie.driveFiles || [])]
+        .filter(file => !!file.id).flatMap(file => {
+          const fileId = mediaDriveFileKey(file)
+          const sourceIds = file.sourceFolderIds?.length ? file.sourceFolderIds : (item.folderId ? [item.folderId] : [])
+          return sourceIds.map(folderId => ({ id: `${encodeURIComponent(folderId)}|${fileId}`, fileId, mediaId: item.id, folderId }))
+      }))
       await this.imedia_item.bulkPut(mergedItems)
       await this.imedia_file.where('mediaId').anyOf(mergedItems.map(item => item.id)).delete()
       await this.imedia_file.bulkPut(files)
@@ -479,6 +483,7 @@ class XBYDB3 extends Dexie {
   }
 
   async upsertMediaLibraryFolders(folders: MediaLibraryFolder[]): Promise<void> {
+    folders = mediaPersistenceSnapshot(folders)
     if (!folders.length) return
     if (!this.isOpen()) await this.open()
     await this.imedia_folder.bulkPut(folders)
@@ -648,10 +653,10 @@ class XBYDB3 extends Dexie {
 
   async getMusicEnrichmentCandidates(limit: number, staleBefore: number, excludedIds: Set<string> = new Set()): Promise<IMusicTrack[]> {
     if (!this.isOpen()) await this.open().catch(() => {})
-    return this.imusic_track
-      .filter(track => !excludedIds.has(track.id) && !track.cover_url && (!track.enriched_at || track.enriched_at < staleBefore))
-      .limit(limit)
-      .toArray()
+    const candidates = await this.imusic_track.filter(track => !excludedIds.has(track.id) && shouldEnrichMusic(track, staleBefore + 24 * 60 * 60 * 1000)).toArray()
+    // Never split a semantic cohort at a UI-page boundary (including its final pair).
+    const keys = new Set(candidates.slice(0, limit).map(musicCohortKey))
+    return candidates.filter(track => keys.has(musicCohortKey(track)))
   }
 
   async getMusicTracksByDrive(user_id: string, drive_id: string): Promise<IMusicTrack[]> {

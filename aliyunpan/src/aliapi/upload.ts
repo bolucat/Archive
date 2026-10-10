@@ -3,6 +3,12 @@ import AliHttp from './alihttp'
 import { IUploadCreat, IUploadInfo } from './models'
 import { EncodeEncName } from './utils'
 
+const conflictFreeUploadName = (filename: string): string => {
+  const suffix = `_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  const extensionIndex = filename.lastIndexOf('.')
+  return extensionIndex > 0 ? `${filename.slice(0, extensionIndex)}${suffix}${filename.slice(extensionIndex)}` : `${filename}${suffix}`
+}
+
 export default class AliUpload {
   static async UploadCreatFileWithPreHash(
     user_id: string, drive_id: string, parent_file_id: string,
@@ -66,6 +72,8 @@ export default class AliUpload {
     if (resp.body && resp.body.code) {
       if (resp.body?.code == 'PreHashMatched') {
         result.errormsg = 'PreHashMatched'
+      } else if (check_name_mode === 'auto_rename' && resp.body?.code === 'AlreadyExists') {
+        result.errormsg = 'PreHashMatched'
       } else if (resp.body?.code == 'QuotaExhausted.Drive') {
         result.errormsg = '出错暂停，网盘空间已满'
       } else {
@@ -79,7 +87,12 @@ export default class AliUpload {
     if (AliHttp.IsSuccess(resp.code)) {
       result.file_id = resp.body.file_id
       if (resp.body.exist) {
-        if (check_name_mode == 'ignore') {
+        if (check_name_mode === 'auto_rename') {
+          // A pre-hash response pointing at an existing file is not a new upload.
+          // Calculate the full hash, then create a distinct file in the next stage.
+          result.errormsg = 'PreHashMatched'
+          return result
+        } else if (check_name_mode == 'ignore') {
           await AliUpload.UploadFileDelete(user_id, drive_id, result.file_id).catch()
           return await AliUpload.UploadCreatFileWithPreHash(user_id, drive_id, parent_file_id, filename, fileSize, prehash, check_name_mode)
         } else {
@@ -184,7 +197,9 @@ export default class AliUpload {
 
 
     if (resp.body && resp.body.code) {
-      if (resp.body?.code == 'QuotaExhausted.Drive') {
+      if (check_name_mode === 'auto_rename' && resp.body?.code === 'AlreadyExists') {
+        return AliUpload.UploadCreatFileWithFolders(user_id, drive_id, parent_file_id, conflictFreeUploadName(filename), fileSize, hash, proof_code, 'refuse', encType)
+      } else if (resp.body?.code == 'QuotaExhausted.Drive') {
         result.errormsg = '出错暂停，网盘空间已满'
       } else if (resp.body?.code == 'InvalidRapidProof') {
 
@@ -202,13 +217,18 @@ export default class AliUpload {
     if (AliHttp.IsSuccess(resp.code)) {
       result.file_id = resp.body.file_id
       if (resp.body.exist) {
+        if (check_name_mode === 'auto_rename') {
+          // Some createWithFolders responses still point to the old file even
+          // when auto_rename was requested. Never treat it as uploaded or trash it.
+          return AliUpload.UploadCreatFileWithFolders(user_id, drive_id, parent_file_id, conflictFreeUploadName(filename), fileSize, hash, proof_code, 'refuse', encType)
+        }
         const issame = await AliUpload.UploadFileCheckHash(user_id, drive_id, result.file_id, hash)
         if (issame) {
           result.errormsg = ''
         } else {
           if (check_name_mode == 'ignore') {
             await AliUpload.UploadFileDelete(user_id, drive_id, result.file_id).catch()
-            return await AliUpload.UploadCreatFileWithFolders(user_id, drive_id, parent_file_id, name, fileSize, hash, proof_code, check_name_mode)
+            return await AliUpload.UploadCreatFileWithFolders(user_id, drive_id, parent_file_id, filename, fileSize, hash, proof_code, check_name_mode, encType)
           } else {
 
             result.errormsg = '出错暂停，网盘内有重名文件'

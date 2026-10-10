@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ALIYUN_MPV_PLAYBACK_HEADERS, hasPlaybackHeaders, mergeMpvPlaybackHeaders, mergePlaybackHeaders } from '../playbackHeaders'
+import { ALIYUN_MPV_PLAYBACK_HEADERS, hasPlaybackHeaders, mergeMpvPlaybackHeaders, mergePlaybackHeaders, resolveMpvPlaybackTransport } from '../playbackHeaders'
 
 describe('playback header contract', () => {
   it('does not let an empty quality header object hide provider authentication', () => {
@@ -45,5 +45,12 @@ describe('playback header contract', () => {
   it('adds the renderer interceptor headers explicitly for native Aliyun playback', () => {
     expect(mergeMpvPlaybackHeaders('aliyun')).toEqual(ALIYUN_MPV_PLAYBACK_HEADERS)
     expect(mergeMpvPlaybackHeaders('quark')).toBeUndefined()
+  })
+
+  it('keeps ordinary provider streams direct while preserving Quark and decryption proxies', () => {
+    expect(resolveMpvPlaybackTransport('139')).toEqual({ proxy: false, proxyKind: '' })
+    expect(resolveMpvPlaybackTransport('aliyun')).toEqual({ proxy: false, proxyKind: '' })
+    expect(resolveMpvPlaybackTransport('quark')).toEqual({ proxy: true, proxyKind: 'mpv' })
+    expect(resolveMpvPlaybackTransport('139', true)).toEqual({ proxy: true, proxyKind: '' })
   })
 })

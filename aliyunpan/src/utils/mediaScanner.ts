@@ -12,9 +12,11 @@ import { buildExpectedSeasons } from './mediaCoverage'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 import { libraryScanRateLimitScope, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 import DB from './db'
+import { MediaPersistenceError } from './mediaPersistenceSnapshot'
 import { mergeDriveFileSources } from './mediaSourceMembership'
 import { associateMediaSubtitles, type MediaSubtitleFolderScope } from './mediaSubtitleAssociation'
 import { buildMediaFingerprint } from './mediaFingerprint'
+import { mergeScrapedMedia, scrapedMediaId } from './mediaScrapeMerge'
 import useSettingStore from '../setting/settingstore'
 import { captureMediaScrapeUnrecognized } from '../analytics/posthog'
 
@@ -131,6 +133,7 @@ export class MediaScanner {
 
       if (!this.shouldStop) {
         this.applySubtitleAssociations(folderKey, scanContext, subtitleIndex, useSettingStore().mediaLibrarySubtitleScope)
+        await this.mediaStore.flushPersistence()
         if (!options.incremental) {
           await DB.reconcileMediaLibraryFolder(folderKey, [...existingIds])
           this.mediaStore.reconcileFolderSource(folderKey, existingIds)
@@ -150,6 +153,7 @@ export class MediaScanner {
           this.mediaStore.addFolder(mediaFolder)
           this.mediaStore.pruneOrphanDuplicateFolders()
         }
+        await this.mediaStore.flushPersistence()
         this.mediaStore.setScanProgress(totalProcessed, totalProcessed)
         if (!options.silent) {
           if (unresolvedTransientFailures > 0) {
@@ -164,7 +168,7 @@ export class MediaScanner {
       }
     } catch (error) {
       console.error('扫描文件夹时出错:', error)
-      if (folderKey) {
+      if (folderKey && !(error instanceof MediaPersistenceError)) {
         await DB.reconcileMediaLibraryFolder(folderKey, previousFileIds).catch(() => {})
         this.mediaStore.reconcileFolderSource(folderKey, previousFileIds)
         if (!sourceWasExisting) this.mediaStore.removeFolder(folderKey)
@@ -228,6 +232,10 @@ export class MediaScanner {
         if (incremental && videoFiles.length) {
           const indexed = await DB.getIndexedMediaFileIds(videoFiles.map(file => this.getScopedDriveFileKey(file)))
           indexed.forEach(id => existingIds.add(id))
+          const associated = await DB.associateMediaFilesWithFolder(videoFiles.filter(file => indexed.has(this.getScopedDriveFileKey(file))), folderKey)
+          for (const item of associated) {
+            if (this.mediaStore.mediaItems.some(cached => cached.id === item.id)) this.mediaStore.addMediaItem(item)
+          }
         }
         const toProcess = incremental ? videoFiles.filter(f => !existingIds.has(this.getScopedDriveFileKey(f))) : videoFiles
         totalFound += videoFiles.length
@@ -260,6 +268,8 @@ export class MediaScanner {
     const completed: DriveFileItem[] = []
     const unresolved: DriveFileItem[] = []
     const results = await Promise.allSettled(files.map(file => this.processVideoFileWithoutAI(file, folderName, folderId, mediaHint)))
+    const persistenceFailure = results.find(result => result.status === 'rejected' && result.reason instanceof MediaPersistenceError)
+    if (persistenceFailure?.status === 'rejected') throw persistenceFailure.reason
     results.forEach((result, index) => {
       const file = files[index]
       if (result.status === 'fulfilled') {
@@ -303,6 +313,7 @@ export class MediaScanner {
     }
 
     for (const item of this.mediaStore.mediaItems) {
+      if (item.type === 'unmatched' || item.scrapeRetrying) continue
       addFiles(item.driveFiles)
       for (const season of item.seasons || []) {
         for (const episode of season.episodes || []) addFiles(episode.driveFiles)
@@ -441,6 +452,7 @@ export class MediaScanner {
       }
 
       if (!this.shouldStop) {
+        await this.mediaStore.flushPersistence()
         await DB.reconcileMediaLibraryFolder(sourceId, [...seenFileIds])
         this.mediaStore.reconcileFolderSource(sourceId, seenFileIds)
         const mediaFolder: MediaLibraryFolder = {
@@ -457,6 +469,7 @@ export class MediaScanner {
 
         this.mediaStore.addFolder(mediaFolder)
         this.mediaStore.pruneOrphanDuplicateFolders()
+        await this.mediaStore.flushPersistence()
         this.mediaStore.setScanProgress(videoCount, videoCount)
         message.success(`扫描完成！共处理 ${videoCount} 个视频文件`)
         completed = true
@@ -465,7 +478,7 @@ export class MediaScanner {
       }
     } catch (error) {
       console.error('扫描本地文件夹时出错:', error)
-      if (sourceId) {
+      if (sourceId && !(error instanceof MediaPersistenceError)) {
         await DB.reconcileMediaLibraryFolder(sourceId, previousFileIds).catch(() => {})
         this.mediaStore.reconcileFolderSource(sourceId, previousFileIds)
         if (!sourceWasExisting) this.mediaStore.removeFolder(sourceId)
@@ -567,8 +580,7 @@ export class MediaScanner {
       const connectionId = getWebDavConnectionId(driveId)
       const connection = getWebDavConnection(connectionId)
       if (!connection) {
-        console.warn('WebDAV 连接不存在:', connectionId)
-        return []
+        throw new Error(`WebDAV 连接不存在: ${connectionId}`)
       }
       return await listWebDavDirectory(connection, folder.path || folder.file_id || '/')
     }
@@ -577,12 +589,7 @@ export class MediaScanner {
     if (providerItems) return providerItems
 
     if (!isAliyunUser(userId)) {
-      console.warn('[MediaScanner] skip Aliyun file list for non-Aliyun source', {
-        userId,
-        driveId,
-        fileId: folder.file_id
-      })
-      return []
+      throw new Error(`无法扫描当前账户的网盘目录: ${driveId}`)
     }
     const resp = await AliDirFileList.ApiDirFileList(
       userId,
@@ -757,117 +764,6 @@ export class MediaScanner {
     return match ? match[1] : null
   }
 
-  // 尝试匹配现有电视剧 - 参考Swift版本的addTvSeriesItemByMatchName
-  private tryMatchExistingTvSeries(
-    fileItem: DriveFileItem,
-    folderName: string,
-    cleanedFileName: string,
-    seasonEpisode: { season: number, episode: number },
-    folderId?: string
-  ): MediaLibraryItem | null {
-    const existingTvItems = this.mediaStore.tvShows
-
-    for (const existingItem of existingTvItems) {
-      // 检查名称匹配逻辑（与Swift版本保持一致）
-      const tvName = existingItem.name.toLowerCase()
-      const cleanedFileNameLower = cleanedFileName.toLowerCase()
-
-      if (cleanedFileNameLower.includes(tvName) ||
-          tvName.includes(cleanedFileNameLower)) {
-
-        // 找到匹配的电视剧，需要合并集数信息
-        const updatedItem = this.mergeEpisodeIntoTvSeries(
-          existingItem,
-          fileItem,
-          seasonEpisode,
-          folderName,
-          folderId
-        )
-
-        if (updatedItem) {
-          // 更新媒体库中的项目
-          this.mediaStore.addOrMergeTvSeries(updatedItem)
-          this.mediaStore.addToRecentlyAdded(updatedItem)
-          return updatedItem
-        }
-      }
-    }
-
-    return null
-  }
-
-  // 将新集数合并到现有电视剧中 - 与Swift版本的addTvSeriesItemByMatchName保持一致
-  private mergeEpisodeIntoTvSeries(
-    existingTvItem: MediaLibraryItem,
-    newFileItem: DriveFileItem,
-    seasonEpisode: { season: number, episode: number },
-    folderName: string,
-    folderId?: string
-  ): MediaLibraryItem | null {
-    try {
-      // 深拷贝现有项目以避免直接修改
-      const updatedItem: MediaLibraryItem = JSON.parse(JSON.stringify(existingTvItem))
-
-      // 获取现有的seasons，如果不存在则返回null（与Swift版本一致）
-      const mergedSeasons = updatedItem.seasons || []
-
-      // 查找对应的季
-      const existingSeasonIndex = mergedSeasons.findIndex(s => s.seasonNumber === seasonEpisode.season)
-      if (existingSeasonIndex >= 0) {
-        const existingSeason = mergedSeasons[existingSeasonIndex]
-        const mergedEpisodes = existingSeason.episodes || []
-
-        // 查找对应的集
-        const existingEpisodeIndex = mergedEpisodes.findIndex(e => e.episodeNumber === seasonEpisode.episode)
-        if (existingEpisodeIndex >= 0) {
-          // 只有当季和集都已存在时才进行合并（与Swift版本一致）
-          const existingEpisode = mergedEpisodes[existingEpisodeIndex]
-
-          if (existingEpisode.driveFiles) {
-            // 添加新文件到现有集中，避免重复
-            const existingCloudItems = [...existingEpisode.driveFiles]
-            existingCloudItems.push(newFileItem)
-
-            // 去重处理（使用Set去重）
-            existingEpisode.driveFiles = mergeDriveFileSources(existingCloudItems)
-          } else {
-            existingEpisode.driveFiles = [newFileItem]
-          }
-
-          // 更新季中的集数组
-          mergedEpisodes[existingEpisodeIndex] = existingEpisode
-          existingSeason.episodes = mergedEpisodes
-          mergedSeasons[existingSeasonIndex] = existingSeason
-
-          // 更新项目的seasons
-          updatedItem.seasons = mergedSeasons
-
-          // 更新总的driveFiles列表
-          // if (!updatedItem.driveFiles) {
-          //   updatedItem.driveFiles = []
-          // }
-          // const mainFileExists = updatedItem.driveFiles.some(f => f.id === newFileItem.id)
-          // if (!mainFileExists) {
-          //   updatedItem.driveFiles.push(newFileItem)
-          // }
-
-          // 更新父ID和文件夹ID
-          updatedItem.parentId = folderName
-          updatedItem.folderId = folderId || updatedItem.folderId
-
-          return updatedItem
-        }
-      }
-
-      // 如果没有找到对应的季或集，返回null（与Swift版本一致，不创建新的季集）
-      return null
-    } catch (error) {
-      console.error('合并集数信息失败:', error)
-      return null
-    }
-  }
-
-  // TMDB 匹配（不含 AI 兜底）：成功返回 null，失败返回未匹配文件供批量 AI 处理
   private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string, mediaHint?: MediaScanHint): Promise<DriveFileItem | null> {
     try {
       this.removeRetryPendingMediaItem(file)
@@ -876,14 +772,11 @@ export class MediaScanner {
       const seasonEpisode = normalized.seasonNumber === undefined || normalized.episodeNumber === undefined
         ? null
         : { season: normalized.seasonNumber, episode: normalized.episodeNumber }
-      const lookupName = normalized.searchTitle || ''
+      const lookupName = normalized.searchTitle || mediaHint?.title || ''
 
       if (lookupName.replace(/\s/g, '').length === 0) return file
 
       if (seasonEpisode) {
-        const existingTvItem = this.tryMatchExistingTvSeries(file, folderName, lookupName, seasonEpisode, folderId)
-        if (existingTvItem) return null
-
         // Acquisition already resolved the title identity.  Do not send an
         // imported TV/anime file back through title search merely because its
         // release name has no embedded TMDB id.
@@ -901,6 +794,10 @@ export class MediaScanner {
         const matchedEpisode = tvResult?.current_season?.episodes?.find(ep => ep.episode_number === seasonEpisode.episode)
         if (tvResult && tvResult.current_season && matchedEpisode) {
           const mediaItem = this.buildTvMediaItem(tvResult, matchedEpisode, seasonEpisode, file, folderName, folderId)
+          const episodes = (normalized.episodeNumbers || [seasonEpisode.episode]).map(number => tvResult.current_season!.episodes?.find(episode => episode.episode_number === number))
+          if (episodes.some(episode => !episode)) return file
+          mediaItem.seasons![0].episodes = episodes.map(episode => this.buildTvMediaItem(tvResult, episode, { season: seasonEpisode.season, episode: episode!.episode_number }, file, folderName, folderId).seasons![0].episodes![0])
+          await this.prepareScrapedMediaItem(mediaItem)
           this.mediaStore.addOrMergeTvSeries(mediaItem)
           this.mediaStore.addToRecentlyAdded(mediaItem)
           console.log(`✅ 电视剧: ${file.name} -> ${mediaItem.name} S${seasonEpisode.season}E${seasonEpisode.episode} (TMDB)`)
@@ -910,13 +807,14 @@ export class MediaScanner {
       }
 
       // 电影处理：Agent 已确认 TMDB ID 时，直接按 ID 获取元数据；只有旧任务没有 ID 时才按标题搜索。
+      if (mediaHint?.mediaType === 'tv' || mediaHint?.mediaType === 'anime') return file
       const movie = mediaHint?.mediaType === 'movie' && mediaHint.tmdbId
         ? await this.tmdbService.getMovieByTmdbId(mediaHint.tmdbId)
-        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear), undefined, buildMediaFingerprint(file), file.name)
+        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear), this.parseTmdbId(fileName) || undefined, buildMediaFingerprint(file), file.name)
       if (movie) {
         const collection = movie.belongs_to_collection
         const mediaItem: MediaLibraryItem = {
-          id: collection ? `collection_${collection.id}` : `${movie.id}`,
+          id: collection ? `collection_${collection.id}` : scrapedMediaId('movie', movie.id),
           parentId: folderName,
           folderId: folderId || `${file.driveId}`,
           folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
@@ -925,7 +823,9 @@ export class MediaScanner {
           overview: movie.overview,
           posterUrl: tmdbImageUrl(movie.poster_path) || undefined,
           backdropUrl: tmdbImageUrl(movie.backdrop_path) || undefined,
+          releaseDate: movie.release_date,
           year: movie.release_date?.substring(0, 4),
+          certification: movie.certification,
           rating: movie.vote_average,
           genres: movie.genres?.map(g => g.name) || [],
           credits: movie.credits,
@@ -945,7 +845,9 @@ export class MediaScanner {
             overview: movie.overview,
             posterUrl: tmdbImageUrl(movie.poster_path) || undefined,
             backdropUrl: tmdbImageUrl(movie.backdrop_path) || undefined,
-            year: movie.release_date?.substring(0, 4),
+            releaseDate: movie.release_date,
+          year: movie.release_date?.substring(0, 4),
+            certification: movie.certification,
             rating: movie.vote_average,
             genres: movie.genres?.map(g => g.name) || [],
             credits: movie.credits,
@@ -959,6 +861,7 @@ export class MediaScanner {
           metadataSource: 'tmdb',
           addedAt: new Date()
         }
+        await this.prepareScrapedMediaItem(mediaItem)
         this.mediaStore.addOrMergeTvSeries(mediaItem)
         this.mediaStore.addToRecentlyAdded(mediaItem)
         console.log(`✅ 电影: ${file.name} -> ${mediaItem.name} (TMDB)`)
@@ -968,7 +871,7 @@ export class MediaScanner {
       return file
     } catch (error) {
       console.error(`处理文件失败: ${file.name}`, error)
-      if (error instanceof TmdbTransientError) throw error
+      if (error instanceof TmdbTransientError || error instanceof MediaPersistenceError) throw error
       return file
     }
   }
@@ -1027,6 +930,22 @@ export class MediaScanner {
     if (pending) this.mediaStore.removeMediaItem(id)
   }
 
+  private async prepareScrapedMediaItem(item: MediaLibraryItem): Promise<void> {
+    try {
+      const existing = await DB.getScrapedMediaItem(item)
+      if (existing) Object.assign(item, mergeScrapedMedia(existing, item))
+      const files = [...item.driveFiles, ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles))]
+      const keys = [...new Set(files.map(file => this.getScopedDriveFileKey(file)))]
+      const unmatched = await DB.getMediaLibraryItemsByIds(keys)
+      const cachedUnmatched = this.mediaStore.mediaItems.filter(previous => previous.type === 'unmatched' && keys.includes(previous.id))
+      for (const previous of [...unmatched, ...cachedUnmatched]) {
+        if (previous.type === 'unmatched') this.mediaStore.removeMediaItem(previous.id)
+      }
+    } catch (error) {
+      throw new MediaPersistenceError(error)
+    }
+  }
+
   // 构建电视剧 MediaLibraryItem（从 processVideoFileWithoutAI 抽取）
   private buildTvMediaItem(
     tvResult: any,
@@ -1039,6 +958,7 @@ export class MediaScanner {
     const currentEpisode = {
       id: matchedEpisode.id,
       episodeNumber: matchedEpisode.episode_number,
+      rating: matchedEpisode.vote_average,
       seasonNumber: matchedEpisode.season_number,
       name: matchedEpisode.name,
       overview: matchedEpisode.overview,
@@ -1060,7 +980,7 @@ export class MediaScanner {
       episodes: [currentEpisode]
     }
     return {
-      id: `${tvResult.tv.id}`,
+      id: scrapedMediaId('tv', tvResult.tv.id),
       parentId: folderName,
       folderId: folderId,
       folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
@@ -1069,7 +989,9 @@ export class MediaScanner {
       overview: tvResult.tv.overview,
       posterUrl: tmdbImageUrl(tvResult.tv.poster_path) || undefined,
       backdropUrl: tmdbImageUrl(tvResult.tv.backdrop_path) || undefined,
+      releaseDate: tvResult.tv.first_air_date,
       year: tvResult.tv.first_air_date?.substring(0, 4),
+      certification: tvResult.tv.certification,
       rating: tvResult.tv.vote_average,
       genres: tvResult.tv.genres?.map((g: any) => g.name) || [],
       credits: tvResult.current_season?.credits,
@@ -1119,12 +1041,6 @@ export class MediaScanner {
         // 电视剧处理逻辑 - 完全移植 Swift 的 processTVFile
 
         // 1. 首先尝试与现有电视剧匹配（addTvSeriesItemByMatchName逻辑）
-        const existingTvItem = this.tryMatchExistingTvSeries(file, folderName, lookupName, seasonEpisode, folderId)
-        if (existingTvItem) {
-          console.log(`📺 已匹配现有剧集: ${existingTvItem.name} S${seasonEpisode.season}E${seasonEpisode.episode}`)
-          return
-        }
-
         // 2. 尝试通过TMDB API获取电视剧信息（对齐 Swift 的 parseAndFetchTVMetadata）
         const tmdbId = this.parseTmdbId(fileName)
         const year = normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear)
@@ -1158,6 +1074,7 @@ export class MediaScanner {
           const currentEpisode = {
             id: matchedEpisode.id,
             episodeNumber: matchedEpisode.episode_number,
+            rating: matchedEpisode.vote_average,
             seasonNumber: matchedEpisode.season_number,
             name: matchedEpisode.name,
             overview: matchedEpisode.overview,
@@ -1181,7 +1098,7 @@ export class MediaScanner {
           }
 
           const mediaItem: MediaLibraryItem = {
-            id: `${tvResult.tv.id}`,
+            id: scrapedMediaId('tv', tvResult.tv.id),
             parentId: folderName,
             folderId: folderId,
             folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
@@ -1190,7 +1107,9 @@ export class MediaScanner {
             overview: tvResult.tv.overview,
             posterUrl: tmdbImageUrl(tvResult.tv.poster_path) || undefined,
             backdropUrl: tmdbImageUrl(tvResult.tv.backdrop_path) || undefined,
-            year: tvResult.tv.first_air_date?.substring(0, 4),
+            releaseDate: tvResult.tv.first_air_date,
+      year: tvResult.tv.first_air_date?.substring(0, 4),
+            certification: tvResult.tv.certification,
             rating: tvResult.tv.vote_average,
             genres: tvResult.tv.genres?.map(g => g.name) || [],
             credits: tvResult.current_season?.credits,
@@ -1205,6 +1124,7 @@ export class MediaScanner {
             addedAt: new Date()
           }
 
+          await this.prepareScrapedMediaItem(mediaItem)
           this.mediaStore.addOrMergeTvSeries(mediaItem)
           this.mediaStore.addToRecentlyAdded(mediaItem)
 
@@ -1233,7 +1153,7 @@ export class MediaScanner {
         if (mediaInfo && (mediaInfo.type === 'movie' || !mediaInfo.type)) {
           const collectionId = mediaInfo.collectionId
           const movieItem = {
-            id: `${mediaInfo.tmdbId || this.getScopedDriveFileKey(file)}`,
+            id: mediaInfo.tmdbId ? scrapedMediaId('movie', mediaInfo.tmdbId) : this.getScopedDriveFileKey(file),
             parentId: folderName,
             folderId: folderId,
             folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
@@ -1263,6 +1183,7 @@ export class MediaScanner {
             collectionMovies: [movieItem]
           } : { ...movieItem, id: this.getScopedDriveFileKey(file) }
 
+          await this.prepareScrapedMediaItem(mediaItem)
           this.mediaStore.addOrMergeTvSeries(mediaItem)
           this.mediaStore.addToRecentlyAdded(mediaItem)
 
@@ -1323,11 +1244,8 @@ export class MediaScanner {
     let saved = 0
     for (const r of results) {
       if (r.mediaItem) {
-        if (r.mediaItem.type === 'tv') {
-          this.mediaStore.addOrMergeTvSeries(r.mediaItem)
-        } else {
-          this.mediaStore.addMediaItem(r.mediaItem)
-        }
+        await this.prepareScrapedMediaItem(r.mediaItem)
+        this.mediaStore.addOrMergeTvSeries(r.mediaItem)
         saved++
       } else if (r.file.driveFile && !r.error) {
         const aiOutcome = r.decision && r.decision.type !== 'unknown'

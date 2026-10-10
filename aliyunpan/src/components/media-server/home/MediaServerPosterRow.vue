@@ -46,7 +46,9 @@
               @load="handleMediaImageLoad"
               @error="handleMediaImageError"
             />
-            <div class="media-card-placeholder media-image-placeholder">{{ item.title.slice(0, 1) }}</div>
+            <WatchedIndicator v-if="['movie', 'series', 'season', 'episode'].includes(item.kind)" corner :watched="item.isPlayed === true" />
+            <PosterRatingBadge :rating="item.rating" />
+            <div class="media-card-placeholder media-image-placeholder"><MediaPosterPlaceholder /></div>
             <div v-if="showTopOverlay && resolveOverlay(item)" class="poster-overlay-badge">
               {{ resolveOverlay(item) }}
             </div>
@@ -60,29 +62,7 @@
           </div>
         </button>
         <template #content>
-          <div class="home-card-context-menu">
-            <button type="button" class="home-card-context-item" @click="$emit('play', item)">
-              <span class="home-card-context-icon">▷</span>
-              <span>{{ t('mediaServer.play') }}</span>
-            </button>
-            <button type="button" class="home-card-context-item" @click="$emit('action', item, 'download')">
-              <span class="home-card-context-icon">↓</span>
-              <span>{{ t('mediaServer.download') }}</span>
-            </button>
-            <button type="button" class="home-card-context-item" @click="$emit('action', item, 'favorite')">
-              <span class="home-card-context-icon">{{ item.isFavorite ? '♥' : '♡' }}</span>
-              <span>{{ item.isFavorite ? t('mediaServer.removeFavorite') : t('mediaServer.addFavorite') }}</span>
-            </button>
-            <div class="home-card-context-divider" />
-            <button type="button" class="home-card-context-item" @click="$emit('action', item, 'watched')">
-              <span class="home-card-context-icon context-icon-filled">✓</span>
-              <span>{{ item.isPlayed ? t('mediaServer.markUnwatched') : t('mediaServer.markWatched') }}</span>
-            </button>
-            <button v-if="showEditMetadata" type="button" class="home-card-context-item" @click="$emit('metadata', item)">
-              <span class="home-card-context-icon">✎</span>
-              <span>{{ t('mediaLibrary.manualEdit') }}</span>
-            </button>
-          </div>
+          <MediaPosterMenu :server="!!item.serverId && !item.serverId.startsWith('local')" :tv="item.kind === 'series' || item.kind === 'season'" :continuing="item.isContinuing" :watched="item.isPlayed" :favorite="item.isFavorite" :disabled="(['select', 'refresh', 'playlist', ...(item.kind === 'season' ? ['rating'] : []), ...(!item.serverId || item.serverId.startsWith('local') ? ['delete'] : ['continue'])] as PosterAction[])" @action="action => { if (action === 'play') $emit('play', item); else if (action === 'metadata') $emit('metadata', item); else if (action === 'delete' || action === 'loop' || action === 'shuffle' || action === 'watched' || action === 'favorite' || action === 'download' || action === 'series' || action === 'share' || action === 'continue' || action === 'rating') $emit('action', item, action) }" />
         </template>
       </a-trigger>
       <button
@@ -100,7 +80,9 @@
             @load="handleMediaImageLoad"
             @error="handleMediaImageError"
           />
-          <div class="media-card-placeholder media-image-placeholder">{{ item.title.slice(0, 1) }}</div>
+          <WatchedIndicator v-if="['movie', 'series', 'season', 'episode'].includes(item.kind)" corner :watched="item.isPlayed === true" />
+          <PosterRatingBadge :rating="item.rating" />
+            <div class="media-card-placeholder media-image-placeholder"><MediaPosterPlaceholder /></div>
           <div v-if="showTopOverlay && resolveOverlay(item)" class="poster-overlay-badge">
             {{ resolveOverlay(item) }}
           </div>
@@ -123,6 +105,11 @@
 </template>
 
 <script setup lang="ts">
+import type { PosterAction } from '../../../utils/mediaPosterMenu'
+import MediaPosterPlaceholder from '../../MediaPosterPlaceholder.vue'
+import MediaPosterMenu from '../../MediaPosterMenu.vue'
+import WatchedIndicator from '../../WatchedIndicator.vue'
+import PosterRatingBadge from '../../PosterRatingBadge.vue'
 import { computed } from 'vue'
 import type { MediaServerLibraryNode } from '../../../types/mediaServerContent'
 import type { MediaServerPosterType } from '../../../store/mediaServerHomePreferences'
@@ -160,7 +147,7 @@ const props = withDefaults(defineProps<{
 defineEmits<{
   (e: 'select', item: MediaServerLibraryNode): void
   (e: 'play', item: MediaServerLibraryNode): void
-  (e: 'action', item: MediaServerLibraryNode, action: 'watched' | 'favorite' | 'download'): void
+  (e: 'action', item: MediaServerLibraryNode, action: 'watched' | 'favorite' | 'download' | 'series' | 'share' | 'loop' | 'shuffle' | 'delete' | 'continue' | 'rating'): void
   (e: 'metadata', item: MediaServerLibraryNode): void
   (e: 'see-all'): void
   (e: 'retry'): void
@@ -195,7 +182,6 @@ const resolveSubtitle = (item: MediaServerLibraryNode) => {
 }
 
 const resolveOverlay = (item: MediaServerLibraryNode) => {
-  if (typeof item.rating === 'number') return `★ ${item.rating.toFixed(1)}`
   if (item.year) return `${item.year}`
   if (item.kind === 'series') return t('mediaServer.episodes')
   if (item.kind === 'movie') return t('mediaServer.movies')

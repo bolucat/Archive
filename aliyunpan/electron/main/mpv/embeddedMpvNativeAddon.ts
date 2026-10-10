@@ -1,3 +1,4 @@
+import { ensureMpvLoopbackProxyBypass } from '../../../shared/mpvProxyEnvironment'
 import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import { createRequire } from 'module'
@@ -9,10 +10,16 @@ export interface EmbeddedMpvTextureInfo {
   width: number
   height: number
   format: 'rgba' | 'bgra' | 'nv12' | string
+  transformed?: boolean
+  nativePixmap?: Electron.NativePixmap
+  release?: () => void
   pixels?: Buffer
 }
 
 export interface EmbeddedMpvStatus {
+  loading?: boolean
+  buffering?: boolean
+  ended?: boolean
   playing?: boolean
   paused?: boolean
   position?: number
@@ -35,6 +42,8 @@ export interface EmbeddedMpvTrack {
 
 export interface EmbeddedMpvTrackStatus {
   audioId?: number
+  secondarySubtitleId?: number
+  secondarySubtitleLines?: number
   subtitleId?: number
   tracks?: EmbeddedMpvTrack[]
 }
@@ -49,7 +58,7 @@ export interface EmbeddedMpvSubtitleStyle {
 
 export interface EmbeddedMpvNativeInstance {
   renderMode?: 'texture' | 'software'
-  create(config?: Record<string, unknown>): void
+  create(config?: Record<string, unknown>): Promise<void> | void
   load(url: string, options?: string): Promise<void> | void
   play(): Promise<void> | void
   pause(): Promise<void> | void
@@ -67,10 +76,11 @@ export interface EmbeddedMpvNativeInstance {
   getStatus(): EmbeddedMpvStatus
   getTrackStatus?: () => EmbeddedMpvTrackStatus
   refreshTrackStatus?: () => Promise<EmbeddedMpvTrackStatus>
-  destroy(): void
+  destroy(): Promise<void> | void
   onFrame(callback: (textureInfo: EmbeddedMpvTextureInfo) => void): void
   onStatus(callback: (status: EmbeddedMpvStatus) => void): void
   onError(callback: (error: string) => void): void
+  useSoftwareReadback?: () => Promise<void> | void
   releaseFrame?: () => void
   isInitialized?: () => boolean
 }
@@ -258,6 +268,7 @@ function toEmbeddedMpvNativeAddon(value: any): EmbeddedMpvNativeAddon | null {
 }
 
 export function loadEmbeddedMpvNativeAddon(candidates = getEmbeddedMpvNativeAddonCandidates()): EmbeddedMpvNativeAddonLoadResult {
+  ensureMpvLoopbackProxyBypass(process.env)
   const failures: string[] = []
   let failedPath: string | undefined
   for (const candidate of candidates) {

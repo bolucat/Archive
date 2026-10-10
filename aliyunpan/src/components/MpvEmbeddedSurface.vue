@@ -8,7 +8,8 @@ import {
 } from '../utils/subtitleApi'
 import type { SubtitleSearchResult } from '../utils/subtitleApi'
 import message from '../utils/message'
-import { getAutoSubtitleTrackId } from '../utils/mpvSubtitleTrack'
+import { MpvPlaybackSession } from '../utils/mpvPlaybackSession'
+import { getAutoSubtitleTrackId, subtitleSelectionCommands, bilingualSubtitlePositions } from '../utils/mpvSubtitleTrack'
 import { Captions, Flag, ListVideo, Pause, Play, Settings2, SkipBack, SkipForward } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -20,6 +21,8 @@ const props = defineProps<{
   qualities?: Array<{ html?: string; quality?: string; name?: string; label?: string; value?: string }>
   currentQuality?: string
   subtitleSources?: Array<{ url: string; title?: string }>
+  subtitleFiles?: Array<{ id: string; title: string }>
+  resolveSubtitleFile?: (id: string) => Promise<{ url: string; title?: string } | undefined>
   playlist?: Array<{ file_id?: string; html?: string; name?: string; default?: boolean }>
   chapters?: Array<{ start: number; end: number; title?: string }>
   currentFileId?: string
@@ -56,11 +59,12 @@ const playlistTab = ref<'playlist' | 'chapters'>('playlist')
 const noticeText = ref('')
 const audioTrackId = ref(-1)
 const subtitleTrackId = ref(-1)
+const subtitleFileLoading = ref(false)
+let manualSubtitleSelection = false
 let autoSelectedSubtitleTrackId: number | undefined
-let resumeGuardTarget = 0
-let resumeGuardUntil = 0
-let resumeGuardLastSeekAt = 0
 const secondarySubtitleTrackId = ref(-1)
+const secondarySubtitleLines = ref(0)
+const dualSubtitles = computed(() => subtitleTrackId.value >= 0 && secondarySubtitleTrackId.value >= 0)
 const subtitleDelay = ref(0)
 const subtitleScale = ref(1)
 const subtitleBorderSize = ref(3)
@@ -90,7 +94,8 @@ const hue = ref(0)
 const introSkipped = ref(false)
 const outroTriggered = ref(false)
 const tracks = ref<Array<{ id: number; type: string; title?: string; language?: string; codec?: string; selected?: boolean; external?: boolean }>>([])
-const isBuffering = computed(() => loading.value || (!errorText.value && frameCount.value === 0))
+const nativeBuffering = ref(false)
+const isBuffering = computed(() => !errorText.value && (loading.value || nativeBuffering.value || frameCount.value === 0))
 const shouldShowControls = computed(() => controlsVisible.value || controlsHover.value || paused.value || loading.value || Boolean(errorText.value) || seeking.value || settingsOpen.value || playlistOpen.value)
 
 type WebGLVideoState = {
@@ -136,8 +141,12 @@ let statusTimer: number | null = null
 let controlsHideTimer: number | null = null
 let noticeTimer: number | null = null
 let lastPointerY: number | null = null
-let pendingResumePosition = 0
 let loadSequence = 0
+let sessionId = ''
+let disposed = false
+let statusInFlight = false
+let loadStartedAt = 0
+const playbackSession = new MpvPlaybackSession()
 const CONTROLS_REVEAL_ZONE = 180
 const CONTROLS_HIDE_ZONE = 220
 const CONTROLS_DIRECTION_THRESHOLD = 2
@@ -148,6 +157,7 @@ const isAvailable = computed(() => {
 
 const audioTracks = computed(() => tracks.value.filter((track) => track.type === 'audio'))
 const subtitleTracks = computed(() => tracks.value.filter((track) => track.type === 'sub'))
+const unloadedSubtitleFiles = computed(() => (props.subtitleFiles || []).filter(file => !subtitleTracks.value.some(track => track.external && track.title === file.title)))
 const videoTracks = computed(() => tracks.value.filter((track) => track.type === 'video'))
 const speedOptions = [0.5, 1, 1.25, 1.5, 2, 3]
 const aspectOptions = [{ label: '默认', value: 'no' }, { label: '4:3', value: '1.3333' }, { label: '16:9', value: '1.7778' }, { label: '16:10', value: '1.6' }, { label: '21:9', value: '2.3333' }, { label: '5:4', value: '1.25' }]
@@ -342,15 +352,34 @@ const drawFrame = (videoFrame: VideoFrame, index: number) => {
   }
 }
 
-const drawSoftwareFrame = (pixels: Uint8Array, width: number, height: number, index: number) => {
+const drawSoftwareFrame = (pixels: Uint8Array, width: number, height: number, index: number, transformed = false) => {
   const canvas = fallbackCanvasRef.value
   if (!canvas || width < 1 || height < 1 || pixels.length !== width * height * 4) return
+  // IPC already gave us an owned byte buffer. Reinterpret it as clamped RGBA
+  // instead of copying the complete frame before handing it to ImageData.
+  const rgba = pixels.buffer instanceof ArrayBuffer
+    ? new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+    : new Uint8ClampedArray(pixels)
+  const image = new ImageData(rgba, width, height)
+  const normalizedRotation = transformed ? 0 : ((rotation.value % 360) + 360) % 360
+  if ((transformed || cropRatio.value === 'no') && normalizedRotation === 0) {
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+    fallbackContext = fallbackContext || canvas.getContext('2d', { alpha: false })
+    if (!fallbackContext) return
+    fallbackContext.putImageData(image, 0, 0)
+    renderMode.value = 'fallback'
+    frameCount.value = index + 1
+    loading.value = false
+    errorText.value = ''
+    return
+  }
   softwareSourceCanvas = softwareSourceCanvas || document.createElement('canvas')
   if (softwareSourceCanvas.width !== width) softwareSourceCanvas.width = width
   if (softwareSourceCanvas.height !== height) softwareSourceCanvas.height = height
   softwareSourceContext = softwareSourceContext || softwareSourceCanvas.getContext('2d', { alpha: false })
   if (!softwareSourceContext) return
-  softwareSourceContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0)
+  softwareSourceContext.putImageData(image, 0, 0)
 
   let sourceX = 0
   let sourceY = 0
@@ -368,7 +397,6 @@ const drawSoftwareFrame = (pixels: Uint8Array, width: number, height: number, in
     }
   }
 
-  const normalizedRotation = ((rotation.value % 360) + 360) % 360
   const swapsAxes = normalizedRotation === 90 || normalizedRotation === 270
   const outputWidth = swapsAxes ? sourceHeight : sourceWidth
   const outputHeight = swapsAxes ? sourceWidth : sourceHeight
@@ -483,26 +511,48 @@ const handleSurfacePointerLeave = () => {
   hideControlsIfAllowed()
 }
 
-const updateStatus = async () => {
-  const result = await window.WebMpvEmbeddedStatus?.()
-  if (!result?.ok) return
-  const status = { ...result.status, __loading: !loaded.value }
-  emit('status', status)
+const acceptStatus = (result: any) => {
+  if (disposed || (result.sessionId && result.sessionId !== sessionId)) return
+  if (result.error) {
+    errorText.value = result.error
+    loading.value = false
+    emit('error', result.error)
+    return
+  }
+  if (!result.ok) return
+  if (result.status?.loading === false) loaded.value = true
+  emit('status', { ...result.status, __loading: !loaded.value })
   applyStatusResult(result)
-  if (
-    loaded.value
-    && resumeGuardTarget > 0
-    && Date.now() < resumeGuardUntil
-    && typeof position.value === 'number'
-    && position.value < resumeGuardTarget - 2
-    && Date.now() - resumeGuardLastSeekAt > 300
-  ) {
-    resumeGuardLastSeekAt = Date.now()
-    void control('seek', resumeGuardTarget)
+  if (loaded.value) void addAutomaticSubtitles(loadSequence)
+}
+
+const updateStatus = async () => {
+  if (statusInFlight || disposed || !props.url) return
+  const sequence = loadSequence
+  statusInFlight = true
+  try {
+    const result = await window.WebMpvEmbeddedStatus?.()
+    if (sequence !== loadSequence || disposed) return
+    if (result) acceptStatus(result)
+    if (!frameCount.value && !errorText.value && Date.now() - loadStartedAt > 30000) {
+      errorText.value = '视频加载超时，请重试或检查网络连接。'
+      loading.value = false
+      emit('error', errorText.value)
+    }
+  } finally {
+    statusInFlight = false
   }
 }
 
+const addAutomaticSubtitles = async (sequence: number) => {
+  if (manualSubtitleSelection) return
+  await playbackSession.addSubtitles(props.subtitleSources || [], sequence, async (subtitle) => {
+    await control('addSubtitle', undefined, { url: subtitle.url, title: subtitle.title || '自动字幕' })
+  })
+}
+
 const applyStatusResult = (result: any) => {
+  nativeBuffering.value = Boolean(result.status?.buffering)
   paused.value = Boolean(result.status?.paused)
   if (!seeking.value) position.value = typeof result.status?.position === 'number' ? result.status.position : 0
   duration.value = typeof result.status?.duration === 'number' ? result.status.duration : 0
@@ -511,64 +561,52 @@ const applyStatusResult = (result: any) => {
   if (Array.isArray(result.trackStatus?.tracks)) tracks.value = result.trackStatus.tracks
   if (typeof result.trackStatus?.audioId === 'number') audioTrackId.value = result.trackStatus.audioId
   if (typeof result.trackStatus?.subtitleId === 'number') subtitleTrackId.value = result.trackStatus.subtitleId
+  if (typeof result.trackStatus?.secondarySubtitleId === 'number') secondarySubtitleTrackId.value = result.trackStatus.secondarySubtitleId
+  if (typeof result.trackStatus?.secondarySubtitleLines === 'number') secondarySubtitleLines.value = result.trackStatus.secondarySubtitleLines
   const autoSubtitleTrackId = getAutoSubtitleTrackId(tracks.value, subtitleTrackId.value, Boolean(props.subtitleSources?.length))
-  if (autoSubtitleTrackId != null && autoSubtitleTrackId !== autoSelectedSubtitleTrackId) {
+  if (!manualSubtitleSelection && autoSubtitleTrackId != null && autoSubtitleTrackId !== autoSelectedSubtitleTrackId) {
     autoSelectedSubtitleTrackId = autoSubtitleTrackId
     void control('setSubtitleTrack', autoSubtitleTrackId)
   }
   statusText.value = duration.value > 0 ? `${formatTime(position.value)} / ${formatTime(duration.value)}` : ''
-  if (result.status?.playing || position.value > 0 || frameCount.value > 0) errorText.value = ''
+
   handleIntroOutroSkip()
-}
-
-const restorePendingResumePosition = async (sequence: number) => {
-  const target = pendingResumePosition
-  if (target <= 0) return
-
-  // MPV accepts the seek command asynchronously. Do not clear the pending
-  // position until a later status confirms that the seek actually landed.
-  for (let attempt = 0; attempt < 8 && sequence === loadSequence; attempt++) {
-    await control('seek', target)
-    await new Promise(resolve => window.setTimeout(resolve, 100))
-    await updateStatus()
-    if (position.value >= Math.max(0, target - 2)) {
-      pendingResumePosition = 0
-      resumeGuardTarget = target
-      resumeGuardUntil = Date.now() + 6000
-      resumeGuardLastSeekAt = Date.now()
-      return
-    }
-  }
 }
 
 const load = async () => {
   if (!props.url) return
-  const sequence = ++loadSequence
+  const sequence = playbackSession.begin()
+  loadSequence = sequence
+  sessionId = crypto.randomUUID()
+  manualSubtitleSelection = false
+  secondarySubtitleTrackId.value = -1
+  secondarySubtitleLines.value = 0
+  subtitleFileLoading.value = false
+  loadStartedAt = Date.now()
+  clearFrame()
   if (!isAvailable.value) {
-    const message = 'macOS 内嵌 MPV surface 尚不可用。'
+    const message = '内嵌 MPV surface 尚不可用。'
     errorText.value = message
     emit('error', message)
     return
   }
 
   loading.value = true
+  nativeBuffering.value = false
   loaded.value = false
-  resumeGuardTarget = 0
-  resumeGuardUntil = 0
-  resumeGuardLastSeekAt = 0
   autoSelectedSubtitleTrackId = undefined
-  pendingResumePosition = props.startPosition && props.startPosition > 0 ? Math.floor(props.startPosition) : 0
   introSkipped.value = false
   outroTriggered.value = false
   errorText.value = ''
   const headers = Object.fromEntries(Object.entries(props.headers || {}).map(([key, value]) => [key, String(value)]))
   console.info('[播放][MPV] 提交播放链接', {
-    url: props.url,
+    source: /^https?:/.test(props.url) ? 'remote' : 'local',
     position: props.startPosition || 0,
     hasAuthorization: Object.keys(headers).some((key) => key.toLowerCase() === 'authorization'),
     userAgent: Object.entries(headers).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
   })
   const result = await window.WebMpvEmbeddedLoad({
+    sessionId,
     url: props.url,
     headers,
     title: props.title || '',
@@ -578,31 +616,30 @@ const load = async () => {
   loading.value = false
 
   if (!result?.ok) {
-    const message = result?.error || result?.capability?.reason || 'macOS 内嵌 MPV 加载失败。'
+    const message = result?.error || result?.capability?.reason || '内嵌 MPV 加载失败。'
     errorText.value = message
     emit('error', message)
     return
   }
 
+  await control('play')
+  if (sequence !== loadSequence) return
   await updateStatus()
   if (sequence !== loadSequence) return
-  loaded.value = true
-  await applySubtitleStyle()
-  for (const subtitle of props.subtitleSources || []) {
-    if (subtitle.url) await control('addSubtitle', undefined, { url: subtitle.url, title: subtitle.title || '自动字幕' })
-  }
-  await updateStatus()
-  // Subtitle setup may reload/reset the native stream. It must happen before
-  // the final seek; otherwise a successful resume can be overwritten by 0.
-  await control('play')
-  await restorePendingResumePosition(sequence)
+  // loadfile carries start=...; do not replay seeks after subtitle completion.
+  // Subtitle discovery is triggered by FILE_LOADED status independently.
+  void applySubtitleStyle()
+
 }
 
 const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' | 'setSpeed' | 'setAudioTrack' | 'setSubtitleTrack' | 'setSubtitleStyle' | 'setVideoProperty' | 'addAudio' | 'addSubtitle', value?: number, extra?: { url?: string; title?: string; property?: string; propertyValue?: string | number | boolean; style?: { fontSize?: number; color?: string; position?: number; bold?: boolean; italic?: boolean } }) => {
   revealControls()
-  const result = await window.WebMpvEmbeddedControl?.({ action, value, ...(extra || {}) })
+  if (disposed && action !== 'stop') return
+  const sequence = loadSequence
+  const result = await window.WebMpvEmbeddedControl?.({ action, value, sessionId, ...(extra || {}) })
+  if (sequence !== loadSequence || disposed) return
   if (!result?.ok) {
-    const message = result?.error || 'macOS 内嵌 MPV 控制失败。'
+    const message = result?.error || '内嵌 MPV 控制失败。'
     if (optionalControlActions.has(action)) {
       showNotice(message)
     } else {
@@ -620,6 +657,7 @@ const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' 
   if (action === 'pause') paused.value = true
   else if (action === 'play') paused.value = false
   if (action === 'stop') clearFrame()
+  return result
 }
 
 const formatTime = (seconds: number) => {
@@ -684,16 +722,22 @@ const handleVideoToggle = async (event: Event, property: string, enabledValue: s
   if (property === 'hwdec') hardwareDecode.value = enabled
   if (property === 'deinterlace') deinterlace.value = enabled
   if (property === 'tone-mapping') hdrToneMapping.value = enabled
-  await setVideoProperty(property, enabled ? enabledValue : disabledValue)
+  let value = enabled ? enabledValue : disabledValue
+  await setVideoProperty(property, value)
 }
 
-const handleVideoFilterChange = async (event: Event, property: string, target: string) => {
+const updateVideoFilterValue = (event: Event, target: string) => {
   const value = Number((event.target as HTMLInputElement).value || 0)
   if (target === 'brightness') brightness.value = value
   if (target === 'contrast') contrast.value = value
   if (target === 'saturation') saturation.value = value
   if (target === 'gamma') gamma.value = value
   if (target === 'hue') hue.value = value
+  return value
+}
+
+const handleVideoFilterChange = async (event: Event, property: string, target: string) => {
+  const value = updateVideoFilterValue(event, target)
   await setVideoProperty(property, value)
 }
 
@@ -717,8 +761,12 @@ const buildEqualizerFilter = () => equalizerBands.value
   .map((gain, index) => `equalizer=f=${equalizerFrequencies[index]}:g=${gain}`)
   .join(',')
 
-const handleEqualizerChange = async (event: Event, index: number) => {
+const updateEqualizerBand = (event: Event, index: number) => {
   equalizerBands.value[index] = Number((event.target as HTMLInputElement).value || 0)
+}
+
+const handleEqualizerChange = async (event: Event, index: number) => {
+  updateEqualizerBand(event, index)
   await setVideoProperty('af', buildEqualizerFilter())
 }
 
@@ -734,19 +782,68 @@ const handleAddExternalAudio = () => {
   })
 }
 
-const handleSubtitleTrackChange = async (event: Event) => {
-  revealControls()
-  const selectedValue = String((event.target as HTMLSelectElement).value || 'track:-1')
-  const nextTrackId = Number(selectedValue.replace(/^track:/, ''))
-  subtitleTrackId.value = nextTrackId
-  await control('setSubtitleTrack', nextTrackId)
+const selectSubtitleTrack = async (nextId: number, secondary: boolean, primaryId = subtitleTrackId.value) => {
+  const sequence = loadSequence
+  manualSubtitleSelection = true
+  for (const command of subtitleSelectionCommands(secondary, nextId, primaryId, secondarySubtitleTrackId.value)) {
+    const result = command.secondary
+      ? await control('setVideoProperty', undefined, { property: 'secondary-sid', propertyValue: command.id < 0 ? 'no' : command.id })
+      : await control('setSubtitleTrack', command.id)
+    if (!result?.ok || disposed || sequence !== loadSequence) return
+    if (command.secondary) secondarySubtitleTrackId.value = command.id
+    else subtitleTrackId.value = command.id
+  }
 }
 
-const handleSecondarySubtitleTrackChange = async (event: Event) => {
-  const nextTrackId = Number(String((event.target as HTMLSelectElement).value || 'track:-1').replace(/^track:/, ''))
-  secondarySubtitleTrackId.value = nextTrackId
-  await setVideoProperty('secondary-sid', nextTrackId < 0 ? 'no' : nextTrackId)
+const loadSubtitleFile = async (id: string, secondary: boolean) => {
+  if (subtitleFileLoading.value || !props.resolveSubtitleFile) return
+  const sequence = loadSequence
+  subtitleFileLoading.value = true
+  manualSubtitleSelection = true
+  const primaryTrackId = subtitleTrackId.value
+  try {
+    const source = await props.resolveSubtitleFile(id)
+    if (disposed || sequence !== loadSequence) return
+    if (!source) throw new Error('未能获取字幕地址，请重试')
+    // Reuse a track already loaded by automatic matching or an earlier selection.
+    let track = subtitleTracks.value.find(item => item.external && item.title === source.title)
+    if (!track) {
+      const added = await control('addSubtitle', undefined, source)
+      if (!added?.ok || disposed || sequence !== loadSequence) return
+      const deadline = Date.now() + 3000
+      while (!track && Date.now() < deadline) {
+        await updateStatus()
+        if (disposed || sequence !== loadSequence) return
+        track = subtitleTracks.value.find(item => item.external && item.title === source.title)
+        if (!track) await new Promise(resolve => window.setTimeout(resolve, 100))
+      }
+    }
+    if (!track) throw new Error('字幕轨道尚未就绪，请重试')
+    await selectSubtitleTrack(track.id, secondary, primaryTrackId)
+  } catch (error) {
+    if (!disposed && sequence === loadSequence) showNotice(error instanceof Error ? error.message : '加载字幕失败')
+  } finally {
+    if (sequence === loadSequence) subtitleFileLoading.value = false
+  }
 }
+
+const handleSubtitleSelection = async (event: Event, secondary: boolean) => {
+  if (subtitleFileLoading.value) return
+  revealControls()
+  manualSubtitleSelection = true
+  const selectedValue = String((event.target as HTMLSelectElement).value || 'track:-1')
+  if (selectedValue.startsWith('file:')) return loadSubtitleFile(selectedValue.slice(5), secondary)
+  const sequence = loadSequence
+  subtitleFileLoading.value = true
+  try {
+    await selectSubtitleTrack(Number(selectedValue.replace(/^track:/, '')), secondary)
+  } finally {
+    if (sequence === loadSequence) subtitleFileLoading.value = false
+  }
+}
+
+const handleSubtitleTrackChange = (event: Event) => handleSubtitleSelection(event, false)
+const handleSecondarySubtitleTrackChange = (event: Event) => handleSubtitleSelection(event, true)
 
 const handleSubtitleDelayChange = async (event: Event) => {
   subtitleDelay.value = Number((event.target as HTMLInputElement).value || 0)
@@ -785,12 +882,22 @@ const handleAddExternalSubtitle = () => {
   })
 }
 
+const subtitlePositions = () => bilingualSubtitlePositions(subtitlePosition.value, subtitleFontSize.value, subtitleScale.value, dualSubtitles.value, secondarySubtitleLines.value)
+
+const applySubtitleLayout = async () => {
+  const sequence = loadSequence
+  const positions = subtitlePositions()
+  await setVideoProperty('secondary-sub-pos', positions.secondary)
+  if (disposed || sequence !== loadSequence) return
+  await setVideoProperty('sub-pos', positions.primary)
+}
+
 const applySubtitleStyle = async () => {
   await control('setSubtitleStyle', undefined, {
     style: {
       fontSize: subtitleFontSize.value,
       color: subtitleColor.value,
-      position: subtitlePosition.value,
+      position: subtitlePositions().primary,
       bold: subtitleBold.value,
       italic: subtitleItalic.value
     }
@@ -1002,14 +1109,17 @@ onMounted(async () => {
   window.WebMpvSharedTexture?.onFrame?.(drawFrame)
   window.WebMpvSharedTexture?.onSoftwareFrame?.(drawSoftwareFrame)
   window.WebMpvSharedTexture?.onClear?.(clearFrame)
-  await load()
+  window.WebMpvSharedTexture?.onStatus?.(acceptStatus)
   statusTimer = window.setInterval(() => {
     void updateStatus()
   }, 1000)
+  await load()
 })
 
 onBeforeUnmount(() => {
-  loadSequence++
+  disposed = true
+  loadSequence = playbackSession.begin()
+  window.WebMpvSharedTexture?.removeStatusListener?.()
   if (statusTimer != null) window.clearInterval(statusTimer)
   statusTimer = null
   if (noticeTimer != null) window.clearTimeout(noticeTimer)
@@ -1033,12 +1143,13 @@ watch([paused, loading, errorText, seeking], () => {
   if (isControlsPinned()) controlsVisible.value = true
 })
 
-watch(() => props.subtitleSources, async (sources) => {
-  if (!props.url || !loaded.value) return
-  for (const subtitle of sources || []) {
-    if (subtitle.url) await control('addSubtitle', undefined, { url: subtitle.url, title: subtitle.title || '自动字幕' })
-  }
-  await updateStatus()
+watch([dualSubtitles, secondarySubtitleLines, subtitlePosition, subtitleFontSize, subtitleScale], () => {
+  if (props.url && !disposed) void applySubtitleLayout()
+})
+
+watch(() => props.subtitleSources, () => {
+  if (!props.url || !loaded.value || disposed) return
+  void addAutomaticSubtitles(loadSequence)
 }, { deep: true })
 
 watch(chapters, (nextChapters) => {
@@ -1194,7 +1305,7 @@ watch(chapters, (nextChapters) => {
               <span class="mpv-side-label">均衡器</span>
               <label v-for="item in [{ label: '亮度', property: 'brightness', state: 'brightness' }, { label: '对比度', property: 'contrast', state: 'contrast' }, { label: '饱和度', property: 'saturation', state: 'saturation' }, { label: '伽马', property: 'gamma', state: 'gamma' }, { label: '色调', property: 'hue', state: 'hue' }]" :key="item.property" class="mpv-side-slider mpv-video-filter-row">
                 <span>{{ item.label }} <b>{{ item.state === 'brightness' ? brightness : item.state === 'contrast' ? contrast : item.state === 'saturation' ? saturation : item.state === 'gamma' ? gamma : hue }}</b></span>
-                <input :value="item.state === 'brightness' ? brightness : item.state === 'contrast' ? contrast : item.state === 'saturation' ? saturation : item.state === 'gamma' ? gamma : hue" max="100" min="-100" step="1" type="range" @change="handleVideoFilterChange($event, item.property, item.state)" />
+                <input :aria-label="item.label" :value="item.state === 'brightness' ? brightness : item.state === 'contrast' ? contrast : item.state === 'saturation' ? saturation : item.state === 'gamma' ? gamma : hue" max="100" min="-100" step="1" type="range" @input="updateVideoFilterValue($event, item.state)" @change="handleVideoFilterChange($event, item.property, item.state)" />
               </label>
             </section>
             <section class="mpv-side-section">
@@ -1220,7 +1331,7 @@ watch(chapters, (nextChapters) => {
               <div class="mpv-equalizer-heading"><span class="mpv-side-label">均衡器</span><b>+12 dB　0 dB　-12 dB</b></div>
               <div class="mpv-equalizer-grid">
                 <label v-for="(frequency, index) in equalizerFrequencies" :key="frequency" class="mpv-equalizer-band">
-                  <input :value="equalizerBands[index]" max="12" min="-12" step="1" type="range" @change="handleEqualizerChange($event, index)" />
+                  <input :aria-label="`${frequency} Hz 增益`" :aria-valuetext="`${equalizerBands[index]} dB`" :value="equalizerBands[index]" max="12" min="-12" step="1" type="range" @input="updateEqualizerBand($event, index)" @change="handleEqualizerChange($event, index)" />
                   <span>{{ frequency >= 1000 ? `${frequency / 1000}k` : frequency }}</span>
                 </label>
               </div>
@@ -1230,14 +1341,15 @@ watch(chapters, (nextChapters) => {
           <div v-else class="mpv-side-settings-content">
             <section class="mpv-side-section">
               <span class="mpv-side-label">字幕轨道</span>
-              <label class="mpv-side-select-row"><span>字幕</span><select :value="subtitleSelectValue" title="字幕" @change="handleSubtitleTrackChange"><option value="track:-1">关闭字幕</option><option v-for="track in subtitleTracks" :key="`sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option></select></label>
-              <label class="mpv-side-select-row"><span>副字幕</span><select :value="secondarySubtitleSelectValue" title="副字幕" @change="handleSecondarySubtitleTrackChange"><option value="track:-1">关闭副字幕</option><option v-for="track in subtitleTracks" :key="`secondary-sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option></select></label>
+              <label class="mpv-side-select-row"><span>字幕</span><select :disabled="subtitleFileLoading" :value="subtitleSelectValue" title="字幕" @change="handleSubtitleTrackChange"><option value="track:-1">关闭字幕</option><option v-for="track in subtitleTracks" :key="`sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option><optgroup v-if="unloadedSubtitleFiles.length" label="网盘字幕"><option v-for="file in unloadedSubtitleFiles" :key="file.id" :value="`file:${file.id}`">{{ file.title }}</option></optgroup></select></label>
+              <label class="mpv-side-select-row"><span>副字幕</span><select :disabled="subtitleFileLoading" :value="secondarySubtitleSelectValue" title="副字幕" @change="handleSecondarySubtitleTrackChange"><option value="track:-1">关闭副字幕</option><option v-for="track in subtitleTracks" :key="`secondary-sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option><optgroup v-if="unloadedSubtitleFiles.length" label="网盘字幕"><option v-for="file in unloadedSubtitleFiles" :key="file.id" :value="`file:${file.id}`">{{ file.title }}</option></optgroup></select></label>
+              <div v-if="subtitleFileLoading" class="mpv-side-empty" role="status">正在加载字幕…</div>
               <div class="mpv-side-action-row"><button class="mpv-side-action" type="button" @click="handleAddExternalSubtitle">加载字幕…</button><button class="mpv-side-action" type="button" @click="openSubtitleSearchModal"><Captions :size="15" /> 在线查找</button></div>
             </section>
             <section class="mpv-side-section">
               <div class="mpv-subtitle-mode-tabs"><button class="active" type="button">主字幕</button><button type="button">二级字幕</button></div>
               <label class="mpv-side-slider"><span>字幕延迟 <b>{{ subtitleDelay.toFixed(1) }}s</b></span><input :value="subtitleDelay" max="5" min="-5" step="0.1" type="range" @change="handleSubtitleDelayChange" /></label>
-              <label class="mpv-side-slider"><span>位置 <b>{{ subtitlePosition }}</b></span><input :value="subtitlePosition" max="100" min="0" step="1" type="range" @change="handleSubtitlePositionChange" /></label>
+              <label class="mpv-side-slider"><span>{{ dualSubtitles ? '双语位置' : '位置' }} <b>{{ subtitlePosition }}</b></span><input :value="subtitlePosition" max="100" min="0" step="1" type="range" @change="handleSubtitlePositionChange" /></label>
               <label class="mpv-side-slider"><span>缩放 <b>{{ subtitleScale.toFixed(2) }}</b></span><input :value="subtitleScale" max="3" min="0.25" step="0.05" type="range" @change="handleSubtitleScaleChange" /></label>
             </section>
             <section class="mpv-side-section">
@@ -2488,6 +2600,7 @@ watch(chapters, (nextChapters) => {
   display: flex;
   width: min(310px, 32vw);
   flex-direction: column;
+  color-scheme: dark;
   border-left: 1px solid rgba(255, 255, 255, .1);
   background: rgba(28, 29, 31, .96);
   box-shadow: -20px 0 55px rgba(0, 0, 0, .26);
@@ -2639,6 +2752,9 @@ watch(chapters, (nextChapters) => {
 
 .mpv-side-settings-content {
   display: grid;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
   gap: 22px;
   overflow: auto;
   padding: 18px 16px 24px;
@@ -2712,6 +2828,18 @@ watch(chapters, (nextChapters) => {
   accent-color: #63d5ff;
 }
 
+.mpv-side-select-row select {
+  color-scheme: dark;
+  background-color: #1c1d1f;
+  color: #f1f1f1;
+}
+
+.mpv-side-select-row select option,
+.mpv-side-select-row select optgroup {
+  background-color: #1c1d1f;
+  color: #f1f1f1;
+}
+
 .mpv-option-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2779,7 +2907,6 @@ watch(chapters, (nextChapters) => {
 
 .mpv-equalizer-grid {
   display: grid;
-  height: 132px;
   grid-template-columns: repeat(10, minmax(0, 1fr));
   align-items: end;
   gap: 5px;
@@ -2791,7 +2918,6 @@ watch(chapters, (nextChapters) => {
 .mpv-equalizer-band {
   display: flex;
   min-width: 0;
-  height: 100%;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
@@ -2799,12 +2925,14 @@ watch(chapters, (nextChapters) => {
 }
 
 .mpv-equalizer-band input {
-  width: 112px;
-  height: 18px;
+  width: 18px;
+  height: 112px;
+  flex: 0 0 112px;
+  margin: 0;
   accent-color: #b6dff2;
   cursor: pointer;
-  transform: rotate(-90deg);
-  transform-origin: center center;
+  writing-mode: vertical-lr;
+  direction: rtl;
 }
 
 .mpv-equalizer-band span {

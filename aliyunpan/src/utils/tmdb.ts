@@ -7,6 +7,8 @@ import type {
   TvSeriesItemResponse
 } from '../types/media'
 import Config from '../config'
+import { tmdbCertification } from './tmdbCertification'
+import { fetchRankingPages } from './tmdbLibraryRecommendations'
 import { mediaFileNormalizer, type NormalizedMediaFileDescriptor } from './mediaFileNormalizer'
 import type { MediaFingerprint } from './mediaFingerprint'
 
@@ -112,7 +114,29 @@ export function tmdbImageUrl(path?: string | null, size: string = 'w500'): strin
 
 export { TMDB_BASE_URL }
 
+export async function getLibraryRankings() {
+    const [movies, tv, topMovies] = await Promise.all([
+      fetchRankingPages(TMDB_BASE_URL_PROXY, '/trending/movie/day', 'movie', fetchWithRetry),
+      fetchRankingPages(TMDB_BASE_URL_PROXY, '/trending/tv/day', 'tv', fetchWithRetry),
+      fetchRankingPages(TMDB_BASE_URL_PROXY, '/movie/top_rated', 'movie', fetchWithRetry)
+    ])
+    return { daily: [...movies, ...tv], topMovies }
+  }
+
+
 export class TmdbService {
+  private async supplementCertification(item: MovieItem | MediaLibraryTvSeriesItem | null, tv: boolean): Promise<void> {
+    if (!item) return
+    const metadata = tv ? (item as MediaLibraryTvSeriesItem).tv : item as MovieItem
+    metadata.certification = tmdbCertification(metadata, tv)
+    if (metadata.certification || !metadata.id) return
+    try {
+      const endpoint = tv ? `tv/${metadata.id}/content_ratings` : `movie/${metadata.id}/release_dates`
+      const response = await fetchWithRetry(`${TMDB_BASE_URL_PROXY}/${endpoint}`, 0, 0, 10000)
+      const payload = await response.json()
+      metadata.certification = tmdbCertification({ [tv ? 'content_ratings' : 'release_dates']: payload.data ?? payload }, tv)
+    } catch { /* Optional metadata must not invalidate a successful match. */ }
+  }
   private static instance: TmdbService
   
   static getInstance(): TmdbService {
@@ -131,7 +155,7 @@ export class TmdbService {
   ): Promise<MovieItem | null> {
     try {
       const params = new URLSearchParams({
-        language: 'zh-CN'
+        language: 'zh-CN', append_to_response: 'release_dates'
       })
 
       if (tmdbId) {
@@ -151,7 +175,9 @@ export class TmdbService {
       const response = await fetchWithRetry(`${TMDB_BASE_URL}/movie?${params}`)
 
       const data: MovieItemResponse = await response.json()
-      return unwrapTmdbResponse(data)
+      const item = unwrapTmdbResponse(data)
+      await this.supplementCertification(item, false)
+      return item
     } catch (error) {
       console.error('Error searching movie:', error)
       if (error instanceof TmdbTransientError) throw error
@@ -175,10 +201,12 @@ export class TmdbService {
 
   async getTvByTmdbId(tmdbId: number | string, season = 1): Promise<MediaLibraryTvSeriesItem | null> {
     try {
-      const params = new URLSearchParams({ id: String(tmdbId), season: String(season), language: 'zh-CN' })
+      const params = new URLSearchParams({ id: String(tmdbId), season: String(season), language: 'zh-CN', append_to_response: 'content_ratings' })
       const response = await fetchWithRetry(`${TMDB_BASE_URL}/tv/id?${params}`)
       const data: TvSeriesItemResponse = await response.json()
-      return data.data || null
+      const item = data.data || null
+      await this.supplementCertification(item, true)
+      return item
     } catch (error) {
       console.error('Error loading TV metadata:', error)
       return null
@@ -196,7 +224,8 @@ export class TmdbService {
     try {
       const params = new URLSearchParams({
         language: 'zh-CN',
-        season: season.toString()
+        season: season.toString(),
+        append_to_response: 'content_ratings'
       })
 
       if (tmdbId) {
@@ -216,7 +245,9 @@ export class TmdbService {
       const response = await fetchWithRetry(`${TMDB_BASE_URL}/tv?${params}`)
 
       const data: TvSeriesItemResponse = await response.json()
-      return unwrapTmdbResponse(data)
+      const item = unwrapTmdbResponse(data)
+      await this.supplementCertification(item, true)
+      return item
     } catch (error) {
       console.error('Error searching TV show:', error)
       if (error instanceof TmdbTransientError) throw error
@@ -272,6 +303,7 @@ export class TmdbService {
           posterUrl: tvResult.tv.poster_path ? tmdbImageUrl(tvResult.tv.poster_path) : undefined,
           backdropUrl: tvResult.tv.backdrop_path ? tmdbImageUrl(tvResult.tv.backdrop_path, 'original') : undefined,
           year: tvResult.tv.first_air_date?.substring(0, 4),
+          certification: tvResult.tv.certification,
           rating: tvResult.tv.vote_average,
           genres: tvResult.tv.genres?.map(g => g.name) || [],
           credits: tvResult.tv.credits || tvResult.current_season?.credits,
@@ -305,6 +337,7 @@ export class TmdbService {
           posterUrl: movieResult.poster_path ? tmdbImageUrl(movieResult.poster_path) : undefined,
           backdropUrl: movieResult.backdrop_path ? tmdbImageUrl(movieResult.backdrop_path, 'original') : undefined,
           year: movieResult.release_date?.substring(0, 4),
+          certification: movieResult.certification,
           rating: movieResult.vote_average,
           genres: movieResult.genres?.map(g => g.name) || [],
           credits: movieResult.credits,

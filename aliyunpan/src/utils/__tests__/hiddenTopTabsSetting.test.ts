@@ -19,7 +19,7 @@ describe('hidden top tabs setting', () => {
 
   it('shows a correctly directed shared sidebar toggle for every tab with a sidebar', () => {
     const pageMainSource = readFileSync(resolve(process.cwd(), 'src/layout/PageMain.vue'), 'utf8')
-    expect(pageMainSource).toContain("const sidebarTabs = new Set(['pan', 'down', 'share', 'rss', 'media', 'media-server', 'music', 'book', 'ai-workspace', 'setting'])")
+    expect(pageMainSource).toContain("const sidebarTabs = new Set(['pan', 'down', 'share', 'rss', 'media', 'ai-workspace', 'setting'])")
     expect(pageMainSource).toContain('v-show="hasActiveSidebar"')
     expect(pageMainSource).toContain('<PanelLeftClose v-if=\'activeSidebarVisible\'')
     expect(pageMainSource).toContain('<PanelLeftOpen v-else')

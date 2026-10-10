@@ -820,6 +820,11 @@ const emit = defineEmits([
 // 暴露给父组件的方法
 defineExpose({
   showAddFolderDialog,
+  importLocalFolder: handleImportLocalFolder,
+  removeFolder: (folder: MediaLibraryFolder) => {
+    contextMenuFolder.value = folder
+    handleDeleteFolder()
+  },
   openLibraryManager,
   syncActiveCategory,
   syncSelectedFolder

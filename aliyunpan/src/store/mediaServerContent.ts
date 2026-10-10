@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { libraryCover, withLibraryCoverFallback } from '../media-server/libraryCover'
 import type { MediaServerConfig } from '../types/mediaServer'
 import type { MediaServerHomeData, MediaServerItemDetail, MediaServerLibraryNode, MediaServerPagedCollection, MediaServerPagedLibraryPage, MediaServerSearchData } from '../types/mediaServerContent'
 import {
@@ -225,12 +226,15 @@ const useMediaServerContentStore = defineStore('media-server-content', {
       try {
         const shell = await getMediaServerHomeShell(config)
         const excluded = new Set(this.excludedLibraryIds[config.id] || [])
+        const previous = this.homeData[config.id]
         this.homeData[config.id] = {
           ...emptyHomeData(),
+          ...previous,
           ...shell,
-          libraries: excluded.size > 0
-            ? shell.libraries.filter((library) => !excluded.has(library.id)).map((library) => ({ ...library, attempted: false }))
-            : shell.libraries.map((library) => ({ ...library, attempted: false }))
+          libraries: shell.libraries.filter((library) => !excluded.has(library.id)).map((library) => {
+            const cached = previous?.libraries.find((item) => item.id === library.id)
+            return { ...library, items: cached?.items ?? library.items, total: cached?.total ?? library.total, attempted: false }
+          })
         }
         return this.homeData[config.id]
       } catch (error: any) {
@@ -346,26 +350,12 @@ const useMediaServerContentStore = defineStore('media-server-content', {
         const homeLibraries = this.homeData[config.id]?.libraries || []
         const enriched = await Promise.all(
           data.map(async (library) => {
+            if (libraryCover(library)) return library
             const cachedSection = homeLibraries.find((item) => item.id === library.id)?.items || []
             const latestSection = cachedSection.length > 0
               ? cachedSection
               : await getMediaServerHomeLibraryLatest(config, library.id, library.collectionType).then((result) => result.items).catch(() => [])
-            const sectionItems = latestSection
-            const candidates = sectionItems.filter((item) => item.images?.primary || item.poster)
-            if (candidates.length === 0) return library
-            const randomItem = candidates[Math.floor(Math.random() * candidates.length)]
-            const primary = randomItem.images?.primary || randomItem.poster
-            if (!primary) return library
-            return {
-              ...library,
-              poster: primary,
-              backdrop: primary,
-              images: {
-                ...library.images,
-                primary,
-                backdrop: primary
-              }
-            }
+            return withLibraryCoverFallback(library, latestSection)
           })
         )
         this.libraryRoots[config.id] = enriched

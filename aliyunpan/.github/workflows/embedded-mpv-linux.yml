@@ -43,6 +43,7 @@ jobs:
   linux:
     env:
       NODE_OPTIONS: --max-old-space-size=4096
+      BOXPLAYER_E2E_CLOUD123_ACCOUNT_JSON: ${{ secrets.BOXPLAYER_E2E_CLOUD123_ACCOUNT_JSON }}
     strategy:
       fail-fast: false
       # OAuth providers may rotate refresh tokens. Never let the two Linux
@@ -73,7 +74,7 @@ jobs:
             gdb \
             libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev \
             libswresample-dev libswscale-dev libplacebo-dev libass-dev \
-            libpulse-dev xvfb
+            libpulse-dev libegl1-mesa-dev libgl1-mesa-dev xvfb
 
       - name: Install project dependencies
         run: |
@@ -101,6 +102,14 @@ jobs:
           node scripts/check-embedded-mpv-bundles.mjs linux/${{ matrix.arch }}
           ldd static/engine/linux/${{ matrix.arch }}/mpv-texture/mpv_texture.node
           ldd static/engine/linux/${{ matrix.arch }}/mpv-texture/libmpv.so.2
+
+      - name: Verify native descriptor transport
+        run: node native/boxplayer-mpv-texture/scripts/smoke-transport.cjs
+
+      - name: Verify native responsiveness and texture ownership
+        env:
+          BOXPLAYER_MPV_AUDIO_OUTPUT: 'null'
+        run: node native/boxplayer-mpv-texture/scripts/smoke-lifecycle.mjs
 
       - name: Diagnose native software playback
         run: |

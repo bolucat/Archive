@@ -9,7 +9,7 @@ describe('embedded MPV load options', () => {
         'User-Agent': 'aDrive/4.12.0'
       },
       startPosition: 108
-    })).toBe('user-agent=aDrive/4.12.0,http-header-fields=Authorization: Bearer token-115')
+    })).toBe('start=108,user-agent=aDrive/4.12.0,http-header-fields=Authorization: Bearer token-115')
   })
 
   it('escapes commas inside an Emby authorization header', () => {

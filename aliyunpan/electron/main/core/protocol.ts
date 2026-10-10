@@ -69,6 +69,7 @@ export const sendExternalDownloadToWindow = (win: BrowserWindow | null | undefin
 
 export const registerExternalDownloadProtocol = (getMainWindow: () => BrowserWindow | null | undefined): void => {
   app.on('open-url', (event, url) => {
+    if (url.startsWith('boxplayer-traktoauth:')) return
     event.preventDefault()
     sendExternalDownloadToWindow(getMainWindow(), url)
   })

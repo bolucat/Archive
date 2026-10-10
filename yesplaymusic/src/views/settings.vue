@@ -157,7 +157,7 @@
         </div>
       </div>
 
-      <h3 v-if="isElectron">缓存</h3>
+      <h3 v-if="isElectron">{{ $t('settings.cache') }}</h3>
       <div v-if="isElectron" class="item">
         <div class="left">
           <div class="title">
@@ -811,10 +811,11 @@
 import { mapState, mapActions } from 'vuex';
 import { isLooseLoggedIn, doLogout } from '@/utils/auth';
 import { auth as lastfmAuth } from '@/api/lastfm';
-import { 
-  changeAppearance, 
-  changeThemeColor, 
-  bytesToSize } from '@/utils/common';
+import {
+  changeAppearance,
+  changeThemeColor,
+  bytesToSize,
+} from '@/utils/common';
 import { countDBSize, clearDB } from '@/utils/db';
 import pkg from '../../package.json';
 

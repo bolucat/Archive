@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http'
+import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http'
 import { expect, test } from './fixtures/boxPlayer'
 
 const bundleManifest = path.resolve('static/engine', process.platform, process.arch, 'mpv-texture/mpv-bundle-manifest.json')
@@ -156,3 +156,217 @@ test('embedded MPV plays visible frames and forwards the authenticated cloud hea
     await new Promise<void>((resolve) => authenticatedMedia.server.close(() => resolve()))
   }
 })
+
+test('closing and reopening the MPV player does not crash Electron', async ({ boxPlayer }) => {
+  const { app, page } = boxPlayer
+  const authenticatedMedia = await startAuthenticatedMediaServer()
+  const headers = Object.fromEntries(Object.entries(expectedCloudHeaders).map(([key, value]) => [key === 'user-agent' ? 'User-Agent' : key === 'x-urlp' ? 'x-urlp' : key[0].toUpperCase() + key.slice(1), value]))
+
+  // Each preview close destroys the native context. The next open registers
+  // new frame/status/error TSFNs and used to release stale handles a second
+  // time, aborting the Electron main process in OnFrame().
+  try {
+    // Initialize the singleton from the main window, as a normal playback
+    // session can do before opening a dedicated video preview window.
+    const initialLoad = await page.evaluate((url) => window.WebMpvEmbeddedLoad({ url, title: 'MPV reopen setup' }), path.resolve('e2e/assets/mpv-sample.mp4'))
+    expect(initialLoad.ok, initialLoad.error).toBe(true)
+    expect((await page.evaluate(() => window.WebMpvEmbeddedControl({ action: 'stop' }))).ok).toBe(true)
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const playerPromise = page.context().waitForEvent('page')
+      await page.evaluate(({ mediaUrl, headers }) => window.WebOpenWindow({
+        page: 'PageVideo',
+        theme: 'dark',
+        data: {
+          user_id: 'mpv-reopen-e2e', tokenfrom: 'emby', drive_id: 'media_server', file_id: 'mpv-reopen-item',
+          parent_file_id: 'mpv-reopen-library', file_name: 'mpv-sample.mp4', html: 'MPV reopen regression',
+          encType: '', password: '', expire_time: 0, play_cursor: 0,
+          media_url: mediaUrl, media_headers: headers,
+          media_server_item_id: 'mpv-reopen-item', media_server_source_id: 'mpv-reopen-source',
+          media_server_source_options: [{ id: 'mpv-reopen-source', label: 'Original' }], media_subtitle_sources: []
+        }
+      }), { mediaUrl: authenticatedMedia.url, headers })
+
+      const player = await playerPromise
+      await player.waitForSelector('#mpvEmbeddedPlayer.mpv-embedded-surface', { timeout: 90_000 })
+      await expect.poll(async () => {
+        const result = await player.evaluate(() => window.WebMpvEmbeddedStatus())
+        return Boolean(result.ok && result.status?.duration > 0)
+      }, { message: `MPV playback must start on open ${attempt + 1}`, timeout: 20_000 }).toBe(true)
+      await player.close()
+      expect(player.isClosed()).toBe(true)
+      expect(app.process().exitCode).toBeNull()
+    }
+  } finally {
+    await new Promise<void>((resolve) => authenticatedMedia.server.close(() => resolve()))
+  }
+})
+
+
+test('MKV playback remains responsive through pause, resume and seek', async ({ boxPlayer }) => {
+  const { page } = boxPlayer
+  const videoPath = path.resolve('e2e/assets/boxplayer-e2e.mkv')
+  const playerPromise = page.context().waitForEvent('page')
+  await page.evaluate(({ videoPath, parentPath }) => window.WebOpenWindow({
+    page: 'PageVideo', theme: 'dark', data: {
+      user_id: 'e2e', tokenfrom: 'local', drive_id: 'local', file_id: videoPath,
+      parent_file_id: parentPath, parent_file_name: 'assets', file_name: 'boxplayer-e2e.mkv', html: 'MKV responsiveness',
+      encType: '', password: '', expire_time: 0, play_cursor: 0,
+      custom_playlist: [{ user_id: 'e2e', drive_id: 'local', file_id: videoPath, parent_file_id: parentPath, file_name: 'boxplayer-e2e.mkv', html: 'MKV responsiveness' }]
+    }
+  }), { videoPath, parentPath: path.dirname(videoPath) })
+  const player = await playerPromise
+  const surface = player.locator('#mpvEmbeddedPlayer')
+  await expect(surface).toBeVisible({ timeout: 30_000 })
+  const status = () => player.evaluate(() => window.WebMpvEmbeddedStatus())
+  await expect.poll(async () => (await status()).status?.position || 0, { timeout: 20_000 }).toBeGreaterThan(3)
+  await surface.hover()
+  await player.getByRole('button', { name: '暂停', exact: true }).click()
+  await expect.poll(async () => (await status()).status?.paused, { timeout: 5_000 }).toBe(true)
+  await player.getByRole('button', { name: '播放', exact: true }).click()
+  await expect.poll(async () => (await status()).status?.position || 0, { timeout: 15_000 }).toBeGreaterThan(10)
+  await surface.hover()
+  const seek = player.getByRole('slider', { name: '播放进度' })
+  const rect = await seek.boundingBox()
+  expect(rect).not.toBeNull()
+  await player.mouse.click(rect!.x + rect!.width * 0.72, rect!.y + rect!.height / 2)
+  await expect.poll(async () => (await status()).status?.position || 0, { timeout: 8_000 }).toBeGreaterThan(14)
+  await player.close()
+})
+
+test('MPV equalizers retain dragged values and settings fit the panel', async ({ boxPlayer }) => {
+  const videoPath = path.resolve('e2e/assets/boxplayer-e2e.mkv')
+  const playerPromise = boxPlayer.page.context().waitForEvent('page')
+  await boxPlayer.page.evaluate(({ videoPath, parentPath }) => window.WebOpenWindow({
+    page: 'PageVideo', theme: 'dark', data: {
+      user_id: 'e2e', tokenfrom: 'local', drive_id: 'local', file_id: videoPath,
+      parent_file_id: parentPath, parent_file_name: 'assets', file_name: 'boxplayer-e2e.mkv', html: 'MPV settings regression',
+      encType: '', password: '', expire_time: 0, play_cursor: 0
+    }
+  }), { videoPath, parentPath: path.dirname(videoPath) })
+  const player = await playerPromise
+  try {
+    await expect(player.locator('#mpvEmbeddedPlayer')).toBeVisible({ timeout: 30_000 })
+    // This checks settings/track changes, not EOF handling. Keep the short
+    // fixture loaded while slow CI runners exercise the controls.
+    await expect.poll(async () => (await player.evaluate(() => window.WebMpvEmbeddedStatus())).status?.duration || 0, { timeout: 20_000 }).toBeGreaterThan(0)
+    expect((await player.evaluate(() => window.WebMpvEmbeddedControl({ action: 'pause' }))).ok).toBe(true)
+    await player.locator('#mpvEmbeddedPlayer').hover()
+    await player.getByRole('button', { name: '设置', exact: true }).click()
+
+    const dragAndHold = async (name: string, vertical = false) => {
+      const slider = player.getByRole('slider', { name, exact: true })
+      await slider.scrollIntoViewIfNeeded()
+      const rect = (await slider.boundingBox())!
+      await player.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
+      await player.mouse.down()
+      try {
+        await player.mouse.move(rect.x + rect.width * (vertical ? 0.5 : 0.75), rect.y + rect.height * (vertical ? 0.25 : 0.5), { steps: 8 })
+        const dragged = await slider.inputValue()
+        expect(Number(dragged)).toBeGreaterThan(0)
+        // Hold through status polling / Vue rerenders, without firing change.
+        await player.waitForTimeout(1500)
+        await expect(slider).toHaveValue(dragged)
+      } finally {
+        await player.mouse.up()
+      }
+    }
+
+    await dragAndHold('亮度')
+    await player.getByRole('button', { name: '音频', exact: true }).click()
+    await dragAndHold('32 Hz 增益', true)
+    await player.locator('.mpv-equalizer-grid').scrollIntoViewIfNeeded()
+    const geometry = await player.locator('.mpv-equalizer-grid').evaluate(grid => {
+      const bounds = grid.getBoundingClientRect()
+      const content = grid.closest('.mpv-side-settings-content')!
+      const panel = grid.closest('.mpv-side-panel')!.getBoundingClientRect()
+      return {
+        contained: [...grid.querySelectorAll('input, span')].every(element => {
+          const rect = element.getBoundingClientRect()
+          return rect.top >= bounds.top && rect.bottom <= bounds.bottom && rect.left >= bounds.left && rect.right <= bounds.right
+        }),
+        fitsPanel: bounds.bottom <= panel.bottom,
+        horizontalOverflow: content.scrollWidth - content.clientWidth
+      }
+    })
+    expect(geometry).toEqual({ contained: true, fitsPanel: true, horizontalOverflow: 0 })
+
+    const colors = await player.locator('select[title="音轨"] option').first().evaluate(option => {
+      const style = getComputedStyle(option)
+      return { background: style.backgroundColor, text: style.color, scheme: getComputedStyle(option.parentElement!).colorScheme }
+    })
+    expect(colors).toEqual({ background: 'rgb(28, 29, 31)', text: 'rgb(241, 241, 241)', scheme: 'dark' })
+    await player.locator('select[title="音轨"]').selectOption('2')
+    await expect.poll(async () => (await player.evaluate(() => window.WebMpvEmbeddedStatus())).trackStatus?.audioId).toBe(2)
+  } finally {
+    await player.close()
+  }
+})
+
+for (const closeWhileLoading of [false, true]) {
+  test(`slow startup subtitles keep Electron responsive (${closeWhileLoading ? 'close while loading' : 'finish loading'})`, async ({ boxPlayer }) => {
+    const waiting = new Set<ServerResponse>()
+    const subtitle = readFileSync(path.resolve('e2e/assets/mpv-sample.srt'))
+    let received = false
+    let released = false
+    const respond = (response: ServerResponse) => {
+      response.writeHead(200, { 'content-type': 'application/x-subrip', 'content-length': subtitle.length })
+      response.end(subtitle)
+    }
+    const server = createServer((_request, response) => {
+      received = true
+      if (released) return respond(response)
+      waiting.add(response)
+      response.once('close', () => waiting.delete(response))
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Subtitle server failed to listen')
+    const release = () => {
+      released = true
+      for (const response of waiting) respond(response)
+      waiting.clear()
+    }
+    try {
+      const videoPath = path.resolve('e2e/assets/boxplayer-e2e.mkv')
+      const playerPromise = boxPlayer.page.context().waitForEvent('page')
+      await boxPlayer.page.evaluate(({ videoPath, parentPath, subtitleUrl }) => window.WebOpenWindow({
+        page: 'PageVideo', theme: 'dark', data: {
+          user_id: 'e2e', tokenfrom: 'local', drive_id: 'local', file_id: videoPath,
+          parent_file_id: parentPath, parent_file_name: 'assets', file_name: 'boxplayer-e2e.mkv', html: 'Slow subtitle regression',
+          encType: '', password: '', expire_time: 0, play_cursor: 0,
+          media_subtitle_sources: [{ url: subtitleUrl, title: 'Slow startup subtitle' }]
+        }
+      }), { videoPath, parentPath: path.dirname(videoPath), subtitleUrl: `http://127.0.0.1:${address.port}/slow.srt` })
+      const player = await playerPromise
+      await expect(player.locator('#mpvEmbeddedPlayer')).toBeVisible({ timeout: 30_000 })
+      await expect.poll(() => received, { timeout: 15_000 }).toBe(true)
+      // With synchronous sub-add the Cocoa/main event loop cannot service
+      // even this ping until the test server releases the subtitle response.
+      const responsive = await Promise.race([
+        boxPlayer.app.evaluate(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 2_000))
+      ])
+      expect(responsive, 'Electron main must respond while the subtitle download is pending').toBe(true)
+      if (closeWhileLoading) {
+        const closed = await Promise.race([
+          player.close().then(() => true),
+          new Promise<boolean>(resolve => setTimeout(() => resolve(false), 3_000))
+        ])
+        expect(closed, 'Closing playback must cancel the pending subtitle download').toBe(true)
+        expect(await boxPlayer.app.evaluate(() => true)).toBe(true)
+      } else {
+        release()
+        await expect.poll(async () => {
+          const result = await player.evaluate(() => window.WebMpvEmbeddedStatus())
+          return result.trackStatus?.tracks?.some((track: { type: string; external: boolean }) => track.type === 'sub' && track.external)
+        }, { timeout: 10_000 }).toBe(true)
+        await player.close()
+      }
+    } finally {
+      release()
+      server.closeAllConnections()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  })
+}

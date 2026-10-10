@@ -1,4 +1,5 @@
 import type { MediaServerConfig } from '../types/mediaServer'
+import { serverFavoriteType } from './favoriteCategories'
 import type {
   MediaServerCardItem,
   MediaServerExternalLink,
@@ -52,9 +53,10 @@ import {
   updatePlexMediaServerPlayedState
 } from './plexContent'
 
-const HOME_ITEM_FIELDS = 'Overview,PrimaryImageAspectRatio,ProductionYear,PremiereDate,DateCreated'
+const HOME_ITEM_FIELDS = 'Genres,ProductionLocations,Overview,PrimaryImageAspectRatio,ProductionYear,PremiereDate,DateCreated,Path,SortName,CommunityRating,CriticRating,Studios,Artists,OfficialRating,MediaSources,SeriesName,AirTime'
 
 interface MediaServerBaseItem {
+  Path?: string
   Id?: string
   Key?: string
   ratingKey?: string
@@ -62,6 +64,9 @@ interface MediaServerBaseItem {
   SeriesId?: string
   Duration?: number
   Name?: string
+  SortName?: string
+  CriticRating?: number
+  AirTime?: string
   Type?: string
   Overview?: string
   ProductionYear?: number
@@ -116,6 +121,8 @@ interface MediaServerBaseItem {
     IsPlayed?: boolean
     Played?: boolean
     IsFavorite?: boolean
+    PlayCount?: number
+    LastPlayedDate?: string
   }
 }
 
@@ -237,6 +244,7 @@ const toProgress = (item: MediaServerBaseItem) => {
 
 const toKind = (type?: string): MediaServerCardItem['kind'] => {
   switch ((type || '').toLowerCase()) {
+    case 'video':
     case 'movie': return 'movie'
     case 'series': return 'series'
     case 'season': return 'season'
@@ -351,8 +359,25 @@ const mapItem = (config: MediaServerConfig, item: MediaServerBaseItem): MediaSer
     poster,
     backdrop,
     images,
+    sortName: item.SortName,
+    createdAt: item.DateCreated,
+    criticRating: item.CriticRating,
+    playCount: item.UserData?.PlayCount,
+    videoBitrate: item.MediaSources?.[0]?.MediaStreams?.find(stream => stream.Type?.toLowerCase() === 'video')?.BitRate || item.MediaSources?.[0]?.Bitrate,
+    airTime: item.AirTime,
+    studio: item.Studios?.map(studio => studio.Name).filter(Boolean).join(', '),
+    artist: item.Artists?.join(', ') || item.AlbumArtist,
+    officialRating: item.OfficialRating,
+    seriesTitle: item.SeriesName,
+    fileName: item.Path?.split(/[\\/]/).filter(Boolean).pop(),
+    addedAt: item.DateCreated,
+    premiereDate: item.PremiereDate,
     year: extractYear(item.ProductionYear, item.PremiereDate, item.DateCreated),
+    genres: item.Genres || [],
+    productionLocations: item.ProductionLocations || [],
     rating: item.CommunityRating,
+    tmdbId: Number(Object.entries(item.ProviderIds || {}).find(([key]) => key.toLowerCase() === 'tmdb')?.[1]) || undefined,
+    imdbId: Object.entries(item.ProviderIds || {}).find(([key]) => key.toLowerCase() === 'imdb')?.[1],
     runtimeMinutes: toRuntimeMinutes(item.RunTimeTicks),
     progress: toProgress(item),
     parentTitle: item.SeriesName || item.Album,
@@ -390,7 +415,7 @@ const formatDateLabel = (value?: string) => {
 
 const formatBitrate = (value?: number) => {
   if (!value || value <= 0) return undefined
-  return value >= 1_000_000 ? `${Math.round(value / 1_000_000)}Mbps` : `${Math.round(value / 1_000)}kbps`
+  return value >= 1_000_000 ? `${Number((value / 1_000_000).toFixed(1))}Mbps` : `${Math.round(value / 1_000)}kbps`
 }
 
 const formatSize = (value?: number) => {
@@ -823,7 +848,19 @@ export const getMediaServerLibraries = async (config: MediaServerConfig): Promis
   if (config.type === 'plex') return getPlexMediaServerLibraries(config)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(config, `/Users/${config.userId}/Views`)
-  return (payload.Items || []).map((item) => mapLibraryNode(config, item))
+  // Views can omit image tags even when the collection has its own cover.
+  // Resolve the collection itself before considering any child poster.
+  return Promise.all((payload.Items || []).map(async (item) => {
+    if (item.Id && !item.ImageTags?.Primary && !item.PrimaryImageTag) {
+      try {
+        const detail = await mediaServerFetch<MediaServerBaseItem>(config, `/Users/${config.userId}/Items/${encodeURIComponent(item.Id)}`)
+        return mapLibraryNode(config, { ...item, ...detail })
+      } catch {
+        // Keep the list entry if detail lookup is unavailable.
+      }
+    }
+    return mapLibraryNode(config, item)
+  }))
 }
 
 export const getMediaServerMusicTracks = async (config: MediaServerConfig): Promise<MediaServerMusicTrack[]> => {
@@ -1363,7 +1400,7 @@ export const getMediaServerCollectionPage = async (
   if (kind === 'latest') {
     const payload = await mediaServerFetch<BaseQueryResult>(
       config,
-      `/Users/${config.userId}/Items?EnableUserData=true&Fields=Overview,PrimaryImageAspectRatio&IncludeItemTypes=Movie,Series&Recursive=true&Limit=${pageSize}&SortBy=DateCreated&SortOrder=Descending&StartIndex=${page}${excludeParam}`
+      `/Users/${config.userId}/Items?EnableUserData=true&Fields=${HOME_ITEM_FIELDS}&IncludeItemTypes=Movie,Series&Recursive=true&Limit=${pageSize}&SortBy=DateCreated&SortOrder=Descending&StartIndex=${page}${excludeParam}`
     )
     const items = (payload.Items || []).map((item) => mapLibraryNode(config, item))
     return {
@@ -1380,7 +1417,7 @@ export const getMediaServerCollectionPage = async (
     : ''
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
-    `/Shows/NextUp?EnableUserData=true&EnableRewatching=${preferences?.resumeNextUp === false ? 'false' : 'true'}&Fields=Overview,PrimaryImageAspectRatio&Limit=${pageSize}&StartIndex=${page}${nextUpDateCutoff ? `&NextUpDateCutoff=${encodeURIComponent(nextUpDateCutoff)}` : ''}&UserId=${encodeURIComponent(config.userId || '')}`
+    `/Shows/NextUp?EnableUserData=true&EnableRewatching=${preferences?.resumeNextUp === false ? 'false' : 'true'}&Fields=${HOME_ITEM_FIELDS}&Limit=${pageSize}&StartIndex=${page}${nextUpDateCutoff ? `&NextUpDateCutoff=${encodeURIComponent(nextUpDateCutoff)}` : ''}&UserId=${encodeURIComponent(config.userId || '')}`
   )
   const items = (payload.Items || []).map((item) => mapLibraryNode(config, item))
   return {
@@ -1401,10 +1438,29 @@ export const getMediaServerLibraryPagedItems = async (
     collectionType?: string
   }
 ): Promise<MediaServerPagedLibraryPage> => {
+  const favoriteType = serverFavoriteType(parentId)
+  if (favoriteType && config.type !== 'plex') {
+    ensureServerContext(config)
+    const limit = 50
+    const params = new URLSearchParams({
+      UserId: config.userId || '', IsFavorite: 'true', Recursive: 'true',
+      EnableUserData: 'true', Fields: HOME_ITEM_FIELDS, SortBy: 'SortName', SortOrder: 'Ascending',
+      Limit: String(limit), StartIndex: String(page * limit)
+    })
+    if (favoriteType !== 'Person') params.set('IncludeItemTypes', favoriteType)
+    const path = favoriteType === 'Person' ? '/Persons' : `/Users/${config.userId}/Items`
+    const payload = await mediaServerFetch<BaseQueryResult>(config, `${path}?${params}`)
+    const items = (payload.Items || []).map(item => mapLibraryNode(config, item))
+    const total = payload.TotalRecordCount ?? items.length
+    return { key: `${config.id}:${parentId}`, items, total, currentPage: page,
+      hasNextPage: payload.TotalRecordCount == null ? items.length === limit : (page + 1) * limit < total }
+  }
   if (config.type === 'plex') return getPlexMediaServerLibraryPagedItems(config, parentId, page, options)
   ensureServerContext(config)
   const pageSize = 50
-  const recursive = options?.recursiveMedia === true
+  const container = parentId.startsWith('server-container:')
+  const queryParentId = container ? parentId.slice('server-container:'.length) : parentId
+  const recursive = !container && options?.recursiveMedia === true
   const includeItemTypes = (() => {
     const collectionType = (options?.collectionType || '').toLowerCase()
     if (!recursive) return ''
@@ -1416,7 +1472,7 @@ export const getMediaServerLibraryPagedItems = async (
   })()
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
-    `/Users/${config.userId}/Items?ParentId=${encodeURIComponent(parentId)}&Recursive=${recursive ? 'true' : 'false'}${includeItemTypes}&Fields=Overview,PrimaryImageAspectRatio&SortBy=SortName&SortOrder=Ascending&Limit=${pageSize}&StartIndex=${page * pageSize}`
+    `/Users/${config.userId}/Items?ParentId=${encodeURIComponent(queryParentId)}&Recursive=${recursive ? 'true' : 'false'}${includeItemTypes}&EnableUserData=true&Fields=${HOME_ITEM_FIELDS}${container ? '' : '&SortBy=SortName&SortOrder=Ascending'}&Limit=${pageSize}&StartIndex=${page * pageSize}`
   )
   const items = (payload.Items || []).map((item) => mapLibraryNode(config, item))
   return {
@@ -1442,7 +1498,7 @@ export const getMediaServerPersonPagedItems = async (
   const payloads = await Promise.all(
     includeTypes.map((type) => mediaServerFetch<BaseQueryResult>(
       config,
-      `/Users/${config.userId}/Items?Recursive=true&personIds=${encodeURIComponent(personId)}&IncludeItemTypes=${type}&Fields=Overview,PrimaryImageAspectRatio&SortBy=SortName&SortOrder=Ascending&Limit=${pageSize}&StartIndex=${startIndex}`
+      `/Users/${config.userId}/Items?Recursive=true&personIds=${encodeURIComponent(personId)}&IncludeItemTypes=${type}&Fields=${HOME_ITEM_FIELDS}&SortBy=SortName&SortOrder=Ascending&Limit=${pageSize}&StartIndex=${startIndex}`
     ))
   )
 
@@ -1518,7 +1574,7 @@ export const getMediaServerSuggestions = async (
 
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
-    `/Users/${config.userId}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Overview,PrimaryImageAspectRatio&Limit=16&SortBy=Random`
+    `/Users/${config.userId}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=${HOME_ITEM_FIELDS}&Limit=16&SortBy=Random`
   )
 
   const items = (payload.Items || []).map((item) => mapLibraryNode(config, item))
@@ -1538,7 +1594,7 @@ export const getMediaServerSearch = async (
 
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
-    `/Users/${config.userId}/Items?SearchTerm=${encodeURIComponent(trimmedQuery)}&Recursive=true&IncludeItemTypes=Movie,Series,Season,Episode,BoxSet,Person,Folder&Fields=Overview,PrimaryImageAspectRatio&Limit=60&SortBy=SortName&SortOrder=Ascending`
+    `/Users/${config.userId}/Items?SearchTerm=${encodeURIComponent(trimmedQuery)}&Recursive=true&IncludeItemTypes=Movie,Series,Season,Episode,BoxSet,Person,Folder&Fields=${HOME_ITEM_FIELDS}&Limit=60&SortBy=SortName&SortOrder=Ascending`
   )
 
   return {

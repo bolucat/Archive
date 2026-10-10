@@ -1,117 +1,28 @@
 <template>
-  <a-modal
-    :visible="visible"
-    :title="editingServer ? t('mediaServer.editServer', { type: serverTypeTitle }) : t('mediaServer.addServer', { type: serverTypeTitle })"
-    :ok-text="editingServer ? t('common.save') : t('mediaServer.connect')"
-    width="980px"
-    modal-class="media-server-modal"
-    :ok-loading="loading"
-    @ok="handleSubmit"
-    @cancel="emit('update:visible', false)"
-  >
-    <div class="server-modal">
-      <div class="server-modal-grid">
-        <div class="form-section panel-card">
-          <div class="section-title">{{ serverTypeTitle }}</div>
-
-          <div class="field-row">
-            <div class="field-label">{{ t('mediaServer.formType') }}</div>
-            <a-select v-model="form.type" class="field-input">
-              <a-option value="jellyfin">Jellyfin</a-option>
-              <a-option value="emby">Emby</a-option>
-              <a-option value="plex">Plex</a-option>
-            </a-select>
-          </div>
-
-          <div class="field-row">
-            <div class="field-label">{{ t('mediaServer.name') }}</div>
-            <a-input v-model="form.name" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
-          </div>
-
-          <div class="field-row">
-            <div class="field-label">{{ t('mediaServer.notes') }}</div>
-            <a-input v-model="form.notes" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
-          </div>
-        </div>
-
-        <div class="form-section panel-card">
-          <div class="section-title">{{ t('mediaServer.loginInfo') }}</div>
-
-          <div class="field-row">
-            <div class="field-label">{{ t('mediaServer.username') }}</div>
-            <a-input v-model="form.username" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
-          </div>
-
-          <div class="field-row">
-            <div class="field-label">{{ t('mediaServer.password') }}</div>
-            <a-input-password
-              v-model="form.password"
-              class="field-input"
-              :placeholder="t('mediaServer.optional')"
-              allow-clear
-              :visibility="showPassword"
-              @visibility-change="showPassword = $event"
-            />
-          </div>
-
-<!--          <div class="field-row switch-row compact-switch">-->
-<!--            <div class="field-label">同步到云端</div>-->
-<!--            <a-switch v-model="form.syncFlag" />-->
-<!--          </div>-->
-        </div>
-
-        <div class="form-section panel-card panel-wide">
-          <div class="section-title">{{ t('mediaServer.serverAddress') }}</div>
-
-          <div class="address-grid">
-            <div class="field-row">
-              <div class="field-label">{{ t('mediaServer.host') }}</div>
-              <a-input v-model="form.host" class="field-input" :placeholder="t('mediaServer.hostPlaceholder')" allow-clear />
-            </div>
-
-            <div class="field-row">
-              <div class="field-label">{{ t('mediaServer.path') }}</div>
-              <a-input v-model="form.path" class="field-input" :placeholder="t('mediaServer.pathPlaceholder')" allow-clear />
-            </div>
-
-            <div class="field-row">
-              <div class="field-label">{{ t('mediaServer.port') }}</div>
-              <a-input v-model="form.port" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
-            </div>
-
-            <div class="field-row switch-row">
-              <div class="field-label">HTTPS</div>
-              <a-switch v-model="form.useHttps" @change="handleHttpsChange" />
-            </div>
-          </div>
-
-          <div class="backup-block">
-            <div class="backup-header">
-              <div class="section-subtitle">{{ t('mediaServer.backupServers') }}</div>
-              <a-button type="outline" size="small" class="backup-add-btn" @click="addBackupAddress">
-                <template #icon><IconFont name="iconadd" /></template>
-                {{ t('mediaServer.addAddress') }}
-              </a-button>
-            </div>
-
-            <div v-if="form.backupAddresses.length === 0" class="backup-empty">{{ t('mediaServer.noBackupServers') }}</div>
-
-            <div v-for="(item, index) in form.backupAddresses" :key="index" class="backup-row">
-              <a-input v-model="item.name" class="backup-name" :placeholder="t('mediaServer.name')" allow-clear />
-              <a-input v-model="item.url" class="backup-url" placeholder="http://127.0.0.1:8096" allow-clear />
-              <a-button type="text" status="danger" size="mini" @click="removeBackupAddress(index)">
-                <template #icon><IconFont name="icondelete" /></template>
-              </a-button>
-            </div>
-          </div>
-        </div>
+  <a-modal :visible="visible" :footer="false" :closable="false" :mask-closable="!loading" width="540px" modal-class="server-add-sheet" @cancel="emit('update:visible', false)">
+    <template #title><div class="sheet-heading"><button class="sheet-back" :disabled="loading" :aria-label="t('unified.back')" @click="emit('update:visible', false)"><ChevronLeft :size="24" /></button><h2>{{ editingServer ? t('mediaServer.editServer', { type: serverTypeTitle }) : t('mediaServer.addServer', { type: serverTypeTitle }) }}</h2></div></template>
+    <form class="server-add-form" @submit.prevent="handleSubmit">
+      <div class="sheet-field"><label for="server-add-name">{{ t('mediaServer.name') }}</label><input id="server-add-name" v-model="form.name" :placeholder="defaultName" :disabled="loading" autocomplete="off" /></div>
+      <div class="sheet-field"><label>{{ t('mediaServer.protocol') }}</label><span class="protocol-value">{{ serverTypeTitle }}</span></div>
+      <div class="sheet-field"><label for="server-add-host">{{ t('mediaServer.address') }}</label><input id="server-add-host" v-model="form.host" placeholder="iMac.local" :disabled="loading" autocapitalize="off" spellcheck="false" /></div>
+      <div class="sheet-field"><label for="server-add-user">{{ t('mediaServer.username') }}</label><input id="server-add-user" v-model="form.username" placeholder="johnappleseed" :disabled="loading" autocomplete="username" /></div>
+      <div class="sheet-field"><label for="server-add-password">{{ t('mediaServer.password') }}</label><input id="server-add-password" v-model="form.password" type="password" :placeholder="t('mediaServer.password')" :disabled="loading" autocomplete="current-password" /></div>
+      <button type="button" class="sheet-advanced" :aria-expanded="advanced" :disabled="loading" @click="advanced = !advanced">{{ t('mediaServer.advanced') }}<ChevronUp v-if="advanced" :size="16" /><ChevronDown v-else :size="16" /></button>
+      <div v-if="advanced" class="sheet-advanced-fields">
+        <div class="sheet-field"><label for="server-add-port">{{ t('mediaServer.port') }}</label><input id="server-add-port" v-model="form.port" inputmode="numeric" :placeholder="defaultPortMap[form.type]" :disabled="loading" /></div>
+        <div class="sheet-field"><label for="server-add-https">HTTPS</label><select id="server-add-https" v-model="form.httpsMode" :disabled="loading"><option value="auto">{{ t('mediaServer.httpsAuto') }}</option><option value="on">{{ t('mediaServer.httpsOn') }}</option><option value="off">{{ t('mediaServer.httpsOff') }}</option></select></div>
+        <div v-if="editingServer && form.path" class="sheet-field"><label for="server-add-path">{{ t('mediaServer.path') }}</label><input id="server-add-path" v-model="form.path" :disabled="loading" /></div>
+        <div class="sheet-field sheet-checkbox"><label for="server-add-library">{{ t('mediaServer.libraryMode') }}</label><input id="server-add-library" v-model="form.libraryMode" type="checkbox" :disabled="loading" /></div>
       </div>
-    </div>
+      <button type="submit" class="sheet-submit" :disabled="loading || !form.host.trim()">{{ loading ? t('mediaServer.connect') + '…' : editingServer ? t('common.save') : t('mediaServer.create') }}</button>
+    </form>
   </a-modal>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { ChevronLeft, ChevronUp, ChevronDown } from 'lucide-vue-next'
+import { buildMediaServerAddress, type ServerHttpsMode } from '../../utils/mediaServerAddress'
 import message from '../../utils/message'
 import type { MediaServerConfig, MediaServerType } from '../../types/mediaServer'
 import { t } from '../../i18n'
@@ -136,6 +47,7 @@ const emit = defineEmits<{
     username?: string
     password?: string
     useHttps?: boolean
+    libraryMode?: boolean
     syncFlag?: boolean
     backupAddresses?: Record<string, string>
     nameCustomized?: boolean
@@ -157,11 +69,14 @@ const form = reactive({
   username: '',
   password: '',
   useHttps: false,
+  httpsMode: 'auto' as ServerHttpsMode,
+  libraryMode: false,
   syncFlag: true,
   backupAddresses: [] as BackupAddressInput[]
 })
 
-const showPassword = ref(false)
+const advanced = ref(true)
+const defaultName = computed(() => t('mediaServer.defaultName', { type: serverTypeTitle.value }))
 
 const defaultPortMap: Record<MediaServerType, string> = {
   jellyfin: '8096',
@@ -206,6 +121,8 @@ const fillForm = () => {
     form.username = props.editingServer.username || ''
     form.password = props.editingServer.password || ''
     form.useHttps = props.editingServer.useHttps ?? parsed.useHttps
+    form.httpsMode = form.useHttps ? 'on' : 'off'
+    form.libraryMode = props.editingServer.libraryMode ?? true
     form.syncFlag = props.editingServer.syncFlag ?? true
     form.backupAddresses = Object.entries(props.editingServer.backupAddresses || {}).map(([name, url]) => ({ name, url }))
     return
@@ -214,11 +131,14 @@ const fillForm = () => {
   form.name = ''
   form.notes = ''
   form.host = ''
-  form.port = defaultPortMap[form.type]
+  form.port = ''
   form.path = ''
   form.username = ''
   form.password = ''
   form.useHttps = false
+  form.httpsMode = 'auto'
+  form.libraryMode = false
+  advanced.value = true
   form.syncFlag = true
   form.backupAddresses = []
 }
@@ -231,46 +151,16 @@ watch(() => props.defaultType, () => {
   if (!props.editingServer && props.visible) fillForm()
 })
 
-watch(() => form.type, (type) => {
-  if (!props.editingServer && !form.port) {
-    form.port = defaultPortMap[type]
-  }
-})
-
-const handleHttpsChange = (value: string | number | boolean) => {
-  const checked = Boolean(value)
-  form.useHttps = checked
-  if (checked && (!form.port || form.port === defaultPortMap[form.type])) {
-    form.port = '443'
-  }
-  if (!checked && (form.port === '443' || !form.port)) {
-    form.port = defaultPortMap[form.type]
-  }
-}
-
-const addBackupAddress = () => {
-  form.backupAddresses.push({ name: '', url: '' })
-}
-
-const removeBackupAddress = (index: number) => {
-  form.backupAddresses.splice(index, 1)
-}
-
-const buildBaseUrl = () => {
-  const scheme = form.useHttps ? 'https' : 'http'
-  const host = form.host.trim()
-  const port = form.port.trim()
-  const path = form.path.trim().replace(/^\/?/, '/')
-  const normalizedPath = path === '/' || !path.trim() ? '' : path
-  return `${scheme}://${host}${port ? `:${port}` : ''}${normalizedPath}`
-}
-
 const handleSubmit = () => {
+  if (props.loading) return
   if (!form.host.trim()) {
     message.error(t('mediaServer.fillServerHost'))
     return
   }
-  const baseUrl = buildBaseUrl()
+  let address: ReturnType<typeof buildMediaServerAddress>
+  try { address = buildMediaServerAddress(form.host, form.port || defaultPortMap[form.type], form.path, form.httpsMode) }
+  catch { message.error(t('mediaServer.invalidAddress')); return }
+  const baseUrl = address.baseUrl
   const backupAddresses = form.backupAddresses.reduce<Record<string, string>>((acc, item) => {
     const name = item.name.trim()
     const url = item.url.trim()
@@ -279,211 +169,34 @@ const handleSubmit = () => {
   }, {})
   emit('submit', {
     type: form.type,
-    name: form.name.trim() || form.host.trim(),
+    name: form.name.trim() || defaultName.value,
     nameCustomized: !!form.name.trim(),
     baseUrl,
     notes: form.notes.trim(),
-    host: form.host.trim(),
-    port: form.port.trim(),
-    path: form.path.trim(),
+    host: address.host,
+    port: address.port,
+    path: address.path,
     username: form.username.trim(),
     password: form.password,
-    useHttps: form.useHttps,
+    useHttps: address.useHttps,
+    libraryMode: form.libraryMode,
     syncFlag: form.syncFlag,
     backupAddresses
   })
-  emit('update:visible', false)
 }
+
 </script>
-
 <style>
-/* ── media-server modal glass background ── */
-.media-server-modal .arco-modal-content {
-  background: rgba(255, 255, 255, 0.88) !important;
-  border: 1px solid rgba(148, 163, 184, 0.14) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.14) !important;
-  backdrop-filter: blur(24px) saturate(1.2);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
-}
-
-body[arco-theme='dark'] .media-server-modal .arco-modal-content {
-  background: linear-gradient(180deg, rgba(24, 29, 40, 0.94), rgba(17, 21, 30, 0.9)) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28) !important;
-}
-
-/* ── panel card glass background ── */
-.panel-card {
-  background: rgba(255, 255, 255, 0.5) !important;
-}
-
-body[arco-theme='dark'] .panel-card {
-  background: rgba(24, 29, 40, 0.5) !important;
-}
+.server-add-sheet.arco-modal,body[arco-theme='dark'] .arco-modal.server-add-sheet{background:#1e1e1e!important;color:#dedede;border:1px solid #484848!important;border-radius:24px!important;width:min(540px,calc(100vw - 32px))!important;max-height:calc(100vh - 32px);overflow:auto}
+.server-add-sheet .arco-modal-header,body[arco-theme='dark'] .server-add-sheet .arco-modal-header{height:64px;border:0!important;padding:0 20px;position:relative}
+.server-add-sheet .arco-modal-title{width:100%}.server-add-sheet .arco-modal-body{padding:0 68px 80px!important;max-height:none!important}
 </style>
-
 <style scoped>
-.server-modal {
-  padding: 6px 4px 2px;
-}
-
-.server-modal-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 18px;
-}
-
-.form-section {
-  padding: 20px 22px 18px;
-}
-
-.form-section.compact {
-  padding-bottom: 0;
-}
-
-.panel-card {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
-}
-
-.panel-wide {
-  grid-column: 1 / -1;
-}
-
-.section-title {
-  margin-bottom: 20px;
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.section-subtitle {
-  font-size: 14px;
-  font-weight: 600;
-  color: #4b5563;
-}
-
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.field-label {
-  width: 78px;
-  flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.field-input {
-  flex: 1;
-}
-
-.compact-switch {
-  margin-bottom: 0;
-}
-
-.switch-row {
-  justify-content: space-between;
-}
-
-.switch-row .field-label {
-  width: auto;
-}
-
-.backup-block {
-  margin-top: 6px;
-  margin-bottom: 0;
-}
-
-.backup-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.backup-add-btn {
-  border-radius: 999px;
-}
-
-.backup-empty {
-  padding: 14px 16px;
-  border: 1px dashed rgba(15, 23, 42, 0.12);
-  border-radius: 14px;
-  color: #94a3b8;
-  font-size: 14px;
-}
-
-.backup-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-}
-
-.backup-name {
-  width: 160px;
-  flex-shrink: 0;
-}
-
-.backup-url {
-  flex: 1;
-}
-
-.address-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: 18px;
-}
-
-@media (max-width: 900px) {
-  .server-modal-grid,
-  .address-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .backup-row {
-    flex-wrap: wrap;
-  }
-
-  .backup-name,
-  .backup-url {
-    width: 100%;
-  }
-}
-
-[arco-theme='dark'] .panel-card {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(25, 30, 40, 0.96), rgba(18, 22, 30, 0.94));
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.26);
-}
-
-[arco-theme='dark'] .section-title,
-[arco-theme='dark'] .field-label,
-[arco-theme='dark'] .backup-header {
-  color: rgba(244, 247, 252, 0.96);
-}
-
-[arco-theme='dark'] .desc-text,
-[arco-theme='dark'] .hint-text,
-[arco-theme='dark'] .backup-empty {
-  color: rgba(191, 201, 216, 0.72);
-}
-
-[arco-theme='dark'] .backup-empty,
-[arco-theme='dark'] .backup-row {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-}
+.sheet-heading{display:flex;align-items:center;justify-content:center;width:100%;height:64px}.sheet-heading h2{margin:0;color:#fff;font-size:14px;font-weight:700}
+.sheet-back{position:absolute;left:20px;top:10px;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid #383838;border-radius:50%;color:#eee;background:#191919;cursor:pointer}
+.server-add-form{padding-top:20px;min-height:510px}.sheet-field{display:grid;grid-template-columns:108px minmax(0,1fr);gap:18px;align-items:center;min-height:38px;margin-bottom:0}
+.sheet-field label{text-align:right;font-size:14px;font-weight:600;color:#dedede}.sheet-field input:not([type=checkbox]){min-width:0;width:100%;box-sizing:border-box;background:transparent;border:0;border-radius:4px;color:#ddd;padding:7px 4px;font:inherit;font-size:14px;outline:none}.sheet-field input::placeholder{color:#626262;opacity:1}#server-add-name::placeholder{color:#dedede}.sheet-field input:focus-visible{box-shadow:0 0 0 1px #ff8700}
+.protocol-value{color:#949494;font-size:14px;padding-left:4px}.sheet-advanced{display:flex;align-items:center;gap:12px;margin:0 0 4px 126px;padding:4px;border:0;background:transparent;color:#999;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.sheet-field select{background:#303030;color:#ddd;border:0;border-radius:7px;font:inherit;font-size:14px;padding:5px 12px;min-width:0;width:100%;height:26px;max-width:260px;margin-left:-12px;cursor:pointer}.sheet-checkbox input{width:16px;height:16px;margin:0 0 0 -12px;accent-color:#ff8700;cursor:pointer}.sheet-submit{margin-top:12px;margin-left:7px;width:128px;height:28px;border:0;border-radius:5px;background:#ff8700;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer}.sheet-submit:disabled{background:#90501f;color:#fff;cursor:default}.sheet-back:disabled{opacity:.5;cursor:default}
+@media(max-width:560px){:global(.server-add-sheet .arco-modal-body){padding:0 24px 40px!important}.sheet-field{grid-template-columns:92px minmax(0,1fr);gap:12px}.sheet-advanced{margin-left:104px}}
 </style>

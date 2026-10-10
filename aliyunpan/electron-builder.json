@@ -4,7 +4,7 @@
   "protocols": [
     {
       "name": "xbyboxplayer OAuth",
-      "schemes": ["xbyboxplayer-oauth", "boxplayer-onedriveoauth"]
+      "schemes": ["xbyboxplayer-oauth", "boxplayer-onedriveoauth", "boxplayer-traktoauth"]
     }
   ],
   "copyright": "copyright ©2026 GaoZhangMin",
@@ -15,6 +15,7 @@
   "directories": { "output": "release" },
   "files": [ "dist" ],
   "extraResources": [
+    { "from": "./src/assets/fonts", "to": "./fonts"},
     { "from": "./static/engine/aria2.conf", "to": "./engine/aria2.conf"},
     { "from": "./static/crx", "to": "./crx"},
     { "from": "./scripts/clouddrive-cli.mjs", "to": "./cli/clouddrive-cli.mjs"},
@@ -75,7 +76,7 @@
       { "from": "./static/engine/win32/${arch}", "to": "./engine/win32/${arch}", "filter": ["**/*", "!mpv{,/**}"]}
     ],
     "target": [
-      { "target": "nsis", "arch": [ "x64", "arm64" ] }
+      { "target": "nsis", "arch": [ "x64" ] }
     ]
   },
   "dmg": {
@@ -100,7 +101,7 @@
       "owner": "gaozhangmin",
       "repo": "boxplayer",
       "provider": "github",
-      "releaseType": "prerelease"
+      "releaseType": "draft"
     }
   ]
 }

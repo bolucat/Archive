@@ -50,5 +50,6 @@ describe('startup provider root loading', () => {
     expect(loadPanData.match(/PanDAL\.aReLoadBackupDrive\(token\)/g)).toHaveLength(1)
     expect(loadPanData.match(/PanDAL\.aReLoadResourceDrive\(token\)/g)).toHaveLength(1)
     expect(loadPanData.match(/PanDAL\.aReLoadOneDirToShow\(/g)).toHaveLength(1)
+    expect(loadPanData).toContain("loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token), 'cloud123')")
   })
 })

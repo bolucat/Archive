@@ -5,6 +5,7 @@ import useMusicPlayerStore, { type MusicPlayerState } from '../store/musicplayer
 import message from '../utils/message'
 import { TestAlt, TestKey, TestShift } from '../utils/keyboardhelper'
 import { getRawUrl } from '../utils/proxyhelper'
+import UserDAL from '../user/userdal'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import { getMediaServerPlaybackInfo } from '../media-server/contentGateway'
 import type { IPageMusicTrack } from '../store/appstore'
@@ -30,7 +31,7 @@ import { DEFAULT_MINERADIO_HOTKEYS, hasHotkeyConflict, hotkeyFromEvent, loadHotk
 import { addTracksToList, createPlaylist, loadPlaylists, savePlaylists, type LocalPlaylist } from '../utils/radio/LocalPlaylistManager'
 import { t } from '../i18n'
 
-const props = defineProps<{ embedded?: boolean; sidePanel?: boolean }>()
+const props = defineProps<{ embedded?: boolean; sidePanel?: boolean; fullPage?: boolean }>()
 const emit = defineEmits<{ (e: 'state-change', state: MusicPlayerState): void }>()
 
 const appStore = useAppStore()
@@ -39,6 +40,7 @@ const musicPlayerStore = useMusicPlayerStore()
 const mediaServerRegistry = useMediaServerRegistryStore()
 
 keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
+  if (props.sidePanel) return // Embedded playback must not capture the main window's shortcuts.
   if (TestAlt('f4', state.KeyDownEvent, handleHide)) return
   if (TestAlt('m', state.KeyDownEvent, handleMin)) return
   if (TestAlt('enter', state.KeyDownEvent, handleMax)) return
@@ -54,6 +56,7 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
 })
 
 const onKeyDown = (e: KeyboardEvent) => {
+  if (props.sidePanel && !musicPlayerStore.panelVisible) return
   const el = (e.target || e.srcElement) as any
   if (document.querySelector('.arco-modal-container')) return
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return
@@ -832,7 +835,12 @@ async function resolveUrl(idx: number) {
     const playback = await getMediaServerPlaybackInfo(config, track.media_server_item_id, track.media_server_source_id)
     return playback.url
   }
-  const d = await getRawUrl(track.user_id, track.drive_id, track.file_id, track.encType || '', track.password || '', false, 'audio', '', '', track.tokenfrom)
+  // Library tracks may belong to an account other than the active drive account.
+  // Hydrate that exact account before provider routing; never guess Aliyun.
+  await UserDAL.GetUserTokenFromDB(track.user_id)
+  const token = UserDAL.GetUserToken(track.user_id)
+  const provider = token.tokenfrom !== 'unknown' ? token.tokenfrom : track.tokenfrom
+  const d = await getRawUrl(track.user_id, track.drive_id, track.file_id, track.encType || '', track.password || '', false, 'audio', '', '', provider)
   if (typeof d === 'string') throw new Error(d || t('music.getUrlFailed'))
   return d.url || ''
 }
@@ -1104,6 +1112,7 @@ function onVolDown(e: MouseEvent) {
   window.addEventListener('mouseup', up)
 }
 function handleHide() {
+  if (props.sidePanel) { musicPlayerStore.hidePanel(); return }
   try { audioRef.value?.pause() } catch {}
   window.WebToWindow?.({ cmd: 'close' })
   if (!window.WebToWindow) window.close()
@@ -1166,7 +1175,9 @@ function emitState() {
     currentTime: displayTimeSec.value,
     duration: dur.value,
     progressPercent: progPct.value,
-    hasTrack: !!curTrack.value
+    hasTrack: !!curTrack.value,
+    volume: vol.value,
+    mode: mode.value
   })
 }
 
@@ -1220,7 +1231,10 @@ onMounted(() => {
     bindAudio(audioRef.value)
     initAudioEngine()
   }
-  if (props.sidePanel) return
+  if (props.sidePanel) {
+    if (musicPlayerStore.pendingLoad) loadPageMusic(musicPlayerStore.pendingLoad)
+    return
+  }
   if (visualFx.value.splashEnabled) {
     showSplash.value = true
     window.setTimeout(() => showSplash.value = false, 2100)
@@ -1234,13 +1248,20 @@ onMounted(() => {
   loadPageMusic(d)
 })
 
-watch(curTrack, (t) => { if (t) document.title = t.file_name })
-watch([curTrack, playing, loading, curTime, dur, coverUrl, artist, album, progPct, displayTimeSec], emitState, { immediate: true })
+watch(curTrack, (t) => { if (t && !props.sidePanel) document.title = t.file_name })
+watch(() => [appStore.appTab, appStore.mediaLibrarySection], () => {
+  if (props.sidePanel && (appStore.appTab !== 'media' || appStore.mediaLibrarySection !== 'music')) showQueue.value = false
+})
+watch([curTrack, playing, loading, curTime, dur, coverUrl, artist, album, progPct, displayTimeSec, vol, mode], emitState, { immediate: true })
 watch(() => musicPlayerStore.commandSeq, () => {
   if (!props.sidePanel) return
   if (musicPlayerStore.command === 'toggle') togglePlay()
   else if (musicPlayerStore.command === 'prev') playPrev()
   else if (musicPlayerStore.command === 'next') playNext(false)
+  else if (musicPlayerStore.command === 'seek') seekTo(musicPlayerStore.commandValue)
+  else if (musicPlayerStore.command === 'volume') setVol(musicPlayerStore.commandValue)
+  else if (musicPlayerStore.command === 'mode') cycleMode()
+  else if (musicPlayerStore.command === 'queue') showQueue.value = !showQueue.value
 })
 watch(() => musicPlayerStore.loadSeq, () => {
   if (!props.sidePanel) return
@@ -1301,7 +1322,7 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
 
 <template>
   <div
-    :class="['mineradio-player', props.embedded ? 'embedded' : '', props.sidePanel ? 'side-panel' : '', immersiveMode ? 'immersive' : '', diySimpleMode ? 'simple-mode' : '', controlsVisible ? 'controls-visible' : 'controls-hidden']"
+    :class="['mineradio-player', props.embedded ? 'embedded' : '', props.sidePanel && !props.fullPage ? 'side-panel' : '', immersiveMode ? 'immersive' : '', diySimpleMode ? 'simple-mode' : '', controlsVisible ? 'controls-visible' : 'controls-hidden']"
     :style="{ '--mineradio-glass-chromatic': String(visualFx.glassChromaticOffset) }"
     @dblclick="handleRootDblClick"
     @mousemove="markControlsVisible"
@@ -1749,14 +1770,17 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       @toggle-fav="toggleFav"
     />
 
+    <Teleport to="body" :disabled="!props.sidePanel || musicPlayerStore.panelVisible">
     <MusicMiniQueue
+      :class="{ 'library-queue-drawer': props.sidePanel && !musicPlayerStore.panelVisible }"
       :current-index="curIdx"
       :tracks="playlist"
       :visible="showQueue"
       @close="showQueue = false"
-      @play="(idx) => { showQueue = false; loadIdx(idx, true) }"
+      @play="(idx) => { showQueue = false; loadIdx(idx, true); if (props.sidePanel) musicPlayerStore.showPanel() }"
       @remove="removeQueueAt"
     />
+    </Teleport>
 
     <MusicBottomConsole
       :album="album"

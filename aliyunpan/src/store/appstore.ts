@@ -131,6 +131,7 @@ export interface IPageVideo {
   media_server_chapters?: Array<{ start: number, end: number, title: string }>
   custom_playlist_label?: string
   custom_playlist?: IPageVideoPlaylistEntry[]
+  playlist_loop?: boolean
   library_subtitle_files?: IPageVideoSubtitleFile[]
 }
 
@@ -175,6 +176,7 @@ export interface AppState {
   appPage: string
 
   appTab: string
+  mediaLibrarySection: 'home' | 'video' | 'server' | 'music' | 'book' | 'files' | 'collection'
 
   appTabMenuMap: Map<string, string>
   appDark: boolean
@@ -198,6 +200,7 @@ const useAppStore = defineStore('app', {
     appTheme: 'light',
     appPage: 'PageLoading',
     appTab: 'pan',
+    mediaLibrarySection: 'home',
     appTabMenuMap: new Map<string, string>([
       ['pan', 'wangpan'],
       ['down', 'DowningRight'],
@@ -250,7 +253,8 @@ const useAppStore = defineStore('app', {
     },
     resetTab(defaultTab = 'pan') {
       this.$patch({
-        appTab: defaultTab,
+        appTab: ['media-server', 'music', 'book'].includes(defaultTab) ? 'media' : defaultTab,
+        mediaLibrarySection: defaultTab === 'media-server' ? 'server' : defaultTab === 'music' ? 'music' : defaultTab === 'book' ? 'book' : 'home',
         appTabMenuMap: new Map<string, string>([
           ['pan', 'wangpan'],
           ['down', 'DowningRight'],
@@ -266,6 +270,10 @@ const useAppStore = defineStore('app', {
     },
 
     toggleTab(tab: string) {
+      if (['media-server', 'music', 'book'].includes(tab)) {
+        this.mediaLibrarySection = tab === 'media-server' ? 'server' : tab as 'music' | 'book'
+        tab = 'media'
+      }
       if (this.appTab != tab) {
         this.appTab = tab
         if (tab == 'setting') DebugLog.aLoadFromDB()
@@ -274,6 +282,11 @@ const useAppStore = defineStore('app', {
     },
 
     toggleTabMenu(tab: string, menu: string) {
+      if (['media-server', 'music', 'book'].includes(tab)) {
+        this.toggleTab(tab)
+        this.appTabMenuMap.set(tab, menu)
+        return
+      }
       if (this.appTab != tab) {
         this.appTab = tab
         if (tab == 'setting') DebugLog.aLoadFromDB()
@@ -284,6 +297,11 @@ const useAppStore = defineStore('app', {
     },
 
     toggleTabSetting(tab: string, menu: string) {
+      if (['media-server', 'music', 'book'].includes(tab)) {
+        this.toggleTab(tab)
+        if (menu) this.appTabMenuMap.set(tab, menu)
+        return
+      }
       if (tab == this.appTab && this.appTabMenuMap.get(tab) == menu) return
       if (this.appTab != tab) {
         this.appTab = tab
@@ -312,17 +330,12 @@ const useAppStore = defineStore('app', {
           break
         }
         case 'media': {
-          this.appTab = 'media-server'
+          this.appTab = 'setting'
+          DebugLog.aLoadFromDB()
           break
         }
-        case 'media-server': {
-          this.appTab = 'music'
-          break
-        }
-        case 'music': {
-          this.appTab = 'book'
-          break
-        }
+        case 'media-server':
+        case 'music':
         case 'book': {
           this.appTab = 'setting'
           DebugLog.aLoadFromDB()

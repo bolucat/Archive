@@ -25,6 +25,7 @@ for (const file of [addon, libmpv]) {
 mkdirSync(output, { recursive: true })
 const copied = []
 const inputs = [addon, libmpv]
+if (platform === 'linux') inputs.push(path.join(packageRoot, 'build', 'Release', 'mpv_transport.node'))
 const linuxNames = new Map()
 for (const name of readdirSync(sdkDir)) {
   if (name === libmpvName || name === 'libmpv.so' || name === 'mpv.lib') continue
@@ -76,5 +77,5 @@ if (platform === 'linux') {
     copied.push({ name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') })
   }
 }
-writeFileSync(path.join(output, 'mpv-bundle-manifest.json'), `${JSON.stringify({ platform, arch, renderer: 'software', files: copied }, null, 2)}\n`)
+writeFileSync(path.join(output, 'mpv-bundle-manifest.json'), `${JSON.stringify({ platform, arch, renderer: 'texture-with-software-fallback', files: copied }, null, 2)}\n`)
 console.log(`Staged ${platform}/${arch} software MPV candidate: ${output}`)

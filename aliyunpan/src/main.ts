@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import './styles/mediaPosters.css'
 import ArcoVue from '@arco-design/web-vue'
 import store, { useAppStore, useSettingStore } from './store'
 import '@arco-themes/vue-gi-demo/css/arco.css'

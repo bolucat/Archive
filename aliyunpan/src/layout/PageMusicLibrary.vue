@@ -1,4 +1,5 @@
 <script setup lang='ts'>
+import MediaEmptyFolder from '../components/MediaEmptyFolder.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import { ArrowLeft, ListMusic, Mic2, Disc3, Folder, Heart, Music, Play, User, RefreshCw, Search, Sparkles, Radio } from 'lucide-vue-next'
@@ -22,10 +23,14 @@ import { getMediaServerMusicTracks } from '../media-server/contentGateway'
 import type { MediaServerMusicTrack } from '../types/mediaServerContent'
 import { t as tt } from '../i18n'
 import useSettingStore from '../setting/settingstore'
+import MusicLibraryBrowser from './music/MusicLibraryBrowser.vue'
+import useMusicPlayerStore from '../store/musicplayerstore'
 
 withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 const musicStore = useMusicLibraryStore()
+const musicPlayerStore = useMusicPlayerStore()
+const showSources = ref(false)
 const settingStore = useSettingStore()
 const appStore = useAppStore()
 const mediaServerRegistry = useMediaServerRegistryStore()
@@ -199,7 +204,8 @@ function playFromList(list: IMusicTrack[], target: IMusicTrack) {
     password: '',
     playlist
   }
-  window.WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme: musicWindowTheme.value })
+  musicPlayerStore.loadMusic(pageMusic)
+  musicPlayerStore.showPanel()
 }
 
 function playMediaServerList(list: MediaServerMusicTrack[], target: MediaServerMusicTrack) {
@@ -227,7 +233,8 @@ function playPageTracks(tracks: IPageMusicTrack[], target: IPageMusicTrack = tra
     password: '',
     playlist
   }
-  window.WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme: musicWindowTheme.value })
+  musicPlayerStore.loadMusic(pageMusic)
+  musicPlayerStore.showPanel()
 }
 
 function shuffleTracks<T>(items: T[]): T[] {
@@ -716,11 +723,14 @@ onMounted(async () => {
   scheduleEnrich(1500)
   fetchWeather().then(w => { weather.value = w }).catch(() => {})
 })
+defineExpose({ playFromList, selectTab })
 </script>
 
 <template>
   <div class="aml">
-    <div class="aml-main-row">
+    <MusicLibraryBrowser v-if="!showSources" :tracks="musicStore.tracks" :total="musicStore.totalCount" :loading="musicStore.isLoadingPage" :has-more="musicStore.hasMoreTracks" @load-all="musicStore.loadAllTracks()" @load-more="loadMoreTracks" @play="playPageTracks" @sources="showSources = true" />
+    <button v-if="showSources" class="music-source-back" @click="showSources = false"><ArrowLeft :size="18" /> 返回音乐</button>
+    <div v-if="showSources" class="aml-main-row">
       <MusicLibraryRail
         v-show="sidebarVisible"
         v-model:selected-scan-user-ids="selectedScanUserIds"
@@ -806,11 +816,7 @@ onMounted(async () => {
 
           <!-- Home page -->
           <div v-else-if="musicStore.subTab === 'home'" class="aml-home">
-            <div v-if="!musicStore.totalCount" class="aml-empty-state">
-              <Music :size="56" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.libraryEmpty') }}</div>
-              <div class="aml-empty-sub">{{ tt('music.libraryEmptyDesc') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!musicStore.totalCount" />
             <template v-else>
               <section class="aml-home-hero mineradio-library">
                 <div class="aml-home-copy">
@@ -936,11 +942,7 @@ onMounted(async () => {
               <RefreshCw :size="38" :stroke-width="1.2" class="aml-empty-icon" />
               <div class="aml-empty-title">{{ tt('music.loadingServerMusic') }}</div>
             </div>
-            <div v-else-if="!filteredMediaServerTracks.length" class="aml-empty-state">
-              <Music :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noServerMusic') }}</div>
-              <div class="aml-empty-sub">{{ tt('music.noServerMusicDesc') }}</div>
-            </div>
+            <MediaEmptyFolder v-else-if="!filteredMediaServerTracks.length" />
             <div v-else class="aml-tracklist">
               <div v-for="(t, i) in filteredMediaServerTracks" :key="`${t.serverId}:${t.id}`" class="aml-track" @click="playMediaServerList(filteredMediaServerTracks, t)">
                 <span class="aml-track-idx">{{ i + 1 }}</span>
@@ -959,10 +961,7 @@ onMounted(async () => {
 
           <!-- All songs -->
           <div v-else-if="musicStore.subTab === 'all'" class="aml-all-songs">
-            <div v-if="!filteredAll.length" class="aml-empty-state">
-              <ListMusic :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noSongs') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!filteredAll.length" />
             <div v-else class="aml-tracklist">
               <div
                 v-for="(t, i) in filteredAll"
@@ -989,10 +988,7 @@ onMounted(async () => {
 
           <!-- Artists -->
           <div v-else-if="musicStore.subTab === 'artists'" class="aml-grid-view">
-            <div v-if="!musicStore.byArtist.length" class="aml-empty-state">
-              <Mic2 :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noArtists') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!musicStore.byArtist.length" />
             <div v-else class="aml-grid">
               <div
                 v-for="g in musicStore.byArtist"
@@ -1012,10 +1008,7 @@ onMounted(async () => {
 
           <!-- Albums -->
           <div v-else-if="musicStore.subTab === 'albums'" class="aml-grid-view">
-            <div v-if="!musicStore.byAlbum.length" class="aml-empty-state">
-              <Disc3 :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noAlbums') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!musicStore.byAlbum.length" />
             <div v-else class="aml-grid">
               <div
                 v-for="g in musicStore.byAlbum"
@@ -1035,10 +1028,7 @@ onMounted(async () => {
 
           <!-- Folders -->
           <div v-else-if="musicStore.subTab === 'folders'" class="aml-grid-view">
-            <div v-if="!musicStore.byFolder.length" class="aml-empty-state">
-              <Folder :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noFolders') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!musicStore.byFolder.length" />
             <div v-else class="aml-grid">
               <div
                 v-for="g in musicStore.byFolder"
@@ -1061,11 +1051,7 @@ onMounted(async () => {
 
           <!-- Favorites -->
           <div v-else-if="musicStore.subTab === 'fav'" class="aml-fav-songs">
-            <div v-if="!musicStore.favoritesTracks.length" class="aml-empty-state">
-              <Heart :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">{{ tt('music.noFavorites') }}</div>
-              <div class="aml-empty-sub">{{ tt('music.noFavoritesDesc') }}</div>
-            </div>
+            <MediaEmptyFolder v-if="!musicStore.favoritesTracks.length" />
             <div v-else class="aml-tracklist">
               <div
                 v-for="(t, i) in musicStore.favoritesTracks"
@@ -1137,6 +1123,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.music-source-back { display:flex; align-items:center; gap:8px; color:var(--color-text-1); background:var(--color-bg-1); border:0; padding:10px 20px; cursor:pointer; }
 /* ===== Mineradio Music Library ===== */
 
 .aml {
@@ -2510,6 +2497,42 @@ onMounted(async () => {
 </style>
 
 <style>
+/* Share the media workspace surface tokens in both themes. */
+body[arco-theme='dark'] .unified-library .aml {
+  --music-ui-text: var(--color-text-1);
+  --music-ui-muted: var(--color-text-3);
+  --fc-bg: #000;
+  --fc-paper: #000;
+  --fc-ink: var(--color-text-1);
+  background: #000 !important;
+  color: var(--color-text-1);
+}
+body[arco-theme='dark'] .unified-library .aml::before,
+body[arco-theme='dark'] .unified-library .aml::after,
+body[arco-theme='dark'] .unified-library .aml-content-area::before,
+body[arco-theme='dark'] .unified-library .aml-home-hero::before,
+body[arco-theme='dark'] .unified-library .aml-home-section-panel::before,
+body[arco-theme='dark'] .unified-library .aml-grid-view::before,
+body[arco-theme='dark'] .unified-library .aml-all-songs::before,
+body[arco-theme='dark'] .unified-library .aml-fav-songs::before,
+body[arco-theme='dark'] .unified-library .aml-group-detail::before {
+  display: none;
+}
+body[arco-theme='dark'] .unified-library .aml-content-area,
+body[arco-theme='dark'] .unified-library .aml-right-panel,
+body[arco-theme='dark'] .unified-library .aml-home-hero,
+body[arco-theme='dark'] .unified-library .aml-home-section-panel,
+body[arco-theme='dark'] .unified-library .aml-grid-view,
+body[arco-theme='dark'] .unified-library .aml-all-songs,
+body[arco-theme='dark'] .unified-library .aml-fav-songs,
+body[arco-theme='dark'] .unified-library .aml-group-detail,
+body[arco-theme='dark'] .unified-library .aml .plm-panel,
+body[arco-theme='dark'] .unified-library .aml .podcast-panel {
+  background: #000;
+  border-color: var(--color-border-2);
+  box-shadow: none;
+  backdrop-filter: none;
+}
 body:not([arco-theme='dark']) .aml {
   --music-ui-text: #111827;
   --music-ui-muted: #374151;

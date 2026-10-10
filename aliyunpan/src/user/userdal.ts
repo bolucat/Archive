@@ -441,7 +441,7 @@ export default class UserDAL {
       }
     }
     if (isCloud123User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token))
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token), 'cloud123')
       return
     }
     if (isBaiduUser(token)) {

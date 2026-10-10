@@ -63,11 +63,24 @@ Path aliases (set in `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`):
 
 Cloud provider API modules in `src/`: `aliapi/`, `cloudbaidu/`, `cloud123/`, `cloud115/`, `pikpak/`, `onedrive/`, `box/`, `dropbox/`, `quark/`, `cloud139/`, `cloud189/`.
 
+## GitHub Issue workflow
+
+When the user asks to handle GitHub Issues, first fetch the complete list of unfinished/open Issues in the requested repository. Review each Issue individually, identify its likely cause and affected code, and report the triage before changing code. Then implement fixes and run focused regression tests for each applicable Issue. Do not jump straight into a code change based only on the newest Issue or close an Issue before its fix is verified. If the repository or Issue access is unavailable, state that limitation rather than assuming the list is complete.
+
 ## Testing: Vitest, Node environment, selective includes
 
-### Mandatory Playwright bug-fix acceptance gate
+### Default app inspection: attach to the existing dev app
 
-Every bug fix must be verified through Playwright against an actually launched Electron application. Unit tests, type checks, source inspection, and `pnpm run dev` are supporting checks, but none of them can replace this gate.
+- Unless the user explicitly asks to execute E2E tests, always connect to the app the user already started with `pnpm run dev` for inspection, reproduction, debugging, and UI verification.
+- Use the existing Electron CDP endpoint (normally `http://127.0.0.1:9223`; confirm the active endpoint). Playwright may attach with `chromium.connectOverCDP`; do not use `electron.launch`, spawn another Electron process, or start another `pnpm run dev` instance.
+- Preserve the running app's real user-data directory, accounts, settings, and playback state. Do not substitute an isolated/temporary profile or seed test data into the user's app.
+- Requests to review, investigate, reproduce, fix, or verify a bug are not explicit requests to run E2E tests. Do not automatically run `pretest:e2e`, `test:e2e`, or Playwright specs whose fixtures launch a separate app.
+- If the existing app or relevant window is unavailable, report that and ask the user to start/reopen it. Do not silently launch a replacement. Request approval before restarting the user's dev app when a main-process or native-module change requires it.
+- This rule takes precedence over the E2E workflow below. Record what was actually verified in the existing dev app; do not describe attached-session checks as production E2E acceptance. A pending E2E gate does not authorize launching another app.
+
+### Playwright acceptance gate when E2E execution is explicitly requested
+
+When the user explicitly asks to execute E2E tests, verify bug fixes through Playwright against an actually launched Electron application using the workflow below. Unit tests, type checks, source inspection, and merely starting `pnpm run dev` cannot replace this E2E gate.
 
 1. Add or update a Playwright regression test that reproduces the reported failure through the user-visible application flow.
 2. Build the production Electron entry with `pnpm run pretest:e2e`; do not test stale `dist/` output or an installed older BoxPlayer build.
@@ -288,6 +301,15 @@ Standalone CLI + MCP server for agent-driven cloud-drive operations. Docs: `clou
 ## CI
 
 Manual trigger only (`workflow_dispatch`) via `.github/workflows/release.yml`. Builds on `windows-latest` + `ubuntu-latest`, publishes draft GitHub Release. No automatic CI on push/PR.
+
+### Release ownership: drafts only
+
+- The human user owns the final publication of every GitHub Release. The agent and CI may prepare commits/tags, build and upload assets, and create/update **draft releases only** when requested.
+- Requests such as “发布 release”, “更新 release”, “重新提交代码更新 release”, or “继续发布” mean prepare/update a draft; they do **not** authorize making it public. The user publishes it manually in GitHub.
+- Never run `gh release edit --draft=false`, create a non-draft release, or enable automatic publication in a workflow or packaging configuration. Keep electron-builder `releaseType` set to `draft` and the workflow's final release update in draft state.
+- Do not delete, recreate, demote, overwrite assets on, or otherwise modify an already-public release without a separate explicit request for that exact operation. A rerun targeting a public tag must stop rather than modify that release.
+- Determine the next version from the latest **public** release plus one patch version, unless the user explicitly specifies a different version. Do not move an existing public tag to new code.
+- Report draft creation and build/test status accurately. Never describe a draft or queued workflow as a published release.
 
 ## Subprojects (gitignored, referenced locally)
 

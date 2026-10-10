@@ -265,6 +265,7 @@
                 >
               </div>
             </div>
+            <div id="line-end" class="line"></div>
             <ContextMenu v-if="!noLyric" ref="lyricMenu">
               <div class="item" @click="copyLyric(false)">{{
                 $t('contextMenu.copyLyric')
@@ -314,6 +315,10 @@ import Color from 'color';
 import { isAccountLoggedIn } from '@/utils/auth';
 import { hasListSource, getListSourcePath } from '@/utils/playList';
 import locale from '@/locale';
+
+const electron =
+  process.env.IS_ELECTRON === true ? window.require('electron') : null;
+const ipcRenderer = electron?.ipcRenderer || null;
 
 export default {
   name: 'Lyrics',
@@ -456,8 +461,16 @@ export default {
         this.setLyricsInterval();
         this.$store.commit('enableScrolling', false);
       } else {
-        clearInterval(this.lyricsInterval);
+        // 在 Electron 环境下，即使不显示歌词页面，也保持定时器运行以更新 Touch Bar
+        if (process.env.IS_ELECTRON !== true) {
+          clearInterval(this.lyricsInterval);
+        }
         this.$store.commit('enableScrolling', true);
+        // Fullscreen is requested on documentElement, so it makes the whole
+        // window fullscreen. Since the only way to leave fullscreen from the
+        // UI lives on this page, closing it would leave the window stuck in
+        // fullscreen with no way out (minimize/restore stays fullscreen).
+        this.exitFullscreen();
       }
     },
   },
@@ -465,6 +478,10 @@ export default {
     this.getLyric();
     this.getCoverColor();
     this.initDate();
+    // 在 Electron 环境下立即启动歌词定时器，以便 Touch Bar 可以显示歌词
+    if (process.env.IS_ELECTRON === true) {
+      this.setLyricsInterval();
+    }
     document.addEventListener('keydown', e => {
       if (e.key === 'F11') {
         e.preventDefault();
@@ -479,6 +496,7 @@ export default {
     if (this.timer) {
       clearInterval(this.timer);
     }
+    this.exitFullscreen();
   },
   destroyed() {
     clearInterval(this.lyricsInterval);
@@ -507,9 +525,14 @@ export default {
     },
     fullscreen() {
       if (document.fullscreenElement) {
-        document.exitFullscreen();
+        this.exitFullscreen();
       } else {
         document.documentElement.requestFullscreen();
+      }
+    },
+    exitFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
       }
     },
     addToPlaylist() {
@@ -653,12 +676,27 @@ export default {
           );
         });
         if (oldHighlightLyricIndex !== this.highlightLyricIndex) {
-          const el = document.getElementById(`line${this.highlightLyricIndex}`);
-          if (el)
-            el.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center',
-            });
+          // 只在显示歌词页面时才滚动
+          if (this.showLyrics) {
+            const el = document.getElementById(
+              `line${this.highlightLyricIndex}`
+            );
+            if (el)
+              el.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+              });
+          }
+
+          // 发送当前歌词到主进程（用于 Touch Bar 显示）
+          if (ipcRenderer && this.highlightLyricIndex >= 0) {
+            const currentLyricLine = this.lyricToShow[this.highlightLyricIndex];
+            if (currentLyricLine && currentLyricLine.contents) {
+              // 只发送第一行歌词（原文），避免显示过长
+              const lyricText = currentLyricLine.contents[0] || '';
+              ipcRenderer.send('updateLyric', { lyric: lyricText });
+            }
+          }
         }
       }, 50);
     },
@@ -1001,8 +1039,18 @@ export default {
       }
     }
 
-    .line#line-1:hover {
+    .line#line-1:hover,
+    .line#line-end:hover {
       background: unset;
+    }
+
+    // 底部留白，让最后几句歌词也能滚动到屏幕中间。
+    // 不能用 .line:last-child，因为最后一个子元素是右键菜单 (ContextMenu)
+    .line#line-end {
+      flex-shrink: 0;
+      height: 50vh;
+      margin: 0;
+      padding: 0;
     }
 
     .translation {
@@ -1029,10 +1077,6 @@ export default {
 
   .lyrics-container .line:first-child {
     margin-top: 50vh;
-  }
-
-  .lyrics-container .line:last-child {
-    margin-bottom: calc(50vh - 128px);
   }
 }
 

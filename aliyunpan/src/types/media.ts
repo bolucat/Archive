@@ -9,7 +9,11 @@ export interface MediaLibraryItem {
   posterUrl?: string
   backdropUrl?: string
   year?: string
+  releaseDate?: string
   rating?: number
+  certification?: string
+  mediaSubtype?: 'movie' | 'concert' | 'short'
+  isMiniseries?: boolean
   genres: string[]
   productionCountries?: string[]
   overview?: string
@@ -29,6 +33,8 @@ export interface MediaLibraryItem {
   lastWatched?: Date
   watchProgress?: number
   lastPlayedFileId?: string
+  lastPlayedPositionSeconds?: number
+  lastPlayedDurationSeconds?: number
   collectionId?: number
   collectionName?: string
   collectionMovies?: MediaCollectionMovie[]
@@ -36,6 +42,7 @@ export interface MediaLibraryItem {
 }
 
 export interface MediaCollectionMovie {
+  certification?: string
   id: string
   parentId: string
   folderId?: string
@@ -45,6 +52,7 @@ export interface MediaCollectionMovie {
   posterUrl?: string
   backdropUrl?: string
   year?: string
+  releaseDate?: string
   rating?: number
   genres: string[]
   productionCountries?: string[]
@@ -92,6 +100,7 @@ export interface MediaSeason {
 
 export interface MediaEpisode {
   id: number
+  rating?: number
   episodeNumber: number
   name: string
   overview?: string
@@ -137,6 +146,7 @@ export interface TvSeriesItemResponse extends ApiResponse<MediaLibraryTvSeriesIt
 
 // 电影数据结构
 export interface MovieItem {
+  certification?: string
   id: number
   imdb_id?: string
   backdrop_path?: string
@@ -169,6 +179,7 @@ export interface MediaLibraryTvSeriesItem {
 }
 
 export interface TvSeriesItem {
+  certification?: string
   id: number
   name: string
   original_name?: string

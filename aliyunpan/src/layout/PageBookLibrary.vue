@@ -1,4 +1,5 @@
 <script setup lang='ts'>
+import MediaEmptyFolder from '../components/MediaEmptyFolder.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import { Archive, BarChart3, BookMarked, BookOpen, Bookmark, Copy, Database, Edit3, FileText, Folder, Globe2, Grid3X3, Heart, Highlighter, Info, Languages, LibraryBig, Lightbulb, List, MoreVertical, Palette, PanelLeft, PanelLeftClose, PencilLine, Plus, RefreshCw, Search, Settings, Star, StickyNote, Tag, Trash2, X } from 'lucide-vue-next'
@@ -1377,6 +1378,7 @@ function shouldShowCoverFallback(book: IBookItem): boolean {
   return !shouldUseCoverImage(book)
 }
 
+let explicitBookOpen = false
 onMounted(async () => {
   await bookStore.loadFromDB()
   const users = await UserDAL.GetUserListFromDB().catch(() => [])
@@ -1397,7 +1399,7 @@ onMounted(async () => {
   // 自动切换到指定书架 (shelf feature not yet implemented)
 
   // 自动打开上次阅读的书
-  if (managerPreferences.value.isOpenBook) {
+  if (managerPreferences.value.isOpenBook && !explicitBookOpen) {
     const lastBook = bookStore.activeBooks.find((b) => b.last_read_at)
     if (lastBook) openBook(lastBook)
   }
@@ -1435,6 +1437,11 @@ onUnmounted(() => {
 watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
   try { window.Electron?.ipcRenderer?.send('setPowerSaveBlocker', enabled) } catch {}
 }, { immediate: true })
+defineExpose({
+  openBook: (book: IBookItem) => { explicitBookOpen = true; return openBook(book) },
+  selectView: openManagerView,
+  activeView: activeManagerView
+})
 </script>
 
 <template>
@@ -1569,11 +1576,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
       </header>
 
       <section class='book-content'>
-        <a-empty v-if='!hasAnyBookRecords' :description="t('book.emptyLibrary')">
-          <template #image>
-            <BookOpen :size='58' :stroke-width='1.5' style='color: var(--color-text-3)' />
-          </template>
-        </a-empty>
+<MediaEmptyFolder v-if='!hasAnyBookRecords' />
 
         <div v-if='selectedBookIds.length' class='book-batch-bar'>
           <span>{{ t('book.selectedCount', { count: selectedBookIds.length }) }}</span>
@@ -1601,7 +1604,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <span>{{ t('book.bookCount', { count: detailBooks.length }) }}</span>
             <span v-if="groupDetail.type === 'folder' && detailBooks[0]" class='book-source-pill'>{{ sourceLabel(detailBooks[0]) }}</span>
           </div>
-          <a-empty v-if='!detailBooks.length' :description="t('book.noMatchedBooks')" />
+<MediaEmptyFolder v-if='!detailBooks.length' />
           <div v-else class='book-list book-list-linear'>
             <div
               v-for='book in detailBooks'
@@ -1702,11 +1705,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <span>{{ t('book.deletedCount', { count: bookStore.deletedCount }) }}</span>
             <a-button size='mini' status='danger' @click='clearDeletedBooks'>{{ t('book.clearDeleted') }}</a-button>
           </div>
-          <a-empty v-if='!trashVisibleBooks.length' :description="t('book.noDeletedBooks')">
-            <template #image>
-              <Trash2 :size='54' :stroke-width='1.5' style='color: var(--color-text-3)' />
-            </template>
-          </a-empty>
+<MediaEmptyFolder v-if='!trashVisibleBooks.length' />
           <div v-else class='book-list book-list-linear'>
             <div
               v-for='book in trashVisibleBooks'
@@ -1996,7 +1995,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </template>
 
         <template v-else-if='isCollectionManagerView'>
-          <a-empty v-if='!collectionBooks.length' :description="t('book.noMatchedBooks')" />
+<MediaEmptyFolder v-if='!collectionBooks.length' />
           <template v-else-if="bookStore.viewMode === 'list'">
             <div class='book-list book-list-linear'>
               <div

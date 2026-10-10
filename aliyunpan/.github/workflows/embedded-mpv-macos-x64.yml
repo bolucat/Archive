@@ -32,6 +32,7 @@ on:
 jobs:
   macos-x64:
     env:
+      BOXPLAYER_E2E_CLOUD123_ACCOUNT_JSON: ${{ secrets.BOXPLAYER_E2E_CLOUD123_ACCOUNT_JSON }}
       NODE_OPTIONS: --max-old-space-size=4096
     runs-on: macos-15-intel
     timeout-minutes: 240

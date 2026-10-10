@@ -29,7 +29,7 @@ describe('TMDB scrape error classification', () => {
     try {
       const fetchMock = vi.fn()
         .mockResolvedValueOnce({ ok: false, status: 429, headers: new Headers({ 'retry-after': '1' }) })
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 0, data: { id: 1, title: 'Arrival' } }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 0, data: { id: 1, title: 'Arrival', certification: 'PG-13' } }) })
       vi.stubGlobal('fetch', fetchMock)
 
       const result = TmdbService.getInstance().searchMovie('Arrival')

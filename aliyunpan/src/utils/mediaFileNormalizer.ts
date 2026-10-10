@@ -5,9 +5,10 @@ export interface NormalizedMediaFileDescriptor {
   releaseYear?: number
   seasonNumber?: number
   episodeNumber?: number
+  episodeNumbers?: number[]
 }
 
-const MEDIA_EXTENSIONS = new Set(['mkv', 'mp4', 'm4v', 'avi', 'mov', 'wmv', 'flv', 'ts', 'm2ts', 'webm'])
+const MEDIA_EXTENSIONS = new Set(['mkv', 'mp4', 'm4v', 'avi', 'mov', 'wmv', 'flv', 'ts', 'm2ts', 'webm', 'mpg', 'mpeg', '3gp', 'rmvb', 'asf', 'divx', 'xvid', 'mts', 'vob', 'ogv', 'dv'])
 const CHINESE_NUMBER_PATTERN = '[一二三四五六七八九十两零\\d]+'
 const TECHNICAL_TAG_PATTERN = /(?:^|[.\s_\-[\(])(?:2160p|1080p|720p|480p|4k|web[ ._-]?(?:dl|rip)?|webrip|bluray|bdrip|remux|h[ ._-]?26[45]|x26[45]|hevc|av1|aac(?:[ ._-]?\d+(?:\.\d+)?)?|dts|truehd|ddp(?:[ ._-]?\d+(?:\.\d+)?)?|atmos|hdr(?:10(?:\+)?|[ ._-]?dv)?)(?=$|[.\s_\-\]\)])/i
 
@@ -19,6 +20,11 @@ export class MediaFileNormalizer {
     const parsedSeasonEpisode = this.parseSeasonEpisode(mediaName)
     const folderSeason = this.parseSeasonNumber(folderHint)
     const seasonEpisode = parsedSeasonEpisode ?? this.standaloneEpisode(mediaName, folderSeason)
+    if (seasonEpisode && folderSeason !== undefined && !/(?:^|[^A-Za-z0-9])S(?:eason)?[ ._-]*\d|\d{1,2}x\d|第.+季/i.test(mediaName)) seasonEpisode.season = folderSeason
+    const multipleEpisodes = mediaName.match(/S\d{1,2}[ ._-]*E(\d{1,3})\s*-\s*E?(\d{1,3})(?!\d)/i)
+    const episodeNumbers = multipleEpisodes && Number(multipleEpisodes[2]) > Number(multipleEpisodes[1]) && Number(multipleEpisodes[2]) - Number(multipleEpisodes[1]) < 100
+      ? Array.from({ length: Number(multipleEpisodes[2]) - Number(multipleEpisodes[1]) + 1 }, (_, index) => Number(multipleEpisodes[1]) + index)
+      : undefined
     const titleRegion = this.titleRegion(mediaName)
     const releaseYear = this.releaseYear(titleRegion, mediaName)
     const cleanedTitle = this.cleanTitle(titleRegion, releaseYear)
@@ -31,13 +37,14 @@ export class MediaFileNormalizer {
       searchTitle,
       releaseYear,
       seasonNumber: seasonEpisode?.season,
-      episodeNumber: seasonEpisode?.episode
+      episodeNumber: seasonEpisode?.episode,
+      ...(episodeNumbers ? { episodeNumbers } : {})
     }
   }
 
   static isSearchableTitle(title: string): boolean {
     const compactTitle = title.replace(/\s/g, '')
-    return compactTitle.length > 0 && !/^\d+$/.test(compactTitle) && /\p{L}/u.test(compactTitle)
+    return /^\d{4}$/.test(compactTitle) || (compactTitle.length > 0 && !/^\d+$/.test(compactTitle) && /\p{L}/u.test(compactTitle))
   }
 
   private titleRegion(name: string): string {
@@ -104,16 +111,16 @@ export class MediaFileNormalizer {
   }
 
   private standaloneEpisode(name: string, folderSeason?: number): SeasonEpisode | undefined {
-    const match = name.match(/^\s*0*(\d{1,3})\s*$/)
+    const match = this.titleRegion(name).match(/^\s*0*(\d{1,3})[.\s_-]*$/)
     return match && folderSeason !== undefined ? { season: folderSeason, episode: Number(match[1]) } : undefined
   }
 
   private parseSeasonNumber(folderHint?: string): number | undefined {
     if (!folderHint) return undefined
     for (const component of this.folderComponents(folderHint).reverse()) {
-      const season = component.match(/^(?:S|Season)\s*0*(\d{1,2})$/i)
+      const season = component.match(/(?:^|[\s._-])(?:S|Season)\s*0*(\d{1,2})(?=$|[\s._-])/i)
       if (season) return Number(season[1])
-      const chinese = component.match(new RegExp(`^第(${CHINESE_NUMBER_PATTERN})季$`))
+      const chinese = component.match(new RegExp(`第(${CHINESE_NUMBER_PATTERN})季`))
       const value = chinese ? this.parseNumber(chinese[1]) : undefined
       if (value !== undefined) return value
     }
@@ -123,8 +130,15 @@ export class MediaFileNormalizer {
   private titleFromFolderHint(folderHint?: string): string | undefined {
     if (!folderHint) return undefined
     for (const component of this.folderComponents(folderHint).reverse()) {
-      if (this.parseSeasonNumber(component) !== undefined) continue
-      const title = this.cleanTitle(component)
+      const hasSeason = this.parseSeasonNumber(component) !== undefined
+      const titlePart = hasSeason
+        ? component
+          .replace(/(?:^|[\s._-])(?:S|Season)\s*0*\d{1,2}(?=$|[\s._-])/i, ' ')
+          .replace(new RegExp(`第${CHINESE_NUMBER_PATTERN}季`), ' ')
+          .replace(/(?:^|[\s._-])(?:19|20)\d{2}(?=$|[\s._-])/, ' ')
+          .replace(/^(?:美剧|英剧|日剧|韩剧|国产剧|港剧|台剧)\s+/, '')
+        : component
+      const title = this.cleanTitle(titlePart)
       if (MediaFileNormalizer.isSearchableTitle(title)) return title
     }
     return undefined

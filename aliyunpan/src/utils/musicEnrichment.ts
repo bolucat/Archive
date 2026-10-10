@@ -1,90 +1,80 @@
+import axios from 'axios'
+import Config from '../config'
 import useMusicLibraryStore from '../store/musiclibrary'
-import { fetchMusicMetadata } from './musicMetadata'
+import DB from './db'
 import DebugLog from './debuglog'
-
-const MAX_PARALLEL = 2
-const BATCH_DELAY_MS = 800
-const MAX_FAIL_PER_RUN = 12
+import { applyMusicCatalogMatch, musicCatalogHints, musicCohortKey, MUSIC_METADATA_VERSION, type MusicCatalogMatch } from './musicCatalog'
+import type { IMusicTrack } from '../types/music'
 
 let running = false
 let stopRequested = false
-const retryAfterByTrackId = new Map<string, number>()
+export function isMusicEnrichmentRunning() { return running }
+export function stopMusicEnrichment() { stopRequested = true }
 
-export function isMusicEnrichmentRunning(): boolean {
-  return running
-}
-
-export function stopMusicEnrichment(): void {
-  stopRequested = true
-}
-
-/**
- * 懒加载补全 IMusicTrack 的 cover_url / album / artist / title。
- * 跑在后台，按文件名去 LRCLIB / iTunes 查询，每次最多取 N 首没有 cover_url 的曲目。
- * 同一进程内幂等：已 running 时直接返回。
- */
-export async function enrichMusicLibrary(maxItems: number = 60): Promise<number> {
+// Same catalogue endpoint, cohort size, confidence and retry stamps as Apple.
+export async function enrichMusicLibrary(maxItems = 60): Promise<number> {
   if (running) return 0
   running = true
   stopRequested = false
   let attempted = 0
-  let failures = 0
   try {
     const store = useMusicLibraryStore()
-    const now = Date.now()
-    for (const [id, retryAt] of retryAfterByTrackId) {
-      if (retryAt <= now) retryAfterByTrackId.delete(id)
+    const candidates = await store.getEnrichmentCandidates(maxItems, Date.now())
+    const cohorts = new Map<string, IMusicTrack[]>()
+    for (const track of candidates) {
+      const hint = musicCatalogHints(track)
+      const repaired = { ...track }
+      if (track.metadata_version !== MUSIC_METADATA_VERSION && ['itunes', 'online'].includes(track.metadata_source || '') && !hint.filenameArtist) {
+        Object.assign(repaired, { title: hint.title, artist: '', album: '', album_artist: '', genre: '', release_date: undefined, track_number: hint.trackNumber, disc_number: undefined, cover_url: track.artwork_origin === 'embedded' ? track.cover_url : '', metadata_source: 'filename', metadata_provider: undefined, metadata_confidence: undefined, musicbrainz_recording_id: undefined, musicbrainz_release_id: undefined })
+      }
+      if (!repaired.metadata_source || repaired.metadata_source === 'filename') repaired.title = hint.title
+      const key = musicCohortKey(repaired)
+      const group = cohorts.get(key) || []
+      group.push(repaired); cohorts.set(key, group)
     }
-    const candidates = await store.getEnrichmentCandidates(maxItems, now, new Set(retryAfterByTrackId.keys()))
-    if (!candidates.length) return 0
-
-    const queue = [...candidates]
-    const workers: Promise<void>[] = []
-    for (let i = 0; i < Math.min(MAX_PARALLEL, queue.length); i++) {
-      workers.push((async () => {
-        while (queue.length && !stopRequested && failures < MAX_FAIL_PER_RUN) {
-          const t = queue.shift()
-          if (!t) break
+    for (const cohort of cohorts.values()) {
+      while (cohort.length && !stopRequested) {
+        const count = cohort.length > 12 && cohort.length % 12 === 1 ? 11 : Math.min(12, cohort.length)
+        const batch = cohort.splice(0, count)
+        const titleCount = new Set(batch.map(t => t.title)).size
+        const requests = batch.flatMap((track, index) => {
+          const hint = musicCatalogHints(track)
+          const artist = track.artist || track.album_artist || hint.artist
+          if (!artist && (titleCount < 2 || hint.context.length < 2)) return []
+          return [{ id: String(index), title: track.title || hint.title, artist: artist || undefined, album: track.album || hint.album || undefined, context: artist ? undefined : hint.context, trackNumber: track.track_number || hint.trackNumber }]
+        })
+        let matches: MusicCatalogMatch[] = []
+        if (requests.length) {
           try {
-            const meta = await fetchMusicMetadata({
-              filename: t.file_name,
-              artistHint: t.artist || '',
-              titleHint: t.title || '',
-              albumHint: t.album || '',
-              includeLyrics: false
-            })
-            const hasExternalMetadata = !!meta?.metadataSources?.some((source) => source !== 'filename')
-            if (meta && hasExternalMetadata) {
-              const patch: Record<string, unknown> = { enriched_at: Date.now() }
-              if (meta.cover) patch.cover_url = meta.cover
-              const hasITunesMetadata = meta.metadataSources?.includes('itunes:metadata')
-              if (hasITunesMetadata && t.metadata_source !== 'manual') {
-                if (meta.album) patch.album = meta.album
-                if (meta.artist) patch.artist = meta.artist
-                if (meta.title) patch.title = meta.title
-                patch.metadata_source = 'itunes'
-              }
-              await store.updateTrackEnrichment(t.id, patch)
-              retryAfterByTrackId.delete(t.id)
-            } else {
-              // 标记尝试过，避免下次再选中
-              await store.updateTrackEnrichment(t.id, { enriched_at: Date.now() })
-              failures += 1
-            }
-          } catch (e) {
-            failures += 1
-            retryAfterByTrackId.set(t.id, Date.now() + 60_000)
-            DebugLog.mSaveWarning('enrichMusicLibrary item failed: ' + (e as Error).message)
+            const response = await axios.post(`${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api/music/metadata`, { tracks: requests }, { timeout: 45000 })
+            if (!Array.isArray(response.data?.matches)) throw new Error('Invalid music metadata response')
+            matches = response.data.matches
+          } catch (error) {
+            DebugLog.mSaveWarning('Music catalogue enrichment failed: ' + (error as Error).message)
           }
-          attempted += 1
-          await new Promise((r) => setTimeout(r, BATCH_DELAY_MS))
         }
-      })())
+        if (stopRequested) break
+        const updated = batch.map((track, index) => ({ ...track, ...applyMusicCatalogMatch(track, matches.find(m => m.id === String(index))), enriched_at: Date.now(), metadata_version: MUSIC_METADATA_VERSION }))
+        const library = await DB.imusic_track.toArray()
+        const normalize = (s = '') => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+        const key = (t: IMusicTrack) => t.album && (t.album_artist || t.artist) ? `${normalize(t.album)}|${normalize(t.album_artist || t.artist)}` : ''
+        const covers = new Map<string, Set<string>>()
+        const updatedIDs = new Set(updated.map(t => t.id))
+        for (const track of [...library.filter(t => !updatedIDs.has(t.id)), ...updated]) {
+          const album = key(track)
+          if (!album || !track.cover_url) continue
+          const values = covers.get(album) || new Set<string>()
+          values.add(track.cover_url); covers.set(album, values)
+        }
+        for (const track of updated) {
+          const artwork = covers.get(key(track))
+          if (!track.cover_url && artwork?.size === 1) { track.cover_url = [...artwork][0]; track.artwork_origin = 'album' }
+          await store.updateTrackEnrichment(track.id, track)
+          attempted++
+        }
+      }
+      if (stopRequested) break
     }
-    await Promise.all(workers)
-  } finally {
-    running = false
-    stopRequested = false
-  }
+  } finally { running = false; stopRequested = false }
   return attempted
 }

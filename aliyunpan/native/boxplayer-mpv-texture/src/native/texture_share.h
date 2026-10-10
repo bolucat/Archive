@@ -19,6 +19,8 @@ enum class TextureFormat {
     BGRA8     // BGRA (macOS IOSurface native format)
 };
 
+struct DmaBufPlane { int fd; uint32_t stride; uint32_t offset; uint64_t size; };
+
 // Information about an exported texture
 struct TextureInfo {
     uint64_t handle;        // Platform-specific handle (HANDLE on Win, IOSurfaceRef pointer on Mac)
@@ -26,6 +28,10 @@ struct TextureInfo {
     uint32_t height;
     TextureFormat format;
     bool is_valid;
+    bool transformed = false;
+    std::vector<DmaBufPlane> planes;
+    uint64_t modifier = 0;
+    std::shared_ptr<void> lease; // Keeps a GPU slot occupied until Electron releases every reference.
     std::shared_ptr<std::vector<uint8_t>> pixels; // software renderer only
 };
 

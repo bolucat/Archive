@@ -4,6 +4,8 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
 import message from '../utils/message'
 import { getCloud123Token } from './auth'
+import UserDAL from '../user/userdal'
+import { fetchCloud123JsonWithAuthRetry } from './request'
 
 export type Cloud123FileItem = {
   fileId: number
@@ -87,24 +89,18 @@ export const apiCloud123FileListPage = async (
     params.set('searchMode', String(searchMode))
   }
   const url = `${API_URL}?${params.toString()}`
-  const resp = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token.access_token}`,
-      Platform: 'open_platform'
-    }
-  })
+  const { response: resp, data } = await fetchCloud123JsonWithAuthRetry(url, token, () => UserDAL.EnsureUserTokenReady(user_id, true))
   if (!resp.ok) {
     message.error('获取 123 网盘文件列表失败')
     if (strict) throw new Error('获取 123 网盘文件列表失败')
     return { items: [], lastFileId: -1 }
   }
-  const data = (await resp.json()) as Cloud123FileListResp
-  if (data.code !== 0 || !data.data?.fileList) {
+  if (data?.code !== 0 || !data?.data?.fileList) {
     if (strict) throw new Error(data?.message || '获取 123 网盘文件列表失败')
     return { items: [], lastFileId: -1 }
   }
-  const items = trashed ? data.data.fileList.filter((item) => item.trashed === 1) : data.data.fileList.filter((item) => item.trashed !== 1)
+  const fileList = data.data.fileList as Cloud123FileItem[]
+  const items = trashed ? fileList.filter((item) => item.trashed === 1) : fileList.filter((item) => item.trashed !== 1)
   return { items, lastFileId: Number(data.data.lastFileId ?? -1) }
 }
 

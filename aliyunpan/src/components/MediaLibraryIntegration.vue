@@ -42,7 +42,7 @@
               <div class="poster">
                 <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.name" />
                 <div v-else class="poster-placeholder">
-                  <IconFont name="iconfile-video" />
+                  <MediaPosterPlaceholder />
                 </div>
                 <div class="progress-bar" v-if="item.watchProgress">
                   <div class="progress-fill" :style="{ width: item.watchProgress + '%' }"></div>
@@ -69,7 +69,7 @@
               <div class="poster">
                 <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.name" />
                 <div v-else class="poster-placeholder">
-                  <IconFont name="iconfile-video" />
+                  <MediaPosterPlaceholder />
                 </div>
                 <div class="type-badge">{{ item.type === 'movie' ? t('media.movie') : t('media.tv') }}</div>
                 <div class="rating" v-if="item.rating">{{ item.rating.toFixed(1) }}</div>
@@ -124,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import MediaPosterPlaceholder from './MediaPosterPlaceholder.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import { MediaScanner } from '../utils/mediaScanner'

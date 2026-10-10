@@ -213,6 +213,22 @@ BoxPlayer keeps the core client free and open source: file management, media pla
 
 # Screenshots [![](https://img.shields.io/badge/-Screenshots-blue)](#screenshots-)
 
+## v5.0.36: Unified library and immersive details
+
+The home page combines Continue Watching, favorites, movies, TV, music, and books, with draggable shelves and file sources.
+
+![Unified library home](screenshot/library-home.png)
+
+Media-server lists share the home page's poster sizing, rounded corners, and title layout.
+
+![Media-server poster library](screenshot/server-library.png)
+
+Immersive details bring together backdrop artwork, playback controls, and episode covers with centered play buttons. Trakt sign-in opens the system browser and supports watchlist and personal-rating updates.
+
+![Episode details and playback controls](screenshot/episode-detail.png)
+
+[Read the v5.0.36 release notes](docs/releases/v5.0.36.md)
+
 ## AI Smart Search and Agent
 <img src="screenshot/search_global.png" width="380"> <img src="screenshot/ai_agent.png" width="380">
 
@@ -233,28 +249,28 @@ BoxPlayer keeps the core client free and open source: file management, media pla
 
 *Music library, lyric enhancements, local media library, and local search.*
 
-## Website Support Tickets
-<img src="screenshot/support-ticket.png" width="380">
+## Document AI
+<img src="screenshot/pdf_ai.png" width="380">
 
-*Submit Bug / Feature tickets anonymously or signed in. Signed-in tickets are linked to the user account.*
+*Ask questions about supported documents and inspect cited passages.*
 
 ## Media Server
-<img src="screenshot/mediaserver_home.png" width="380"> <img src="screenshot/mediaserver_library.png" width="380">
+<img src="screenshot/server-library.png" width="380"> <img src="screenshot/library-home.png" width="380">
 
 *Media server home with Continue Watching and categorized media library browsing.*
 
 ## Episode Details
-<img src="screenshot/mediaserver_detail.png" width="380"> <img src="screenshot/mediaserver_collection.png" width="380">
+<img src="screenshot/episode-detail.png" width="380">
 
 *Episode detail page and collection view.*
 
 ## Search & Aggregation
-<img src="screenshot/mediaserver_search.png" width="380"> <img src="screenshot/drive_library_global_search.png" width="380">
+<img src="screenshot/search_global.png" width="380"> <img src="screenshot/search_local.png" width="380">
 
 *Media server search and aggregated cross-drive search.*
 
 ## Media Library & Drive
-<img src="screenshot/drive_library.png" width="380"> <img src="screenshot/drive_home.png" width="380">
+<img src="screenshot/drive_home.png" width="380">
 
 *Local media library list view and cloud-drive file management.*
 

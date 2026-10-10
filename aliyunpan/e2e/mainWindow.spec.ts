@@ -8,7 +8,7 @@ test('production renderer opens the main workspace from file://', async ({ boxPl
   await expect.poll(() => page.evaluate(() => Array.from(document.styleSheets).some((sheet) => sheet.href?.endsWith('/style.css') && sheet.cssRules.length > 0))).toBeTruthy()
   const header = page.locator('#xbyhead2')
   await expect(header.getByTestId('top-nav-pan')).toBeVisible()
-  await expect(header.getByTestId('top-nav-media-server')).toBeVisible()
+  await expect(header.getByTestId('top-nav-media')).toBeVisible()
   const localResources = await page.evaluate(() =>
     Array.from(document.querySelectorAll<HTMLLinkElement | HTMLScriptElement>('link[rel="stylesheet"][href], script[src]'))
       .map((element) => new URL(element.href || element.src, window.location.href).href)

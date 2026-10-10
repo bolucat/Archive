@@ -2,9 +2,6 @@ name: Build Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -13,6 +10,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  media-regressions:
+    name: Verify media library regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10.32.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/generate-secrets.mjs --mode=local
+      - name: Verify scraping, source membership and library UI
+        run: |
+          pnpm exec vitest run \
+            scripts/__tests__/real-cloud-e2e-config.test.mjs \
+            scripts/__tests__/checkPackagedMpv.test.mjs \
+            scripts/__tests__/releaseDraftPolicy.test.mjs \
+            electron/main/core/__tests__/embeddedMpvPreloadSession.test.ts \
+            src/utils/__tests__/cloud123TokenRetry.test.ts \
+            src/utils/__tests__/mediaScrapePersistence.test.ts \
+            src/utils/__tests__/mediaScrapeMerge.test.ts \
+            src/utils/__tests__/mediaFileNormalizer.test.ts \
+            src/utils/__tests__/mediaScannerQueue.test.ts \
+            src/utils/__tests__/mediaLibraryDexieMigration.test.ts \
+            src/utils/__tests__/mediaAIScrape.test.ts \
+            src/utils/__tests__/mediaSourceMembership.test.ts \
+            src/utils/__tests__/mediaMetadataEditor.test.ts \
+            src/utils/__tests__/providerPagination.test.ts \
+            src/utils/__tests__/unifiedMediaScope.test.ts \
+            src/utils/__tests__/unifiedMediaLibrary.test.ts \
+            src/utils/__tests__/unifiedHomeManagement.test.ts \
+            src/utils/__tests__/certificationDisplay.test.ts \
+            src/utils/__tests__/libraryBrowseMode.test.ts \
+            src/utils/__tests__/listPosterCorner.test.ts \
+            src/utils/__tests__/localListInformation.test.ts \
+            src/utils/__tests__/tmdbCertification.test.ts \
+            src/utils/__tests__/tmdbTransientError.test.ts \
+            src/utils/__tests__/traktToolbarVisibility.test.ts \
+            src/utils/__tests__/unifiedListInformation.test.ts \
+            src/utils/__tests__/mediaServerBrowseSort.test.ts \
+            electron/main/core/__tests__/traktClient.test.ts \
+            src/media-server/__tests__/favoriteCategories.test.ts \
+            src/utils/__tests__/continueWatchingAction.test.ts \
+            src/utils/__tests__/detailCollections.test.ts \
+            src/utils/__tests__/detailResume.test.ts \
+            src/utils/__tests__/fileSourceOrder.test.ts \
+            src/utils/__tests__/homeManagementSeries.test.ts \
+            src/utils/__tests__/homeManagementWidth.test.ts \
+            src/utils/__tests__/mediaArtwork.test.ts \
+            src/utils/__tests__/mediaCategoryPlaceholder.test.ts \
+            src/utils/__tests__/mediaHomeCardLayout.test.ts \
+            src/utils/__tests__/mediaLoadingIndicator.test.ts \
+            src/utils/__tests__/mediaPersonFilter.test.ts \
+            src/utils/__tests__/mediaWatchProgress.test.ts \
+            src/utils/__tests__/mediaPosterPlaceholder.test.ts \
+            src/utils/__tests__/mediaServerEndpoints.test.ts \
+            src/utils/__tests__/mediaServerSourceUI.test.ts \
+            src/utils/__tests__/traktAccountLayout.test.ts \
+            src/utils/__tests__/traktAvatarLoading.test.ts \
+            src/utils/__tests__/traktSystemBrowser.test.ts \
+            src/utils/__tests__/unifiedLibraryBookmarks.test.ts \
+            src/utils/__tests__/unifiedLibraryCategories.test.ts \
+            src/utils/__tests__/posterActionRouting.test.ts \
+            src/utils/__tests__/mediaLibraryTicketUi.test.ts
+
   linux-mpv-test:
     name: Verify Linux MPV
     uses: ./.github/workflows/mpv-linux.yml
@@ -73,7 +139,7 @@ jobs:
 
   create-release:
     name: Create Release Draft
-    needs: [linux-mpv-test, embedded-mpv-linux-test, embedded-mpv-windows-test, embedded-mpv-macos-arm64-test, embedded-mpv-macos-x64-test, electron-e2e]
+    needs: [media-regressions, linux-mpv-test, embedded-mpv-linux-test, embedded-mpv-windows-test, embedded-mpv-macos-arm64-test, embedded-mpv-macos-x64-test, electron-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -87,8 +153,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            is_draft="$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            if [[ "${is_draft}" != "true" ]]; then
+              echo 'Refusing to modify an already-public release; use a new version tag.' >&2
+              exit 1
+            fi
+          else
+            notes="docs/releases/${GITHUB_REF_NAME}.md"
+            if [[ ! -f "$notes" ]]; then
+              notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+            fi
             if [[ -f "$notes" ]]; then
               gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft \
                 --title "BoxPlayer ${GITHUB_REF_NAME}" --notes-file "$notes"
@@ -187,6 +262,13 @@ jobs:
           name: embedded-mpv-linux-x64-candidate
           path: static/engine/linux/x64/mpv-texture
 
+      - name: Download verified Linux arm64 embedded MPV runtime
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-mpv-linux-arm64-candidate
+          path: static/engine/linux/arm64/mpv-texture
+
       - name: Download verified macOS arm64 embedded MPV runtime
         if: matrix.os == 'macos-14'
         uses: actions/download-artifact@v4
@@ -209,6 +291,7 @@ jobs:
             node scripts/check-embedded-mpv-bundles.mjs win32/x64
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             node scripts/check-embedded-mpv-bundles.mjs linux/x64
+            node scripts/check-embedded-mpv-bundles.mjs linux/arm64
           elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
             node scripts/check-embedded-mpv-bundles.mjs darwin/arm64
           else
@@ -217,7 +300,7 @@ jobs:
 
       - name: Generate Release Secrets
         env:
-          REQUIRED_RELEASE_SECRETS: ALIYUN_APP_ID,ALIYUN_APP_SECRET,BAIDU_APP_ID,BAIDU_APP_SECRET,CLOUD123_APP_ID,CLOUD123_APP_SECRET,DRIVE115_APP_ID,DRIVE115_APP_SECRET,DROPBOX_APP_KEY,ONEDRIVE_CLIENT_ID,BOX_CLIENT_ID,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,PIKPAK_CLIENT_ID,PIKPAK_CLIENT_SECRET,GUANGYA_CLIENT_ID,CLOUD189_APP_ID,BOXPLAYER_AI_API_URL,BOXPLAYER_API_URL,BOXPLAYER_SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,BOXPLAYER_SITE_URL,POSTHOG_PROJECT_API_KEY,POSTHOG_HOST
+          REQUIRED_RELEASE_SECRETS: ALIYUN_APP_ID,ALIYUN_APP_SECRET,BAIDU_APP_ID,BAIDU_APP_SECRET,CLOUD123_APP_ID,CLOUD123_APP_SECRET,DRIVE115_APP_ID,DRIVE115_APP_SECRET,DROPBOX_APP_KEY,ONEDRIVE_CLIENT_ID,BOX_CLIENT_ID,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,PIKPAK_CLIENT_ID,PIKPAK_CLIENT_SECRET,GUANGYA_CLIENT_ID,CLOUD189_APP_ID,TRAKT_CLIENT_ID,BOXPLAYER_AI_API_URL,BOXPLAYER_API_URL,BOXPLAYER_SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,BOXPLAYER_SITE_URL,POSTHOG_PROJECT_API_KEY,POSTHOG_HOST
           ALIYUN_APP_ID: ${{ secrets.ALIYUN_APP_ID }}
           ALIYUN_APP_SECRET: ${{ secrets.ALIYUN_APP_SECRET }}
           BAIDU_APP_ID: ${{ secrets.BAIDU_APP_ID }}
@@ -242,6 +325,7 @@ jobs:
           SUBTITLE_SEARCH_API_KEY: ${{ secrets.SUBTITLE_SEARCH_API_KEY }}
           SUBTITLE_DOWNLOAD_API_KEY: ${{ secrets.SUBTITLE_DOWNLOAD_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           BOXPLAYER_AI_API_URL: ${{ secrets.BOXPLAYER_AI_API_URL }}
           BOXPLAYER_API_URL: ${{ secrets.BOXPLAYER_API_URL }}
           BOXPLAYER_SUPABASE_URL: ${{ secrets.BOXPLAYER_SUPABASE_URL }}
@@ -293,6 +377,7 @@ jobs:
           SUBTITLE_SEARCH_API_KEY: ${{ secrets.SUBTITLE_SEARCH_API_KEY }}
           SUBTITLE_DOWNLOAD_API_KEY: ${{ secrets.SUBTITLE_DOWNLOAD_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           BOXPLAYER_AI_API_URL: ${{ secrets.BOXPLAYER_AI_API_URL }}
           BOXPLAYER_API_URL: ${{ secrets.BOXPLAYER_API_URL }}
           BOXPLAYER_SUPABASE_URL: ${{ secrets.BOXPLAYER_SUPABASE_URL }}
@@ -309,11 +394,11 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         with:
           package_manager: pnpm
-          release: true           # 自动创建 Release
+          release: true           # Upload artifacts to a draft; the user publishes manually.
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   finalize-release:
-    name: Finalize Release
+    name: Finalize Release Draft (Manual Publication Required)
     needs: release
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -359,12 +444,17 @@ jobs:
             fi
           fi
           if [[ ! -s release-notes.md ]]; then
-            echo 'Release notes are empty; refusing to publish' >&2
+            echo 'Release notes are empty; refusing to update draft' >&2
+            exit 1
+          fi
+          is_draft="$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [[ "${is_draft}" != "true" ]]; then
+            echo 'Refusing to modify an already-public release.' >&2
             exit 1
           fi
           gh release edit "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "BoxPlayer ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
-            --prerelease \
-            --draft=false
+            --prerelease=false \
+            --draft=true

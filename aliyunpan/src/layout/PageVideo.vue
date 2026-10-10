@@ -2,7 +2,7 @@
 import { KeyboardState, useAppStore, useKeyboardStore, usePanFileStore, useSettingStore } from '../store'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryItem } from '../types/media'
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Button, Input, Modal, Option as AOption, Select } from '@arco-design/web-vue'
 import Artplayer from 'artplayer'
 import HlsJs from 'hls.js'
@@ -47,12 +47,13 @@ import {
 } from '../utils/subtitleApi'
 import type { SubtitleSearchFormat, SubtitleSearchResult } from '../utils/subtitleApi'
 import { dedupeSubtitleSelectors, hasSubtitleSource } from '../utils/subtitleSelector'
+import { discoverSubtitleFiles, subtitleFileKey } from '../utils/subtitleDiscovery'
 import { formatEmbeddedSubtitleLabel } from '../utils/subtitleLanguage'
 import { resolveFullscreenModalContainer } from '../utils/fullscreenModal'
 import { updateSettingPreservingActivePanel } from '../utils/artplayerSetting'
 import message from '../utils/message'
 import { captureVideoQualitySwitchPlaybackState } from '../utils/videoQualitySwitch'
-import { hasPlaybackHeaders, mergeMpvPlaybackHeaders, mergePlaybackHeaders } from '../utils/playbackHeaders'
+import { hasPlaybackHeaders, mergeMpvPlaybackHeaders, mergePlaybackHeaders, resolveMpvPlaybackTransport } from '../utils/playbackHeaders'
 import { getLocalVideoProgress, saveLocalVideoProgress } from '../utils/videoProgress'
 import { isVideoFile } from '../utils/videoFile'
 import { simpleToTradition, traditionToSimple } from 'chinese-simple2traditional'
@@ -119,6 +120,18 @@ const mpvEmbeddedQualityLabel = ref('')
 const mpvEmbeddedQuality = ref('')
 const mpvEmbeddedQualities = ref<selectorItem[]>([])
 const mpvEmbeddedSubtitleSources = ref<Array<{ url: string; title?: string; streamIndex?: number }>>([])
+const mpvEmbeddedSubtitleFiles = ref<selectorItem[]>([])
+const mpvSubtitleCandidates = computed(() => mpvEmbeddedSubtitleFiles.value.map(file => ({ id: subtitleFileKey(file), title: file.html || file.name || '字幕' })))
+let mpvSubtitleDiscovery = 0
+let mpvLoadSequence = 0
+let videoDisposed = false
+const subtitleScopeChannel = new BroadcastChannel('boxplayer-subtitle-scope')
+subtitleScopeChannel.onmessage = (event) => {
+  if (event.data === 'same-folder' || event.data === 'include-subfolders') {
+    useSettingStore().$patch({ mediaLibrarySubtitleScope: event.data })
+  }
+}
+const playbackFileKey = () => JSON.stringify([pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id])
 const mpvPlaylistReady = ref(false)
 
 
@@ -1231,15 +1244,16 @@ const initEvent = (art: Artplayer) => {
   })
   // 视频播放完毕
   art.on('video:ended', async () => {
+    if (pageVideo.playlist_loop && playList.length === 1) { art.seek = 0; await art.play(); return }
     if (pageVideo.drive_id === 'media_server') {
       await sendMediaServerStopReport(art.currentTime || 0)
     }
     if (playList.length > 1 && art.video.readyState > art.video.HAVE_CURRENT_DATA) {
-      if (autoPlayNumber + 1 >= playList.length) {
+      if (autoPlayNumber + 1 >= playList.length && !pageVideo.playlist_loop) {
         art.notice.show = t('video.ended')
         return
       }
-      if (art.storage.get('autoPlayNext')) {
+      if (pageVideo.playlist_loop || art.storage.get('autoPlayNext')) {
         await jumpToNextVideo(art)
       }
     }
@@ -1311,9 +1325,13 @@ const initEvent = (art: Artplayer) => {
 const jumpToNextVideo = async (art: Artplayer) => {
   if (lastPlayNumber + 1 !== autoPlayNumber) return
   if (autoPlayNumber + 1 >= playList.length) {
-    autoPlayNumber = playList.length
-    art.notice.show = t('video.lastEpisode')
-    return
+    if (pageVideo.playlist_loop) {
+      autoPlayNumber = -1
+    } else {
+      autoPlayNumber = playList.length
+      art.notice.show = t('video.lastEpisode')
+      return
+    }
   }
   const item = playList[++autoPlayNumber]
   if (pageVideo.drive_id === 'media_server') {
@@ -1333,14 +1351,15 @@ const childDirFileList: any[] = []
 let curDirFileListDirId: string | null = null
 let childDirFileListDirId: string | null = null
 const getDirFileList = async (dir_id: string, hasDir: boolean, category: string = '', filter?: RegExp, refresh = false): Promise<any[]> => {
-  const cacheNeedsRefresh = refresh || (hasDir ? childDirFileListDirId !== dir_id : curDirFileListDirId !== dir_id)
+  const directoryKey = JSON.stringify([pageVideo.user_id, pageVideo.drive_id, dir_id])
+  const cacheNeedsRefresh = refresh || (hasDir ? childDirFileListDirId !== directoryKey : curDirFileListDirId !== directoryKey)
   if (cacheNeedsRefresh) {
     if (hasDir) {
       childDirFileList.splice(0, childDirFileList.length)
-      childDirFileListDirId = dir_id
+      childDirFileListDirId = directoryKey
     } else {
       curDirFileList.splice(0, curDirFileList.length)
-      curDirFileListDirId = dir_id
+      curDirFileListDirId = directoryKey
     }
     let items: any[] = []
     if (isWebDavDrive(pageVideo.drive_id)) {
@@ -1370,6 +1389,8 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
         name: item.name,
         file_id: item.file_id,
         drive_id: item.drive_id || pageVideo.drive_id,
+        user_id: pageVideo.user_id,
+        tokenfrom: pageVideo.tokenfrom,
         parent_file_id: item.parent_file_id || dir_id,
         ext: item.ext,
         isDir: item.isDir,
@@ -1390,28 +1411,22 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
 }
 
 const getSubtitleFileList = async (includeSubfolders = false): Promise<selectorItem[]> => {
-  const subtitlePattern = /srt|vtt|ass|ssa/
-  const currentDirItems = await getDirFileList(pageVideo.parent_file_id, false, '')
-  const subtitleFiles = [
-    ...(pageVideo.library_subtitle_files || []).map((item) => ({
-      html: item.name,
-      name: item.name,
-      file_id: item.file_id,
-      parent_file_id: item.parent_file_id,
-      drive_id: item.drive_id,
-      user_id: item.user_id,
-      ext: item.ext || item.name.split('.').pop() || ''
-    })),
-    ...currentDirItems.filter((item) => subtitlePattern.test(item.ext || ''))
-  ]
-
-  if (includeSubfolders) {
-    // Subtitle libraries are commonly stored in immediate child folders. Keep the video folder first so a sibling subtitle wins ties.
-    for (const dir of currentDirItems.filter((item) => item.isDir && item.file_id)) {
-      subtitleFiles.push(...await getDirFileList(dir.file_id, true, '', subtitlePattern, true))
-    }
+  const owner = playbackFileKey()
+  const parentId = pageVideo.parent_file_id
+  const discovered = await discoverSubtitleFiles(parentId, includeSubfolders, async (id) => {
+    const items = await getDirFileList(id, id !== parentId, '', undefined, id !== parentId)
+    return items.filter(item => item.parent_file_id === id)
+  }, () => !videoDisposed && owner === playbackFileKey())
+  if (videoDisposed || owner !== playbackFileKey()) return []
+  const libraryFiles = (pageVideo.library_subtitle_files || [])
+    .filter(item => includeSubfolders || !item.parent_file_id || item.parent_file_id === parentId)
+    .map(item => ({ ...item, html: item.name, ext: item.ext || item.name.split('.').pop() || '' }))
+  const unique = new Map<string, selectorItem>()
+  for (const item of [...discovered, ...libraryFiles]) {
+    const key = subtitleFileKey(item)
+    if (!unique.has(key)) unique.set(key, item)
   }
-  return dedupeSubtitleSelectors(subtitleFiles)
+  return [...unique.values()]
 }
 
 
@@ -2294,8 +2309,10 @@ const resolveRawMpvQualitySource = (data: IRawUrl, preferredQuality?: string): {
   // quality header object must never discard provider authentication.
   const provider = resolveDriveProvider(pageVideo.user_id, pageVideo.drive_id, pageVideo.tokenfrom).provider
   const defaultHeaders = mergeMpvPlaybackHeaders(provider, data.headers, defaultQuality.headers)
-  const useAuthenticatedMpvProxy = !pageVideo.encType && hasPlaybackHeaders(defaultHeaders)
-  const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '', useAuthenticatedMpvProxy ? 'mpv' : '')
+  const transport = resolveMpvPlaybackTransport(provider, Boolean(pageVideo.encType))
+  const defaultUrl = transport.proxy
+    ? resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '', transport.proxyKind)
+    : defaultQuality.url
   const mpvHeaders = defaultUrl === defaultQuality.url ? defaultHeaders : undefined
   const defaultQualityWidth = (defaultQuality as any).width
   return {
@@ -2385,31 +2402,50 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
   return { url: source.url, headers: source.headers, type: source.type, qualityLabel: source.qualityLabel, quality: defaultQuality.quality, qualities, subtitles }
 }
 
-const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; title?: string } | undefined> => {
-  if (!useMacEmbeddedMpv) return undefined
-  if (useSettingStore().uiVideoSubtitleMode !== 'auto') return undefined
-  if (pageVideo.drive_id === 'local' || pageVideo.drive_id === 'media_server') return undefined
-  if (!pageVideo.parent_file_id || !pageVideo.file_name) return undefined
-
-  const subtitleFiles = await getSubtitleFileList(useSettingStore().mediaLibrarySubtitleScope === 'include-subfolders')
-  if (!subtitleFiles.length) return undefined
-  const subtitleFile = PlayerUtils.filterSubtitleFile(pageVideo.file_name, subtitleFiles as any) as selectorItem | undefined
-  if (!subtitleFile?.file_id) return undefined
-
-  const subtitleUrl = await resolveCloudSubtitleUrl(subtitleFile)
-  if (!subtitleUrl) return undefined
-
-  return {
-    url: subtitleUrl,
-    title: subtitleFile.name || subtitleFile.html || t('video.autoSubtitle')
+const refreshMpvSubtitleFiles = async () => {
+  const request = ++mpvSubtitleDiscovery
+  const owner = playbackFileKey()
+  if (!useMacEmbeddedMpv || ['local', 'media_server'].includes(pageVideo.drive_id) || !pageVideo.parent_file_id) {
+    mpvEmbeddedSubtitleFiles.value = []
+    return []
   }
+  const subtitleFiles = await getSubtitleFileList(useSettingStore().mediaLibrarySubtitleScope === 'include-subfolders')
+  if (videoDisposed || request !== mpvSubtitleDiscovery || owner !== playbackFileKey()) return []
+  mpvEmbeddedSubtitleFiles.value = subtitleFiles
+  return subtitleFiles
 }
 
+const resolveMpvSubtitleFile = async (id: string) => {
+  const owner = playbackFileKey()
+  const subtitleFile = mpvEmbeddedSubtitleFiles.value.find(file => subtitleFileKey(file) === id)
+  if (!subtitleFile) return undefined
+  const subtitleUrl = await resolveCloudSubtitleUrl(subtitleFile)
+  if (!subtitleUrl || videoDisposed || owner !== playbackFileKey()) return undefined
+  return { url: subtitleUrl, title: subtitleFile.html || subtitleFile.name || t('video.autoSubtitle') }
+}
+
+const resolveMpvEmbeddedExternalSubtitle = async () => {
+  // Listing is independent of automatic selection: manual mode still needs the full menu.
+  const subtitleFiles = await refreshMpvSubtitleFiles()
+  if (useSettingStore().uiVideoSubtitleMode !== 'auto') return undefined
+  const subtitleFile = PlayerUtils.filterSubtitleFile(pageVideo.file_name, subtitleFiles as any) as selectorItem | undefined
+  return subtitleFile ? resolveMpvSubtitleFile(subtitleFileKey(subtitleFile)) : undefined
+}
+
+watch(() => useSettingStore().mediaLibrarySubtitleScope, () => {
+  if (useMacEmbeddedMpv) void refreshMpvSubtitleFiles().catch(() => message.warning('刷新字幕列表失败'))
+})
+
 const loadMpvEmbeddedCurrentVideo = async (resumePosition = pageVideo.play_cursor || 0) => {
+  const sequence = ++mpvLoadSequence
+  ++mpvSubtitleDiscovery
+  mpvEmbeddedSubtitleFiles.value = []
+  mpvEmbeddedSubtitleSources.value = []
   const storedProgress = getLocalVideoProgress(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id)
   resumePosition = Math.max(Number(resumePosition) || 0, storedProgress)
   pageVideo.play_cursor = Math.max(Number(pageVideo.play_cursor) || 0, storedProgress)
   const source = await resolvePageVideoMpvSource()
+  if (videoDisposed || sequence !== mpvLoadSequence) return false
   if (source.error || !source.url) {
     mpvEmbeddedError.value = source.error || t('video.getMpvUrlFailed')
     message.error(mpvEmbeddedError.value)
@@ -2425,7 +2461,7 @@ const loadMpvEmbeddedCurrentVideo = async (resumePosition = pageVideo.play_curso
   console.info('[播放][MPV] 当前播放链接', {
     quality: source.quality || '',
     qualityLabel: source.qualityLabel || '',
-    url: source.url,
+    source: /^https?:\/\//i.test(source.url) ? 'remote' : 'local',
     position: mpvEmbeddedStartPosition.value,
     hasAuthorization: Boolean(source.headers && Object.keys(source.headers).some((key) => key.toLowerCase() === 'authorization')),
     userAgent: source.headers && Object.entries(source.headers).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
@@ -2433,9 +2469,11 @@ const loadMpvEmbeddedCurrentVideo = async (resumePosition = pageVideo.play_curso
   try {
     const subtitleSources = [...(source.subtitles || [])]
     const externalSubtitle = await resolveMpvEmbeddedExternalSubtitle()
+    if (videoDisposed || sequence !== mpvLoadSequence) return false
     if (externalSubtitle && !subtitleSources.some((item) => item.url === externalSubtitle.url)) subtitleSources.push(externalSubtitle)
     mpvEmbeddedSubtitleSources.value = subtitleSources
   } catch (error) {
+    if (videoDisposed || sequence !== mpvLoadSequence) return false
     console.warn('MPV 自动加载同目录字幕失败:', error)
     mpvEmbeddedSubtitleSources.value = source.subtitles || []
   }
@@ -2714,7 +2752,7 @@ const isVideoPlaylistItem = isVideoFile
 const buildPageVideoPlayList = async (file_id?: string) => {
   if (pageVideo.drive_id === 'media_server') {
     const entries = pageVideo.media_server_episode_playlist || []
-    if (entries.length <= 1) return
+    if (entries.length === 0) return
     const currentItemId = file_id || pageVideo.media_server_item_id || pageVideo.file_id
     playList.splice(0, playList.length, ...entries.map((item) => ({
       url: '',
@@ -2726,7 +2764,7 @@ const buildPageVideoPlayList = async (file_id?: string) => {
     return
   }
 
-  if (pageVideo.custom_playlist && pageVideo.custom_playlist.length > 1) {
+  if (pageVideo.custom_playlist && pageVideo.custom_playlist.length > 0) {
     if (!file_id) {
       playList.splice(0, playList.length, ...pageVideo.custom_playlist.map((item) => ({
         url: '',
@@ -3314,6 +3352,7 @@ const getSubTitleList = async (art: Artplayer, autoLoad = true) => {
 
 const updateVideoTime = async (positionSeconds = ArtPlayerRef?.currentTime || 0, durationSeconds = ArtPlayerRef?.duration || 0) => {
   if (pageVideo.drive_id === 'media_server') return
+  updateContinueWatching(positionSeconds, durationSeconds)
   if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') return
   await AliFile.ApiUpdateVideoTime(
     pageVideo.user_id,
@@ -3321,7 +3360,6 @@ const updateVideoTime = async (positionSeconds = ArtPlayerRef?.currentTime || 0,
     pageVideo.file_id,
     positionSeconds
   )
-  updateContinueWatching(positionSeconds, durationSeconds)
 }
 
 let lastVideoProgressSaveSecond = -1
@@ -3372,6 +3410,9 @@ const updateContinueWatching = (positionSeconds = ArtPlayerRef?.currentTime || 0
   const duration = durationSeconds || 0
   const progress = duration > 0 ? positionSeconds / duration : 0
   item.watchProgress = Math.max(0, Math.min(1, progress))
+  item.lastPlayedFileId = fileId
+  item.lastPlayedPositionSeconds = positionSeconds
+  item.lastPlayedDurationSeconds = duration
   item.lastWatched = new Date()
   mediaStore.addToContinueWatching(item)
 }
@@ -3435,6 +3476,10 @@ const handleTop = (_e: any) => {
 }
 
 onBeforeUnmount(() => {
+  videoDisposed = true
+  subtitleScopeChannel.close()
+  ++mpvLoadSequence
+  ++mpvSubtitleDiscovery
   activeSearchModal?.close()
   activeSearchModal = undefined
   if (pageVideo.drive_id === 'media_server') {
@@ -3505,6 +3550,8 @@ onBeforeUnmount(() => {
         :current-quality="mpvEmbeddedQuality"
         :chapters="pageVideo.media_server_chapters || []"
         :subtitle-sources="mpvEmbeddedSubtitleSources"
+        :subtitle-files="mpvSubtitleCandidates"
+        :resolve-subtitle-file="resolveMpvSubtitleFile"
         :headers="mpvEmbeddedHeaders"
         :playlist="[...playList]"
         :qualities="mpvEmbeddedQualities"

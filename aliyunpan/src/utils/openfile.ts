@@ -104,6 +104,7 @@ export async function menuOpenFile(
   options?: {
     customPlaylistLabel?: string
     customPlaylist?: IPageVideoPlaylistEntry[]
+    playlistLoop?: boolean
   }
 ): Promise<void> {
   if (clickWait('menuOpenFile', 500)) return
@@ -281,6 +282,7 @@ async function Video(
   options?: {
     customPlaylistLabel?: string
     customPlaylist?: IPageVideoPlaylistEntry[]
+    playlistLoop?: boolean
   }
 ): Promise<void> {
   if (file.icon == 'iconweifa') {
@@ -343,6 +345,7 @@ async function Video(
       encType: getEncType(playCursorInfo?.info || ''),
       play_cursor: play_cursor,
       custom_playlist_label: options?.customPlaylistLabel || '',
+      playlist_loop: options?.playlistLoop,
       custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom, options?.customPlaylist),
       library_subtitle_files: librarySubtitleFiles
     }

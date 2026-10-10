@@ -18,6 +18,7 @@ export interface MediaServerConfig {
   username?: string
   password?: string
   useHttps?: boolean
+  libraryMode?: boolean
   syncFlag?: boolean
   backupAddresses?: Record<string, string>
   accessToken?: string

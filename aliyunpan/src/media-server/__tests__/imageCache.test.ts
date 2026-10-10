@@ -17,6 +17,11 @@ describe('toMsCacheUrl', () => {
     expect(toMsCacheUrl('server1', '')).toBe('')
   })
 
+  it('keeps renderer-local image sources unchanged', () => {
+    expect(toMsCacheUrl('server1', 'data:image/svg+xml,%3Csvg%2F%3E')).toBe('data:image/svg+xml,%3Csvg%2F%3E')
+    expect(toMsCacheUrl('server1', 'blob:https://boxplayer.local/image-id')).toBe('blob:https://boxplayer.local/image-id')
+  })
+
   it('produces stable output for same input', () => {
     const url = 'http://192.168.1.1:8096/Items/abc/Images/Primary'
     expect(toMsCacheUrl('server1', url)).toBe(toMsCacheUrl('server1', url))

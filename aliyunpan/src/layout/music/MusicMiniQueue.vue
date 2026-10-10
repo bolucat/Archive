@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { X } from 'lucide-vue-next'
 import type { IPageMusicTrack } from '../../store/appstore'
 import { t as tt } from '../../i18n'
@@ -16,11 +15,6 @@ const emit = defineEmits<{
   (e: 'remove', index: number): void
 }>()
 
-const displayList = computed(() => {
-  const start = Math.max(0, props.currentIndex - 3)
-  const end = Math.min(props.tracks.length, props.currentIndex + 8)
-  return props.tracks.slice(start, end).map((t, i) => ({ track: t, globalIndex: start + i }))
-})
 </script>
 
 <template>
@@ -32,14 +26,14 @@ const displayList = computed(() => {
     </div>
     <div class="mini-queue-list">
       <div
-        v-for="item in displayList"
-        :key="item.track.file_id + item.globalIndex"
-        :class="['mini-queue-row', item.globalIndex === currentIndex ? 'now' : '']"
-        @click="emit('play', item.globalIndex)"
+        v-for="(track, index) in tracks"
+        :key="`${track.user_id}:${track.drive_id}:${track.file_id}:${index}`"
+        :class="['mini-queue-row', index === currentIndex ? 'now' : '']"
+        @click="emit('play', index)"
       >
-        <span class="mini-queue-idx">{{ item.globalIndex + 1 }}</span>
-        <span class="mini-queue-name">{{ item.track.file_name }}</span>
-        <button class="mini-queue-rm" @click.stop="emit('remove', item.globalIndex)" :title="tt('music.remove')">×</button>
+        <span class="mini-queue-idx">{{ index + 1 }}</span>
+        <span class="mini-queue-name">{{ track.file_name }}</span>
+        <button class="mini-queue-rm" @click.stop="emit('remove', index)" :title="tt('music.remove')">×</button>
       </div>
       <div v-if="!tracks.length" class="mini-queue-empty">{{ tt('music.queueEmpty') }}</div>
     </div>
@@ -91,4 +85,6 @@ const displayList = computed(() => {
 .mini-queue-rm { width: 22px; height: 22px; border: none; border-radius: 5px; background: rgba(255,255,255,.06); color: rgba(255,255,255,.45); cursor: pointer; font-size: 14px; }
 .mini-queue-rm:hover { background: rgba(255,86,100,.7); color: #fff; }
 .mini-queue-empty { padding: 20px; text-align: center; color: rgba(255,255,255,.32); font-size: 11px; }
+.library-queue-drawer { position:fixed; left:auto; right:24px; bottom:100px; z-index:110; transform:none!important; background:var(--color-bg-popup); color:var(--color-text-1); border-color:var(--color-border-2); }
+.library-queue-drawer .mini-queue-name,.library-queue-drawer .mini-queue-title { color:var(--color-text-1); }
 </style>

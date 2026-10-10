@@ -807,6 +807,11 @@ const useSettingStore = defineStore('setting', {
         this.WebSetProxy()
       }
       SaveSetting()
+      if (Object.hasOwn(partial, 'mediaLibrarySubtitleScope')) {
+        const channel = new BroadcastChannel('boxplayer-subtitle-scope')
+        channel.postMessage(this.mediaLibrarySubtitleScope)
+        channel.close()
+      }
       useAppStore().toggleTheme(setting.uiTheme)
       if (Object.hasOwn(partial, 'uiTheme')) window.WebSaveTheme({ theme: setting.uiTheme })
       window.MainProxyHost = setting.debugProxyHost
