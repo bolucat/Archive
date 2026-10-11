@@ -321,7 +321,7 @@ importers:
         version: 5.3.0
       '@hookform/resolvers':
         specifier: 5.9.1
-        version: 5.9.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.89.0(@types/react@19.3.0)(react@19.3.0))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.5)
+        version: 5.9.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.89.0(@types/react@19.3.0)(react@19.3.0))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.6)
       '@inlang/paraglide-js':
         specifier: 2.26.0
         version: 2.26.0(typescript@7.0.2)(vite@8.3.3(@types/node@24.19.1)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.0))
@@ -369,7 +369,7 @@ importers:
         version: 3.14.13(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(zod@4.6.5)
+        version: 1.81.5(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(zod@4.6.6)
       '@tauri-apps/api':
         specifier: 2.12.2
         version: 2.12.2
@@ -471,8 +471,8 @@ importers:
         specifier: 3.50.0
         version: 3.50.0
       filesize:
-        specifier: 11.0.25
-        version: 11.0.25
+        specifier: 11.0.26
+        version: 11.0.26
       meta-json-schema:
         specifier: 1.19.31
         version: 1.19.31
@@ -504,8 +504,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0(supports-color@10.2.2)(typescript@7.0.2)(vite@8.3.3(@types/node@24.19.1)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.0))
       zod:
-        specifier: 4.6.5
-        version: 4.6.5
+        specifier: 4.6.6
+        version: 4.6.6
 
   frontend/platform:
     dependencies:
@@ -4541,8 +4541,8 @@ packages:
   filelist@1.0.4:
     resolution: {integrity: sha512-w1cEuf3S+DrLCQL7ET6kz+gmlJdbq9J7yXCSjK/OZCPA+qEN1WyF4ZAf0YYJa4/shHJra2t/d/r8SV4Ji+x+8Q==}
 
-  filesize@11.0.25:
-    resolution: {integrity: sha512-oPVK4S+B5nRK8eL5FORi4RSzbz/1PmUx17NQLMIWv8tlNVDUFgLY0GNApL7tEebL4WgkBqSJGB3AJsCXUs01hw==}
+  filesize@11.0.26:
+    resolution: {integrity: sha512-CgbdcjFLDJzMUnxQxHZ5uVxREmTVkjoXnppVB0AH8X0N8Uz4CZarWZLFALLv/Ymyf6EEu1AgaLPS6laXiqBEWA==}
     engines: {node: '>= 10.8.0'}
 
   fill-range@7.1.1:
@@ -6528,6 +6528,9 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -7610,7 +7613,7 @@ snapshots:
 
   '@fontsource-variable/inter@5.3.0': {}
 
-  '@hookform/resolvers@5.9.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.89.0(@types/react@19.3.0)(react@19.3.0))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.5)':
+  '@hookform/resolvers@5.9.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.89.0(@types/react@19.3.0)(react@19.3.0))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.6)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.89.0(@types/react@19.3.0)(react@19.3.0)
@@ -7618,7 +7621,7 @@ snapshots:
       '@sinclair/typebox': 0.31.28
       ajv: 8.17.1
       valibot: 1.4.2(typescript@7.0.2)
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)':
     dependencies:
@@ -9120,7 +9123,7 @@ snapshots:
       jiti: 2.7.0
       magic-string: 0.30.21
       prettier: 3.9.9
-      zod: 4.6.5
+      zod: 4.6.6
     transitivePeerDependencies:
       - supports-color
 
@@ -9134,7 +9137,7 @@ snapshots:
       '@tanstack/router-utils': 1.162.3(supports-color@10.2.2)
       chokidar: 5.0.0
       unplugin: 3.3.0(rolldown@1.2.11)(vite@8.3.3(@types/node@24.19.1)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.0))
-      zod: 4.6.5
+      zod: 4.6.6
     optionalDependencies:
       '@tanstack/react-router': 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       vite: 8.3.3(@types/node@24.19.1)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.0)
@@ -9161,10 +9164,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(zod@4.6.5)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(zod@4.6.6)':
     dependencies:
       '@tanstack/react-router': 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@tanstack/store@0.11.2': {}
 
@@ -10307,7 +10310,7 @@ snapshots:
     dependencies:
       minimatch: 5.1.6
 
-  filesize@11.0.25: {}
+  filesize@11.0.26: {}
 
   fill-range@7.1.1:
     dependencies:
@@ -12543,5 +12546,7 @@ snapshots:
       yargs-parser: 22.0.0
 
   zod@4.6.5: {}
+
+  zod@4.6.6: {}
 
   zwitch@2.0.4: {}

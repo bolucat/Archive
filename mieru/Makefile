@@ -19,7 +19,7 @@ PROJECT_NAME=$(shell basename "${ROOT}")
 TEST_BINARY_PREREQ = test-binary
 BENCH_TIME ?= 10s
 FUZZ_TIME ?= 10s
-BENCH_PACKAGES ?= ./pkg/cipher ./pkg/common ./pkg/protocol ./pkg/protocol/serveruser
+BENCH_PACKAGES ?= ./pkg/cipher ./pkg/common ./pkg/metrics ./pkg/protocol ./pkg/protocol/serveruser
 FUZZ_PACKAGES ?= ./pkg/protocol
 
 # If this version is changed, also change the version in
@@ -37,7 +37,7 @@ FUZZ_PACKAGES ?= ./pkg/protocol
 # - pkg/version/current.go
 #
 # Use `tools/bump_version.sh` script to change all those files at one shot.
-VERSION="3.38.0"
+VERSION="3.38.1"
 
 # With .ONESHELL, each recipe is executed in a single shell instance.
 # This allows `cd` to affect subsequent commands in the same recipe.
