@@ -21,14 +21,14 @@
     "@tauri-apps/api": "2.12.2",
     "es-toolkit": "1.52.0",
     "react-use": "17.6.1",
-    "semver": "7.7.4"
+    "semver": "7.8.5"
   },
   "peerDependencies": {
-    "@tanstack/react-query": "5.104.1",
+    "@tanstack/react-query": "5.104.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@types/semver": "7.7.1"
+    "@types/semver": "7.8.0"
   }
 }

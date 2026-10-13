@@ -11,29 +11,16 @@ import (
 	"sync"
 
 	"github.com/vishvananda/netlink"
-	appdns "github.com/xtls/xray-core/app/dns"
 	"github.com/xtls/xray-core/common/errors"
-	xnet "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/platform"
-	"github.com/xtls/xray-core/common/serial"
-	"github.com/xtls/xray-core/common/session"
-	"github.com/xtls/xray-core/core"
-	feature_dns "github.com/xtls/xray-core/features/dns"
-	"github.com/xtls/xray-core/features/dns/localdns"
-	"github.com/xtls/xray-core/features/outbound"
-	"github.com/xtls/xray-core/features/routing"
-	routingsession "github.com/xtls/xray-core/features/routing/session"
-	"github.com/xtls/xray-core/proxy/dns"
 	"golang.org/x/sys/unix"
-	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
-	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 // LinuxTun is an object that handles tun network interface on linux
 // current version is heavily stripped to do nothing more,
-// then create a network interface, to be provided as file descriptor to gVisor ip stack
+// then create a network interface, whose packets are read and written through its file descriptor
 type LinuxTun struct {
-	tunFd   int
+	*fdTun
 	tunLink netlink.Link
 	options *Config
 	ownsTun bool
@@ -106,81 +93,6 @@ func (t *LinuxTun) ifaceName() string {
 		return ""
 	}
 	return attrs.Name
-}
-
-// probeSourcePort is a representative client port for the routing probe. A real
-// query arrives from an ephemeral port that cannot be known in advance, so this
-// only matters for a rule that matches on a source port.
-const probeSourcePort = 49152
-
-// verifyDNSRouting reports whether a DNS query to address would actually be
-// handled. Redirecting the system resolver at an address nothing answers would
-// break name resolution outright, so the takeover only proceeds when routing
-// hands such a query to a DNS-capable outbound.
-//
-// Overridable for tests.
-var verifyDNSRouting = func(ctx context.Context, inboundTag, source, address string) error {
-	ip, err := netip.ParseAddr(address)
-	if err != nil {
-		return errors.New("invalid DNS address ", address).Base(err)
-	}
-	src, err := netip.ParseAddr(source)
-	if err != nil || src.Is4() != ip.Is4() {
-		return errors.New("invalid source address ", source).Base(err)
-	}
-
-	instance := core.MustFromContext(ctx)
-
-	// Any resolution path that could still reach the system resolver has to be
-	// refused, because pointing the system resolver at the TUN would close a
-	// loop through the DNS outbound. With no `dns` section Core installs such a
-	// client; with a `dns` section that has no name servers app/dns falls back
-	// to one; and a name server pointed at "localhost" is one even when
-	// independent upstreams are configured alongside it, because name servers
-	// are selected per domain.
-	switch dnsFeature := instance.GetFeature(feature_dns.ClientType()).(type) {
-	case *localdns.Client:
-		return errors.New("DNS feature is the system resolver, takeover would loop")
-	case *appdns.DNS:
-		if dnsFeature.MayUseSystemResolver() {
-			return errors.New("DNS configuration may resolve through the system resolver, takeover would loop")
-		}
-	}
-
-	router, ok := instance.GetFeature(routing.RouterType()).(routing.Router)
-	if !ok {
-		return errors.New("router feature unavailable")
-	}
-
-	// A real query from this interface carries a source address, and rules may
-	// match on it, so the probe has to carry one too.
-	queryCtx := session.ContextWithInbound(ctx, &session.Inbound{
-		Name:   "tun",
-		Tag:    inboundTag,
-		Source: xnet.UDPDestination(xnet.IPAddress(src.AsSlice()), probeSourcePort),
-	})
-	queryCtx = session.ContextWithOutbounds(queryCtx, []*session.Outbound{{
-		Target: xnet.UDPDestination(xnet.IPAddress(ip.AsSlice()), 53),
-	}})
-
-	route, err := router.PickRoute(routingsession.AsRoutingContext(queryCtx))
-	if err != nil {
-		return errors.New("no route for ", address, ":53").Base(err)
-	}
-
-	manager, ok := instance.GetFeature(outbound.ManagerType()).(outbound.Manager)
-	if !ok {
-		return errors.New("outbound manager unavailable")
-	}
-
-	handler := manager.GetHandler(route.GetOutboundTag())
-	if handler == nil {
-		return errors.New("outbound ", route.GetOutboundTag(), " does not exist")
-	}
-	if settings := handler.ProxySettings(); settings == nil || settings.Type != serial.GetMessageType(&dns.Config{}) {
-		return errors.New("outbound ", route.GetOutboundTag(), " does not handle DNS")
-	}
-	return nil
 }
 
 // ConfigureSystemDNS points systemd-resolved at this interface so name lookups
@@ -287,19 +199,30 @@ var _ Tun = (*LinuxTun)(nil)
 
 // NewTun builds new tun interface handler (linux specific)
 func NewTun(options *Config) (Tun, error) {
-	tunFd, tunLink, fdProvided, err := openFromEnv(options.Name)
+	tunFd, vnet, tunLink, fdProvided, err := openFromEnv(options.Name)
 	if err != nil {
 		return nil, err
 	}
 	if fdProvided {
 		return &LinuxTun{
-			tunFd:   tunFd,
+			fdTun:   newFdTun(tunFd, vnet),
 			tunLink: tunLink,
 			options: options,
 		}, nil
 	}
 
-	tunFd, err = open(options.Name)
+	// with a virtio_net_hdr on every packet the system leaves its TCP segments as large as they are,
+	// with their checksums not completed, and takes such segments. Without it where that is refused
+	vnet = vnetSize
+	tunFd, err = open(options.Name, unix.IFF_VNET_HDR)
+	if err == nil && unix.IoctlSetInt(tunFd, unix.TUNSETOFFLOAD, unix.TUN_F_CSUM|unix.TUN_F_TSO4|unix.TUN_F_TSO6) != nil {
+		_ = unix.Close(tunFd)
+		err = unix.EINVAL
+	}
+	if err != nil {
+		vnet = 0
+		tunFd, err = open(options.Name, 0)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +234,7 @@ func NewTun(options *Config) (Tun, error) {
 	}
 
 	linuxTun := &LinuxTun{
-		tunFd:   tunFd,
+		fdTun:   newFdTun(tunFd, vnet),
 		tunLink: tunLink,
 		options: options,
 		ownsTun: true,
@@ -320,55 +243,62 @@ func NewTun(options *Config) (Tun, error) {
 	return linuxTun, nil
 }
 
-func openFromEnv(expectedName string) (int, netlink.Link, bool, error) {
+// openFromEnv takes the tun that was given to the process, with the size of the virtio_net_hdr of its packets
+func openFromEnv(expectedName string) (int, int, netlink.Link, bool, error) {
 	fdStr := platform.NewEnvFlag(platform.TunFdKey).GetValue(func() string { return "" })
 	if fdStr == "" {
-		return -1, nil, false, nil
+		return -1, 0, nil, false, nil
 	}
 
 	fd, err := strconv.Atoi(fdStr)
 	if err != nil {
-		return -1, nil, true, errors.New("invalid ", platform.TunFdKey).Base(err)
+		return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey).Base(err)
 	}
 	if fd < 3 {
-		return -1, nil, true, errors.New("invalid ", platform.TunFdKey, ": file descriptor must be >= 3")
+		return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey, ": file descriptor must be >= 3")
 	}
 
 	ifr, err := unix.NewIfreq("")
 	if err != nil {
-		return -1, nil, true, err
+		return -1, 0, nil, true, err
 	}
 	if err = unix.IoctlIfreq(fd, unix.TUNGETIFF, ifr); err != nil {
-		return -1, nil, true, err
+		return -1, 0, nil, true, err
 	}
 
 	flags := ifr.Uint16()
 	if flags&unix.IFF_TUN == 0 {
-		return -1, nil, true, errors.New("invalid ", platform.TunFdKey, ": file descriptor is not a TUN device")
+		return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey, ": file descriptor is not a TUN device")
 	}
 	if flags&unix.IFF_NO_PI == 0 {
-		return -1, nil, true, errors.New("invalid ", platform.TunFdKey, ": TUN device must use IFF_NO_PI")
+		return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey, ": TUN device must use IFF_NO_PI")
+	}
+	vnet := 0
+	if flags&unix.IFF_VNET_HDR != 0 {
+		if vnet, err = unix.IoctlGetInt(fd, unix.TUNGETVNETHDRSZ); err != nil || vnet < vnetSize || vnet > packetRoom {
+			return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey, ": virtio_net_hdr of ", vnet, " bytes").Base(err)
+		}
 	}
 
 	actualName := ifr.Name()
 	if expectedName != "" && actualName != expectedName {
-		return -1, nil, true, errors.New("invalid ", platform.TunFdKey, ": TUN device name ", actualName, " does not match configured name ", expectedName)
+		return -1, 0, nil, true, errors.New("invalid ", platform.TunFdKey, ": TUN device name ", actualName, " does not match configured name ", expectedName)
 	}
 
 	tunLink, err := netlink.LinkByName(actualName)
 	if err != nil {
-		return -1, nil, true, err
+		return -1, 0, nil, true, err
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return -1, nil, true, err
+		return -1, 0, nil, true, err
 	}
 
-	return fd, tunLink, true, nil
+	return fd, vnet, tunLink, true, nil
 }
 
 // open the file that implements tun interface in the OS
-func open(name string) (int, error) {
+func open(name string, features int) (int, error) {
 	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR, 0)
 	if err != nil {
 		return -1, err
@@ -380,7 +310,7 @@ func open(name string) (int, error) {
 		return 0, err
 	}
 
-	flags := unix.IFF_TUN | unix.IFF_NO_PI
+	flags := unix.IFF_TUN | unix.IFF_NO_PI | features
 	ifr.SetUint16(uint16(flags))
 	err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr)
 	if err != nil {
@@ -457,7 +387,7 @@ func (t *LinuxTun) Close() error {
 	if t.ownsTun {
 		_ = netlink.LinkSetDown(t.tunLink)
 	}
-	_ = unix.Close(t.tunFd)
+	_ = t.closeFile()
 
 	return nil
 }
@@ -468,15 +398,6 @@ func (t *LinuxTun) Name() (string, error) {
 
 func (t *LinuxTun) Index() (int, error) {
 	return t.tunLink.Attrs().Index, nil
-}
-
-// newEndpoint builds new gVisor stack.LinkEndpoint from the tun interface file descriptor
-func (t *LinuxTun) newEndpoint() (stack.LinkEndpoint, error) {
-	return fdbased.New(&fdbased.Options{
-		FDs:               []int{t.tunFd},
-		MTU:               t.options.MTU,
-		RXChecksumOffload: true,
-	})
 }
 
 func setinterface(network, address string, fd uintptr, iface *net.Interface) error {
