@@ -1,7 +1,7 @@
 {
   "name": "@nyanpasu/hooks",
   "private": true,
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -13,7 +13,7 @@
     "@nyanpasu/constants": "workspace:*"
   },
   "peerDependencies": {
-    "react": "19.3.0"
+    "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"

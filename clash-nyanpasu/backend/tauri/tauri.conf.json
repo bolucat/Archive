@@ -12,7 +12,7 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": ["en-US", "ko-KR", "ru-RU", "zh-CN", "zh-TW"],
+        "language": ["en-US", "ja-JP", "ko-KR", "ru-RU", "zh-CN", "zh-TW"],
         "template": "./templates/installer.wxs",
         "fragmentPaths": ["./templates/cleanup.wxs"]
       },
@@ -21,6 +21,7 @@
         "installerIcon": "icons/icon.ico",
         "languages": [
           "English",
+          "Japanese",
           "Korean",
           "Russian",
           "SimpChinese",
@@ -74,7 +75,7 @@
     "devUrl": "http://localhost:3000/"
   },
   "productName": "Clash Nyanpasu",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "identifier": "moe.elaina.clash.nyanpasu",
   "plugins": {
     "updater": {

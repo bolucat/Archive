@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/query",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,8 +25,8 @@
   },
   "peerDependencies": {
     "@tanstack/react-query": "5.104.2",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/semver": "7.8.0"

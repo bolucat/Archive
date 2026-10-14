@@ -125,13 +125,14 @@ Read [Testing and review](docs/development/testing.md) for test design and the c
 
 ## 9. Code Style and Repository Conventions
 
-| Area                                                                     | Guide                                                                 |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| Rust formatting, lints, types, and errors                                | [Rust code style](docs/development/rust.md)                           |
-| TS/TSX, React grouping, constants, `data-slot`, UI components, i18n keys | [TypeScript and React code style](docs/development/typescript.md)     |
-| Frontend package ownership and dependency direction                      | [Frontend packages](docs/development/frontend-packages.md)            |
-| Repository scripts and Deno tasks                                        | [Repository scripts](docs/development/scripts.md)                     |
-| GitHub workflow display names                                            | [Development workflow](docs/development/workflow.md#github-workflows) |
+| Area                                                                      | Guide                                                                                              |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Rust formatting, lints, types, and errors                                 | [Rust code style](docs/development/rust.md)                                                        |
+| TS/TSX, React grouping, constants, composition, context, data slots, i18n | [TypeScript and React code style](docs/development/typescript.md)                                  |
+| Frontend package ownership and dependency direction                       | [Frontend packages](docs/development/frontend-packages.md)                                         |
+| Routed pages, page composition, and module scope                          | [Routed pages and modules](docs/development/typescript.md#organize-routed-pages-and-their-modules) |
+| Repository scripts and Deno tasks                                         | [Repository scripts](docs/development/scripts.md)                                                  |
+| GitHub workflow display names                                             | [Development workflow](docs/development/workflow.md#github-workflows)                              |
 
 Formatting and lint passing does not finish the review: semantic naming, reuse, logical grouping, and visual consistency are mandatory review requirements in those guides.
 
@@ -140,7 +141,9 @@ Formatting and lint passing does not finish the review: semantic naming, reuse, 
 Follow [Worktrees and resource reuse](docs/development/workflow.md#worktrees-and-resource-reuse).
 
 - Before implementing feature/refactoring work, assess the cost, recommend a worktree or the current checkout, and ask the user unless they have already chosen.
-- In a worktree, only `backend/tauri/sidecar/` and `backend/tauri/resources/` may be symlinked to the main checkout. Never share `backend/target/` or `backend/tauri/tmp/dist/`.
+- Inspect the existing filesystem before choosing a worktree location. On Windows, a project on ReFS gets a worktree on the same ReFS volume so its Cargo target can be reused through an independent copy-on-write clone. Follow the guide for other filesystems and unsupported-clone fallback; do not change the developer's system configuration or existing directory layout to enable reuse.
+- Tell the user which target reuse method will be used and whether it was previously used or verified for the selected paths. Prefer an existing applicable method; if native cloning is unsupported or cannot be verified, skip reuse and explain briefly rather than provisioning storage or pursuing workarounds.
+- In a worktree, only `backend/tauri/sidecar/` and `backend/tauri/resources/` may be symlinked to the main checkout. Each worktree owns its writable `backend/target/` and `backend/tauri/tmp/dist/`; target clones may share filesystem data blocks, never writable files through symlinks, junctions, hardlinks, or a common `CARGO_TARGET_DIR`.
 
 ## 11. Git Commits
 
