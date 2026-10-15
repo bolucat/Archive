@@ -24,7 +24,7 @@ section.
 
 Options include all supported platform variants; restrictions are noted below.
 
-\snippet{doc} manager.c cli-options
+\snippet{doc} manager.cpp cli-options
 
 \section ss_manager_protocol PROTOCOL
 
@@ -72,7 +72,7 @@ protocol:
 ```
 # Start the manager. Arguments for ss-server will be passed to generated
 # ss-server process(es) respectively.
-ss-manager --manager-address /tmp/manager.sock --executable $(which ss-server) -s example.com -m aes-256-cfb -c /path/to/config.json
+ss-manager --manager-address /tmp/manager.sock --executable $(which ss-server) -s example.com -m aes-256-gcm -c /path/to/config.json
 
 # Connect to the socket. Using netcat-openbsd as an example.
 # You should use scripts or other programs for further management.

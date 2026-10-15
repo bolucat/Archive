@@ -13,6 +13,28 @@ struct Process {
     lines: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 
+#[test]
+fn reality_mldsa_keygen_outputs_interoperable_seed_and_key() {
+    use aws_lc_rs::signature::{self, KeyPair};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+        .arg("generate-reality-mldsa65-keypair")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let values: serde_yaml::Value = serde_yaml::from_slice(&output.stdout).unwrap();
+    let seed = URL_SAFE_NO_PAD
+        .decode(values["mldsa65_seed"].as_str().unwrap())
+        .unwrap();
+    let verify = URL_SAFE_NO_PAD
+        .decode(values["mldsa65_verify"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(seed.len(), 32);
+    assert_eq!(verify.len(), 1952);
+    let signing = signature::PqdsaKeyPair::from_seed(&signature::ML_DSA_65_SIGNING, &seed).unwrap();
+    assert_eq!(signing.public_key().as_ref(), verify);
+}
+
 impl Process {
     fn start(path: &Path, arguments: &[&str]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_shoes"))
@@ -191,8 +213,13 @@ fn invalid_server_auth_configs(address: SocketAddr) -> Vec<String> {
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let empty = json!({"type": "trojan", "password": ""});
     let tls_target = json!({"cert": cert.cert.pem(), "key": cert.signing_key.serialize_pem(), "protocol": empty});
+    let xhttp = json!({"type": "xhttp", "protocol": empty});
+    let mut xhttp_tls_target = tls_target.clone();
+    xhttp_tls_target["protocol"] = xhttp.clone();
     let mut protocols = vec![
         empty.clone(),
+        xhttp.clone(),
+        json!({"type": "tls", "default_target": xhttp_tls_target}),
         json!({"type": "snell", "cipher": "aes-128-gcm", "password": ""}),
         json!({"type": "shadowsocks", "cipher": "aes-128-gcm", "password": ""}),
         json!({"type": "trojan", "password": "do-not-log-this-secret", "shadowsocks": {"cipher": "aes-128-gcm", "password": ""}}),
@@ -243,6 +270,7 @@ fn invalid_server_auth_configs(address: SocketAddr) -> Vec<String> {
         })
         .collect();
     for protocol in [
+        xhttp,
         json!({"type": "hysteria2", "password": ""}),
         json!({"type": "tuic", "uuid": "550e8400-e29b-41d4-a716-446655440000", "password": ""}),
     ] {
@@ -267,6 +295,7 @@ fn invalid_server_protocol_configs(address: SocketAddr) -> Vec<String> {
         json!({"type": "naive", "users": [{"username": "user", "password": "do-not-log-this-secret"}]}),
     ] {
         protocols.push(inner.clone());
+        protocols.push(json!({"type": "xhttp", "protocol": inner}));
         protocols.push(json!({"type": "websocket", "targets": {"protocol": inner}}));
         protocols.push(json!({"type": "tls", "shadowtls_targets": {"localhost": {
             "password": "do-not-log-this-secret", "handshake": {"address": "localhost:443"}, "protocol": inner

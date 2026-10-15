@@ -406,6 +406,8 @@ pub enum ClientProxyConfig {
         h2mux: Option<H2MuxConfig>,
     },
     Reality {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mldsa65_verify: Option<String>,
         public_key: String,
         #[serde(default = "default_reality_client_short_id")]
         short_id: String,
@@ -458,6 +460,8 @@ pub enum ClientProxyConfig {
     },
     #[serde(alias = "ws")]
     Websocket(WebsocketClientConfig),
+    #[serde(alias = "splithttp")]
+    Xhttp(super::xhttp::XhttpClientConfig),
     #[serde(alias = "noop")]
     PortForward,
     /// AnyTLS outbound protocol
@@ -505,6 +509,7 @@ impl ClientProxyConfig {
             ClientProxyConfig::ShadowTls { .. } => "ShadowTLS",
             ClientProxyConfig::Vmess { .. } => "VMess",
             ClientProxyConfig::Websocket(..) => "WebSocket",
+            ClientProxyConfig::Xhttp(..) => "XHTTP",
             ClientProxyConfig::PortForward => "PortForward",
             ClientProxyConfig::Anytls { .. } => "AnyTLS",
             ClientProxyConfig::Naiveproxy { .. } => "NaiveProxy",

@@ -45,6 +45,12 @@ pub fn create_tcp_client_handler(
     resolver: Arc<dyn Resolver>,
 ) -> std::io::Result<Box<dyn TcpClientHandler>> {
     Ok(match client_proxy_config {
+        ClientProxyConfig::Xhttp(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "XHTTP requires a connector-level carrier dialer",
+            ));
+        }
         ClientProxyConfig::Direct => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -211,6 +217,7 @@ pub fn create_tcp_client_handler(
         }
         ClientProxyConfig::Reality {
             public_key,
+            mldsa65_verify,
             short_id,
             sni_hostname,
             cipher_suites,
@@ -219,6 +226,10 @@ pub fn create_tcp_client_handler(
         } => {
             let public_key_bytes =
                 crate::reality::decode_public_key(&public_key).map_err(std::io::Error::other)?;
+            let mldsa65_verify = mldsa65_verify
+                .as_deref()
+                .map(crate::reality::decode_mldsa65_verify)
+                .transpose()?;
             let short_id_bytes =
                 crate::reality::decode_short_id(&short_id).map_err(std::io::Error::other)?;
             let Some(sni_hostname) = sni_hostname.or(default_sni_hostname) else {
@@ -251,17 +262,21 @@ pub fn create_tcp_client_handler(
                         cipher_suites,
                         user_id_bytes,
                         *udp_enabled,
-                    ),
+                    )
+                    .with_mldsa65_verify(mldsa65_verify),
                 )
             } else {
                 let inner_handler = create_tcp_client_handler(*protocol, None, resolver.clone())?;
-                Box::new(crate::reality_client_handler::RealityClientHandler::new(
-                    public_key_bytes,
-                    short_id_bytes,
-                    server_name,
-                    cipher_suites,
-                    inner_handler,
-                ))
+                Box::new(
+                    crate::reality_client_handler::RealityClientHandler::new(
+                        public_key_bytes,
+                        short_id_bytes,
+                        server_name,
+                        cipher_suites,
+                        inner_handler,
+                    )
+                    .with_mldsa65_verify(mldsa65_verify),
+                )
             }
         }
         ClientProxyConfig::ShadowTls {

@@ -31,12 +31,18 @@
 #include <netinet/in.h>
 #endif
 
-#if defined(HAVE_LINUX_TCP_H)
-#include <linux/tcp.h>
-#elif defined(HAVE_NETINET_TCP_H)
+/* netinet/tcp.h first: libuv includes it, and linux/tcp.h redefines its
+ * structures. */
+#if defined(HAVE_NETINET_TCP_H)
 #include <netinet/tcp.h>
+#elif defined(HAVE_LINUX_TCP_H)
+#include <linux/tcp.h>
 #elif defined(HAVE_NETDB_H)
 #include <netdb.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 /* Hard coded defines for TCP fast open on Android */
@@ -126,5 +132,9 @@ int sockaddr_cmp_addr(struct sockaddr_storage *addr1,
 int validate_hostname(const char *hostname, const int hostname_len);
 
 int is_ipv6only(ss_addr_t *servers, size_t server_num, int ipv6first);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

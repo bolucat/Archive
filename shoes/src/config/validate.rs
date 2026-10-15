@@ -642,6 +642,19 @@ fn validate_server_config(
     rule_groups: &HashMap<String, Vec<RuleConfig>>,
     named_pems: &HashMap<String, String>,
 ) -> std::io::Result<()> {
+    super::types::xhttp::validate_server_transport(
+        &server_config.protocol,
+        &server_config.transport,
+    )?;
+    if matches!(server_config.protocol, ServerProxyConfig::Xhttp(_))
+        && server_config.transport == Transport::Quic
+        && server_config.quic_settings.as_ref().is_some_and(|quic| {
+            !quic.alpn_protocols.is_unspecified()
+                && quic.alpn_protocols.clone().into_vec() != ["h3"]
+        })
+    {
+        return Err(super::types::xhttp::invalid("QUIC XHTTP ALPN must be h3"));
+    }
     if server_config.transport == Transport::Udp {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
@@ -897,6 +910,10 @@ fn validate_client_proxy_structure(config: &ClientProxyConfig) -> std::io::Resul
         }
         ClientProxyConfig::ShadowTls { protocol, .. } => Some(protocol.as_ref()),
         ClientProxyConfig::Websocket(ws_config) => Some(ws_config.protocol.as_ref()),
+        ClientProxyConfig::Xhttp(config) => {
+            config.validate()?;
+            Some(config.protocol.as_ref())
+        }
         _ => None,
     };
     if let Some(inner) = inner {
@@ -965,6 +982,13 @@ fn validate_client_config(
         client_config.address.address().hostname(),
     )?;
 
+    if crate::xhttp::connector::contains(&client_config.protocol) {
+        crate::xhttp::connector::build(
+            client_config,
+            std::sync::Arc::new(crate::resolver::NativeResolver::new()),
+        )?;
+    }
+
     Ok(())
 }
 
@@ -1012,12 +1036,16 @@ fn validate_client_proxy_config(
         }
         ClientProxyConfig::Reality {
             public_key,
+            mldsa65_verify,
             short_id,
             sni_hostname,
             protocol,
             ..
         } => {
             crate::reality::decode_public_key(public_key).map_err(std::io::Error::other)?;
+            if let Some(key) = mldsa65_verify {
+                crate::reality::decode_mldsa65_verify(key)?;
+            }
             let sni = sni_hostname.as_deref().or(default_sni).ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -1074,6 +1102,11 @@ fn validate_client_proxy_config(
 
         ClientProxyConfig::Websocket(ws_config) => {
             validate_client_proxy_config(&mut ws_config.protocol, named_pems, None)?;
+        }
+
+        ClientProxyConfig::Xhttp(config) => {
+            config.validate()?;
+            validate_client_proxy_config(&mut config.protocol, named_pems, None)?;
         }
 
         ClientProxyConfig::Anytls {
@@ -1236,6 +1269,16 @@ fn validate_server_proxy_config(
                 std::io::ErrorKind::InvalidInput,
                 format!("{server_proxy_config} requires a top-level QUIC listener"),
             ));
+        }
+        ServerProxyConfig::Xhttp(config) => {
+            config.validate()?;
+            validate_server_proxy_config(
+                &mut config.protocol,
+                client_groups,
+                rule_groups,
+                named_pems,
+                ServerProtocolContext::Stream,
+            )?;
         }
         ServerProxyConfig::Anytls {
             padding_scheme: Some(lines),
@@ -1437,6 +1480,9 @@ fn validate_server_proxy_config(
                 }
 
                 validate_reality_private_key(&reality_config.private_key, sni_hostname)?;
+                if let Some(seed) = &reality_config.mldsa65_seed {
+                    crate::reality::decode_mldsa65_seed(seed)?;
+                }
                 validate_reality_server_short_ids(&reality_config.short_ids, sni_hostname)?;
 
                 if !reality_config.dest_client_chain.is_empty() {
@@ -1653,6 +1699,20 @@ fn validate_direct_connector_positions(
         if hop_index == 0 {
             // Direct connectors are allowed at hop 0
             continue;
+        }
+
+        let unsupported_h3 = |selection: &ConfigSelection<ClientConfig>| {
+            matches!(selection, ConfigSelection::Config(config)
+                if config.transport == Transport::Quic && crate::xhttp::connector::contains(&config.protocol))
+        };
+        if match hop {
+            ClientChainHop::Single(selection) => unsupported_h3(selection),
+            ClientChainHop::Pool(selections) => selections.iter().any(unsupported_h3),
+        } {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "XHTTP H3 is only supported at hop 0",
+            ));
         }
 
         // For hop 1+, check if any connector is direct
@@ -2054,6 +2114,57 @@ mod tests {
                 validate_client_config(&mut config, &HashMap::new()).is_ok(),
                 valid
             );
+        }
+    }
+
+    #[test]
+    fn reality_mldsa_client_key_validation() {
+        let (_, valid) = crate::reality::generate_mldsa65_keypair().unwrap();
+        for (key, expected) in [
+            (None, true),
+            (Some(valid.as_str()), true),
+            (Some(""), false),
+            (Some("AA"), false),
+            (Some("invalid!"), false),
+        ] {
+            let mut value = serde_json::json!({
+                "address": "cover.test:443", "protocol": {
+                    "type": "reality", "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    "protocol": {"type": "socks"}
+                }
+            });
+            if let Some(key) = key {
+                value["protocol"]["mldsa65_verify"] = key.into();
+            }
+            let mut config: ClientConfig = serde_json::from_value(value).unwrap();
+            assert_eq!(
+                validate_client_config(&mut config, &HashMap::new()).is_ok(),
+                expected
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn reality_mldsa_server_seed_validation() {
+        let (valid, _) = crate::reality::generate_mldsa65_keypair().unwrap();
+        for (seed, expected) in [
+            (None, true),
+            (Some(valid.as_str()), true),
+            (Some(""), false),
+            (Some("AA"), false),
+            (Some("invalid!"), false),
+        ] {
+            let mut value = serde_json::json!({
+                "address": "0.0.0.0:4443", "protocol": {"type": "tls", "reality_targets": {
+                    "cover.test": {"private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                        "dest": "cover.test:443", "protocol": {"type": "socks"}}
+                }}
+            });
+            if let Some(seed) = seed {
+                value["protocol"]["reality_targets"]["cover.test"]["mldsa65_seed"] = seed.into();
+            }
+            let result = validate_configs_test(vec![serde_json::from_value(value).unwrap()]).await;
+            assert_eq!(result.is_ok(), expected, "{result:?}");
         }
     }
 

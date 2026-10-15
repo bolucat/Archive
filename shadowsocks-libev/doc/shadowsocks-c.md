@@ -72,13 +72,16 @@ The config file equivalent of command line options is listed as examples below.
 - `-b 2620:129:35::33`: `"local_ipv6_address": "2620:129:35::33"`
 - `-l 4321`: `"local_port": "4321"`
 - `-k "PasSworD"`: `"password": "PasSworD"`
-- `-m "aes-256-cfb"`: `"method": "aes-256-cfb"`
+- `-m "aes-256-gcm"`: `"method": "aes-256-gcm"`
 - `-t 60`: `"timeout": 60`
 - `-a nobody`: `"user": "nobody"`
 - `--acl "/path/to/acl"`: `"acl": "/path/to/acl"`
 - `--fast-open`: `"fast_open": true`
 - `--reuse-port`: `"reuse_port": true`
 - `--no-delay`: `"no_delay": true`
+- `--max-connections 1024`: `"max_connections": 1024`
+- `--max-udp-sessions 512`: `"max_udp_sessions": 512`
+- `--max-dns-queries 1024`: `"max_dns_queries": 1024` (ss-server and ss-local)
 - `--printable-salt`: `"printable_salt": true` (ss-local only)
 - `--plugin "obfs-server"`: `"plugin": "obfs-server"`
 - `--plugin-opts "obfs=http"`: `"plugin_opts": "obfs=http"`

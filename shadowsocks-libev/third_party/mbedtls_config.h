@@ -8,12 +8,19 @@
 #define MBEDTLS_AES_C
 #define MBEDTLS_CIPHER_C
 #define MBEDTLS_GCM_C
+/* GCM on the block-cipher layer keeps the AES context inside
+ * mbedtls_gcm_context, so mbedtls_gcm_setkey() does not allocate. Mbed TLS
+ * only enables this by itself when MBEDTLS_CIPHER_C is off, and the legacy
+ * stream ciphers need MBEDTLS_CIPHER_C. */
+#define MBEDTLS_BLOCK_CIPHER_C
 #define MBEDTLS_MD_C
 #define MBEDTLS_MD5_C
 #define MBEDTLS_SHA1_C
 #define MBEDTLS_SHA256_C
 #define MBEDTLS_SHA512_C
 #define MBEDTLS_PLATFORM_C
+/* The programs route Mbed TLS allocations into a bounded heap. */
+#define MBEDTLS_PLATFORM_MEMORY
 #define MBEDTLS_VERSION_C
 #define MBEDTLS_VERSION_FEATURES
 #define MBEDTLS_CIPHER_MODE_CTR

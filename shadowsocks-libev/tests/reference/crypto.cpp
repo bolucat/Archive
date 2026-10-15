@@ -1,0 +1,425 @@
+/*
+ * crypto.c - Manage the global crypto
+ *
+ * Copyright (C) 2013 - 2019, Max Lv <max.c.lv@gmail.com>
+ *
+ * This file is part of the shadowsocks-libev.
+ *
+ * shadowsocks-libev is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * shadowsocks-libev is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with shadowsocks-libev; see the file COPYING. If not, see
+ * <http://www.gnu.org/licenses/>.
+ */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#if defined(__linux__) && defined(HAVE_LINUX_RANDOM_H)
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/random.h>
+#endif
+
+#include <stdint.h>
+#include <sodium.h>
+#include <mbedtls/version.h>
+#include <mbedtls/md5.h>
+
+#include "base64.h"
+#include "crypto.h"
+#include "aead.h"
+#include "utils.h"
+#include "ppbloom.h"
+
+int
+balloc(buffer_t *ptr, size_t capacity)
+{
+    sodium_memzero(ptr, sizeof(buffer_t));
+    ptr->data     = (char *)ss_malloc(capacity);
+    ptr->capacity = capacity;
+    return capacity;
+}
+
+int
+brealloc(buffer_t *ptr, size_t len, size_t capacity)
+{
+    if (ptr == NULL)
+        return -1;
+    size_t real_capacity = len > capacity ? len : capacity;
+    if (ptr->capacity < real_capacity) {
+        ptr->data     = (char *)ss_realloc(ptr->data, real_capacity);
+        ptr->capacity = real_capacity;
+    }
+    return real_capacity;
+}
+
+void
+bfree(buffer_t *ptr)
+{
+    if (ptr == NULL)
+        return;
+    ptr->idx      = 0;
+    ptr->len      = 0;
+    ptr->capacity = 0;
+    if (ptr->data != NULL) {
+        ss_free(ptr->data);
+    }
+}
+
+int
+bprepend(buffer_t *dst, buffer_t *src, size_t capacity)
+{
+    brealloc(dst, dst->len + src->len, capacity);
+    memmove(dst->data + src->len, dst->data, dst->len);
+    memcpy(dst->data, src->data, src->len);
+    dst->len = dst->len + src->len;
+    return dst->len;
+}
+
+int
+rand_bytes(void *output, int len)
+{
+    randombytes_buf(output, len);
+    // always return success
+    return 0;
+}
+
+unsigned char *
+crypto_md5(const unsigned char *d, size_t n, unsigned char *md)
+{
+    static unsigned char m[16];
+    if (md == NULL) {
+        md = m;
+    }
+#if MBEDTLS_VERSION_NUMBER < 0x03000000 && MBEDTLS_VERSION_NUMBER >= 0x02070000
+    if (mbedtls_md5_ret(d, n, md) != 0)
+        FATAL("Failed to calculate MD5");
+#else
+    mbedtls_md5(d, n, md);
+#endif
+    return md;
+}
+
+static void
+entropy_check(void)
+{
+#if defined(__linux__) && defined(HAVE_LINUX_RANDOM_H) && defined(RNDGETENTCNT)
+    int fd;
+    int c;
+
+    if ((fd = open("/dev/random", O_RDONLY)) != -1) {
+        if (ioctl(fd, RNDGETENTCNT, &c) == 0 && c < 160) {
+            LOGI("This system doesn't provide enough entropy to quickly generate high-quality random numbers.\n"
+                 "Installing the rng-utils/rng-tools, jitterentropy or haveged packages may help.\n"
+                 "On virtualized Linux environments, also consider using virtio-rng.\n"
+                 "The service will not start until enough entropy has been collected.\n");
+        }
+        close(fd);
+    }
+#endif
+}
+
+crypto_t *
+crypto_init(const char *password, const char *key, const char *method)
+{
+    int i, m = -1;
+
+    entropy_check();
+    // Initialize sodium for random generator
+    if (sodium_init() == -1) {
+        FATAL("Failed to initialize sodium");
+    }
+
+    // Initialize NONCE bloom filter
+#ifdef MODULE_REMOTE
+    ppbloom_init(BF_NUM_ENTRIES_FOR_SERVER, BF_ERROR_RATE_FOR_SERVER);
+#else
+    ppbloom_init(BF_NUM_ENTRIES_FOR_CLIENT, BF_ERROR_RATE_FOR_CLIENT);
+#endif
+
+    if (method != NULL) {
+        for (i = 0; i < AEAD_CIPHER_NUM; i++)
+            if (strcmp(method, supported_aead_ciphers[i]) == 0) {
+                m = i;
+                break;
+            }
+        if (m != -1) {
+            cipher_t *cipher = aead_init(password, key, method);
+            if (cipher == NULL)
+                return NULL;
+            crypto_t *crypto = (crypto_t *)ss_malloc(sizeof(crypto_t));
+            crypto_t tmp     = {
+                .cipher      = cipher,
+                .encrypt_all = &aead_encrypt_all,
+                .decrypt_all = &aead_decrypt_all,
+                .encrypt     = &aead_encrypt,
+                .decrypt     = &aead_decrypt,
+                .ctx_init    = &aead_ctx_init,
+                .ctx_release = &aead_ctx_release,
+                /* AEAD-2022 replaces the stateless UDP path with sessions */
+                .encrypt_udp = aead_is_2022(cipher) ? &aead_2022_encrypt_udp : NULL,
+                .decrypt_udp = aead_is_2022(cipher) ? &aead_2022_decrypt_udp : NULL,
+                .udp_session_release = aead_is_2022(cipher)
+                                       ? &aead_2022_udp_session_release : NULL,
+            };
+            memcpy((void *)crypto, &tmp, sizeof(crypto_t)); /* const members: copy the bytes */
+            return crypto;
+        }
+    }
+
+    LOGE("unsupported or disabled cipher: %s", method);
+    return NULL;
+}
+
+int
+crypto_derive_key(const char *pass, uint8_t *key, size_t key_len)
+{
+    size_t datal;
+
+    if (pass == NULL)
+        return 0;
+
+    datal = strlen((const char *)pass);
+
+    const digest_type_t *md = mbedtls_md_info_from_string("MD5");
+    if (md == NULL) {
+        FATAL("MD5 Digest not found in crypto library");
+    }
+
+    mbedtls_md_context_t c;
+    unsigned char md_buf[MAX_MD_SIZE];
+    int addmd;
+    unsigned int i, j, mds;
+
+    mds = mbedtls_md_get_size(md);
+    memset(&c, 0, sizeof(mbedtls_md_context_t));
+
+    if (mbedtls_md_setup(&c, md, 0))
+        return 0;
+
+    for (j = 0, addmd = 0; j < key_len; addmd++) {
+        mbedtls_md_starts(&c);
+        if (addmd) {
+            mbedtls_md_update(&c, md_buf, mds);
+        }
+        mbedtls_md_update(&c, (uint8_t *)pass, datal);
+        mbedtls_md_finish(&c, &(md_buf[0]));
+
+        for (i = 0; i < mds; i++, j++) {
+            if (j >= key_len)
+                break;
+            key[j] = md_buf[i];
+        }
+    }
+
+    mbedtls_md_free(&c);
+    return key_len;
+}
+
+/* HKDF-Extract + HKDF-Expand */
+int
+crypto_hkdf(const mbedtls_md_info_t *md, const unsigned char *salt,
+            int salt_len, const unsigned char *ikm, int ikm_len,
+            const unsigned char *info, int info_len, unsigned char *okm,
+            int okm_len)
+{
+    unsigned char prk[MBEDTLS_MD_MAX_SIZE];
+
+    return crypto_hkdf_extract(md, salt, salt_len, ikm, ikm_len, prk) ||
+           crypto_hkdf_expand(md, prk, mbedtls_md_get_size(md), info, info_len,
+                              okm, okm_len);
+}
+
+/* HKDF-Extract(salt, IKM) -> PRK */
+int
+crypto_hkdf_extract(const mbedtls_md_info_t *md, const unsigned char *salt,
+                    int salt_len, const unsigned char *ikm, int ikm_len,
+                    unsigned char *prk)
+{
+    int hash_len;
+    unsigned char null_salt[MBEDTLS_MD_MAX_SIZE] = { '\0' };
+
+    if (salt_len < 0) {
+        return CRYPTO_ERROR;
+    }
+
+    hash_len = mbedtls_md_get_size(md);
+
+    if (salt == NULL) {
+        salt     = null_salt;
+        salt_len = hash_len;
+    }
+
+    return mbedtls_md_hmac(md, salt, salt_len, ikm, ikm_len, prk);
+}
+
+/* HKDF-Expand(PRK, info, L) -> OKM */
+int
+crypto_hkdf_expand(const mbedtls_md_info_t *md, const unsigned char *prk,
+                   int prk_len, const unsigned char *info, int info_len,
+                   unsigned char *okm, int okm_len)
+{
+    int hash_len;
+    int N;
+    int T_len = 0, where = 0, i, ret;
+    mbedtls_md_context_t ctx;
+    unsigned char T[MBEDTLS_MD_MAX_SIZE];
+
+    if (info_len < 0 || okm_len < 0 || okm == NULL) {
+        return CRYPTO_ERROR;
+    }
+
+    hash_len = mbedtls_md_get_size(md);
+
+    if (prk_len < hash_len) {
+        return CRYPTO_ERROR;
+    }
+
+    if (info == NULL) {
+        info = (const unsigned char *)"";
+    }
+
+    N = okm_len / hash_len;
+
+    if ((okm_len % hash_len) != 0) {
+        N++;
+    }
+
+    if (N > 255) {
+        return CRYPTO_ERROR;
+    }
+
+    mbedtls_md_init(&ctx);
+
+    if ((ret = mbedtls_md_setup(&ctx, md, 1)) != 0) {
+        mbedtls_md_free(&ctx);
+        return ret;
+    }
+
+    /* Section 2.3. */
+    for (i = 1; i <= N; i++) {
+        unsigned char c = i;
+
+        ret = mbedtls_md_hmac_starts(&ctx, prk, prk_len) ||
+              mbedtls_md_hmac_update(&ctx, T, T_len) ||
+              mbedtls_md_hmac_update(&ctx, info, info_len) ||
+              /* The constant concatenated to the end of each T(n) is a single
+               * octet. */
+              mbedtls_md_hmac_update(&ctx, &c, 1) ||
+              mbedtls_md_hmac_finish(&ctx, T);
+
+        if (ret != 0) {
+            mbedtls_md_free(&ctx);
+            return ret;
+        }
+
+        memcpy(okm + where, T, (i != N) ? hash_len : (okm_len - where));
+        where += hash_len;
+        T_len  = hash_len;
+    }
+
+    mbedtls_md_free(&ctx);
+
+    return 0;
+}
+
+/*
+ * Report an unusable key and exit, after showing a freshly generated one of
+ * the right size so the user has something to paste back.
+ */
+static void
+crypto_key_fatal(const char *what, uint8_t *key, size_t key_len)
+{
+    char encoded[BASE64_SIZE(MAX_KEY_LENGTH)];
+
+    rand_bytes(key, key_len);
+    base64_encode(encoded, sizeof(encoded), key, key_len);
+    LOGE("Invalid %s for your chosen cipher!", what);
+    LOGE("It requires a " SIZE_FMT "-byte key encoded with Base64", key_len);
+    LOGE("Generating a new random key: %s", encoded);
+    FATAL("Please use the key above or input a valid key");
+}
+
+int
+crypto_parse_key(const char *base64, uint8_t *key, size_t key_len)
+{
+    /*
+     * Decode into a fixed buffer rather than one sized from the input: the
+     * key comes from the command line or config file, and a VLA sized by
+     * its length lets a long string overflow the stack. Only the first
+     * key_len bytes are ever used, and base64_decode never writes past the
+     * size it is given.
+     */
+    uint8_t out[MAX_KEY_LENGTH];
+
+    if (key_len > sizeof(out))
+        FATAL("Key length exceeds the maximum supported size");
+
+    int out_len = base64_decode(out, base64, (int)key_len);
+    if (out_len > 0 && (size_t)out_len >= key_len) {
+        memcpy(key, out, key_len);
+#ifdef SS_DEBUG
+        dump("KEY", (char *)key, key_len);
+#endif
+        return key_len;
+    }
+
+    crypto_key_fatal("key", key, key_len);
+    return key_len;
+}
+
+/*
+ * SIP022 requires a base64-encoded pre-shared key of exactly the cipher's
+ * key size. Unlike crypto_parse_key there is no password fallback: a wrong
+ * size is a hard error, since deriving a key from a password is forbidden.
+ */
+int
+crypto_parse_psk(const char *base64, uint8_t *key, size_t key_len)
+{
+    /*
+     * One byte of slack lets an over-long key be told apart from an exact
+     * one: base64_decode stops at the size it is given, so decoding into
+     * key_len + 1 bytes yields key_len only for a key of exactly that size.
+     */
+    uint8_t out[MAX_KEY_LENGTH + 1];
+
+    if (key_len >= sizeof(out))
+        FATAL("Key length exceeds the maximum supported size");
+
+    int out_len = base64_decode(out, base64, (int)key_len + 1);
+
+    if (out_len != (int)key_len) {
+        LOGE("AEAD-2022 requires exactly a " SIZE_FMT "-byte key in base64", key_len);
+        crypto_key_fatal("pre-shared key", key, key_len);
+    }
+
+    memcpy(key, out, key_len);
+#ifdef SS_DEBUG
+    dump("PSK", (char *)key, key_len);
+#endif
+    return key_len;
+}
+
+#ifdef SS_DEBUG
+void
+dump(char *tag, char *text, int len)
+{
+    int i;
+    printf("%s: ", tag);
+    for (i = 0; i < len; i++)
+        printf("0x%02x ", (uint8_t)text[i]);
+    printf("\n");
+}
+
+#endif

@@ -22,6 +22,10 @@
 #ifndef _JCONF_H
 #define _JCONF_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MAX_PORT_NUM 1024
 #define MAX_REMOTE_NUM 10
 #define MAX_DSCP_NUM 64
@@ -29,6 +33,8 @@
 #define MAX_CONNECT_TIMEOUT 10
 #define MIN_TCP_IDLE_TIMEOUT (24 * 3600)
 #define MIN_UDP_TIMEOUT 10
+/* Connections a TCP relay serves at once; more are refused. */
+#define DEFAULT_MAX_CONNECTIONS 1024
 
 #define DSCP_EF      0x2E
 #define DSCP_MIN     0x0
@@ -86,6 +92,9 @@ typedef struct {
     int mptcp;
     int ipv6_first;
     int no_delay;
+    int max_connections;
+    int max_udp_sessions;
+    int max_dns_queries;
     int printable_salt;
     int tcp_tproxy;
     char *workdir;
@@ -98,5 +107,9 @@ void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
 int parse_server_endpoint(const char *str, ss_addr_t *addr);
 int complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _JCONF_H

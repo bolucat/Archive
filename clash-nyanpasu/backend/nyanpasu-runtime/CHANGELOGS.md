@@ -1,4 +1,279 @@
 
+## [2.0.0] - 2026-10-15
+
+### 💥 Breaking Changes
+
+- **clash-api:** Select proxies through a named selection by @greenhat616 
+
+- **clash-api:** Take retry delay bounds by name by @greenhat616 
+
+- **core-log:** Unify frame types across manager and IPC by @greenhat616 
+
+- **core-manager:** Take HealthPolicy inputs by name by @greenhat616 
+
+- **core-manager:** Type the epochs the manager issues by @greenhat616 
+
+- **core-manager:** Delete ControllerMode, make LocalIpcPolicy the only knob (S10) by @greenhat616 
+
+- **ipc:** Drop the v1 /core/restart wire by @greenhat616 
+
+- **ipc:** Drop the v1 /core/recover wire by @greenhat616 
+
+- **ipc:** Drop the v1 /core/apply wire by @greenhat616 
+
+- **ipc:** Replace the error_kind string constants with CoreErrorKind by @greenhat616 
+
+- **ipc:** One unversioned /ws/events stream (S11) by @greenhat616 
+
+- **ipc,service:** Retire Event::Log, publish the log directories (L3) by @greenhat616 
+
+
+
+### ⚡ Performance Improvements
+
+- **logging:** Use gxhash for indexes and viewer sessions (#420) by @greenhat616  in [#420](https://github.com/libnyanpasu/nyanpasu-runtime/pull/420)
+
+- **logging:** Use gxhash for indexes and viewer sessions by @greenhat616 
+
+
+### ✅ Testing
+
+- **core-manager:** Prove the runtime boundary and quarantine contract with an in-memory backend by @greenhat616 
+
+- **core-manager:** Real-core integration suite + clash-rs ipc flag, meow profile, noop classify (#385) by @greenhat616  in [#385](https://github.com/libnyanpasu/nyanpasu-runtime/pull/385)
+
+- **core-manager:** Retry the whole proxy roundtrip, not just the connect by @greenhat616 
+
+- **core-manager:** Serialize real-core tests by @greenhat616 
+
+- **core-manager:** Real-core integration suite with socks5 harness by @greenhat616 
+
+- **jobs:** Verify lifecycle and journal integration (#412) by @greenhat616  in [#412](https://github.com/libnyanpasu/nyanpasu-runtime/pull/412)
+
+- **routing:** Probe the v2 mounts and pin outcomes by @greenhat616 
+
+- **service:** Deterministic bridge-test handshake; docs: precise R9 Lagged wording by @greenhat616 
+
+
+### ✨ Features
+
+- **clash-api:** Serialize unknown connection fields under _extra (#431) by @greenhat616  in [#431](https://github.com/libnyanpasu/nyanpasu-runtime/pull/431)
+
+- **clash-api:** Return owned typed WebSocket subscriptions (#406) by @greenhat616  in [#406](https://github.com/libnyanpasu/nyanpasu-runtime/pull/406)
+
+- **cli:** Backward-compatible ergonomics batch (S5) by @greenhat616 
+
+- **core:** Reconcile controller policies and report effective commits (#414) by @greenhat616  in [#414](https://github.com/libnyanpasu/nyanpasu-runtime/pull/414)
+
+- **core:** Expose process-bound API connection metadata by @greenhat616 
+
+- **core-manager:** Add the long-poll operation wait for RPC hosts by @greenhat616 
+
+- **core-manager:** Own the host DNS override at fixed transaction phases by @greenhat616 
+
+- **core-manager:** Add the CoreControl plane with a cancellation-isolated executor by @greenhat616 
+
+- **core-manager:** Add the unified reconcile convergence transaction by @greenhat616 
+
+- **core-manager:** Add the portable control-plane command surface by @greenhat616 
+
+- **core-manager:** Classify errors with Error::kind() by @greenhat616 
+
+- **core-manager:** Archive core logs as rotating JSONL (L1) by @greenhat616 
+
+- **core-manager:** Meow launch profile, clash-rs ipc flag, noop classify by @greenhat616 
+
+- **core-manager:** Gate the managed controller on core capability (#384) by @greenhat616  in [#384](https://github.com/libnyanpasu/nyanpasu-runtime/pull/384)
+
+- **core-metadata:** Extend the wire table with the control-plane admission kinds by @greenhat616 
+
+- **core-metadata:** Add CoreErrorKind, the single error-kind wire table by @greenhat616 
+
+- **core-metadata:** Add crate for core kinds and feature version floors by @greenhat616 
+
+- **ipc:** Carry retryable on the response envelope by @greenhat616 
+
+- **ipc:** Add the additive v2 control-plane wire by @greenhat616 
+
+- **ipc:** Expose the typed error kind on the client error by @greenhat616 
+
+- **ipc:** Event protocol v2 - full status snapshots over /ws/events (S9) by @greenhat616 
+
+- **ipc:** /core/apply, /core/check and /core/recover (S8) by @greenhat616 
+
+- **ipc:** Enrich the status payload with controller, health, revision and state detail (S7) by @greenhat616 
+
+- **ipc,service:** Push core logs on their own event ring (L2) by @greenhat616 
+
+- **jobs:** Allow disabling per-job log capture (#432) by @greenhat616  in [#432](https://github.com/libnyanpasu/nyanpasu-runtime/pull/432)
+
+- **jobs:** Implement actor-owned execution and scheduling (#411) by @greenhat616  in [#411](https://github.com/libnyanpasu/nyanpasu-runtime/pull/411)
+
+- **jobs:** Add owned contexts and scoped log capture (#410) by @greenhat616  in [#410](https://github.com/libnyanpasu/nyanpasu-runtime/pull/410)
+
+- **jobs:** Add a transactional redb journal (#409) by @greenhat616  in [#409](https://github.com/libnyanpasu/nyanpasu-runtime/pull/409)
+
+- **jobs:** Define run contracts and scheduling types (#408) by @greenhat616  in [#408](https://github.com/libnyanpasu/nyanpasu-runtime/pull/408)
+
+- **logging:** List flexi_logger-named log files (#428) by @greenhat616  in [#428](https://github.com/libnyanpasu/nyanpasu-runtime/pull/428)
+
+- **logging:** Own bounded viewer sessions in a logs actor by @greenhat616 
+
+- **logging:** Add bounded owned file index by @greenhat616 
+
+- **runtime:** Support the independent Meow Alpha channel (#442) by @keiko233  in [#442](https://github.com/libnyanpasu/nyanpasu-runtime/pull/442)
+
+- **service:** Authorize Windows core named pipes (#424) by @greenhat616  in [#424](https://github.com/libnyanpasu/nyanpasu-runtime/pull/424)
+
+- **service:** Query service log files through viewer sessions by @greenhat616 
+
+- **service:** Host the v2 control plane behind the additive wire by @greenhat616 
+
+
+### 🐛 Bug Fixes
+
+- **clash-api:** Read proxy groups from Mihomo and Meow (#441) by @greenhat616  in [#441](https://github.com/libnyanpasu/nyanpasu-runtime/pull/441)
+
+- **clash-api:** Accept base proxy and provider responses (#405) by @greenhat616  in [#405](https://github.com/libnyanpasu/nyanpasu-runtime/pull/405)
+
+- **clash-api:** Preserve partial runtime config responses (#404) by @greenhat616  in [#404](https://github.com/libnyanpasu/nyanpasu-runtime/pull/404)
+
+- **clash-api:** Preserve optional and unknown provider metadata (#403) by @greenhat616  in [#403](https://github.com/libnyanpasu/nyanpasu-runtime/pull/403)
+
+- **clash-api:** Accept rules without optional core metadata by @greenhat616 
+
+- **clash-api:** Default missing meta in /version for legacy cores by @greenhat616 
+
+- **control:** Give every operation a terminal state when the executor dies by @greenhat616 
+
+- **control:** Atomic admission, hard live capacity, digest in identity, per-call check files by @greenhat616 
+
+- **core:** Manage native storage ownership and lifecycle (#430) by @4o3F  in [#430](https://github.com/libnyanpasu/nyanpasu-runtime/pull/430)
+
+- **core-manager:** Keep the source mapping order in runtime configs (#427) by @greenhat616  in [#427](https://github.com/libnyanpasu/nyanpasu-runtime/pull/427)
+
+- **core-manager:** Hold ctrl through sink finalization in shutdown (review R3) by @greenhat616 
+
+- **core-manager:** Compare effective configs before noop by @greenhat616 
+
+- **core-manager,service:** Prove sink termination, finalize on error paths, protect the active file (review R2) by @greenhat616 
+
+- **core-manager,service:** Bound the log sink's lifecycle, batches and records (review R1) by @greenhat616 
+
+- **dns:** Durable fail-closed record, stable previous baseline, bounded controller calls by @greenhat616 
+
+- **ipc:** Identify service requests by hostname (#423) by @greenhat616  in [#423](https://github.com/libnyanpasu/nyanpasu-runtime/pull/423)
+
+- **release:** Let Publish advance the service to rc.10 by @4o3F 
+
+- **scripts:** Treat DirEntry type flags as properties, not methods by @greenhat616 
+
+- **scripts:** Overwrite the existing raw binary under --force by @greenhat616 
+
+- **service:** Stop the core before exiting on a signal (#435) by @greenhat616  in [#435](https://github.com/libnyanpasu/nyanpasu-runtime/pull/435)
+
+- **service:** Commit the v2 type echo only for a newly admitted reconcile that stuck by @greenhat616 
+
+- **service:** Route daemon shutdown through the executor and supervise its exit by @greenhat616 
+
+- **service:** Do not log environment variable values by @greenhat616 
+
+- **service,core-manager:** Publish v2 echo snapshots, classify two error kinds, bound config checks by @greenhat616 
+
+- Point clash-rs downloads at the new upstream (#425) by @greenhat616  in [#425](https://github.com/libnyanpasu/nyanpasu-runtime/pull/425)
+
+- Recover IPC clients from named-pipe contention (#422) by @greenhat616  in [#422](https://github.com/libnyanpasu/nyanpasu-runtime/pull/422)
+
+
+### 💅 Styling
+
+- **core-manager:** Use as_chunks for the operation-id hex parse by @greenhat616 
+
+
+### 📚 Documentation
+
+- **core-manager:** Document ipc modes and the real-core suite by @greenhat616 
+
+- **ipc:** Retire the deleted v1 core endpoints from the docs by @greenhat616 
+
+- **ipc:** Record the log-directory readability question as open by @greenhat616 
+
+- **service:** Service evolution design spec (S1-S6) by @greenhat616 
+
+- Correct the graceful-switch claim and the Switched rustdoc by @greenhat616 
+
+- IPC protocol evolution report (S7-S10 proposal) by @greenhat616 
+
+
+### 🔨 Refactor
+
+- **core-manager:** Name captured stdout and stderr by @greenhat616 
+
+- **core-manager:** Pass core launch paths as one view by @greenhat616 
+
+- **core-manager:** Reconcile probe observations through one state view by @greenhat616 
+
+- **core-manager:** Classify config changes from two plan views by @greenhat616 
+
+- **core-manager:** Allocate epochs under the control lock by @greenhat616 
+
+- **core-manager:** Share the epoch retirement mechanics by @greenhat616 
+
+- **core-manager:** Install every epoch through one path by @greenhat616 
+
+- **core-manager:** Carry the epoch plan whole through Active by @greenhat616 
+
+- **core-manager:** Use zerocopy instead of hand written bytes transmute by @greenhat616 
+
+- **core-manager:** Front the process mechanics with the RuntimeBackend boundary by @greenhat616 
+
+- **core-manager:** Split per-core config rules into clash and mihomo modules by @greenhat616 
+
+- **core-manager:** Group src into config, health and manager modules by @greenhat616 
+
+- **core-metadata:** Split local IPC features by transport by @greenhat616 
+
+- **ipc:** Single-source operation contract + server middleware (S4) by @greenhat616 
+
+- **service:** Read the error kind from the manager instead of remapping it by @greenhat616 
+
+- **service:** Split the service into a runtime lib crate + thin bin (S3) by @greenhat616 
+
+- **service:** EventHub broadcast fan-out + de-globalized server state by @greenhat616 
+
+- **service:** Wire server onto nyanpasu-core-manager by @greenhat616 
+
+- **service-runtime:** Name install program and working directory by @greenhat616 
+
+- **service-runtime:** Name runtime and data directories by @greenhat616 
+
+
+### 🧹 Miscellaneous Tasks
+
+- **metadata:** Add specta and json schema cap for Feature by @greenhat616 
+
+- **scripts:** Add prepare-cores.ts to download the four cores by @greenhat616 
+
+- **serena:** Migrate project config to `language_servers` key by @greenhat616 
+
+- **submodule:** Bump nyanpasu-utils onto its named-input signatures by @greenhat616 
+
+- Apply linting fixes with rustfmt by @github-actions[bot] 
+
+- Update docs by @greenhat616 
+
+-----------------
+
+
+
+## New Contributors
+* @4o3F made their first contribution
+
+**Full Changelog**: https://github.com/libnyanpasu/nyanpasu-runtime/compare/v1.4.5...v2.0.0
+
+
+
+
 ## [1.4.5] - 2026-07-22
 
 

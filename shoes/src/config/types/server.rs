@@ -299,6 +299,8 @@ impl<'de> serde::de::Deserialize<'de> for ServerConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RealityServerConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mldsa65_seed: Option<String>,
     /// X25519 private key (32 bytes, base64url encoded)
     pub private_key: String,
 
@@ -644,6 +646,8 @@ impl WebsocketPingType {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ServerProxyConfig {
+    #[serde(alias = "splithttp")]
+    Xhttp(super::xhttp::XhttpServerConfig),
     Http {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         username: Option<String>,
@@ -827,6 +831,7 @@ impl std::fmt::Display for ServerProxyConfig {
             }
             Self::Vmess { .. } => write!(f, "Vmess"),
             Self::Websocket { .. } => write!(f, "Websocket"),
+            Self::Xhttp(..) => write!(f, "XHTTP"),
             Self::PortForward { .. } => write!(f, "Portforward"),
             Self::Hysteria2 { .. } => write!(f, "Hysteria2"),
             Self::TuicV5 { .. } => write!(f, "TuicV5"),

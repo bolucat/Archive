@@ -1,7 +1,10 @@
 # clang-tidy configuration for shadowsocks-c project sources (src/ only).
 # Bundled sources under third_party/ and src/blake3/ are third-party code and
 # are excluded by the file regex used in CI:
-#   run-clang-tidy -p build '/src/[^/]+\.c$'
+#   run-clang-tidy -p build '/(src/(core/|event/|relay/|crypto/|api/)?[^/]+\.(c|cpp)|tests/test_(core_[^/]+|[a-z_]+_cpp)\.cpp)$'
+#
+# The header-only C++ core (src/core/*.hpp) is analysed through the
+# test_core_* translation units that include it.
 #
 # The check set is intentionally conservative: the full clang static analyzer
 # plus the bugprone/cert checks that are actionable for this codebase.
@@ -9,7 +12,9 @@
 # reserved-identifier: the codebase uses _prefixed names and vendored
 # uthash.h/generated config.h trip them ~600 times) or produce false
 # positives with the event callback style (casting-through-void,
-# multi-level-implicit-pointer-conversion).
+# multi-level-implicit-pointer-conversion). dynamic-static-initializers
+# fires on every extern variable declaration in the C headers once they are
+# included from C++; none of them is defined or initialised in a header.
 Checks: >
   clang-analyzer-*,
   bugprone-*,
@@ -17,6 +22,7 @@ Checks: >
   -bugprone-assignment-in-if-condition,
   -bugprone-branch-clone,
   -bugprone-casting-through-void,
+  -bugprone-dynamic-static-initializers,
   -bugprone-easily-swappable-parameters,
   -bugprone-inc-dec-in-conditions,
   -bugprone-implicit-widening-of-multiplication-result,
@@ -33,4 +39,4 @@ Checks: >
   -clang-analyzer-security.insecureAPI.strcpy,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*/src/[^/]+\.h$'
+HeaderFilterRegex: '.*/src/([^/]+\.h|(core|event|crypto)/[^/]+\.hpp)$'
