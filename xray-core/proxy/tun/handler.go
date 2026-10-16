@@ -56,20 +56,21 @@ func (w *tunUDPStatsWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	return nil
 }
 
-// tunTCPWriter is the writing side of a TCP connection for the dispatcher. It has no Close: the outbound closes
-// its writer when the other side has no more to send, and the system may still be sending
-type tunTCPWriter struct {
-	writer  buf.Writer
-	counter stats.Counter
+// TCPWriter is the writing side of a TCP connection of the stack for the dispatcher. It has no Close: the outbound
+// closes its writer when the other side has no more to send, and the system may still be sending
+type TCPWriter struct {
+	Writer buf.Writer
+	// Counter counts what is written, if there is one
+	Counter stats.Counter
 }
 
-func (w *tunTCPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+func (w *TCPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	size := mb.Len()
-	if err := w.writer.WriteMultiBuffer(mb); err != nil {
+	if err := w.Writer.WriteMultiBuffer(mb); err != nil {
 		return err
 	}
-	if w.counter != nil {
-		w.counter.Add(int64(size))
+	if w.Counter != nil {
+		w.Counter.Add(int64(size))
 	}
 	return nil
 }
@@ -143,7 +144,8 @@ func (t *Handler) Start() error {
 				errors.LogInfo(context.Background(), "[tun] falied to set interface > iface == nil")
 				return errors.New("iface not found")
 			}
-			return c.Control(func(fd uintptr) {
+			var controlErr, sockErr error
+			controlErr = c.Control(func(fd uintptr) {
 				addrPort, _ := netip.ParseAddrPort(address)
 				// skip loopback
 				if addrPort.Addr().IsLoopback() || strings.HasPrefix(strings.ToLower(address), "localhost:") {
@@ -151,9 +153,13 @@ func (t *Handler) Start() error {
 				}
 				err := setinterface(network, address, fd, iface)
 				if err != nil {
-					errors.LogInfoInner(context.Background(), err, "[tun] falied to set interface")
+					sockErr = errors.New("[tun] falied to set interface").Base(err)
 				}
 			})
+			if sockErr != nil {
+				return sockErr
+			}
+			return controlErr
 		})
 	}
 
@@ -243,7 +249,7 @@ func (t *Handler) HandleConnection(conn net.Conn, destination net.Destination) {
 	reader := &buf.TimeoutWrapperReader{Reader: buf.NewReader(conn), Counter: t.uplinkCounter}
 	writer := buf.NewWriter(conn)
 	if destination.Network != net.Network_UDP {
-		writer = &tunTCPWriter{writer: writer, counter: t.downlinkCounter}
+		writer = &TCPWriter{Writer: writer, Counter: t.downlinkCounter}
 	} else if t.downlinkCounter != nil {
 		writer = &tunUDPStatsWriter{writer: writer, counter: t.downlinkCounter}
 	}

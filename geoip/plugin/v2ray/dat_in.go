@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 
@@ -36,7 +36,7 @@ func newGeoIPDatIn(action lib.Action, data json.RawMessage) (lib.InputConverter,
 
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &tmp); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("❌ [type %s | action %s] %w", TypeGeoIPDatIn, action, err)
 		}
 	}
 
@@ -95,7 +95,7 @@ func (g *GeoIPDatIn) Input(container lib.Container) (lib.Container, error) {
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("❌ [type %s | action %s] %w", g.Type, g.Action, err)
 	}
 
 	if len(entries) == 0 {
@@ -108,14 +108,14 @@ func (g *GeoIPDatIn) Input(container lib.Container) (lib.Container, error) {
 		switch g.Action {
 		case lib.ActionAdd:
 			if err := container.Add(entry, ignoreIPType); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("❌ [type %s | action %s] %w", g.Type, g.Action, err)
 			}
 		case lib.ActionRemove:
 			if err := container.Remove(entry, lib.CaseRemovePrefix, ignoreIPType); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("❌ [type %s | action %s] %w", g.Type, g.Action, err)
 			}
 		default:
-			return nil, lib.ErrUnknownAction
+			return nil, fmt.Errorf("❌ [type %s | action %s] %w", g.Type, g.Action, lib.ErrUnknownAction)
 		}
 	}
 
@@ -144,7 +144,7 @@ func (g *GeoIPDatIn) walkRemoteFile(url string, entries map[string]*lib.Entry) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("❌ [type %s | action %s] failed to get remote file %s, http status code %d", g.Type, g.Action, url, resp.StatusCode)
+		return fmt.Errorf("failed to get remote file %s, http status code %d", url, resp.StatusCode)
 	}
 
 	if err := g.generateEntries(resp.Body, entries); err != nil {
@@ -178,8 +178,16 @@ func (g *GeoIPDatIn) generateEntries(reader io.Reader, entries map[string]*lib.E
 		}
 
 		for _, v2rayCIDR := range geoip.Cidr {
-			ipStr := net.IP(v2rayCIDR.GetIp()).String() + "/" + fmt.Sprint(v2rayCIDR.GetPrefix())
-			if err := entry.AddPrefix(ipStr); err != nil {
+			ip := v2rayCIDR.GetIp()
+			bits := v2rayCIDR.GetPrefix()
+			addr, ok := netip.AddrFromSlice(ip)
+			if !ok {
+				return fmt.Errorf("invalid IP in list %s: %s", name, ip)
+			}
+			if addr.Is4In6() && bits <= 32 {
+				addr = addr.Unmap()
+			}
+			if err := entry.AddPrefix(netip.PrefixFrom(addr, int(bits))); err != nil {
 				return err
 			}
 		}

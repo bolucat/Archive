@@ -1,8 +1,13 @@
-use std::{collections::BTreeMap, io};
+use std::{
+    collections::{BTreeMap, HashSet},
+    io,
+};
 
 use serde::{Deserialize, Serialize};
 
-use super::{ClientProxyConfig, ServerProxyConfig};
+use super::{ClientProxyConfig, GlobalLimits, ServerProxyConfig};
+
+pub(crate) const MAX_PADDING_BYTES: u32 = 65536;
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -81,6 +86,22 @@ fn validate_path_and_host(path: &str, host: Option<&str>) -> io::Result<()> {
     Ok(())
 }
 
+fn conflicts_with_framing(name: &http::HeaderName) -> bool {
+    matches!(
+        name.as_str(),
+        "host"
+            | "keep-alive"
+            | "proxy-connection"
+            | "content-length"
+            | "transfer-encoding"
+            | "connection"
+            | "upgrade"
+            | "te"
+            | "trailer"
+            | "referer"
+    )
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct XhttpLimits {
@@ -89,6 +110,10 @@ pub struct XhttpLimits {
     pub max_buffered_bytes: usize,
     pub max_session_buffered_bytes: usize,
     pub max_requests_per_connection: usize,
+    pub max_requests_per_session: usize,
+    pub max_requests: usize,
+    pub h2_stream_window_bytes: usize,
+    pub h2_connection_window_bytes: usize,
     pub setup_timeout_secs: u64,
     pub packet_timeout_secs: u64,
     pub response_header_timeout_secs: u64,
@@ -102,6 +127,10 @@ impl Default for XhttpLimits {
             max_buffered_bytes: 64 * 1024 * 1024,
             max_session_buffered_bytes: 4 * 1024 * 1024,
             max_requests_per_connection: 128,
+            max_requests_per_session: 128,
+            max_requests: 4096,
+            h2_stream_window_bytes: 4 * 1024 * 1024,
+            h2_connection_window_bytes: 8 * 1024 * 1024,
             setup_timeout_secs: 60,
             packet_timeout_secs: 300,
             response_header_timeout_secs: 60,
@@ -110,8 +139,25 @@ impl Default for XhttpLimits {
 }
 
 impl XhttpLimits {
+    pub(crate) fn h2_windows(&self) -> (u32, u32) {
+        let stream_window = self
+            .h2_stream_window_bytes
+            .min(self.max_session_buffered_bytes)
+            .min(self.max_buffered_bytes) as u32;
+        // HTTP/2 starts every connection with at least 65535 bytes of credit.
+        let connection_window = self
+            .h2_connection_window_bytes
+            .min(self.max_buffered_bytes)
+            .max(65535) as u32;
+        (stream_window, connection_window)
+    }
+
     pub(crate) fn request_limit(&self) -> usize {
-        crate::resources::limits()
+        self.request_limit_with(crate::resources::limits())
+    }
+
+    pub(crate) fn request_limit_with(&self, global_limits: GlobalLimits) -> usize {
+        global_limits
             .max_streams_per_connection
             .map_or(self.max_requests_per_connection, |limit| {
                 self.max_requests_per_connection.min(limit)
@@ -119,12 +165,18 @@ impl XhttpLimits {
     }
 
     pub fn validate(&self) -> io::Result<()> {
+        if self.max_requests_per_session < 2 {
+            return Err(invalid("XHTTP session request limit must be at least 2"));
+        }
         if [
             self.max_sessions,
             self.max_pending_sessions,
             self.max_buffered_bytes,
             self.max_session_buffered_bytes,
             self.max_requests_per_connection,
+            self.max_requests,
+            self.h2_stream_window_bytes,
+            self.h2_connection_window_bytes,
         ]
         .contains(&0)
             || [
@@ -135,6 +187,9 @@ impl XhttpLimits {
             .contains(&0)
             || self.max_requests_per_connection > u32::MAX as usize
             || self.max_requests_per_connection > tokio::sync::Semaphore::MAX_PERMITS
+            || self.h2_stream_window_bytes > i32::MAX as usize
+            || self.h2_connection_window_bytes > i32::MAX as usize
+            || self.h2_connection_window_bytes < 65535
         {
             return Err(invalid(
                 "XHTTP limits must be positive and request count must fit u32",
@@ -181,6 +236,10 @@ pub struct XhttpClientConfig {
     pub sc_min_posts_interval_ms: XhttpRange,
     #[serde(default)]
     pub no_grpc_header: bool,
+    #[serde(default = "default_download_idle_timeout_secs")]
+    pub download_idle_timeout_secs: u64,
+    #[serde(default = "default_packet_pipeline_depth")]
+    pub packet_pipeline_depth: usize,
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
     #[serde(default)]
@@ -190,11 +249,25 @@ pub struct XhttpClientConfig {
     pub protocol: Box<ClientProxyConfig>,
 }
 
+fn default_download_idle_timeout_secs() -> u64 {
+    15 * 60
+}
+
+fn default_packet_pipeline_depth() -> usize {
+    30
+}
+
 impl XhttpClientConfig {
     pub fn validate(&self) -> io::Result<()> {
         validate_path_and_host(&self.path, self.host.as_deref())?;
         self.limits.validate()?;
-        if self.x_padding_bytes.bounds((100, 1000), false)?.1 > 65536 {
+        if self.download_idle_timeout_secs == 0 {
+            return Err(invalid("XHTTP download idle timeout must be positive"));
+        }
+        if self.packet_pipeline_depth == 0 {
+            return Err(invalid("XHTTP packet pipeline depth must be positive"));
+        }
+        if self.x_padding_bytes.bounds((100, 1000), false)?.1 > MAX_PADDING_BYTES {
             return Err(invalid("XHTTP padding must not exceed 65536 bytes"));
         }
         let (min, _) = self
@@ -217,19 +290,7 @@ impl XhttpClientConfig {
         for (name, value) in &self.headers {
             let name = http::HeaderName::try_from(name).map_err(io::Error::other)?;
             http::HeaderValue::try_from(value).map_err(io::Error::other)?;
-            if matches!(
-                name.as_str(),
-                "host"
-                    | "keep-alive"
-                    | "proxy-connection"
-                    | "content-length"
-                    | "transfer-encoding"
-                    | "connection"
-                    | "upgrade"
-                    | "te"
-                    | "trailer"
-                    | "referer"
-            ) {
+            if conflicts_with_framing(&name) {
                 return Err(invalid(
                     "XHTTP custom header conflicts with transport framing",
                 ));
@@ -245,7 +306,11 @@ pub struct XhttpServerConfig {
     #[serde(default)]
     pub path: String,
     #[serde(default)]
+    pub close_on_error: bool,
+    #[serde(default)]
     pub host: Option<String>,
+    #[serde(default)]
+    pub matching_headers: BTreeMap<String, String>,
     #[serde(default)]
     pub mode: XhttpMode,
     #[serde(default)]
@@ -270,11 +335,41 @@ pub struct XhttpServerConfig {
 impl XhttpServerConfig {
     pub fn validate(&self) -> io::Result<()> {
         validate_path_and_host(&self.path, self.host.as_deref())?;
+        let mut names = HashSet::new();
+        for (name, value) in &self.matching_headers {
+            let name = http::HeaderName::try_from(name).map_err(io::Error::other)?;
+            http::HeaderValue::try_from(value).map_err(io::Error::other)?;
+            if name == http::header::HOST {
+                return Err(invalid(
+                    "XHTTP matching_headers cannot include Host; use host instead",
+                ));
+            }
+            if conflicts_with_framing(&name) {
+                return Err(invalid(
+                    "XHTTP matching header conflicts with transport framing",
+                ));
+            }
+            if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
+                return Err(invalid(
+                    "XHTTP matching header values cannot start or end with whitespace",
+                ));
+            }
+            if !names.insert(name) {
+                return Err(invalid(
+                    "XHTTP matching_headers contains duplicate header names",
+                ));
+            }
+        }
         if contains_server(&self.protocol) {
             return Err(invalid("nested XHTTP is not supported"));
         }
         self.limits.validate()?;
-        if self.x_padding_bytes.bounds((100, 1000), false)?.1 > 65536 {
+        if self.mode != XhttpMode::StreamOne && self.limits.max_requests < 2 {
+            return Err(invalid(
+                "XHTTP split server modes require at least two aggregate requests",
+            ));
+        }
+        if self.x_padding_bytes.bounds((100, 1000), false)?.1 > MAX_PADDING_BYTES {
             return Err(invalid("XHTTP padding must not exceed 65536 bytes"));
         }
         let (min, max) = self
@@ -283,12 +378,17 @@ impl XhttpServerConfig {
         if min == 0 {
             return Err(invalid("XHTTP packet size must be positive"));
         }
-        if matches!(self.mode, XhttpMode::Auto | XhttpMode::PacketUp)
-            && max as usize > self.limits.max_session_buffered_bytes
-        {
-            return Err(invalid(
-                "XHTTP maximum packet size exceeds the session byte budget",
-            ));
+        if matches!(self.mode, XhttpMode::Auto | XhttpMode::PacketUp) {
+            if max as usize > self.limits.max_session_buffered_bytes {
+                return Err(invalid(
+                    "XHTTP maximum packet size exceeds the session byte budget",
+                ));
+            }
+            if max as usize > self.limits.max_buffered_bytes {
+                return Err(invalid(
+                    "XHTTP maximum packet size exceeds the global byte budget",
+                ));
+            }
         }
         self.sc_stream_up_server_secs.bounds((20, 80), true)?;
         Ok(())
@@ -434,6 +534,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn server_request_filters_defaults_and_round_trip() {
+        let mut config: XhttpServerConfig = serde_json::from_value(serde_json::json!({
+            "protocol": {"type": "socks"}
+        }))
+        .unwrap();
+        assert!(config.matching_headers.is_empty());
+        assert!(!config.close_on_error);
+        config.close_on_error = true;
+        config
+            .matching_headers
+            .insert("X-Token".into(), "Secret".into());
+        config
+            .matching_headers
+            .insert("X-Empty".into(), String::new());
+        config.validate().unwrap();
+        let decoded: XhttpServerConfig =
+            serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
+        assert_eq!(decoded.matching_headers, config.matching_headers);
+        assert!(decoded.close_on_error);
+        decoded.validate().unwrap();
+    }
+
+    #[test]
+    fn server_rejects_invalid_matching_headers() {
+        for headers in [
+            serde_json::json!({"bad name": "value"}),
+            serde_json::json!({"": "value"}),
+            serde_json::json!({":authority": "front.test"}),
+            serde_json::json!({"x-token": "secret\r\nx-injected: value"}),
+            serde_json::json!({"X-Token": "secret", "x-token": "secret"}),
+            serde_json::json!({"Host": "front.test"}),
+            serde_json::json!({"connection": "keep-alive"}),
+            serde_json::json!({"Keep-Alive": "timeout=60"}),
+            serde_json::json!({"proxy-connection": "keep-alive"}),
+            serde_json::json!({"content-length": "16"}),
+            serde_json::json!({"transfer-encoding": "chunked"}),
+            serde_json::json!({"upgrade": "websocket"}),
+            serde_json::json!({"te": "trailers"}),
+            serde_json::json!({"trailer": "x-token"}),
+            serde_json::json!({"referer": "https://front.test/"}),
+            serde_json::json!({"x-token": " secret"}),
+            serde_json::json!({"x-token": "secret "}),
+            serde_json::json!({"x-token": "\tsecret"}),
+            serde_json::json!({"x-token": "secret\t"}),
+        ] {
+            let config: XhttpServerConfig = serde_json::from_value(serde_json::json!({
+                "matching_headers": headers, "protocol": {"type": "socks"}
+            }))
+            .unwrap();
+            assert!(config.validate().is_err(), "{headers}");
+        }
+    }
+
+    #[test]
     fn xhttp_rejects_invalid_wire_settings_before_startup() {
         for (path, host) in [
             ("/?bad=\n", "front.test"),
@@ -471,6 +625,14 @@ mod tests {
         assert_eq!(limits.packet_timeout_secs, 300);
         assert_eq!(limits.setup_timeout_secs, 60);
         assert_eq!(limits.response_header_timeout_secs, 60);
+        assert_eq!(limits.max_requests_per_session, 128);
+        for limit in [0, 1, 2] {
+            let limits = XhttpLimits {
+                max_requests_per_session: limit,
+                ..limits.clone()
+            };
+            assert_eq!(limits.validate().is_ok(), limit >= 2);
+        }
         assert_eq!(
             XhttpRange::Number(0).bounds((100, 1000), false).unwrap(),
             (100, 1000)
@@ -487,6 +649,70 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn client_validates_session_request_limits() {
+        for limit in [0, 1, 2, 5, 128, 129] {
+            let config: XhttpClientConfig = serde_json::from_value(serde_json::json!({
+                "limits": {"max_requests_per_session": limit},
+                "protocol": {"type": "socks"}
+            }))
+            .unwrap();
+            assert_eq!(config.validate().is_ok(), limit >= 2);
+        }
+    }
+
+    #[test]
+    fn server_aggregate_requests_must_fit_the_mode() {
+        for mode in ["auto", "packet-up", "stream-up", "stream-one"] {
+            for limit in [0, 1, 2, 4096] {
+                let config: XhttpServerConfig = serde_json::from_value(serde_json::json!({
+                    "mode": mode,
+                    "limits": {"max_requests": limit},
+                    "protocol": {"type": "socks"}
+                }))
+                .unwrap();
+                assert_eq!(
+                    config.validate().is_ok(),
+                    limit >= 2 || (mode == "stream-one" && limit == 1),
+                    "mode={mode}, max_requests={limit}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn client_download_idle_timeout_defaults_and_validation() {
+        let mut config: XhttpClientConfig = serde_json::from_value(serde_json::json!({
+            "protocol": {"type": "socks"}
+        }))
+        .unwrap();
+        assert_eq!(config.download_idle_timeout_secs, 900);
+        assert_eq!(config.packet_pipeline_depth, 30);
+        config.packet_pipeline_depth = 0;
+        assert!(config.validate().is_err());
+        config.packet_pipeline_depth = 30;
+        for seconds in [0, 1, 900, 1800] {
+            config.download_idle_timeout_secs = seconds;
+            let decoded: XhttpClientConfig =
+                serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
+            assert_eq!(decoded.download_idle_timeout_secs, seconds);
+            assert_eq!(decoded.validate().is_ok(), seconds > 0);
+        }
+    }
+
+    #[test]
+    fn h2_windows_follow_byte_limits_and_protocol_bounds() {
+        let mut limits = XhttpLimits::default();
+        assert_eq!(limits.h2_windows(), (4 * 1024 * 1024, 8 * 1024 * 1024));
+        limits.max_session_buffered_bytes = 16384;
+        limits.max_buffered_bytes = 32768;
+        assert_eq!(limits.h2_windows(), (16384, 65535));
+        limits.h2_stream_window_bytes = 8192;
+        assert_eq!(limits.h2_windows().0, 8192);
+        limits.h2_connection_window_bytes = i32::MAX as usize + 1;
+        assert!(limits.validate().is_err());
+    }
+
     #[test]
     fn xhttp_alias_and_strict_fields() {
         for mode in ["auto", "packet-up", "stream-up", "stream-one"] {
@@ -508,7 +734,7 @@ mod tests {
     }
 }
 #[test]
-fn server_packet_size_must_fit_the_session_budget() {
+fn server_packet_size_must_fit_both_byte_budgets() {
     for mode in ["auto", "packet-up", "stream-up", "stream-one"] {
         for (packet, fits) in [
             (serde_json::json!(32), true),
@@ -517,16 +743,22 @@ fn server_packet_size_must_fit_the_session_budget() {
             (serde_json::json!("16-33"), false),
             (serde_json::json!(0), false),
         ] {
-            let config: XhttpServerConfig = serde_json::from_value(serde_json::json!({
-                "mode": mode, "sc_max_each_post_bytes": packet,
-                "limits": {"max_session_buffered_bytes": 32},
-                "protocol": {"type": "socks"}
-            }))
-            .unwrap();
-            assert_eq!(
-                config.validate().is_ok(),
-                fits || mode.starts_with("stream-")
-            );
+            for (session, global) in [(32, 64), (64, 32), (32, 32)] {
+                let config: XhttpServerConfig = serde_json::from_value(serde_json::json!({
+                    "mode": mode, "sc_max_each_post_bytes": packet,
+                    "limits": {
+                        "max_session_buffered_bytes": session,
+                        "max_buffered_bytes": global
+                    },
+                    "protocol": {"type": "socks"}
+                }))
+                .unwrap();
+                assert_eq!(
+                    config.validate().is_ok(),
+                    fits || mode.starts_with("stream-"),
+                    "mode={mode}, packet={packet}, session={session}, global={global}"
+                );
+            }
         }
     }
 }
