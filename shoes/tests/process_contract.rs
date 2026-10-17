@@ -13,6 +13,321 @@ struct Process {
     lines: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 
+#[cfg(unix)]
+#[path = "cases/wireguard_support.rs"]
+mod wireguard_support;
+
+#[cfg(unix)]
+#[tokio::test]
+async fn wireguard_reload_retains_invalid_candidates_rebinds_and_releases_on_exit() {
+    wireguard_reload(false).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn wireguard_outer_chain_reload_retains_invalid_candidates_and_releases_on_exit() {
+    wireguard_reload(true).await;
+}
+
+#[cfg(unix)]
+#[test]
+fn wireguard_check_validates_outer_udp_without_dns_or_listeners() {
+    use serde_json::json;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.yaml");
+    let occupied = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let mut server = wireguard_support::server(occupied.local_addr().unwrap().port());
+    server["wireguard"] = json!("occupied-listener");
+    let mut endpoint = wireguard_support::client(51820);
+    endpoint["peers"][0]["endpoint"] = json!("unresolvable.invalid:51820");
+    for mode in ["check", "--dry-run"] {
+        for (protocol, valid) in [
+            (json!({"type": "socks"}), false),
+            (json!({"type": "trojan", "password": "test"}), false),
+            (
+                json!({"type": "vless", "user_id": shoes_test_support::test_fixture::TEST_UUID, "udp_enabled": false}),
+                false,
+            ),
+            (wireguard_support::vless_protocol(), true),
+        ] {
+            endpoint["outer_client_chain"] = json!([{
+                "address": "unresolvable.invalid:443", "protocol": protocol,
+                "transport": "quic", "bind_interface": "shoes-missing-interface",
+            }]);
+            let config = json!([server, endpoint]);
+            std::fs::write(&path, serde_yaml::to_string(&config).unwrap()).unwrap();
+            let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+                .args([mode, "-t", "1"])
+                .arg(&path)
+                .output()
+                .unwrap();
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.success(), valid, "{error}");
+            if !valid {
+                assert!(error.contains("does not support UDP"), "{error}");
+            }
+        }
+        let mut invalid = wireguard_support::server(51820);
+        invalid["addresses"] = json!(["255.255.255.255/32"]);
+        std::fs::write(&path, serde_yaml::to_string(&json!([invalid])).unwrap()).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+            .args([mode, "-t", "1"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("unicast local address"));
+    }
+}
+
+#[cfg(unix)]
+async fn wireguard_reload(detour: bool) {
+    use serde_json::json;
+    let directory = tempfile::tempdir().unwrap();
+    let server_path = directory.path().join("server.yaml");
+    let client_path = directory.path().join("client.yaml");
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let port = socket.local_addr().unwrap().port();
+    let mut ports = shoes_test_support::port_helper::PortHelper::new();
+    let (_, entry) = ports.get_localhost_listener_port();
+    let mut servers = vec![wireguard_support::server(port)];
+    let mut endpoint = wireguard_support::client(port);
+    if detour {
+        let (_, outer_port) = ports.get_localhost_listener_port();
+        let protocol = wireguard_support::vless_protocol();
+        endpoint["peers"][0]["endpoint"] = json!(format!("192.0.2.200:{port}"));
+        endpoint["outer_client_chain"] =
+            json!([{"address": format!("127.0.0.1:{outer_port}"), "protocol": protocol}]);
+        servers.push(json!({
+            "address": format!("0.0.0.0:{outer_port}"), "protocol": protocol,
+            "rules": [{"masks": "192.0.2.200/32", "action": "allow", "override_address": "127.0.0.1:0"}],
+        }));
+    }
+    let server_config = serde_yaml::to_string(&servers).unwrap();
+    let mut client_configs = json!([endpoint, wireguard_support::socks(entry)]);
+    let client_config = serde_yaml::to_string(&client_configs).unwrap();
+    std::fs::write(&server_path, &server_config).unwrap();
+    std::fs::write(&client_path, &client_config).unwrap();
+    drop(socket);
+    let mut server = Process::start(&server_path, &["--no-reload"]);
+    let mut client = Process::start(&client_path, &["--no-reload"]);
+    server.wait_for("Servers ready").await;
+    client.wait_for("Servers ready").await;
+    let echo = shoes_test_support::wireguard::EchoTargets::new(false)
+        .await
+        .unwrap();
+    let mut active = shoes_test_support::wireguard::connect(entry, echo.tcp())
+        .await
+        .unwrap();
+    roundtrip(&mut active).await;
+    if detour {
+        client_configs[0]["outer_client_chain"][0]["protocol"]["udp_enabled"] = json!(false);
+    } else {
+        client_configs[1]["rules"][0]["client_chain"][0]["protocol"]["endpoint"] = json!("missing");
+    }
+    let invalid = serde_yaml::to_string(&client_configs).unwrap();
+    assert_ne!(invalid, client_config);
+    std::fs::write(&client_path, invalid).unwrap();
+    client.signal(libc::SIGHUP);
+    client.wait_for("Reload rejected").await;
+    roundtrip(&mut active).await;
+    std::fs::write(&client_path, &client_config).unwrap();
+    client.signal(libc::SIGHUP);
+    client.wait_for("Servers ready").await;
+    let mut byte = [0; 1];
+    assert!(!matches!(
+        timeout(Duration::from_secs(3), active.read(&mut byte)).await,
+        Ok(Ok(1)) | Err(_)
+    ));
+    server.signal(libc::SIGHUP);
+    server.wait_for("Servers ready").await;
+    // A fresh client generation has no stale handshake state from the retired server.
+    client.signal(libc::SIGHUP);
+    client.wait_for("Servers ready").await;
+    echo.check(entry, None).await.unwrap();
+    client.signal(libc::SIGTERM);
+    server.signal(libc::SIGTERM);
+    assert!(client.exit().await.success());
+    assert!(server.exit().await.success());
+    std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn wireguard_partial_startup_releases_previously_started_endpoint() {
+    use serde_json::json;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.yaml");
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let port = socket.local_addr().unwrap().port();
+    let occupied = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let mut second = wireguard_support::server(occupied.local_addr().unwrap().port());
+    second["wireguard"] = json!("second");
+    std::fs::write(
+        &path,
+        serde_yaml::to_string(&json!([wireguard_support::server(port), second])).unwrap(),
+    )
+    .unwrap();
+    drop(socket);
+    let mut child = Process::start(&path, &["--no-reload"]);
+    assert_eq!(child.exit().await.code(), Some(1));
+    std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap();
+}
+
+#[test]
+fn vless_encryption_generator_prints_only_matched_yaml_credentials() {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    for (args, expected_public_lengths, expected_private_lengths) in [
+        (vec![], vec![1184], vec![64]),
+        (
+            vec![
+                "--auth", "x25519", "--auth", "mlkem768", "--auth", "mlkem768",
+            ],
+            vec![32, 1184, 1184],
+            vec![32, 64, 64],
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+            .arg("generate-vless-encryption")
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let values: serde_yaml::Value = serde_yaml::from_slice(&output.stdout).unwrap();
+        assert_eq!(values.as_mapping().unwrap().len(), 2);
+        let encryption = values["encryption"].as_str().unwrap();
+        let decryption = values["decryption"].as_str().unwrap();
+        assert!(!String::from_utf8_lossy(&output.stderr).contains(decryption));
+        assert!(encryption.starts_with("mlkem768x25519plus.native.0rtt."));
+        assert!(decryption.starts_with("mlkem768x25519plus.native.600s."));
+        let public_lengths: Vec<_> = encryption
+            .split('.')
+            .skip(3)
+            .map(|s| URL_SAFE_NO_PAD.decode(s).unwrap().len())
+            .collect();
+        let private_lengths: Vec<_> = decryption
+            .split('.')
+            .skip(3)
+            .map(|s| URL_SAFE_NO_PAD.decode(s).unwrap().len())
+            .collect();
+        assert_eq!(public_lengths, expected_public_lengths);
+        assert_eq!(private_lengths, expected_private_lengths);
+    }
+    for args in [
+        vec!["--auth", "bad"],
+        vec!["--rtt", "1rtt"],
+        vec!["--lifetime", "0s"],
+        vec!["--mode"],
+        vec!["--mode", "random", "--mode", "native"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+            .arg("generate-vless-encryption")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn vless_encryption_rejects_invalid_startup_without_credentials_in_diagnostics() {
+    use serde_json::json;
+    let directory = tempfile::Builder::new()
+        .prefix("vless-invalid-")
+        .tempdir_in(std::env::var_os("HOME").unwrap())
+        .unwrap();
+    let credential = "mlkem768x25519plus.native.600s.private-key-must-not-appear";
+    for protocol in [
+        json!({"type": "vless", "user_id": "550e8400-e29b-41d4-a716-446655440000", "decryption": credential}),
+        json!({"type": "vless", "user_id": "550e8400-e29b-41d4-a716-446655440000", "vision": true}),
+        json!({"type": "vless", "user_id": "550e8400-e29b-41d4-a716-446655440000", "encryption_limits": {"max_sessions": 0}}),
+    ] {
+        let address = available_address();
+        let config = directory.path().join("invalid.json");
+        std::fs::write(
+            &config,
+            serde_json::to_vec(&json!([{"address": address, "protocol": protocol}])).unwrap(),
+        )
+        .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+            .arg("--no-reload")
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let diagnostic = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !diagnostic.contains("private-key-must-not-appear"),
+            "{diagnostic}"
+        );
+        assert!(!diagnostic.contains("Servers ready"), "{diagnostic}");
+        assert!(std::net::TcpListener::bind(address).is_ok());
+    }
+}
+
+#[test]
+fn vless_wrong_side_credentials_fail_check_and_startup() {
+    use serde_json::json;
+    let directory = tempfile::Builder::new()
+        .prefix("vless-wrong-side-")
+        .tempdir_in(std::env::var_os("HOME").unwrap())
+        .unwrap();
+    for server in [false, true] {
+        let address = available_address();
+        let mut protocol = json!({
+            "type": "vless", "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        });
+        protocol[if server { "encryption" } else { "decryption" }] =
+            json!("private-key-must-not-appear");
+        let config = if server {
+            json!([{"address": address, "protocol": protocol}])
+        } else {
+            json!([{"address": address, "protocol": {"type": "socks"},
+                "rules": [{"masks": "0.0.0.0/0", "action": "allow", "client_chain": {
+                    "address": "127.0.0.1:443", "protocol": protocol,
+                }}],
+            }])
+        };
+        let path = directory.path().join("invalid.json");
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        for operation in ["check", "--no-reload"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+                .arg(operation)
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(!output.status.success());
+            let diagnostic = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                diagnostic.contains("Could not parse config file"),
+                "{diagnostic}"
+            );
+            if server {
+                assert!(diagnostic.contains("VLESS server uses decryption, not encryption"));
+            }
+            assert!(
+                !diagnostic.contains("private-key-must-not-appear"),
+                "{diagnostic}"
+            );
+            assert!(!diagnostic.contains("Servers ready"));
+            assert!(std::net::TcpListener::bind(address).is_ok());
+        }
+    }
+}
+
 #[test]
 fn reality_mldsa_keygen_outputs_interoperable_seed_and_key() {
     use aws_lc_rs::signature::{self, KeyPair};

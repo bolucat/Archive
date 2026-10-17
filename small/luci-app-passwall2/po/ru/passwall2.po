@@ -2220,8 +2220,14 @@ msgstr "Обнаружение переключения соединений: п
 msgid "Socks switch detection: Port [%s] [%s:[%s]] abnormal."
 msgstr "Обнаружено переключение Socks: порт [%s] [%s:[%s]] работает некорректно."
 
-msgid "Socks switch detection: Port [%s] all nodes are unavailable!"
-msgstr "Обнаружено переключение коммутатора: порт [%s], все узлы недоступны!"
+msgid "Socks switch detection: Port [%s] all nodes are unavailable or switching failed!"
+msgstr "Проверка переключения SOCKS: порт [%s], все узлы недоступны или переключение не удалось!"
+
+msgid "Socks switch detection: Port [%s] node switch failed, continue trying other nodes!"
+msgstr "Проверка переключения SOCKS: порт [%s], переключить узел не удалось, пробуем другие узлы!"
+
+msgid "Socks switch detection: Port [%s] failed to restore the primary node!"
+msgstr "Проверка переключения SOCKS: порт [%s], не удалось восстановить основной узел!"
 
 msgid "Socks switch detection: Port [%s] Unknown error."
 msgstr "Обнаружение переключения разъема: порт [%s], неизвестная ошибка."
@@ -2487,6 +2493,9 @@ msgstr "Задает список поддерживаемых наборов ш
 msgid "This username already exists."
 msgstr "Это имя пользователя уже существует."
 
+msgid "Update Options"
+msgstr "Параметры обновления"
+
 msgid "MASQUE Path"
 msgstr "Путь MASQUE"
 
@@ -2501,3 +2510,15 @@ msgstr "Приватный ключ устройства WARP"
 
 msgid "WARP Endpoint Public Key"
 msgstr "Публичный ключ сервера WARP"
+
+msgid "Installing..."
+msgstr "Установка..."
+
+msgid "Do not refresh or switch pages during installation."
+msgstr "Не обновляйте страницу и не переходите на другие страницы во время установки."
+
+msgid "Update failed"
+msgstr "Ошибка обновления"
+
+msgid "Unknown error"
+msgstr "Неизвестная ошибка"

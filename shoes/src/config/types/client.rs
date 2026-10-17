@@ -351,10 +351,19 @@ impl ClientConfig {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HttpVersion {
+    #[default]
+    H1,
+    H2,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ClientProxyConfig {
     Direct,
+    Wireguard(super::wireguard::WireguardReference),
     Http {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         username: Option<String>,
@@ -364,6 +373,8 @@ pub enum ClientProxyConfig {
         /// Used when the upstream proxy blocks by hostname.
         #[serde(default, skip_serializing_if = "is_false")]
         resolve_hostname: bool,
+        #[serde(default)]
+        http_version: HttpVersion,
     },
     #[serde(alias = "socks5")]
     Socks {
@@ -391,6 +402,20 @@ pub enum ClientProxyConfig {
     },
     Vless {
         user_id: String,
+        #[serde(
+            default,
+            skip_serializing_if = "super::vless::VlessEncryptionSetting::is_disabled"
+        )]
+        encryption: super::vless::VlessEncryptionSetting,
+        #[serde(
+            default,
+            rename = "decryption",
+            skip_serializing,
+            deserialize_with = "super::vless::reject_client_decryption"
+        )]
+        _invalid_decryption: (),
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        vision: bool,
         #[serde(default = "default_true", skip_serializing_if = "is_true")]
         udp_enabled: bool,
         /// H2MUX multiplexing configuration
@@ -490,6 +515,10 @@ pub enum ClientProxyConfig {
 }
 
 impl ClientProxyConfig {
+    pub fn is_wireguard(&self) -> bool {
+        matches!(self, Self::Wireguard(_))
+    }
+
     pub fn is_direct(&self) -> bool {
         matches!(self, ClientProxyConfig::Direct)
     }
@@ -498,6 +527,7 @@ impl ClientProxyConfig {
     pub fn protocol_name(&self) -> &str {
         match self {
             ClientProxyConfig::Direct => "Direct",
+            ClientProxyConfig::Wireguard(_) => "WireGuard",
             ClientProxyConfig::Http { .. } => "HTTP",
             ClientProxyConfig::Socks { .. } => "SOCKS5",
             ClientProxyConfig::Shadowsocks { .. } => "Shadowsocks",

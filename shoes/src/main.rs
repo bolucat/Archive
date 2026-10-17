@@ -10,6 +10,7 @@ mod copy_bidirectional_message;
 mod crypto;
 mod dns;
 mod h2mux;
+mod http2;
 mod http_handler;
 mod hysteria2_server;
 mod listener_tasks;
@@ -49,6 +50,9 @@ mod trojan_handler;
 mod tuic_server;
 #[cfg(unix)]
 mod tun;
+
+#[cfg(unix)]
+mod ip_stack;
 mod udp_fragments;
 mod udp_message_stream;
 mod uot;
@@ -57,6 +61,8 @@ mod uuid_util;
 mod vless;
 mod vmess;
 mod websocket;
+#[cfg(unix)]
+mod wireguard;
 mod xhttp;
 mod xudp;
 
@@ -113,6 +119,11 @@ fn print_usage_and_exit(arg0: String) {
     eprintln!(
         "    generate-vless-user-id                         Generate a random VLESS/VMESS user ID (UUID v4)"
     );
+    eprintln!(
+        "    generate-vless-encryption [options]             Generate matched VLESS encryption credentials"
+    );
+    eprintln!("      --auth x25519|mlkem768 (repeatable), --mode native|xorpub|random");
+    eprintln!("      --rtt 0rtt|1rtt, --lifetime 600s|N-Ms|0s");
     std::process::exit(1);
 }
 
@@ -189,6 +200,23 @@ fn main() {
     }
 
     logging::init_multi_logger(writers, directives);
+
+    if args
+        .first()
+        .is_some_and(|s| s == "generate-vless-encryption")
+    {
+        match crate::vless::encryption::generator::generate(&args[1..]) {
+            Ok((encryption, decryption)) => {
+                println!("encryption: {encryption}");
+                println!("decryption: {}", *decryption);
+            }
+            Err(error) => {
+                eprintln!("VLESS encryption generation failed: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     if args.iter().any(|s| s == "generate-reality-mldsa65-keypair") {
         match crate::reality::generate_mldsa65_keypair() {

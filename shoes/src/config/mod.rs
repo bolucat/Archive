@@ -13,6 +13,7 @@
 //! - [`create_server_configs`]: Validate and create final server configs
 //! - [`singbox::convert_singbox_config`]: Convert sing-box configs to shoes format
 
+mod client_visit;
 mod pem;
 mod types;
 mod validate;
@@ -20,6 +21,7 @@ mod validate;
 pub use pem::convert_cert_paths;
 pub use types::*;
 pub use validate::{ValidatedConfigs, create_server_configs};
+pub(crate) use validate::{validate_client_vision_protocol, validate_server_vision};
 
 /// Loads configuration files from the provided paths.
 ///

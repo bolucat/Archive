@@ -9,7 +9,7 @@ shoes is a high-performance multi-protocol proxy server written in Rust.
 - **SOCKS5** (with UDP ASSOCIATE)
 - **Mixed** (auto-detect HTTP/SOCKS5)
 - **VMess AEAD**
-- **VLESS** (with fallback support)
+- **VLESS** (native encryption, resumption, and fallback for unencrypted VLESS)
 - **Shadowsocks**
 - **Trojan**
 - **Snell v3**
@@ -31,6 +31,7 @@ All server protocols plus:
 - **XTLS Vision** (for VLESS)
 
 ### TUN/VPN Mode
+- **WireGuard endpoints** - Userspace TCP/UDP server and client using GotaTun, without root, an OS TUN, or host route changes (Unix only). See [WireGuard configuration](CONFIG.md#wireguard-endpoints).
 - **TUN device support** - Layer 3 VPN for transparent proxying
 - Supported platforms: Linux, Android, iOS
 
@@ -62,6 +63,10 @@ For advanced access control (IP allowlist/blocklists), see [tobaru](https://gith
 
 ## Installation
 
+Building Shoes requires Rust 1.95 or newer. Unix WireGuard builds include
+MPL-2.0-covered GotaTun code; binary and library distributors must retain
+[the dependency notices and corresponding source information](THIRD_PARTY_NOTICES.md).
+
 Precompiled binaries for x86_64 and Apple aarch64 are available on [Github Releases](https://github.com/cfal/shoes/releases).
 
 For the previously published release:
@@ -78,11 +83,16 @@ idle cancellation probes. The workspace patches cover direct and transitive
 dependencies, including DNS over HTTP/3. The experimental zero-copy change in
 [h3 #368](https://github.com/hyperium/h3/pull/368) is not included.
 
+The `nix` patch pins an [upstream commit](https://github.com/nix-rust/nix/commit/3eae6d68ec6382fef7b38cd58f97458e59a71af9)
+containing [nix #2821](https://github.com/nix-rust/nix/pull/2821) for iOS socket
+compatibility. Retain it until adopting a registry release containing that fix.
+
 GitHub releases and checkout builds retain these patches. Crates.io publishing
 remains disabled because Cargo removes workspace patches from published packages.
-Remove the patches and publishing guard only after adopting fixed registry
-versions that pass the H3 empty-DATA and idle-stream regressions. To install this
-revision from its checkout:
+Remove the H3 patches only after adopting fixed registry versions that pass the
+H3 empty-DATA and idle-stream regressions. Remove the publishing guard only when
+all workspace patches have been replaced with registry dependencies. To install
+this revision from its checkout:
 
 ```bash
 cargo install --path . --locked
@@ -92,6 +102,25 @@ After updating the H3 pins, run the empty-DATA and idle-stream regressions:
 
 ```sh
 CARGO_BUILD_JOBS=1 cargo test --locked --lib --features ffi h3_ -- --test-threads=1
+```
+
+### WireGuard Kernel Interoperability
+
+Linux kernel peer tests require kernel WireGuard support, network/PID namespaces,
+passwordless sudo, `ip`, `wg`, `unshare`, and `timeout`. They run both Shoes roles
+inside isolated namespaces without changing host routes. Coverage includes
+inner IPv4/IPv6 TCP and UDP, TCP half-close, PSK/no-PSK, MTUs 1280/1408, and VLESS
+chaining in both directions. Kernel handshake and byte counters verify that
+payloads actually cross WireGuard. Outer-chain cases require SOCKS -> VLESS before
+WireGuard, optionally with VLESS after it, and use an unreachable destination that
+only the outer proxy can translate, including IPv6 outer destinations. The 64-case
+matrix is supplemented by carrier outage/recovery, a real two-minute rekey with
+the same TCP flow, concurrent kernel peers, cross-peer source spoofing rejection,
+and wrong-PSK rejection/recovery. Missing prerequisites fail rather than skip.
+Set `SHOES_TEST_WG_BIN` to an absolute path to override `wg`.
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --features privileged-tests --test privileged wireguard_kernel:: -- --test-threads=1
 ```
 
 ## Usage
@@ -170,6 +199,62 @@ See the [examples](./examples) directory for all examples.
           user_id: b85798ef-e9dc-46a4-9a87-8da4499d36d0
           udp_enabled: true
 ```
+
+### Native VLESS Encryption
+
+Generate matching client `encryption` and server `decryption` strings:
+
+```sh
+shoes generate-vless-encryption
+shoes generate-vless-encryption --auth x25519 --auth mlkem768 --mode random
+shoes generate-vless-encryption --auth x25519 --rtt 1rtt --lifetime 0s
+```
+
+The default uses ML-KEM-768 authentication, `native` appearance, and resumable
+sessions with a maximum 600-second ticket lifetime. Repeated `--auth` options
+form an ordered key chain; preserve that order on both ends. Private credentials
+are printed only by the generator and should be treated as passwords.
+
+Put the generated settings on the VLESS protocol itself. Native Vision uses
+`vision: true` at that same level. When wrapping native VLESS in TLS or REALITY,
+leave the **outer** `vision` flag false. Native DIRECT removes only the native
+record encryption; it never bypasses an outer TLS, REALITY, WebSocket, XHTTP, or
+QUIC transport. Existing encryption-disabled Vision configurations keep their
+outer TLS/REALITY flag unchanged. See [the native example](examples/vless_encryption.yaml).
+
+The appearances `native`, `xorpub`, and `random` share the same encrypted protocol.
+`xorpub` masks the key-exchange relay; `random` additionally masks record headers,
+including application TLS headers after Vision DIRECT. Random mode cannot use
+TCP splice. Fresh exchanges combine ephemeral ML-KEM-768 and X25519; Vision
+DIRECT subsequently relies on the application's own TLS, which is not necessarily
+post-quantum. Native encryption works with pinned Xray and Mihomo peers, not
+sing-box. Empty settings and `none` preserve unencrypted VLESS.
+Server `encryption` and client `decryption` are rejected; use the setting for the
+correct side rather than swapping the generated strings.
+
+Native decryption rejects VLESS fallback. Native Vision rejects H2MUX; encrypted
+VLESS without Vision supports H2MUX. Command-2 UDP uses an empty flow, while
+XUDP may use Vision. No failed encrypted connection is silently retried as
+plaintext or automatically replayed to a destination.
+
+Server `encryption_limits` defaults are `max_sessions: 4096`,
+`max_replays: 262144`, and `max_replays_per_session: 65536`. All must be positive.
+Size replay limits for the expected resumption rate times the maximum ticket
+lifetime plus the 120-second retention grace.
+At 75% session/replay occupancy, new connections receive zero-lifetime tickets
+and remain usable through fresh handshakes. At the hard replay limit, the whole
+requesting ticket is invalidated; that resumption fails, and the next independent
+connection performs a fresh handshake. New resumable tickets are issued only
+once both session and replay occupancy fall below 75%. Duplicate resumes never
+repeat destination I/O.
+Ticket state is shared across addresses of one logical listener, not across
+different protocol targets. Reloads reset ticket state; existing streams retain
+their cryptographic state. TLS/REALITY/QUIC resumption is independent.
+
+Rollback requires rolling back configuration as well as the binary: older Shoes
+versions silently ignore native encryption fields. Conversely, a previously
+ignored VLESS-level `vision: true` without native encryption now produces a
+migration error instead of silently disabling Vision.
 
 ### Reality Server
 ```yaml

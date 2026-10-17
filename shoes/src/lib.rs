@@ -66,6 +66,7 @@ mod copy_bidirectional_message;
 mod crypto;
 pub mod dns;
 mod h2mux;
+mod http2;
 mod http_handler;
 mod hysteria2_server;
 mod listener_tasks;
@@ -119,6 +120,11 @@ pub mod logging;
 /// TUN device support for VPN mode.
 #[cfg(unix)]
 pub mod tun;
+
+#[cfg(unix)]
+pub(crate) mod ip_stack;
+#[cfg(unix)]
+pub(crate) mod wireguard;
 
 /// FFI bindings for mobile platforms.
 #[cfg(any(target_os = "android", target_os = "ios", feature = "ffi"))]

@@ -25,12 +25,15 @@ pub mod shadowsocks;
 pub mod tls;
 pub mod transport;
 pub mod tun;
+pub mod vless;
+pub mod wireguard;
 pub mod xhttp;
 
 // Re-export all public types for convenience
 #[allow(unused_imports)]
 pub use client::{
-    ClientConfig, ClientProxyConfig, H2MuxConfig, TlsClientConfig, WebsocketClientConfig,
+    ClientConfig, ClientProxyConfig, H2MuxConfig, HttpVersion, TlsClientConfig,
+    WebsocketClientConfig,
 };
 pub use common::DEFAULT_REALITY_SHORT_ID;
 pub use dns::{DnsConfig, DnsConfigGroup, DnsServerSpec, ExpandedDnsGroup, ExpandedDnsSpec};
