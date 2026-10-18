@@ -173,6 +173,7 @@ async fn graceful_switch_overlaps_and_restores_listeners() {
         .await
         .expect("start A");
     assert!(runtime_dir.join("config-1.yaml").exists());
+    let before_config = common::assert_shared_effective_config(&manager).await;
     tokio::net::TcpStream::connect(("127.0.0.1", mixed))
         .await
         .expect("A holds the mixed port");
@@ -193,6 +194,17 @@ async fn graceful_switch_overlaps_and_restores_listeners() {
     spec_b.config_path = config_b_path;
     let outcome = manager.switch(spec_b.clone()).await.expect("switch");
     assert_eq!(outcome, SwitchOutcome::Graceful);
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert_eq!(
+        before_config.config["mixed-port"].as_u64(),
+        Some(u64::from(mixed))
+    );
+    assert_eq!(
+        after_config.config["mixed-port"].as_u64(),
+        Some(u64::from(mixed))
+    );
+    assert!(!before_config.config.contains_key("x-fake-core"));
     recorder.abort();
 
     // The user-visible overlap guarantee: never Stopped during the switch.
@@ -692,6 +704,7 @@ async fn hard_switch_removes_the_old_runtime_config() {
         .await
         .expect("start A");
     assert!(runtime_dir.join("config-1.yaml").exists());
+    let before_config = common::assert_shared_effective_config(&manager).await;
 
     let outcome = manager
         .switch(common::mihomo_spec(&dir, config_b_path))
@@ -708,6 +721,10 @@ async fn hard_switch_removes_the_old_runtime_config() {
         "old runtime config must be removed after hard switch"
     );
     assert!(runtime_dir.join("config-2.yaml").exists());
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert!(!before_config.config.contains_key("dns"));
+    assert!(after_config.config.contains_key("dns"));
     assert!(matches!(
         manager.status().state,
         CoreState::Running { epoch, .. } if epoch == common::epoch(2)

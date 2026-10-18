@@ -24,6 +24,7 @@ export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-app-update'
+export * from './use-app-update-changelog'
 export * from './use-system-accent-color'
 export * from './use-platform'
 export * from './use-file-logs'
@@ -40,7 +41,7 @@ export {
   unwrapQueryOptions,
 } from './query-options'
 export type { ClashDelayOptions } from './use-clash-proxies'
-export type { ProxyProvider_Serialize as ClashProviderProxies } from '@nyanpasu/rpc/types'
+export type { ProxyProviderSummary_Serialize as ClashProviderProxies } from '@nyanpasu/rpc/types'
 export type { RuleProviderItem as ClashProviderRule } from '@nyanpasu/rpc/types'
 export {
   acceptConfigurationStatus,

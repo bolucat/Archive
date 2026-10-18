@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     Epoch, RuntimeFeature,
     capability::ResolvedFeatures,
@@ -417,7 +419,7 @@ impl CoreManager {
             capabilities: resolved.capabilities,
             runtime_features: resolved.runtime,
             source_document: snapshot.document().clone(),
-            effective_document: prepared.document,
+            effective_document: Arc::new(prepared.document),
         })
     }
 
@@ -484,7 +486,7 @@ impl CoreManager {
                 capabilities: resolved.capabilities,
                 runtime_features: resolved.runtime,
                 source_document: snapshot.document().clone(),
-                effective_document: full.document,
+                effective_document: Arc::new(full.document),
             },
             full_staged,
             restoration,

@@ -134,6 +134,7 @@ async fn apply_noop_keeps_the_current_revision_and_process() {
     manager.start(spec(&dir, first)).await.expect("start");
     let before_process = running(&manager);
     let before_revision = manager.status().revision.expect("revision");
+    let before_config = common::assert_shared_effective_config(&manager).await;
 
     let outcome = manager
         .apply_config(spec(&dir, reordered), Some(before_revision.id()))
@@ -143,6 +144,8 @@ async fn apply_noop_keeps_the_current_revision_and_process() {
     assert!(matches!(outcome, ApplyOutcome::Noop { .. }));
     assert_eq!(running(&manager), before_process);
     assert_eq!(manager.status().revision, Some(before_revision));
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(Arc::ptr_eq(&before_config.config, &after_config.config));
     manager.shutdown().await.expect("shutdown");
 }
 
@@ -159,6 +162,7 @@ async fn apply_patch_updates_the_revision_without_restarting() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let before_config = common::assert_shared_effective_config(&manager).await;
 
     let outcome = manager
         .apply_config(spec(&dir, desired), None)
@@ -170,6 +174,10 @@ async fn apply_patch_updates_the_revision_without_restarting() {
     };
     assert_eq!(running(&manager), before);
     assert_eq!(revision.generation, 2);
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert!(!before_config.config.contains_key("allow-lan"));
+    assert_eq!(after_config.config["allow-lan"].as_bool(), Some(true));
     manager.shutdown().await.expect("shutdown");
 }
 
@@ -247,6 +255,7 @@ async fn installed_apply_with_parent_sync_failure_reports_real_outcome() {
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
     let api_before = manager.api_connection().await.expect("running API");
+    let before_config = common::assert_shared_effective_config(&manager).await;
     assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
     manager.inject_runtime_parent_sync_failure_once_for_test();
 
@@ -263,6 +272,10 @@ async fn installed_apply_with_parent_sync_failure_reports_real_outcome() {
     assert_eq!(running(&manager), before);
     let api_after = manager.api_connection().await.expect("applied API");
     assert_eq!(api_before.instance_id, api_after.instance_id);
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert!(!before_config.config.contains_key("allow-lan"));
+    assert_eq!(after_config.config["allow-lan"].as_bool(), Some(true));
     assert_eq!(
         running(&manager).0,
         before.0,
@@ -289,6 +302,7 @@ async fn apply_reload_uses_put_without_restarting() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let before_config = common::assert_shared_effective_config(&manager).await;
     let api_before = manager.api_connection().await.expect("running API");
     assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
 
@@ -304,6 +318,10 @@ async fn apply_reload_uses_put_without_restarting() {
     assert_eq!(running(&manager), before);
     let api_after = manager.api_connection().await.expect("applied API");
     assert_eq!(api_before.instance_id, api_after.instance_id);
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert_eq!(before_config.config["rules"][0], "MATCH,DIRECT");
+    assert_eq!(after_config.config["rules"][0], "MATCH,REJECT");
     assert_eq!(
         running(&manager).0,
         before.0,
@@ -438,6 +456,7 @@ async fn failed_desired_restart_restores_and_restarts_the_old_revision() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let old_revision = manager.status().revision.expect("old revision");
+    let before_config = common::assert_shared_effective_config(&manager).await;
 
     let outcome = manager
         .apply_config(spec(&dir, desired), None)
@@ -462,6 +481,9 @@ async fn failed_desired_restart_restores_and_restarts_the_old_revision() {
         Some(true)
     );
     assert!(matches!(manager.status().state, CoreState::Running { .. }));
+    let restored_config = common::assert_shared_effective_config(&manager).await;
+    assert!(Arc::ptr_eq(&before_config.config, &restored_config.config));
+    assert_ne!(before_config.instance_id, restored_config.instance_id);
     manager.shutdown().await.expect("shutdown");
 }
 
@@ -576,6 +598,7 @@ async fn revision_conflict_has_zero_process_file_and_status_side_effects() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before_status = manager.status();
+    let before_config = common::assert_shared_effective_config(&manager).await;
     let before_runtime = std::fs::read(
         &before_status
             .revision
@@ -593,6 +616,8 @@ async fn revision_conflict_has_zero_process_file_and_status_side_effects() {
         .expect_err("CAS conflict");
 
     assert!(matches!(error, Error::RevisionConflict { .. }));
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(Arc::ptr_eq(&before_config.config, &after_config.config));
     assert_eq!(manager.status().revision, before_status.revision);
     assert_eq!(manager.status().state, before_status.state);
     assert_eq!(
@@ -652,6 +677,7 @@ async fn patch_success_with_get_mismatch_restarts_desired() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let before_config = common::assert_shared_effective_config(&manager).await;
     let api_before = manager.api_connection().await.expect("running API");
     assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
 
@@ -664,6 +690,10 @@ async fn patch_success_with_get_mismatch_restarts_desired() {
     assert_ne!(running(&manager).1, before.1);
     let api_after = manager.api_connection().await.expect("applied API");
     assert_ne!(api_before.instance_id, api_after.instance_id);
+    let after_config = common::assert_shared_effective_config(&manager).await;
+    assert!(!Arc::ptr_eq(&before_config.config, &after_config.config));
+    assert!(!before_config.config.contains_key("allow-lan"));
+    assert_eq!(after_config.config["allow-lan"].as_bool(), Some(true));
     assert_eq!(
         running(&manager).0,
         before.0,

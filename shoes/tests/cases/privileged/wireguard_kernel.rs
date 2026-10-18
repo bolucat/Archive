@@ -25,6 +25,13 @@ use tokio::{
 
 const TCP_BYTES: usize = 512_007;
 const PARENT_NETNS: &str = "SHOES_TEST_WG_PARENT_NETNS";
+const PARENT_MOUNTNS: &str = "SHOES_TEST_WG_PARENT_MOUNTNS";
+
+#[path = "wireguard_kernel/network.rs"]
+mod network;
+
+#[path = "wireguard_kernel/resolution.rs"]
+mod resolution;
 
 fn run(program: impl AsRef<OsStr>, args: &[&str]) -> io::Result<String> {
     let output = Command::new(program.as_ref()).args(args).output()?;
@@ -67,17 +74,32 @@ fn isolated_test(name: &str, cases: impl Future<Output = io::Result<()>>) -> io:
     let output = Command::new("sudo")
         .args(["-n", "-E", "--"])
         .args(["timeout", "--kill-after=5s", "210s"])
-        .args(["unshare", "--net", "--pid", "--fork", "--kill-child", "--"])
+        .args([
+            "unshare",
+            "--net",
+            "--mount",
+            "--propagation",
+            "private",
+            "--pid",
+            "--fork",
+            "--kill-child",
+            "--",
+        ])
         .arg("env")
         .arg(format!("{PARENT_NETNS}={}", namespace.display()))
+        .arg(format!(
+            "{PARENT_MOUNTNS}={}",
+            std::fs::read_link("/proc/self/ns/mnt")?.display()
+        ))
         .arg(std::env::current_exe()?)
         .args(["--exact", name, "--nocapture", "--test-threads=1"])
         .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        output.status.success(),
+        output.status.success() && stdout.contains("test result: ok. 1 passed;"),
         "isolated kernel WireGuard test failed: {}\n{}\n{}",
         output.status,
-        String::from_utf8_lossy(&output.stdout),
+        stdout,
         String::from_utf8_lossy(&output.stderr),
     );
     Ok(())
@@ -313,12 +335,22 @@ async fn run_case(
     } else {
         config::client(kernel.port()?)
     };
-    endpoint["mtu"] = json!(mtu);
-    if !psk {
-        endpoint["peers"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("pre_shared_key");
+    if shoes_server {
+        endpoint["protocol"]["mtu"] = json!(mtu);
+        if !psk {
+            endpoint["protocol"]["peers"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("pre_shared_key");
+        }
+    } else {
+        endpoint["client_proxies"][0]["protocol"]["mtu"] = json!(mtu);
+        if !psk {
+            endpoint["client_proxies"][0]["protocol"]
+                .as_object_mut()
+                .unwrap()
+                .remove("pre_shared_key");
+        }
     }
     let kernel_server_ip: IpAddr = if ipv6 { "fd77::1" } else { "10.77.0.1" }.parse().unwrap();
     // Only the VLESS server can translate this unroutable destination to the echo target.
@@ -328,6 +360,9 @@ async fn run_case(
     let vless_protocol = config::vless_protocol();
     // The SOCKS listener also provides readiness for inbound-only exchanges.
     let mut socks = config::socks(socks_port);
+    if shoes_server {
+        socks["rules"] = json!("allow-all-direct");
+    }
     if chain {
         let proxy_ip = if shoes_server {
             echo.tcp().ip()
@@ -339,7 +374,7 @@ async fn run_case(
             "protocol": vless_protocol,
         });
         if shoes_server {
-            for rule in endpoint["inbound"]["rules"].as_array_mut().unwrap() {
+            for rule in endpoint["rules"].as_array_mut().unwrap() {
                 rule["client_chain"] = json!([hop]);
                 rule["override_address"] = json!(SocketAddr::new(chained_target_ip, 0).to_string());
             }
@@ -368,11 +403,18 @@ async fn run_case(
         let outer_ip = if ipv6 { "2001:db8::200" } else { "192.0.2.200" };
         let family = if ipv6 { "-6" } else { "-4" };
         assert!(run("ip", &[family, "route", "get", outer_ip]).is_err());
-        endpoint.as_object_mut().unwrap().remove("listen");
-        endpoint["peers"][0]["endpoint"] =
-            json!(SocketAddr::new(outer_ip.parse().unwrap(), kernel.port()?).to_string());
-        endpoint["peers"][0]["persistent_keepalive"] = json!(1);
-        endpoint["outer_client_chain"] = json!([
+        let peer_address = SocketAddr::new(outer_ip.parse().unwrap(), kernel.port()?).to_string();
+        let protocol = if shoes_server {
+            endpoint.as_object_mut().unwrap().remove("address");
+            endpoint["protocol"]["peers"][0]["endpoint"] = json!(peer_address);
+            endpoint["protocol"]["peers"][0]["persistent_keepalive"] = json!(1);
+            &mut endpoint["protocol"]
+        } else {
+            endpoint["client_proxies"][0]["address"] = json!(peer_address);
+            endpoint["client_proxies"][0]["protocol"]["persistent_keepalive"] = json!(1);
+            &mut endpoint["client_proxies"][0]["protocol"]
+        };
+        protocol["peer_client_chain"] = json!([
             {"address": format!("127.0.0.1:{outer_socks_port}"), "protocol": {"type": "socks"}},
             {"address": format!("127.0.0.1:{outer_vless_port}"), "protocol": vless_protocol},
         ]);
@@ -482,11 +524,12 @@ fn kernel_reset_half_open_does_not_capture_the_next_connection() -> io::Result<(
                 let mut ports = PortHelper::new();
                 let (_, entry) = ports.get_localhost_listener_port();
                 let mut endpoint = config::server(port);
-                endpoint["resource_limits"] = json!({"max_tcp_connections": 1});
+                endpoint["protocol"]["resource_limits"] = json!({"max_tcp_connections": 1});
+                let mut socks = config::socks(entry);
+                socks["rules"] = json!("allow-all-direct");
                 drop(reservation);
-                let _shoes = start_shoes_server(
-                    &serde_yaml::to_string(&json!([endpoint, config::socks(entry)])).unwrap(),
-                )?;
+                let _shoes =
+                    start_shoes_server(&serde_yaml::to_string(&json!([endpoint, socks])).unwrap())?;
                 ports.wait_for_all_ports().await?;
                 let source_port = {
                     let reservation = std::net::TcpListener::bind("10.77.0.2:0")?;
@@ -574,10 +617,10 @@ fn detoured_client_configs(
     }])).unwrap();
     let kernel_port = kernel.port()?;
     let mut client = config::client(kernel_port);
-    client["mtu"] = json!(1280);
-    client["peers"][0]["endpoint"] = json!(format!("{peer_host}:{kernel_port}"));
-    client["peers"][0]["persistent_keepalive"] = json!(1);
-    client["outer_client_chain"] =
+    client["client_proxies"][0]["protocol"]["mtu"] = json!(1280);
+    client["client_proxies"][0]["address"] = json!(format!("{peer_host}:{kernel_port}"));
+    client["client_proxies"][0]["protocol"]["persistent_keepalive"] = json!(1);
+    client["client_proxies"][0]["protocol"]["peer_client_chain"] =
         json!([{"address": format!("127.0.0.1:{outer_port}"), "protocol": protocol}]);
     let client_config = serde_yaml::to_string(&json!([client, config::socks(socks_port)])).unwrap();
     Ok((client_config, outer_config))
@@ -602,9 +645,13 @@ async fn run_recovery_case() -> io::Result<()> {
     stream.read_exact(&mut bytes).await?;
     assert_eq!(&bytes, b"before outage");
 
-    drop(outer);
     let udp_target = SocketAddr::new("10.77.0.1".parse().unwrap(), echo.udp().port());
     let udp = Socks5UdpAssociation::connect("127.0.0.1", socks_port).await?;
+    assert_eq!(
+        udp.send_to(udp_target, b"before outage").await?,
+        b"before outage"
+    );
+    drop(outer);
     for _ in 0..8 {
         assert!(
             timeout(
@@ -615,13 +662,11 @@ async fn run_recovery_case() -> io::Result<()> {
             .is_err()
         );
     }
-    drop(udp);
     let _outer = start_shoes_server(&outer_config)?;
     let before = kernel.counters()?;
     // TCP retransmission and a fresh outer association recover the existing inner flow.
     timeout(Duration::from_secs(20), bulk_echo(stream)).await??;
     kernel.assert_transfer(before, TCP_BYTES)?;
-    let udp = Socks5UdpAssociation::connect("127.0.0.1", socks_port).await?;
     assert_eq!(
         udp.send_to(udp_target, b"after recovery").await?,
         b"after recovery"
@@ -630,9 +675,9 @@ async fn run_recovery_case() -> io::Result<()> {
 }
 
 #[test]
-fn kernel_detour_recovers_existing_tcp_without_direct_fallback() -> io::Result<()> {
+fn kernel_detour_recovers_existing_tcp_and_udp_without_direct_fallback() -> io::Result<()> {
     isolated_test(
-        "wireguard_kernel::kernel_detour_recovers_existing_tcp_without_direct_fallback",
+        "wireguard_kernel::kernel_detour_recovers_existing_tcp_and_udp_without_direct_fallback",
         run_recovery_case(),
     )
 }
@@ -652,6 +697,12 @@ async fn run_rekey_case() -> io::Result<()> {
     let mut stream = connect(socks_port, target).await?;
     kernel.wait_for_handshake().await?;
     let first_handshake = kernel.handshake()?;
+    let udp = Socks5UdpAssociation::connect("127.0.0.1", socks_port).await?;
+    let udp_target = SocketAddr::new(target.ip(), echo.udp().port());
+    assert_eq!(
+        udp.send_to(udp_target, b"before rekey").await?,
+        b"before rekey"
+    );
     let started = tokio::time::Instant::now();
     timeout(Duration::from_secs(150), async {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -663,6 +714,7 @@ async fn run_rekey_case() -> io::Result<()> {
             let mut response = [0; 8];
             stream.read_exact(&mut response).await?;
             assert_eq!(response, payload);
+            assert_eq!(udp.send_to(udp_target, &payload).await?, payload);
             if kernel.handshake()? > first_handshake {
                 assert!(
                     started.elapsed() >= Duration::from_secs(100),
@@ -677,9 +729,10 @@ async fn run_rekey_case() -> io::Result<()> {
     let before = kernel.counters()?;
     timeout(Duration::from_secs(20), bulk_echo(stream)).await??;
     kernel.assert_transfer(before, TCP_BYTES)?;
-    let udp = Socks5UdpAssociation::connect("127.0.0.1", socks_port).await?;
-    let target = SocketAddr::new(target.ip(), echo.udp().port());
-    assert_eq!(udp.send_to(target, b"after rekey").await?, b"after rekey");
+    assert_eq!(
+        udp.send_to(udp_target, b"after rekey").await?,
+        b"after rekey"
+    );
     Ok(())
 }
 
@@ -748,11 +801,11 @@ async fn run_multi_peer_case() -> io::Result<()> {
     let (_, outer_port) = ports.get_localhost_listener_port();
     let protocol = config::vless_protocol();
     let mut endpoint = config::server(0);
-    endpoint.as_object_mut().unwrap().remove("listen");
-    endpoint["mtu"] = json!(1280);
-    endpoint["outer_client_chain"] =
+    endpoint.as_object_mut().unwrap().remove("address");
+    endpoint["protocol"]["mtu"] = json!(1280);
+    endpoint["protocol"]["peer_client_chain"] =
         json!([{"address": format!("127.0.0.1:{outer_port}"), "protocol": protocol}]);
-    endpoint["peers"] = json!([
+    endpoint["protocol"]["peers"] = json!([
         {"public_key": config::public(42), "pre_shared_key": config::key(43),
          "allowed_ips": ["10.77.0.2/32", "fd77::2/128"], "persistent_keepalive": 1,
          "endpoint": format!("192.0.2.200:{}", first.port()?)},
@@ -760,7 +813,7 @@ async fn run_multi_peer_case() -> io::Result<()> {
          "allowed_ips": ["10.77.0.3/32", "fd77::3/128"], "persistent_keepalive": 1,
          "endpoint": format!("192.0.2.200:{}", second.port()?)},
     ]);
-    endpoint["inbound"]["rules"][0]["masks"] = json!(["fd88::1/128", "fd88::2/128"]);
+    endpoint["rules"][0]["masks"] = json!(["fd88::1/128", "fd88::2/128"]);
     let outer = json!({
         "address": format!("0.0.0.0:{outer_port}"), "protocol": protocol,
         "rules": [{"masks": "192.0.2.200/32", "action": "allow", "override_address": "127.0.0.1:0"}],

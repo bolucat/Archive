@@ -120,9 +120,10 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
-      typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
-        __RPC_INVOKE('clash_api_get_providers_proxies'),
-      ),
+      typedError<
+        { [key in ProviderName]: ProxyProviderSummary_Serialize },
+        IpcError
+      >(__RPC_INVOKE('clash_api_get_providers_proxies')),
     fetchLatestCoreVersions: () =>
       typedError<ManifestVersionLatest, IpcError>(
         __RPC_INVOKE('fetch_latest_core_versions'),
@@ -184,6 +185,13 @@ export function createRpcClient(
       typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
+    /**  The statistic widget's own icon for `mode`, or the bundled one. */
+    getWidgetIcon: (mode: TrayIcon) =>
+      typedError<IconData, IpcError>(__RPC_INVOKE('get_widget_icon', { mode })),
+    isWidgetIconSet: (mode: TrayIcon) =>
+      typedError<boolean, IpcError>(
+        __RPC_INVOKE('is_widget_icon_set', { mode }),
+      ),
     getCoreStatus: () =>
       typedError<CoreStatusInfo, IpcError>(__RPC_INVOKE('get_core_status')),
     urlDelayTest: (url: string, expectedStatus: number) =>
@@ -272,6 +280,10 @@ export function createRpcClient(
     getAppUpdateState: () =>
       typedError<AppUpdateSnapshot, IpcError>(
         __RPC_INVOKE('get_app_update_state'),
+      ),
+    getAppUpdateChangelog: (from: string, to: string) =>
+      typedError<AppUpdateChangelog, IpcError>(
+        __RPC_INVOKE('get_app_update_changelog', { from, to }),
       ),
     getReleaseChannel: () =>
       typedError<ReleaseChannelInfo, IpcError>(
@@ -434,6 +446,10 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
       ),
+    setWidgetIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('set_widget_icon_from_bytes', { mode, bytesBase64 }),
+      ),
     /**
      *  Rebuild-only command: there is no prior state commit, so a failure is a
      *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -564,6 +580,14 @@ export function createRpcClient(
       typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
     setTrayIcon: (mode: TrayIcon, path: string | null) =>
       typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
+    /**
+     *  Sets the statistic widget's own icon for `mode` from a file, or resets it
+     *  to the bundled one when `path` is `None`.
+     */
+    setWidgetIcon: (mode: TrayIcon, path: string | null) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('set_widget_icon', { mode, path }),
+      ),
     openThat: (path: string) =>
       typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
     setStorageItem: (key: string, value: string) =>
@@ -666,6 +690,22 @@ export function createRpcClient(
 export type RpcClient = ReturnType<typeof createRpcClient>
 
 /* Types */
+export type AppUpdateChangelog = {
+  /**  Newest first. */
+  entries: AppUpdateChangelogEntry[]
+  /**  `None` when either version is a nightly build, which has no tag. */
+  compare_url: string | null
+}
+
+export type AppUpdateChangelogEntry = {
+  version: string
+  date: string | null
+  body: string
+  source: AppUpdateChangelogSource
+}
+
+export type AppUpdateChangelogSource = 'changelog' | 'release'
+
 export type AppUpdatePhase =
   | 'idle'
   | 'checking'
@@ -1985,6 +2025,7 @@ export type EffectKind =
   | 'proxy_guard'
   | 'hotkeys'
   | 'widget'
+  | 'widget_logo'
   | 'tray'
 
 export type EffectsError =
@@ -2602,6 +2643,23 @@ export type NativeDialogKind = 'info' | 'warning' | 'error'
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
 
+/**  Which logo the statistic widget shows. */
+export type NetworkStatisticWidgetLogo = {
+  /**
+   *  Switch between the normal, TUN and system proxy icons with the proxy
+   *  state, as the tray does. Otherwise the normal icon stays.
+   */
+  follow_state?: boolean
+  source?: NetworkStatisticWidgetLogoSource
+}
+
+/**  Where the statistic widget's icons come from. */
+export type NetworkStatisticWidgetLogoSource =
+  /**  The tray's icons, including the ones the user set for the tray. */
+  | 'tray'
+  /**  A set of the widget's own, which leaves the tray alone. */
+  | 'widget'
+
 export type NewProfileRequest =
   NewProfileRequest_Serialize | NewProfileRequest_Deserialize
 
@@ -2656,6 +2714,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       tray_menu_mode?: TrayMenuMode | null
       window_close?: WindowCloseSettingsPatch_Deserialize
       network_statistic_widget?: NetworkStatisticWidgetConfig | null
+      network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
       traffic_retention?: TrafficRetention | null
       enable_local_ip_probe?: boolean | null
       pac_url?: string | null
@@ -2713,6 +2772,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   tray_menu_mode?: TrayMenuMode | null
   window_close: WindowCloseSettingsPatch_Serialize
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
   traffic_retention?: TrafficRetention | null
   enable_local_ip_probe?: boolean | null
   pac_url?: string | null
@@ -2797,6 +2857,8 @@ export type NyanpasuAppConfig_Deserialize = {
   window_close?: WindowCloseSettings
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  Which logo the network statistic widget shows */
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention?: TrafficRetention
   /**  Allow public IP probes to locate LAN/local traffic sources. */
@@ -2900,6 +2962,8 @@ export type NyanpasuAppConfig_Serialize = {
   window_close: WindowCloseSettings
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  Which logo the network statistic widget shows */
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention: TrafficRetention
   /**  Allow public IP probes to locate LAN/local traffic sources. */
@@ -3718,28 +3782,28 @@ export type ProxyGroupKind =
 
 export type ProxyName = string
 
-export type ProxyProvider = ProxyProvider_Serialize | ProxyProvider_Deserialize
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary =
+  ProxyProviderSummary_Serialize | ProxyProviderSummary_Deserialize
 
-export type ProxyProvider_Deserialize = {
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary_Deserialize = {
   name: ProviderName
   type: ProviderType
   vehicleType: VehicleType
-  proxies: Proxy_Deserialize[]
-  testUrl: string | null
-  expectedStatus: string | null
-  updatedAt?: string | null
-  subscriptionInfo?: SubscriptionInfo_Deserialize | null
+  updatedAt: string | null
+  subscriptionInfo: SubscriptionInfo_Deserialize | null
+  proxyCount: number
 }
 
-export type ProxyProvider_Serialize = {
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary_Serialize = {
   name: ProviderName
   type: ProviderType
   vehicleType: VehicleType
-  proxies: Proxy_Serialize[]
-  testUrl: string | null
-  expectedStatus: string | null
   updatedAt: string | null
   subscriptionInfo: SubscriptionInfo_Serialize | null
+  proxyCount: number
 }
 
 /**  Common proxy fields with optional core-specific and group metadata. */

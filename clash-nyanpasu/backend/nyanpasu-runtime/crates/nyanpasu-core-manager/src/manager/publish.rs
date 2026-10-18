@@ -48,7 +48,7 @@ impl Inner {
                 .send_replace(Some(crate::EffectiveConfigSnapshot {
                     instance_id,
                     revision: plan.revision.clone(),
-                    config: std::sync::Arc::new(plan.effective_document.clone()),
+                    config: std::sync::Arc::clone(&plan.effective_document),
                 }));
         }
         let health = snapshot.health;

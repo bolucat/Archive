@@ -199,7 +199,7 @@ struct EpochPlan {
     capabilities: EnumSet<Feature>,
     runtime_features: EnumSet<RuntimeFeature>,
     source_document: Mapping,
-    effective_document: Mapping,
+    effective_document: Arc<Mapping>,
 }
 
 impl EpochPlan {
@@ -581,7 +581,7 @@ impl CoreManager {
         Ok(())
     }
 
-    /// Reads identity and the full committed document under one transaction lock.
+    /// Shares identity and the immutable committed document under one transaction lock.
     pub async fn effective_config(&self) -> Option<crate::EffectiveConfigSnapshot> {
         let ctrl = self.inner.ctrl.lock().await;
         let active = ctrl.current.as_ref()?;
@@ -592,7 +592,7 @@ impl CoreManager {
         Some(crate::EffectiveConfigSnapshot {
             instance_id: instance.instance_id?,
             revision: active.plan.revision.clone(),
-            config: Arc::new(active.plan.effective_document.clone()),
+            config: Arc::clone(&active.plan.effective_document),
         })
     }
 

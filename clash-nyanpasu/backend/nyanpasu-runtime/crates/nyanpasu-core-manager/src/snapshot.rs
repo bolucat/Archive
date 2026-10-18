@@ -11,6 +11,7 @@ use crate::ConfigRevision;
 pub struct EffectiveConfigSnapshot {
     pub instance_id: uuid::Uuid,
     pub revision: ConfigRevision,
+    /// Shared with the immutable epoch plan and its commit notifications.
     pub config: Arc<Mapping>,
 }
 

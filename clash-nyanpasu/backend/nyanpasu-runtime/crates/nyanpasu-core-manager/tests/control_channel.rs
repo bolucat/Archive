@@ -69,6 +69,7 @@ async fn channel_matrix(core: Option<&common::real::RealCore>) {
     let first = envelope(LocalIpcPolicy::Prefer, true);
     control.submit(first.clone()).unwrap().wait().await.unwrap();
     let applied = control.effective_config().await.unwrap();
+    let repeated = control.effective_config().await.unwrap();
     assert!(matches!(
         control.status().controller,
         Some(Host::UnixSocket(_) | Host::NamedPipe(_))
@@ -142,6 +143,9 @@ async fn channel_matrix(core: Option<&common::real::RealCore>) {
     assert!(!http.config.contains_key("external-controller-pipe"));
     control.shutdown().await.unwrap();
     assert!(control.effective_config().await.is_none());
+    assert!(Arc::ptr_eq(&applied.config, &repeated.config));
+    assert!(Arc::ptr_eq(&applied.config, &reported.config));
+    assert!(applied.config.contains_key("external-controller"));
     #[cfg(unix)]
     assert!(!std::path::Path::new(&first_socket).exists());
 }

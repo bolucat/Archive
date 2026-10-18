@@ -8,8 +8,8 @@ use std::{sync::Arc, time::Duration};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_core_manager::{
-    CoreKind, CoreSpec, Epoch, HealthPolicy, HealthPolicySpec, HealthThresholds, InstanceOptions,
-    InstanceSpec,
+    CoreKind, CoreManager, CoreSpec, EffectiveConfigSnapshot, Epoch, HealthPolicy,
+    HealthPolicySpec, HealthThresholds, InstanceOptions, InstanceSpec,
     state::{HealthState, InstanceState, InstanceStatus},
 };
 use nyanpasu_utils::process::{Backoff, BackoffRange, RestartPolicy};
@@ -84,6 +84,22 @@ pub fn utf8_tempdir() -> (tempfile::TempDir, Utf8PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf8 tempdir");
     (dir, path)
+}
+
+pub async fn assert_shared_effective_config(manager: &CoreManager) -> EffectiveConfigSnapshot {
+    let queried = manager.effective_config().await.expect("running config");
+    let repeated = manager.effective_config().await.expect("repeated config");
+    let published = manager
+        .subscribe_config_commits()
+        .latest()
+        .expect("published config");
+    assert_eq!(queried.instance_id, published.instance_id);
+    assert_eq!(queried.revision, published.revision);
+    assert_eq!(queried.instance_id, repeated.instance_id);
+    assert_eq!(queried.revision, repeated.revision);
+    assert!(Arc::ptr_eq(&queried.config, &repeated.config));
+    assert!(Arc::ptr_eq(&queried.config, &published.config));
+    queried
 }
 
 pub async fn wait_for_state(

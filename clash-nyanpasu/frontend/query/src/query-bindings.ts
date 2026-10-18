@@ -243,6 +243,16 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['isTrayIconSet', ...args],
         queryFn: () => commands.isTrayIconSet(...args),
       }),
+    getWidgetIcon: (...args: Parameters<typeof commands.getWidgetIcon>) =>
+      queryOptions({
+        queryKey: ['getWidgetIcon', ...args],
+        queryFn: () => commands.getWidgetIcon(...args),
+      }),
+    isWidgetIconSet: (...args: Parameters<typeof commands.isWidgetIconSet>) =>
+      queryOptions({
+        queryKey: ['isWidgetIconSet', ...args],
+        queryFn: () => commands.isWidgetIconSet(...args),
+      }),
     getCoreStatus: (...args: Parameters<typeof commands.getCoreStatus>) =>
       queryOptions({
         queryKey: ['getCoreStatus', ...args],
@@ -347,6 +357,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getAppUpdateState', ...args],
         queryFn: () => commands.getAppUpdateState(...args),
+      }),
+    getAppUpdateChangelog: (
+      ...args: Parameters<typeof commands.getAppUpdateChangelog>
+    ) =>
+      queryOptions({
+        queryKey: ['getAppUpdateChangelog', ...args],
+        queryFn: () => commands.getAppUpdateChangelog(...args),
       }),
     getReleaseChannel: (
       ...args: Parameters<typeof commands.getReleaseChannel>
@@ -583,6 +600,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.setTrayIconFromBytes>) =>
         commands.setTrayIconFromBytes(...input),
     }),
+    setWidgetIconFromBytes: mutationOptions({
+      mutationKey: ['setWidgetIconFromBytes'],
+      mutationFn: (input: Parameters<typeof commands.setWidgetIconFromBytes>) =>
+        commands.setWidgetIconFromBytes(...input),
+    }),
     enhanceProfiles: mutationOptions({
       mutationKey: ['enhanceProfiles'],
       mutationFn: (input: Parameters<typeof commands.enhanceProfiles>) =>
@@ -725,6 +747,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setTrayIcon'],
       mutationFn: (input: Parameters<typeof commands.setTrayIcon>) =>
         commands.setTrayIcon(...input),
+    }),
+    setWidgetIcon: mutationOptions({
+      mutationKey: ['setWidgetIcon'],
+      mutationFn: (input: Parameters<typeof commands.setWidgetIcon>) =>
+        commands.setWidgetIcon(...input),
     }),
     openThat: mutationOptions({
       mutationKey: ['openThat'],
