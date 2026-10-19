@@ -107,11 +107,15 @@ pub trait AsyncReadSourcedMessage {
 }
 
 pub trait AsyncWriteSourcedMessage {
+    fn supports_hostname_source(&self) -> bool {
+        true
+    }
+
     fn poll_write_sourced_message(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-        source: &SocketAddr,
+        source: &NetLocation,
     ) -> Poll<std::io::Result<()>>;
 }
 
@@ -124,7 +128,7 @@ pub trait AsyncReadSessionMessage {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<(MessageSessionId, SocketAddr)>>;
+    ) -> Poll<std::io::Result<(MessageSessionId, NetLocation)>>;
 
     fn take_closed_session(&mut self) -> Option<MessageSessionId> {
         None
@@ -139,7 +143,7 @@ pub trait AsyncWriteSessionMessage {
         cx: &mut Context<'_>,
         session_id: MessageSessionId,
         buf: &[u8],
-        target: &SocketAddr,
+        target: &NetLocation,
     ) -> Poll<std::io::Result<()>>;
 }
 
@@ -484,22 +488,30 @@ impl<T: ?Sized + AsyncReadSourcedMessage + Unpin> AsyncReadSourcedMessage for &m
 }
 
 impl<T: ?Sized + AsyncWriteSourcedMessage + Unpin> AsyncWriteSourcedMessage for Box<T> {
+    fn supports_hostname_source(&self) -> bool {
+        (**self).supports_hostname_source()
+    }
+
     fn poll_write_sourced_message(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-        source: &SocketAddr,
+        source: &NetLocation,
     ) -> Poll<std::io::Result<()>> {
         Pin::new(&mut **self).poll_write_sourced_message(cx, buf, source)
     }
 }
 
 impl<T: ?Sized + AsyncWriteSourcedMessage + Unpin> AsyncWriteSourcedMessage for &mut T {
+    fn supports_hostname_source(&self) -> bool {
+        (**self).supports_hostname_source()
+    }
+
     fn poll_write_sourced_message(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-        source: &SocketAddr,
+        source: &NetLocation,
     ) -> Poll<std::io::Result<()>> {
         Pin::new(&mut **self).poll_write_sourced_message(cx, buf, source)
     }
@@ -540,7 +552,7 @@ impl<T: ?Sized + AsyncReadSessionMessage + Unpin> AsyncReadSessionMessage for Bo
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<(MessageSessionId, SocketAddr)>> {
+    ) -> Poll<std::io::Result<(MessageSessionId, NetLocation)>> {
         Pin::new(&mut **self).poll_read_session_message(cx, buf)
     }
 
@@ -554,7 +566,7 @@ impl<T: ?Sized + AsyncReadSessionMessage + Unpin> AsyncReadSessionMessage for &m
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<(MessageSessionId, SocketAddr)>> {
+    ) -> Poll<std::io::Result<(MessageSessionId, NetLocation)>> {
         Pin::new(&mut **self).poll_read_session_message(cx, buf)
     }
 
@@ -569,7 +581,7 @@ impl<T: ?Sized + AsyncWriteSessionMessage + Unpin> AsyncWriteSessionMessage for 
         cx: &mut Context<'_>,
         session_id: MessageSessionId,
         buf: &[u8],
-        target: &SocketAddr,
+        target: &NetLocation,
     ) -> Poll<std::io::Result<()>> {
         Pin::new(&mut **self).poll_write_session_message(cx, session_id, buf, target)
     }
@@ -581,7 +593,7 @@ impl<T: ?Sized + AsyncWriteSessionMessage + Unpin> AsyncWriteSessionMessage for 
         cx: &mut Context<'_>,
         session_id: MessageSessionId,
         buf: &[u8],
-        target: &SocketAddr,
+        target: &NetLocation,
     ) -> Poll<std::io::Result<()>> {
         Pin::new(&mut **self).poll_write_session_message(cx, session_id, buf, target)
     }
@@ -589,3 +601,81 @@ impl<T: ?Sized + AsyncWriteSessionMessage + Unpin> AsyncWriteSessionMessage for 
 
 impl<T: ?Sized + AsyncSessionMessageStream + Unpin> AsyncSessionMessageStream for Box<T> {}
 impl<T: ?Sized + AsyncSessionMessageStream + Unpin> AsyncSessionMessageStream for &mut T {}
+
+#[cfg(test)]
+pub mod test_streams {
+    use super::*;
+    use tokio::io::DuplexStream;
+
+    /// Sends written bytes only when flushed, like transports that buffer writes.
+    pub struct FlushGatedStream {
+        stream: DuplexStream,
+        pending: Vec<u8>,
+    }
+
+    impl FlushGatedStream {
+        pub fn new(stream: DuplexStream) -> Self {
+            Self {
+                stream,
+                pending: Vec::new(),
+            }
+        }
+    }
+
+    impl AsyncRead for FlushGatedStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.stream).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for FlushGatedStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.pending.extend_from_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            let this = &mut *self;
+            while !this.pending.is_empty() {
+                let written =
+                    std::task::ready!(Pin::new(&mut this.stream).poll_write(cx, &this.pending))?;
+                if written == 0 {
+                    return Poll::Ready(Err(std::io::ErrorKind::WriteZero.into()));
+                }
+                this.pending.drain(..written);
+            }
+            Pin::new(&mut this.stream).poll_flush(cx)
+        }
+
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            std::task::ready!(self.as_mut().poll_flush(cx))?;
+            Pin::new(&mut self.stream).poll_shutdown(cx)
+        }
+    }
+
+    impl AsyncPing for FlushGatedStream {
+        fn supports_ping(&self) -> bool {
+            false
+        }
+
+        fn poll_write_ping(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+        ) -> Poll<std::io::Result<bool>> {
+            Poll::Ready(Ok(false))
+        }
+    }
+
+    impl AsyncStream for FlushGatedStream {}
+}
