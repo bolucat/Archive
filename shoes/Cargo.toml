@@ -23,6 +23,8 @@ h3 = { git = "https://github.com/cfal/h3", rev = "a0a7a53a143798d71884df36cfac4d
 h3-quinn = { git = "https://github.com/cfal/h3", rev = "a0a7a53a143798d71884df36cfac4dd36cd087e6" }
 # Includes nix-rust/nix#2821 for iOS socket feature compatibility.
 nix = { git = "https://github.com/nix-rust/nix", rev = "3eae6d68ec6382fef7b38cd58f97458e59a71af9" }
+# Preserves TCP ACK sequences during retransmission.
+smoltcp = { git = "https://github.com/cfal/smoltcp", rev = "a80fa50dce926117669ef061f55f4d6bdad0904a" }
 
 [lib]
 name = "shoes"
@@ -105,6 +107,7 @@ h3-quinn = "*"
 hickory-resolver = { version = "*", default-features = false, features = ["tokio", "tls-aws-lc-rs", "https-aws-lc-rs", "h3-aws-lc-rs"] }
 http = "*"
 http-body-util = "*"
+httparse = "*"
 hyper = { version = "*", features = ["client", "server", "http1", "http2"] }
 hyper-util = { version = "*", features = ["tokio", "server"] }
 indexmap = "*"
