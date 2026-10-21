@@ -1,0 +1,64 @@
+use super::*;
+
+/// A pointer to a constant null-terminated string of 8-bit Windows (ANSI) characters.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PCSTR(pub *const u8);
+
+impl PCSTR {
+    /// Constructs a `PCSTR` from a raw pointer.
+    pub const fn from_raw(ptr: *const u8) -> Self {
+        Self(ptr)
+    }
+
+    /// Constructs a null `PCSTR`.
+    pub const fn null() -> Self {
+        Self(core::ptr::null())
+    }
+
+    /// Returns the raw pointer.
+    pub const fn as_ptr(&self) -> *const u8 {
+        self.0
+    }
+
+    /// Returns whether the pointer is null.
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+
+    /// Returns the string data without the trailing null.
+    ///
+    /// # Safety
+    ///
+    /// The `PCSTR`'s pointer needs to be valid for reads up until and including the next `\0`.
+    pub unsafe fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            let len = strlen(self.0.cast());
+            core::slice::from_raw_parts(self.0, len)
+        }
+    }
+
+    /// Copies the string into a Rust `String`.
+    ///
+    /// # Safety
+    ///
+    /// See the safety information for `PCSTR::as_bytes`.
+    pub unsafe fn to_string(&self) -> Result<String, alloc::string::FromUtf8Error> {
+        unsafe { String::from_utf8(self.as_bytes().into()) }
+    }
+
+    /// Returns a display adapter for the string.
+    ///
+    /// # Safety
+    ///
+    /// See the safety information for `PCSTR::as_bytes`.
+    pub unsafe fn display(&self) -> impl core::fmt::Display + '_ {
+        unsafe { Decode(move || decode_utf8(self.as_bytes())) }
+    }
+}
+
+impl Default for PCSTR {
+    fn default() -> Self {
+        Self::null()
+    }
+}

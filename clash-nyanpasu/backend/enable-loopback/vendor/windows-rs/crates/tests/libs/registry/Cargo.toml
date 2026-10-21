@@ -1,0 +1,32 @@
+[package]
+name = "test_registry"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows-registry]
+workspace = true
+
+[dependencies.windows-result]
+workspace = true
+
+[dev-dependencies.windows-sys]
+workspace = true
+features = ["minwinbase", "minwindef", "winerror", "winnt", "winreg"]
+
+[dev-dependencies.windows]
+workspace = true
+features = ["minwinbase", "minwindef", "winerror", "winnt", "winreg"]
+
+[dependencies.windows-strings]
+workspace = true
+
+[dev-dependencies.regex]
+version = "1.7"
+
+[lints]
+workspace = true

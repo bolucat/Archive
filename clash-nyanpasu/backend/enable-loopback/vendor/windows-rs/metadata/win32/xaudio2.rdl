@@ -1,0 +1,279 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const FACILITY_XAUDIO2: i32 = 2198;
+        #[guid(0x2b02e3cf_2e0b_4ec3_be45_1b2a3fe7210d)]
+        interface IXAudio2: IUnknown {
+            fn RegisterForCallbacks(&self, pCallback: IXAudio2EngineCallback) -> HRESULT;
+            fn UnregisterForCallbacks(&self, pCallback: IXAudio2EngineCallback);
+            fn CreateSourceVoice(&self, ppSourceVoice: *mut IXAudio2SourceVoice, pSourceFormat: *const WAVEFORMATEX, Flags: u32, MaxFrequencyRatio: f32, #[opt] pCallback: IXAudio2VoiceCallback, #[opt] pSendList: *const XAUDIO2_VOICE_SENDS, #[opt] pEffectChain: *const XAUDIO2_EFFECT_CHAIN) -> HRESULT;
+            fn CreateSubmixVoice(&self, ppSubmixVoice: *mut IXAudio2SubmixVoice, InputChannels: u32, InputSampleRate: u32, Flags: u32, ProcessingStage: u32, #[opt] pSendList: *const XAUDIO2_VOICE_SENDS, #[opt] pEffectChain: *const XAUDIO2_EFFECT_CHAIN) -> HRESULT;
+            fn CreateMasteringVoice(&self, ppMasteringVoice: *mut IXAudio2MasteringVoice, InputChannels: u32, InputSampleRate: u32, Flags: u32, #[opt] szDeviceId: PCWSTR, #[opt] pEffectChain: *const XAUDIO2_EFFECT_CHAIN, StreamCategory: AUDIO_STREAM_CATEGORY) -> HRESULT;
+            fn StartEngine(&self) -> HRESULT;
+            fn StopEngine(&self);
+            fn CommitChanges(&self, OperationSet: u32) -> HRESULT;
+            fn GetPerformanceData(&self, pPerfData: *mut XAUDIO2_PERFORMANCE_DATA);
+            fn SetDebugConfiguration(&self, #[opt] pDebugConfiguration: *const XAUDIO2_DEBUG_CONFIGURATION, #[reserved] pReserved: *mut void);
+        }
+        #[no_guid]
+        interface IXAudio2EngineCallback {
+            fn OnProcessingPassStart(&self);
+            fn OnProcessingPassEnd(&self);
+            fn OnCriticalError(&self, Error: HRESULT);
+        }
+        #[guid(0x84ac29bb_d619_44d2_b197_e4acf7df3ed6)]
+        interface IXAudio2Extension: IUnknown {
+            fn GetProcessingQuantum(&self, quantumNumerator: *mut u32, quantumDenominator: *mut u32);
+            fn GetProcessor(&self, processor: *mut XAUDIO2_PROCESSOR);
+        }
+        #[no_guid]
+        interface IXAudio2MasteringVoice: IXAudio2Voice {
+            fn GetChannelMask(&self, pChannelmask: *mut u32) -> HRESULT;
+        }
+        #[no_guid]
+        interface IXAudio2SourceVoice: IXAudio2Voice {
+            fn Start(&self, Flags: u32, OperationSet: u32) -> HRESULT;
+            fn Stop(&self, Flags: u32, OperationSet: u32) -> HRESULT;
+            fn SubmitSourceBuffer(&self, pBuffer: *const XAUDIO2_BUFFER, #[opt] pBufferWMA: *const XAUDIO2_BUFFER_WMA) -> HRESULT;
+            fn FlushSourceBuffers(&self) -> HRESULT;
+            fn Discontinuity(&self) -> HRESULT;
+            fn ExitLoop(&self, OperationSet: u32) -> HRESULT;
+            fn GetState(&self, pVoiceState: *mut XAUDIO2_VOICE_STATE, Flags: u32);
+            fn SetFrequencyRatio(&self, Ratio: f32, OperationSet: u32) -> HRESULT;
+            fn GetFrequencyRatio(&self, pRatio: *mut f32);
+            fn SetSourceSampleRate(&self, NewSourceSampleRate: u32) -> HRESULT;
+        }
+        #[no_guid]
+        interface IXAudio2SubmixVoice: IXAudio2Voice {}
+        #[no_guid]
+        interface IXAudio2Voice {
+            fn GetVoiceDetails(&self, pVoiceDetails: *mut XAUDIO2_VOICE_DETAILS);
+            fn SetOutputVoices(&self, #[opt] pSendList: *const XAUDIO2_VOICE_SENDS) -> HRESULT;
+            fn SetEffectChain(&self, #[opt] pEffectChain: *const XAUDIO2_EFFECT_CHAIN) -> HRESULT;
+            fn EnableEffect(&self, EffectIndex: u32, OperationSet: u32) -> HRESULT;
+            fn DisableEffect(&self, EffectIndex: u32, OperationSet: u32) -> HRESULT;
+            fn GetEffectState(&self, EffectIndex: u32, pEnabled: *mut BOOL);
+            fn SetEffectParameters(&self, EffectIndex: u32, #[size_param(2)] pParameters: *const void, ParametersByteSize: u32, OperationSet: u32) -> HRESULT;
+            fn GetEffectParameters(&self, EffectIndex: u32, #[size_param(2)] pParameters: *mut void, ParametersByteSize: u32) -> HRESULT;
+            fn SetFilterParameters(&self, pParameters: *const XAUDIO2_FILTER_PARAMETERS, OperationSet: u32) -> HRESULT;
+            fn GetFilterParameters(&self, pParameters: *mut XAUDIO2_FILTER_PARAMETERS);
+            fn SetOutputFilterParameters(&self, #[opt] pDestinationVoice: IXAudio2Voice, pParameters: *const XAUDIO2_FILTER_PARAMETERS, OperationSet: u32) -> HRESULT;
+            fn GetOutputFilterParameters(&self, #[opt] pDestinationVoice: IXAudio2Voice, pParameters: *mut XAUDIO2_FILTER_PARAMETERS);
+            fn SetVolume(&self, Volume: f32, OperationSet: u32) -> HRESULT;
+            fn GetVolume(&self, pVolume: *mut f32);
+            fn SetChannelVolumes(&self, Channels: u32, #[len_param(0)] pVolumes: *const f32, OperationSet: u32) -> HRESULT;
+            fn GetChannelVolumes(&self, Channels: u32, #[len_param(0)] pVolumes: *mut f32);
+            fn SetOutputMatrix(&self, #[opt] pDestinationVoice: IXAudio2Voice, SourceChannels: u32, DestinationChannels: u32, pLevelMatrix: *const f32, OperationSet: u32) -> HRESULT;
+            fn GetOutputMatrix(&self, #[opt] pDestinationVoice: IXAudio2Voice, SourceChannels: u32, DestinationChannels: u32, pLevelMatrix: *mut f32);
+            fn DestroyVoice(&self);
+        }
+        #[no_guid]
+        interface IXAudio2VoiceCallback {
+            fn OnVoiceProcessingPassStart(&self, BytesRequired: u32);
+            fn OnVoiceProcessingPassEnd(&self);
+            fn OnStreamEnd(&self);
+            fn OnBufferStart(&self, pBufferContext: *mut void);
+            fn OnBufferEnd(&self, pBufferContext: *mut void);
+            fn OnLoopEnd(&self, pBufferContext: *mut void);
+            fn OnVoiceError(&self, pBufferContext: *mut void, Error: HRESULT);
+        }
+        const Processor1: i32 = 1;
+        const Processor10: i32 = 512;
+        const Processor11: i32 = 1024;
+        const Processor12: i32 = 2048;
+        const Processor13: i32 = 4096;
+        const Processor14: i32 = 8192;
+        const Processor15: i32 = 16384;
+        const Processor16: i32 = 32768;
+        const Processor17: i32 = 65536;
+        const Processor18: i32 = 131072;
+        const Processor19: i32 = 262144;
+        const Processor2: i32 = 2;
+        const Processor20: i32 = 524288;
+        const Processor21: i32 = 1048576;
+        const Processor22: i32 = 2097152;
+        const Processor23: i32 = 4194304;
+        const Processor24: i32 = 8388608;
+        const Processor25: i32 = 16777216;
+        const Processor26: i32 = 33554432;
+        const Processor27: i32 = 67108864;
+        const Processor28: i32 = 134217728;
+        const Processor29: i32 = 268435456;
+        const Processor3: i32 = 4;
+        const Processor30: i32 = 536870912;
+        const Processor31: i32 = 1073741824;
+        const Processor32: u32 = 2147483648;
+        const Processor4: i32 = 8;
+        const Processor5: i32 = 16;
+        const Processor6: i32 = 32;
+        const Processor7: i32 = 64;
+        const Processor8: i32 = 128;
+        const Processor9: i32 = 256;
+        #[encoding("ansi")]
+        const XAUDIO2D_DLL: String = "xaudio2_9d.dll";
+        #[encoding("ansi")]
+        const XAUDIO2D_DLL_A: String = "xaudio2_9d.dll";
+        #[encoding("utf-16")]
+        const XAUDIO2D_DLL_W: String = "xaudio2_9d.dll";
+        const XAUDIO2_1024_QUANTUM: i32 = 32768;
+        const XAUDIO2_ANY_PROCESSOR: u32 = 4294967295;
+        #[packed(1)]
+        struct XAUDIO2_BUFFER {
+            Flags: u32,
+            AudioBytes: u32,
+            pAudioData: *const u8,
+            PlayBegin: u32,
+            PlayLength: u32,
+            LoopBegin: u32,
+            LoopLength: u32,
+            LoopCount: u32,
+            pContext: *mut void,
+        }
+        #[packed(1)]
+        struct XAUDIO2_BUFFER_WMA {
+            pDecodedPacketCumulativeBytes: *const u32,
+            PacketCount: u32,
+        }
+        const XAUDIO2_COMMIT_ALL: i32 = 0;
+        const XAUDIO2_COMMIT_NOW: i32 = 0;
+        #[packed(1)]
+        struct XAUDIO2_DEBUG_CONFIGURATION {
+            TraceMask: u32,
+            BreakMask: u32,
+            LogThreadID: BOOL,
+            LogFileline: BOOL,
+            LogFunctionName: BOOL,
+            LogTiming: BOOL,
+        }
+        const XAUDIO2_DEBUG_ENGINE: i32 = 1;
+        const XAUDIO2_DEFAULT_CHANNELS: i32 = 0;
+        const XAUDIO2_DEFAULT_FILTER_FREQUENCY: f32 = 1.0;
+        const XAUDIO2_DEFAULT_FILTER_ONEOVERQ: f32 = 1.0;
+        const XAUDIO2_DEFAULT_FILTER_TYPE: XAUDIO2_FILTER_TYPE = 0;
+        const XAUDIO2_DEFAULT_FREQ_RATIO: f32 = 2.0;
+        const XAUDIO2_DEFAULT_PROCESSOR: i32 = 1;
+        const XAUDIO2_DEFAULT_SAMPLERATE: i32 = 0;
+        #[encoding("ansi")]
+        const XAUDIO2_DLL: String = "xaudio2_9.dll";
+        #[encoding("ansi")]
+        const XAUDIO2_DLL_A: String = "xaudio2_9.dll";
+        #[encoding("utf-16")]
+        const XAUDIO2_DLL_W: String = "xaudio2_9.dll";
+        #[packed(1)]
+        struct XAUDIO2_EFFECT_CHAIN {
+            EffectCount: u32,
+            pEffectDescriptors: *mut XAUDIO2_EFFECT_DESCRIPTOR,
+        }
+        #[packed(1)]
+        struct XAUDIO2_EFFECT_DESCRIPTOR {
+            pEffect: IUnknown,
+            InitialState: BOOL,
+            OutputChannels: u32,
+        }
+        const XAUDIO2_END_OF_STREAM: i32 = 64;
+        const XAUDIO2_E_DEVICE_INVALIDATED: HRESULT = -2003435516;
+        const XAUDIO2_E_INVALID_CALL: HRESULT = -2003435519;
+        const XAUDIO2_E_XAPO_CREATION_FAILED: HRESULT = -2003435517;
+        const XAUDIO2_E_XMA_DECODER_ERROR: HRESULT = -2003435518;
+        #[packed(1)]
+        struct XAUDIO2_FILTER_PARAMETERS {
+            Type: XAUDIO2_FILTER_TYPE,
+            Frequency: f32,
+            OneOverQ: f32,
+        }
+        #[repr(i32)]
+        enum XAUDIO2_FILTER_TYPE {
+            LowPassFilter = 0,
+            BandPassFilter = 1,
+            HighPassFilter = 2,
+            NotchFilter = 3,
+            LowPassOnePoleFilter = 4,
+            HighPassOnePoleFilter = 5,
+        }
+        const XAUDIO2_INVALID_OPSET: u32 = 4294967295;
+        const XAUDIO2_LOG_API_CALLS: i32 = 16;
+        const XAUDIO2_LOG_DETAIL: i32 = 8;
+        const XAUDIO2_LOG_ERRORS: i32 = 1;
+        const XAUDIO2_LOG_FUNC_CALLS: i32 = 32;
+        const XAUDIO2_LOG_INFO: i32 = 4;
+        const XAUDIO2_LOG_LOCKS: i32 = 128;
+        const XAUDIO2_LOG_MEMORY: i32 = 256;
+        const XAUDIO2_LOG_STREAMING: i32 = 4096;
+        const XAUDIO2_LOG_TIMING: i32 = 64;
+        const XAUDIO2_LOG_WARNINGS: i32 = 2;
+        const XAUDIO2_LOOP_INFINITE: i32 = 255;
+        const XAUDIO2_MAX_AUDIO_CHANNELS: i32 = 64;
+        const XAUDIO2_MAX_BUFFERS_SYSTEM: i32 = 2;
+        const XAUDIO2_MAX_BUFFER_BYTES: u32 = 2147483648;
+        const XAUDIO2_MAX_FILTER_FREQUENCY: f32 = 1.0;
+        const XAUDIO2_MAX_FILTER_ONEOVERQ: f32 = 1.5;
+        const XAUDIO2_MAX_FREQ_RATIO: f32 = 1024.0;
+        const XAUDIO2_MAX_INSTANCES: i32 = 8;
+        const XAUDIO2_MAX_LOOP_COUNT: i32 = 254;
+        const XAUDIO2_MAX_QUEUED_BUFFERS: i32 = 64;
+        const XAUDIO2_MAX_RATIO_TIMES_RATE_XMA_MONO: i32 = 600000;
+        const XAUDIO2_MAX_RATIO_TIMES_RATE_XMA_MULTICHANNEL: i32 = 300000;
+        const XAUDIO2_MAX_SAMPLE_RATE: i32 = 384000;
+        const XAUDIO2_MAX_VOLUME_LEVEL: f32 = 16777216.0;
+        const XAUDIO2_MIN_FREQ_RATIO: f32 = 0.0009765625;
+        const XAUDIO2_MIN_SAMPLE_RATE: i32 = 1000;
+        const XAUDIO2_NO_LOOP_REGION: i32 = 0;
+        const XAUDIO2_NO_VIRTUAL_AUDIO_CLIENT: i32 = 65536;
+        #[packed(1)]
+        struct XAUDIO2_PERFORMANCE_DATA {
+            AudioCyclesSinceLastQuery: u64,
+            TotalCyclesSinceLastQuery: u64,
+            MinimumCyclesPerQuantum: u32,
+            MaximumCyclesPerQuantum: u32,
+            MemoryUsageInBytes: u32,
+            CurrentLatencyInSamples: u32,
+            GlitchesSinceEngineStarted: u32,
+            ActiveSourceVoiceCount: u32,
+            TotalSourceVoiceCount: u32,
+            ActiveSubmixVoiceCount: u32,
+            ActiveResamplerCount: u32,
+            ActiveMatrixMixCount: u32,
+            ActiveXmaSourceVoices: u32,
+            ActiveXmaStreams: u32,
+        }
+        const XAUDIO2_PLAY_TAILS: i32 = 32;
+        type XAUDIO2_PROCESSOR = u32;
+        const XAUDIO2_QUANTUM_DENOMINATOR: i32 = 100;
+        const XAUDIO2_QUANTUM_MS: f32 = 10.0;
+        const XAUDIO2_QUANTUM_NUMERATOR: i32 = 1;
+        #[packed(1)]
+        struct XAUDIO2_SEND_DESCRIPTOR {
+            Flags: u32,
+            pOutputVoice: IXAudio2Voice,
+        }
+        const XAUDIO2_SEND_USEFILTER: i32 = 128;
+        const XAUDIO2_STOP_ENGINE_WHEN_IDLE: i32 = 8192;
+        const XAUDIO2_USE_DEFAULT_PROCESSOR: i32 = 0;
+        #[packed(1)]
+        struct XAUDIO2_VOICE_DETAILS {
+            CreationFlags: u32,
+            ActiveFlags: u32,
+            InputChannels: u32,
+            InputSampleRate: u32,
+        }
+        const XAUDIO2_VOICE_NOPITCH: i32 = 2;
+        const XAUDIO2_VOICE_NOSAMPLESPLAYED: i32 = 256;
+        const XAUDIO2_VOICE_NOSRC: i32 = 4;
+        #[packed(1)]
+        struct XAUDIO2_VOICE_SENDS {
+            SendCount: u32,
+            pSends: *mut XAUDIO2_SEND_DESCRIPTOR,
+        }
+        #[packed(1)]
+        struct XAUDIO2_VOICE_STATE {
+            pCurrentBufferContext: *mut void,
+            BuffersQueued: u32,
+            SamplesPlayed: u64,
+        }
+        const XAUDIO2_VOICE_USEFILTER: i32 = 8;
+        #[library("XAudio2_9.dll", import = "?XAudio2Create@@YAJPEAPEAUIXAudio2@@II@Z")]
+        extern fn XAudio2Create(ppXAudio2: *mut IXAudio2, Flags: u32, XAudio2Processor: XAUDIO2_PROCESSOR) -> HRESULT;
+        #[library("XAudio2_9.dll")]
+        extern fn XAudio2CreateWithVersionInfo(ppXAudio2: *mut IXAudio2, Flags: u32, XAudio2Processor: XAUDIO2_PROCESSOR, ntddiVersion: u32) -> HRESULT;
+    }
+}

@@ -1,0 +1,65 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_BackgroundAccess: DEVPROPKEY = 8;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_IsReadOnly: DEVPROPKEY = 4;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_ProductId: DEVPROPKEY = 6;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_UsageId: DEVPROPKEY = 3;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_UsagePage: DEVPROPKEY = 2;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_VendorId: DEVPROPKEY = 5;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_VersionNumber: DEVPROPKEY = 7;
+        #[guid(0xcbf38310_4a17_4310_a1eb_247f0b67593b)]
+        const DEVPKEY_DeviceInterface_HID_WakeScreenOnInputCapable: DEVPROPKEY = 9;
+        const GUID_DEVINTERFACE_HID: GUID = 0x4d1e55b2_f16f_11cf_88cb_001111000030;
+        const GUID_HID_INTERFACE_HIDPARSE: GUID = 0xf5c315a5_69ac_4bc2_9279_d0b64576f44b;
+        const GUID_HID_INTERFACE_NOTIFY: GUID = 0x2c4e2e88_25e6_4c33_882f_3d82e6073681;
+        struct HID_COLLECTION_INFORMATION {
+            DescriptorSize: u32,
+            Polled: BOOLEAN,
+            Reserved1: [u8; 1],
+            VendorID: u16,
+            ProductID: u16,
+            VersionNumber: u16,
+        }
+        struct HID_DRIVER_CONFIG {
+            Size: u32,
+            RingBufferSize: u32,
+        }
+        const HID_REVISION: i32 = 1;
+        const IOCTL_GET_NUM_DEVICE_INPUT_BUFFERS: i32 = 721312;
+        const IOCTL_GET_PHYSICAL_DESCRIPTOR: i32 = 721306;
+        const IOCTL_HID_DEVICERESET_NOTIFICATION: i32 = 721459;
+        const IOCTL_HID_DISABLE_SECURE_READ: i32 = 721423;
+        const IOCTL_HID_ENABLE_SECURE_READ: i32 = 721419;
+        const IOCTL_HID_ENABLE_WAKE_ON_SX: i32 = 721324;
+        const IOCTL_HID_FLUSH_QUEUE: i32 = 721303;
+        const IOCTL_HID_GET_COLLECTION_DESCRIPTOR: i32 = 721299;
+        const IOCTL_HID_GET_COLLECTION_INFORMATION: i32 = 721320;
+        const IOCTL_HID_GET_DRIVER_CONFIG: i32 = 721296;
+        const IOCTL_HID_GET_FEATURE: i32 = 721298;
+        const IOCTL_HID_GET_HARDWARE_ID: i32 = 721310;
+        const IOCTL_HID_GET_INDEXED_STRING: i32 = 721378;
+        const IOCTL_HID_GET_INPUT_REPORT: i32 = 721314;
+        const IOCTL_HID_GET_MANUFACTURER_STRING: i32 = 721338;
+        const IOCTL_HID_GET_MS_GENRE_DESCRIPTOR: i32 = 721382;
+        const IOCTL_HID_GET_OUTPUT_REPORT: i32 = 721318;
+        const IOCTL_HID_GET_POLL_FREQUENCY_MSEC: i32 = 721304;
+        const IOCTL_HID_GET_PRODUCT_STRING: i32 = 721342;
+        const IOCTL_HID_GET_SERIALNUMBER_STRING: i32 = 721346;
+        const IOCTL_HID_SET_DRIVER_CONFIG: i32 = 721300;
+        const IOCTL_HID_SET_FEATURE: i32 = 721297;
+        const IOCTL_HID_SET_OUTPUT_REPORT: i32 = 721301;
+        const IOCTL_HID_SET_POLL_FREQUENCY_MSEC: i32 = 721308;
+        const IOCTL_HID_SET_S0_IDLE_TIMEOUT: i32 = 721328;
+        const IOCTL_SET_NUM_DEVICE_INPUT_BUFFERS: i32 = 721316;
+        type PHID_COLLECTION_INFORMATION = *mut HID_COLLECTION_INFORMATION;
+        type PHID_DRIVER_CONFIG = *mut HID_DRIVER_CONFIG;
+    }
+}

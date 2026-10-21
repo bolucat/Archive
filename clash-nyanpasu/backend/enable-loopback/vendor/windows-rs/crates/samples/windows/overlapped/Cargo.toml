@@ -1,0 +1,21 @@
+[package]
+name = "windows-overlapped"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+features = [
+    "fileapi",
+    "handleapi",
+    "ioapiset",
+    "minwinbase",
+    "synchapi",
+    "winbase",
+    "winerror",
+    "winnt",
+]
+
+[lints]
+workspace = true

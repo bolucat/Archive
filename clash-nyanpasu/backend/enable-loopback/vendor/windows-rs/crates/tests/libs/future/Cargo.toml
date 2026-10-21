@@ -1,0 +1,36 @@
+[package]
+name = "test_future"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "Storage_Streams",
+    "System_Threading",
+]
+
+[dependencies.windows-future]
+workspace = true
+features = ["std"]
+
+[dev-dependencies.windows-core]
+workspace = true
+
+[dev-dependencies.windows-result]
+workspace = true
+
+[dev-dependencies.windows-threading]
+workspace = true
+
+[dev-dependencies]
+futures = "0.3"
+
+[lints]
+workspace = true

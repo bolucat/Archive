@@ -7,24 +7,14 @@ use reqwest::Method;
 use crate::{Client, LogLevel, Result, retry::RequestMetadata};
 
 /// Open response value; mutation and subscription enums remain closed.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, nyanpasu_serde::DeserializeUntagged, serde::Serialize, specta::Type,
+)]
 #[serde(untagged)]
 pub enum ConfigEnum<T> {
+    #[nyanpasu_serde(kind = "string")]
     Known(T),
     Unknown(String),
-}
-
-impl<'de, T: serde::de::DeserializeOwned> serde::Deserialize<'de> for ConfigEnum<T> {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
-        let known = serde::de::value::StrDeserializer::<serde::de::value::Error>::new(&value);
-        Ok(match T::deserialize(known) {
-            Ok(value) => Self::Known(value),
-            Err(_) => Self::Unknown(value),
-        })
-    }
 }
 
 impl<T: AsRef<str>> ConfigEnum<T> {

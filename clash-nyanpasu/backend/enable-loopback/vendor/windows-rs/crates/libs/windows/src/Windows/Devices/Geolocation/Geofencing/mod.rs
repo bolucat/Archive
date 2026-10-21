@@ -1,0 +1,426 @@
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Geofence(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(Geofence, windows_core::IUnknown, windows_core::IInspectable);
+impl Geofence {
+    pub fn StartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StartTime)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Duration(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Duration)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn DwellTime(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DwellTime)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Id(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Id)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn MonitoredStates(&self) -> windows_core::Result<MonitoredGeofenceStates> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).MonitoredStates)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Geoshape(&self) -> windows_core::Result<super::IGeoshape> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Geoshape)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SingleUse(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SingleUse)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Create<P1>(id: &windows_core::HSTRING, geoshape: P1) -> windows_core::Result<Self>
+    where
+        P1: windows_core::Param<super::IGeoshape>,
+    {
+        Self::IGeofenceFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Create)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(id), geoshape.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn CreateWithMonitorStates<P1>(id: &windows_core::HSTRING, geoshape: P1, monitoredstates: MonitoredGeofenceStates, singleuse: bool) -> windows_core::Result<Self>
+    where
+        P1: windows_core::Param<super::IGeoshape>,
+    {
+        Self::IGeofenceFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateWithMonitorStates)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(id), geoshape.param().abi(), monitoredstates, singleuse, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn CreateWithMonitorStatesAndDwellTime<P1>(id: &windows_core::HSTRING, geoshape: P1, monitoredstates: MonitoredGeofenceStates, singleuse: bool, dwelltime: windows_time::TimeSpan) -> windows_core::Result<Self>
+    where
+        P1: windows_core::Param<super::IGeoshape>,
+    {
+        Self::IGeofenceFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateWithMonitorStatesAndDwellTime)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(id), geoshape.param().abi(), monitoredstates, singleuse, dwelltime, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn CreateWithMonitorStatesDwellTimeStartTimeAndDuration<P1>(id: &windows_core::HSTRING, geoshape: P1, monitoredstates: MonitoredGeofenceStates, singleuse: bool, dwelltime: windows_time::TimeSpan, starttime: windows_time::DateTime, duration: windows_time::TimeSpan) -> windows_core::Result<Self>
+    where
+        P1: windows_core::Param<super::IGeoshape>,
+    {
+        Self::IGeofenceFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateWithMonitorStatesDwellTimeStartTimeAndDuration)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(id), geoshape.param().abi(), monitoredstates, singleuse, dwelltime, starttime, duration, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IGeofenceFactory<R, F: FnOnce(&IGeofenceFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<Geofence, IGeofenceFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for Geofence {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGeofence>();
+}
+unsafe impl windows_core::Interface for Geofence {
+    type Vtable = <IGeofence as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGeofence as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for Geofence {
+    const NAME: &'static str = "Windows.Devices.Geolocation.Geofencing.Geofence";
+}
+unsafe impl Send for Geofence {}
+unsafe impl Sync for Geofence {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeofenceMonitor(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(GeofenceMonitor, windows_core::IUnknown, windows_core::IInspectable);
+impl GeofenceMonitor {
+    pub fn Status(&self) -> windows_core::Result<GeofenceMonitorStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Geofences(&self) -> windows_core::Result<windows_collections::IVector<Geofence>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Geofences)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn LastKnownGeoposition(&self) -> windows_core::Result<super::Geoposition> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).LastKnownGeoposition)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GeofenceStateChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).GeofenceStateChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveGeofenceStateChanged))
+        }
+    }
+    pub fn ReadReports(&self) -> windows_core::Result<windows_collections::IVectorView<GeofenceStateChangeReport>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReadReports)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn StatusChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).StatusChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveStatusChanged))
+        }
+    }
+    pub fn Current() -> windows_core::Result<Self> {
+        Self::IGeofenceMonitorStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Current)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IGeofenceMonitorStatics<R, F: FnOnce(&IGeofenceMonitorStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GeofenceMonitor, IGeofenceMonitorStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for GeofenceMonitor {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGeofenceMonitor>();
+}
+unsafe impl windows_core::Interface for GeofenceMonitor {
+    type Vtable = <IGeofenceMonitor as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGeofenceMonitor as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for GeofenceMonitor {
+    const NAME: &'static str = "Windows.Devices.Geolocation.Geofencing.GeofenceMonitor";
+}
+unsafe impl Send for GeofenceMonitor {}
+unsafe impl Sync for GeofenceMonitor {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GeofenceMonitorStatus(pub i32);
+impl GeofenceMonitorStatus {
+    pub const Ready: Self = Self(0);
+    pub const Initializing: Self = Self(1);
+    pub const NoData: Self = Self(2);
+    pub const Disabled: Self = Self(3);
+    pub const NotInitialized: Self = Self(4);
+    pub const NotAvailable: Self = Self(5);
+}
+impl windows_core::imp::TypeKind for GeofenceMonitorStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for GeofenceMonitorStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Devices.Geolocation.Geofencing.GeofenceMonitorStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.GeofenceMonitorStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GeofenceRemovalReason(pub i32);
+impl GeofenceRemovalReason {
+    pub const Used: Self = Self(0);
+    pub const Expired: Self = Self(1);
+}
+impl windows_core::imp::TypeKind for GeofenceRemovalReason {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for GeofenceRemovalReason {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Devices.Geolocation.Geofencing.GeofenceRemovalReason;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.GeofenceRemovalReason");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GeofenceState(pub u32);
+impl GeofenceState {
+    pub const None: Self = Self(0);
+    pub const Entered: Self = Self(1);
+    pub const Exited: Self = Self(2);
+    pub const Removed: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for GeofenceState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for GeofenceState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Devices.Geolocation.Geofencing.GeofenceState;u4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.GeofenceState");
+}
+impl GeofenceState {
+    pub const fn contains(&self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+impl core::ops::BitOr for GeofenceState {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+impl core::ops::BitAnd for GeofenceState {
+    type Output = Self;
+    fn bitand(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+}
+impl core::ops::BitOrAssign for GeofenceState {
+    fn bitor_assign(&mut self, other: Self) {
+        self.0.bitor_assign(other.0);
+    }
+}
+impl core::ops::BitAndAssign for GeofenceState {
+    fn bitand_assign(&mut self, other: Self) {
+        self.0.bitand_assign(other.0);
+    }
+}
+impl core::ops::Not for GeofenceState {
+    type Output = Self;
+    fn not(self) -> Self {
+        Self(self.0.not())
+    }
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeofenceStateChangeReport(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(GeofenceStateChangeReport, windows_core::IUnknown, windows_core::IInspectable);
+impl GeofenceStateChangeReport {
+    pub fn NewState(&self) -> windows_core::Result<GeofenceState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NewState)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Geofence(&self) -> windows_core::Result<Geofence> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Geofence)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Geoposition(&self) -> windows_core::Result<super::Geoposition> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Geoposition)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RemovalReason(&self) -> windows_core::Result<GeofenceRemovalReason> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RemovalReason)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for GeofenceStateChangeReport {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGeofenceStateChangeReport>();
+}
+unsafe impl windows_core::Interface for GeofenceStateChangeReport {
+    type Vtable = <IGeofenceStateChangeReport as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGeofenceStateChangeReport as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for GeofenceStateChangeReport {
+    const NAME: &'static str = "Windows.Devices.Geolocation.Geofencing.GeofenceStateChangeReport";
+}
+unsafe impl Send for GeofenceStateChangeReport {}
+unsafe impl Sync for GeofenceStateChangeReport {}
+windows_core::imp::define_interface!(IGeofence, IGeofence_Vtbl, 0x9c090823_edb8_47e0_8245_5bf61d321f2d);
+impl windows_core::RuntimeType for IGeofence {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.IGeofence");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGeofence_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub Duration: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub DwellTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub Id: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub MonitoredStates: unsafe extern "system" fn(*mut core::ffi::c_void, *mut MonitoredGeofenceStates) -> windows_core::HRESULT,
+    pub Geoshape: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SingleUse: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGeofenceFactory, IGeofenceFactory_Vtbl, 0x841f624b_325f_4b90_bca7_2b8022a93796);
+impl windows_core::RuntimeType for IGeofenceFactory {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.IGeofenceFactory");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGeofenceFactory_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Create: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub CreateWithMonitorStates: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, MonitoredGeofenceStates, bool, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub CreateWithMonitorStatesAndDwellTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, MonitoredGeofenceStates, bool, windows_time::TimeSpan, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub CreateWithMonitorStatesDwellTimeStartTimeAndDuration: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, MonitoredGeofenceStates, bool, windows_time::TimeSpan, windows_time::DateTime, windows_time::TimeSpan, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGeofenceMonitor, IGeofenceMonitor_Vtbl, 0x4c0f5f78_1c1f_4621_bbbd_833b92247226);
+impl windows_core::RuntimeType for IGeofenceMonitor {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.IGeofenceMonitor");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGeofenceMonitor_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut GeofenceMonitorStatus) -> windows_core::HRESULT,
+    pub Geofences: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub LastKnownGeoposition: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GeofenceStateChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveGeofenceStateChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub ReadReports: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub StatusChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveStatusChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGeofenceMonitorStatics, IGeofenceMonitorStatics_Vtbl, 0x2dd32fcf_7e75_4899_ace3_2bd0a65cce06);
+impl windows_core::RuntimeType for IGeofenceMonitorStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.IGeofenceMonitorStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGeofenceMonitorStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Current: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGeofenceStateChangeReport, IGeofenceStateChangeReport_Vtbl, 0x9a243c18_2464_4c89_be05_b3ffff5babc5);
+impl windows_core::RuntimeType for IGeofenceStateChangeReport {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.IGeofenceStateChangeReport");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGeofenceStateChangeReport_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub NewState: unsafe extern "system" fn(*mut core::ffi::c_void, *mut GeofenceState) -> windows_core::HRESULT,
+    pub Geofence: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Geoposition: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RemovalReason: unsafe extern "system" fn(*mut core::ffi::c_void, *mut GeofenceRemovalReason) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MonitoredGeofenceStates(pub u32);
+impl MonitoredGeofenceStates {
+    pub const None: Self = Self(0);
+    pub const Entered: Self = Self(1);
+    pub const Exited: Self = Self(2);
+    pub const Removed: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for MonitoredGeofenceStates {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for MonitoredGeofenceStates {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Devices.Geolocation.Geofencing.MonitoredGeofenceStates;u4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Geolocation.Geofencing.MonitoredGeofenceStates");
+}
+impl MonitoredGeofenceStates {
+    pub const fn contains(&self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+impl core::ops::BitOr for MonitoredGeofenceStates {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+impl core::ops::BitAnd for MonitoredGeofenceStates {
+    type Output = Self;
+    fn bitand(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+}
+impl core::ops::BitOrAssign for MonitoredGeofenceStates {
+    fn bitor_assign(&mut self, other: Self) {
+        self.0.bitor_assign(other.0);
+    }
+}
+impl core::ops::BitAndAssign for MonitoredGeofenceStates {
+    fn bitand_assign(&mut self, other: Self) {
+        self.0.bitand_assign(other.0);
+    }
+}
+impl core::ops::Not for MonitoredGeofenceStates {
+    type Output = Self;
+    fn not(self) -> Self {
+        Self(self.0.not())
+    }
+}

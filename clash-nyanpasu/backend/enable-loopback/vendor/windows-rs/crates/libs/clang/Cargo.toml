@@ -1,0 +1,23 @@
+[package]
+name = "windows-clang"
+version = "0.100.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Generates RDL from C/C++ headers using libclang"
+repository = "https://github.com/microsoft/windows-rs"
+categories = ["os::windows-apis"]
+readme = "readme.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+clang-sys = { version = "1.8.1", features = ["runtime", "clang_18_0"] }
+windows-default = { workspace = true }
+windows-metadata = { workspace = true }
+
+[dev-dependencies]
+helpers = { workspace = true }
+windows-metadata = { workspace = true }
+windows-rdl = { workspace = true }

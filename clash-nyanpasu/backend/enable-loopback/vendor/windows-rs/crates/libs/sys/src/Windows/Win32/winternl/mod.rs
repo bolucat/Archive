@@ -1,0 +1,622 @@
+#[cfg(feature = "winnt")]
+windows_link::link!("ntdll.dll" "system" fn NtClose(handle : super::HANDLE) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "d3dkmthk", feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtCreateFile(filehandle : super::PHANDLE, desiredaccess : super::ACCESS_MASK, objectattributes : super::POBJECT_ATTRIBUTES, iostatusblock : PIO_STATUS_BLOCK, allocationsize : super::PLARGE_INTEGER, fileattributes : u32, shareaccess : u32, createdisposition : u32, createoptions : u32, eabuffer : *const core::ffi::c_void, ealength : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "winnt")]
+windows_link::link!("ntdll.dll" "system" fn NtDeviceIoControlFile(filehandle : super::HANDLE, event : super::HANDLE, apcroutine : PIO_APC_ROUTINE, apccontext : *const core::ffi::c_void, iostatusblock : PIO_STATUS_BLOCK, iocontrolcode : u32, inputbuffer : *const core::ffi::c_void, inputbufferlength : u32, outputbuffer : *mut core::ffi::c_void, outputbufferlength : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtNotifyChangeMultipleKeys(masterkeyhandle : super::HANDLE, count : u32, subordinateobjects : *const OBJECT_ATTRIBUTES, event : super::HANDLE, apcroutine : PIO_APC_ROUTINE, apccontext : *const core::ffi::c_void, iostatusblock : PIO_STATUS_BLOCK, completionfilter : u32, watchtree : super::BOOLEAN, buffer : *mut core::ffi::c_void, buffersize : u32, asynchronous : super::BOOLEAN) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "d3dkmthk", feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtOpenFile(filehandle : super::PHANDLE, desiredaccess : super::ACCESS_MASK, objectattributes : super::POBJECT_ATTRIBUTES, iostatusblock : PIO_STATUS_BLOCK, shareaccess : u32, openoptions : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "minwindef", feature = "ntddk", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtQueryInformationProcess(processhandle : super::HANDLE, processinformationclass : super::PROCESSINFOCLASS, processinformation : *mut core::ffi::c_void, processinformationlength : u32, returnlength : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "minwindef", feature = "ntddk", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtQueryInformationThread(threadhandle : super::HANDLE, threadinformationclass : super::THREADINFOCLASS, threadinformation : *mut core::ffi::c_void, threadinformationlength : u32, returnlength : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "minwindef", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtQueryMultipleValueKey(keyhandle : super::HANDLE, valueentries : PKEY_VALUE_ENTRY, entrycount : u32, valuebuffer : *mut core::ffi::c_void, bufferlength : super::PULONG, requiredbufferlength : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtQueryObject(handle : super::HANDLE, objectinformationclass : OBJECT_INFORMATION_CLASS, objectinformation : *mut core::ffi::c_void, objectinformationlength : u32, returnlength : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "minwindef")]
+windows_link::link!("ntdll.dll" "system" fn NtQuerySystemInformation(systeminformationclass : SYSTEM_INFORMATION_CLASS, systeminformation : *mut core::ffi::c_void, systeminformationlength : u32, returnlength : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "winnt")]
+windows_link::link!("ntdll.dll" "system" fn NtQuerySystemTime(systemtime : super::PLARGE_INTEGER) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "minwindef")]
+windows_link::link!("ntdll.dll" "system" fn NtQueryTimerResolution(maximumtime : super::PULONG, minimumtime : super::PULONG, currenttime : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtRenameKey(keyhandle : super::HANDLE, newname : super::PUNICODE_STRING) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "wdm", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtSetInformationKey(keyhandle : super::HANDLE, keysetinformationclass : super::KEY_SET_INFORMATION_CLASS, keysetinformation : *const core::ffi::c_void, keysetinformationlength : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "ntddk", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn NtSetInformationThread(threadhandle : super::HANDLE, threadinformationclass : super::THREADINFOCLASS, threadinformation : *const core::ffi::c_void, threadinformationlength : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "winnt")]
+windows_link::link!("ntdll.dll" "system" fn NtWaitForSingleObject(handle : super::HANDLE, alertable : super::BOOLEAN, timeout : super::PLARGE_INTEGER) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlAnsiStringToUnicodeString(destinationstring : super::PUNICODE_STRING, sourcestring : PCANSI_STRING, allocatedestinationstring : super::BOOLEAN) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "minwindef")]
+windows_link::link!("ntdll.dll" "system" fn RtlCharToInteger(string : PCSZ, base : u32, value : super::PULONG) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlConvertSidToUnicodeString(unicodestring : super::PUNICODE_STRING, sid : super::PSID, allocatedestinationstring : super::BOOLEAN) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlFreeAnsiString(ansistring : PANSI_STRING));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlFreeOemString(oemstring : POEM_STRING));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi"))]
+windows_link::link!("ntdll.dll" "system" fn RtlFreeUnicodeString(unicodestring : super::PUNICODE_STRING));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlInitAnsiString(destinationstring : PANSI_STRING, sourcestring : PCSZ));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlInitAnsiStringEx(destinationstring : PANSI_STRING, sourcestring : PCSZ) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlInitString(destinationstring : super::PSTRING, sourcestring : PCSZ));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlInitStringEx(destinationstring : super::PSTRING, sourcestring : PCSZ) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi"))]
+windows_link::link!("ntdll.dll" "system" fn RtlInitUnicodeString(destinationstring : super::PUNICODE_STRING, sourcestring : windows_sys::core::PCWSTR));
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlIsNameLegalDOS8Dot3(name : super::PUNICODE_STRING, oemname : POEM_STRING, namecontainsspaces : super::PBOOLEAN) -> super::BOOLEAN);
+#[cfg(feature = "winnt")]
+windows_link::link!("ntdll.dll" "system" fn RtlLocalTimeToSystemTime(localtime : super::PLARGE_INTEGER, systemtime : super::PLARGE_INTEGER) -> windows_sys::core::NTSTATUS);
+windows_link::link!("ntdll.dll" "system" fn RtlNtStatusToDosError(status : windows_sys::core::NTSTATUS) -> u32);
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlTimeToSecondsSince1970(time : super::PLARGE_INTEGER, elapsedseconds : super::PULONG) -> super::BOOLEAN);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlUnicodeStringToAnsiString(destinationstring : PANSI_STRING, sourcestring : PCUNICODE_STRING, allocatedestinationstring : super::BOOLEAN) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlUnicodeStringToOemString(destinationstring : POEM_STRING, sourcestring : PCUNICODE_STRING, allocatedestinationstring : super::BOOLEAN) -> windows_sys::core::NTSTATUS);
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+windows_link::link!("ntdll.dll" "system" fn RtlUnicodeToMultiByteSize(bytesinmultibytestring : super::PULONG, unicodestring : super::PWCH, bytesinunicodestring : u32) -> windows_sys::core::NTSTATUS);
+#[cfg(feature = "minwindef")]
+windows_link::link!("ntdll.dll" "system" fn RtlUniform(seed : super::PULONG) -> u32);
+#[cfg(feature = "winnt")]
+pub type ANSI_STRING = STRING;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy, Default)]
+pub struct CLIENT_ID {
+    pub UniqueProcess: super::HANDLE,
+    pub UniqueThread: super::HANDLE,
+}
+pub const CODEINTEGRITY_OPTION_DEBUGMODE_ENABLED: i32 = 128;
+pub const CODEINTEGRITY_OPTION_ENABLED: i32 = 1;
+pub const CODEINTEGRITY_OPTION_FLIGHTING_ENABLED: i32 = 512;
+pub const CODEINTEGRITY_OPTION_FLIGHT_BUILD: i32 = 256;
+pub const CODEINTEGRITY_OPTION_HVCI_IUM_ENABLED: i32 = 8192;
+pub const CODEINTEGRITY_OPTION_HVCI_KMCI_AUDITMODE_ENABLED: i32 = 2048;
+pub const CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED: i32 = 1024;
+pub const CODEINTEGRITY_OPTION_HVCI_KMCI_STRICTMODE_ENABLED: i32 = 4096;
+pub const CODEINTEGRITY_OPTION_PREPRODUCTION_BUILD: i32 = 64;
+pub const CODEINTEGRITY_OPTION_TESTSIGN: i32 = 2;
+pub const CODEINTEGRITY_OPTION_TEST_BUILD: i32 = 32;
+pub const CODEINTEGRITY_OPTION_UMCI_AUDITMODE_ENABLED: i32 = 8;
+pub const CODEINTEGRITY_OPTION_UMCI_ENABLED: i32 = 4;
+pub const CODEINTEGRITY_OPTION_UMCI_EXCLUSIONPATHS_ENABLED: i32 = 16;
+pub const FILE_COMPLETE_IF_OPLOCKED: i32 = 256;
+pub const FILE_CREATE: i32 = 2;
+pub const FILE_CREATED: i32 = 2;
+pub const FILE_CREATE_TREE_CONNECTION: i32 = 128;
+pub const FILE_DELETE_ON_CLOSE: i32 = 4096;
+pub const FILE_DIRECTORY_FILE: i32 = 1;
+pub const FILE_DOES_NOT_EXIST: i32 = 5;
+pub const FILE_EXISTS: i32 = 4;
+pub const FILE_MAXIMUM_DISPOSITION: i32 = 5;
+pub const FILE_NON_DIRECTORY_FILE: i32 = 64;
+pub const FILE_NO_COMPRESSION: i32 = 32768;
+pub const FILE_NO_EA_KNOWLEDGE: i32 = 512;
+pub const FILE_NO_INTERMEDIATE_BUFFERING: i32 = 8;
+pub const FILE_OPEN: i32 = 1;
+pub const FILE_OPENED: i32 = 1;
+pub const FILE_OPEN_BY_FILE_ID: i32 = 8192;
+pub const FILE_OPEN_FOR_BACKUP_INTENT: i32 = 16384;
+pub const FILE_OPEN_FOR_FREE_SPACE_QUERY: i32 = 8388608;
+pub const FILE_OPEN_IF: i32 = 3;
+pub const FILE_OPEN_NO_RECALL: i32 = 4194304;
+pub const FILE_OPEN_REMOTE_INSTANCE: i32 = 1024;
+pub const FILE_OPEN_REPARSE_POINT: i32 = 2097152;
+pub const FILE_OPEN_REQUIRING_OPLOCK: i32 = 65536;
+pub const FILE_OVERWRITE: i32 = 4;
+pub const FILE_OVERWRITE_IF: i32 = 5;
+pub const FILE_OVERWRITTEN: i32 = 3;
+pub const FILE_RANDOM_ACCESS: i32 = 2048;
+pub const FILE_RESERVE_OPFILTER: i32 = 1048576;
+pub const FILE_SEQUENTIAL_ONLY: i32 = 4;
+pub const FILE_SUPERSEDE: i32 = 0;
+pub const FILE_SUPERSEDED: i32 = 0;
+pub const FILE_SYNCHRONOUS_IO_ALERT: i32 = 16;
+pub const FILE_SYNCHRONOUS_IO_NONALERT: i32 = 32;
+pub const FILE_VALID_MAILSLOT_OPTION_FLAGS: i32 = 50;
+pub const FILE_VALID_OPTION_FLAGS: i32 = 16777215;
+pub const FILE_VALID_PIPE_OPTION_FLAGS: i32 = 50;
+pub const FILE_VALID_SET_FLAGS: i32 = 54;
+pub const FILE_WRITE_THROUGH: i32 = 2;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct IO_STATUS_BLOCK {
+    pub Anonymous: IO_STATUS_BLOCK_0,
+    pub Information: usize,
+}
+impl Default for IO_STATUS_BLOCK {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union IO_STATUS_BLOCK_0 {
+    pub Status: windows_sys::core::NTSTATUS,
+    pub Pointer: *mut core::ffi::c_void,
+}
+impl Default for IO_STATUS_BLOCK_0 {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi"))]
+#[derive(Clone, Copy, Default)]
+pub struct KEY_VALUE_ENTRY {
+    pub ValueName: super::PUNICODE_STRING,
+    pub DataLength: u32,
+    pub DataOffset: u32,
+    pub Type: u32,
+}
+pub type KPRIORITY = i32;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct LDR_DATA_TABLE_ENTRY {
+    pub Reserved1: [*mut core::ffi::c_void; 2],
+    pub InMemoryOrderLinks: super::LIST_ENTRY,
+    pub Reserved2: [*mut core::ffi::c_void; 2],
+    pub DllBase: *mut core::ffi::c_void,
+    pub Reserved3: [*mut core::ffi::c_void; 2],
+    pub FullDllName: UNICODE_STRING,
+    pub Reserved4: [u8; 8],
+    pub Reserved5: [*mut core::ffi::c_void; 3],
+    pub Anonymous: LDR_DATA_TABLE_ENTRY_0,
+    pub TimeDateStamp: u32,
+}
+#[cfg(feature = "winnt")]
+impl Default for LDR_DATA_TABLE_ENTRY {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub union LDR_DATA_TABLE_ENTRY_0 {
+    pub CheckSum: u32,
+    pub Reserved6: *mut core::ffi::c_void,
+}
+#[cfg(feature = "winnt")]
+impl Default for LDR_DATA_TABLE_ENTRY_0 {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub const LOGONID_CURRENT: u32 = 4294967295;
+#[repr(C)]
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+#[derive(Clone, Copy, Default)]
+pub struct OBJECT_ATTRIBUTES {
+    pub Length: u32,
+    pub RootDirectory: super::HANDLE,
+    pub ObjectName: super::PUNICODE_STRING,
+    pub Attributes: u32,
+    pub SecurityDescriptor: *mut core::ffi::c_void,
+    pub SecurityQualityOfService: *mut core::ffi::c_void,
+}
+pub type OBJECT_INFORMATION_CLASS = i32;
+pub const OBJ_CASE_INSENSITIVE: i32 = 64;
+pub const OBJ_DONT_REPARSE: i32 = 4096;
+pub const OBJ_EXCLUSIVE: i32 = 32;
+pub const OBJ_FORCE_ACCESS_CHECK: i32 = 1024;
+pub const OBJ_IGNORE_IMPERSONATED_DEVICEMAP: i32 = 2048;
+pub const OBJ_INHERIT: i32 = 2;
+pub const OBJ_KERNEL_HANDLE: i32 = 512;
+pub const OBJ_OPENIF: i32 = 128;
+pub const OBJ_OPENLINK: i32 = 256;
+pub const OBJ_PERMANENT: i32 = 16;
+pub const OBJ_VALID_ATTRIBUTES: i32 = 8178;
+#[cfg(feature = "winnt")]
+pub type OEM_STRING = STRING;
+pub const ObjectBasicInformation: OBJECT_INFORMATION_CLASS = 0;
+pub const ObjectTypeInformation: OBJECT_INFORMATION_CLASS = 2;
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+pub type PANSI_STRING = super::PSTRING;
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+pub type PCANSI_STRING = super::PSTRING;
+#[cfg(feature = "winnt")]
+pub type PCOEM_STRING = *const STRING;
+pub type PCSZ = *const i8;
+pub type PCUNICODE_STRING = *const UNICODE_STRING;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct PEB {
+    pub Reserved1: [u8; 2],
+    pub BeingDebugged: u8,
+    pub Reserved2: [u8; 1],
+    pub Reserved3: [*mut core::ffi::c_void; 2],
+    pub Ldr: PPEB_LDR_DATA,
+    pub ProcessParameters: PRTL_USER_PROCESS_PARAMETERS,
+    pub Reserved4: [*mut core::ffi::c_void; 3],
+    pub AtlThunkSListPtr: *mut core::ffi::c_void,
+    pub Reserved5: *mut core::ffi::c_void,
+    pub Reserved6: u32,
+    pub Reserved7: *mut core::ffi::c_void,
+    pub Reserved8: u32,
+    pub AtlThunkSListPtr32: u32,
+    pub Reserved9: [*mut core::ffi::c_void; 45],
+    pub Reserved10: [u8; 96],
+    pub PostProcessInitRoutine: PPS_POST_PROCESS_INIT_ROUTINE,
+    pub Reserved11: [u8; 128],
+    pub Reserved12: [*mut core::ffi::c_void; 1],
+    pub SessionId: u32,
+}
+#[cfg(feature = "winnt")]
+impl Default for PEB {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct PEB_LDR_DATA {
+    pub Reserved1: [u8; 8],
+    pub Reserved2: [*mut core::ffi::c_void; 3],
+    pub InMemoryOrderModuleList: super::LIST_ENTRY,
+}
+#[cfg(feature = "winnt")]
+impl Default for PEB_LDR_DATA {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub type PIO_APC_ROUTINE = Option<unsafe extern "system" fn(apccontext: *mut core::ffi::c_void, iostatusblock: PIO_STATUS_BLOCK, reserved: u32)>;
+pub type PIO_STATUS_BLOCK = *mut IO_STATUS_BLOCK;
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi"))]
+pub type PKEY_VALUE_ENTRY = *mut KEY_VALUE_ENTRY;
+#[cfg(feature = "winnt")]
+pub type PLDR_DATA_TABLE_ENTRY = *mut LDR_DATA_TABLE_ENTRY;
+#[cfg(all(feature = "lsalookup", feature = "ntsecapi", feature = "winnt"))]
+pub type POEM_STRING = super::PSTRING;
+#[cfg(feature = "winnt")]
+pub type PPEB = *mut PEB;
+#[cfg(feature = "winnt")]
+pub type PPEB_LDR_DATA = *mut PEB_LDR_DATA;
+#[cfg(feature = "winnt")]
+pub type PPROCESS_BASIC_INFORMATION = *mut PROCESS_BASIC_INFORMATION;
+pub type PPS_POST_PROCESS_INIT_ROUTINE = Option<unsafe extern "system" fn()>;
+#[cfg(feature = "winnt")]
+pub type PPUBLIC_OBJECT_BASIC_INFORMATION = *mut PUBLIC_OBJECT_BASIC_INFORMATION;
+pub type PPUBLIC_OBJECT_TYPE_INFORMATION = *mut PUBLIC_OBJECT_TYPE_INFORMATION;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct PROCESS_BASIC_INFORMATION {
+    pub Reserved1: *mut core::ffi::c_void,
+    pub PebBaseAddress: PPEB,
+    pub Reserved2: [*mut core::ffi::c_void; 2],
+    pub UniqueProcessId: usize,
+    pub Reserved3: *mut core::ffi::c_void,
+}
+#[cfg(feature = "winnt")]
+impl Default for PROCESS_BASIC_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub type PRTL_USER_PROCESS_PARAMETERS = *mut RTL_USER_PROCESS_PARAMETERS;
+#[cfg(feature = "winnt")]
+pub type PSYSTEM_BASICPROCESS_INFORMATION = *mut SYSTEM_BASICPROCESS_INFORMATION;
+#[cfg(feature = "winnt")]
+pub type PSYSTEM_BASIC_INFORMATION = *mut SYSTEM_BASIC_INFORMATION;
+pub type PSYSTEM_CODEINTEGRITY_INFORMATION = *mut SYSTEM_CODEINTEGRITY_INFORMATION;
+pub type PSYSTEM_EXCEPTION_INFORMATION = *mut SYSTEM_EXCEPTION_INFORMATION;
+pub type PSYSTEM_HANDLECOUNT_INFORMATION = *mut SYSTEM_HANDLECOUNT_INFORMATION;
+pub type PSYSTEM_INTERRUPT_INFORMATION = *mut SYSTEM_INTERRUPT_INFORMATION;
+pub type PSYSTEM_LOOKASIDE_INFORMATION = *mut SYSTEM_LOOKASIDE_INFORMATION;
+pub type PSYSTEM_PERFORMANCE_INFORMATION = *mut SYSTEM_PERFORMANCE_INFORMATION;
+pub type PSYSTEM_POLICY_INFORMATION = *mut SYSTEM_POLICY_INFORMATION;
+#[cfg(feature = "winnt")]
+pub type PSYSTEM_PROCESSOR_PERFORMANCE_INFORMATION = *mut SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
+#[cfg(feature = "winnt")]
+pub type PSYSTEM_PROCESS_INFORMATION = *mut SYSTEM_PROCESS_INFORMATION;
+pub type PSYSTEM_REGISTRY_QUOTA_INFORMATION = *mut SYSTEM_REGISTRY_QUOTA_INFORMATION;
+#[cfg(feature = "winnt")]
+pub type PSYSTEM_THREAD_INFORMATION = *mut SYSTEM_THREAD_INFORMATION;
+pub type PSYSTEM_TIMEOFDAY_INFORMATION = *mut SYSTEM_TIMEOFDAY_INFORMATION;
+#[cfg(feature = "winnt")]
+pub type PTEB = *mut TEB;
+pub type PTHREAD_NAME_INFORMATION = *mut THREAD_NAME_INFORMATION;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct PUBLIC_OBJECT_BASIC_INFORMATION {
+    pub Attributes: u32,
+    pub GrantedAccess: super::ACCESS_MASK,
+    pub HandleCount: u32,
+    pub PointerCount: u32,
+    pub Reserved: [u32; 10],
+}
+#[cfg(feature = "winnt")]
+impl Default for PUBLIC_OBJECT_BASIC_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PUBLIC_OBJECT_TYPE_INFORMATION {
+    pub TypeName: UNICODE_STRING,
+    pub Reserved: [u32; 22],
+}
+impl Default for PUBLIC_OBJECT_TYPE_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub type PWINSTATIONINFORMATIONW = *mut WINSTATIONINFORMATIONW;
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+pub type PWINSTATIONQUERYINFORMATIONW = Option<unsafe extern "system" fn(param0: super::HANDLE, param1: u32, param2: WINSTATIONINFOCLASS, param3: *mut core::ffi::c_void, param4: u32, param5: super::PULONG) -> super::BOOLEAN>;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RTL_USER_PROCESS_PARAMETERS {
+    pub Reserved1: [u8; 16],
+    pub Reserved2: [*mut core::ffi::c_void; 10],
+    pub ImagePathName: UNICODE_STRING,
+    pub CommandLine: UNICODE_STRING,
+}
+impl Default for RTL_USER_PROCESS_PARAMETERS {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[cfg(feature = "winnt")]
+pub const SERVERNAME_CURRENT: super::HANDLE = 0 as _;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy, Default)]
+pub struct STRING {
+    pub Length: u16,
+    pub MaximumLength: u16,
+    pub Buffer: super::PCHAR,
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy, Default)]
+pub struct SYSTEM_BASICPROCESS_INFORMATION {
+    pub NextEntryOffset: u32,
+    pub UniqueProcessId: super::HANDLE,
+    pub InheritedFromUniqueProcessId: super::HANDLE,
+    pub SequenceNumber: u64,
+    pub ImageName: UNICODE_STRING,
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_BASIC_INFORMATION {
+    pub Reserved1: [u8; 24],
+    pub Reserved2: [*mut core::ffi::c_void; 4],
+    pub NumberOfProcessors: super::CCHAR,
+}
+#[cfg(feature = "winnt")]
+impl Default for SYSTEM_BASIC_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct SYSTEM_CODEINTEGRITY_INFORMATION {
+    pub Length: u32,
+    pub CodeIntegrityOptions: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_EXCEPTION_INFORMATION {
+    pub Reserved1: [u8; 16],
+}
+impl Default for SYSTEM_EXCEPTION_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct SYSTEM_HANDLECOUNT_INFORMATION {
+    pub ProcessCount: u32,
+    pub ThreadCount: u32,
+    pub HandleCount: u32,
+}
+pub type SYSTEM_INFORMATION_CLASS = i32;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_INTERRUPT_INFORMATION {
+    pub Reserved1: [u8; 24],
+}
+impl Default for SYSTEM_INTERRUPT_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_LOOKASIDE_INFORMATION {
+    pub Reserved1: [u8; 32],
+}
+impl Default for SYSTEM_LOOKASIDE_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_PERFORMANCE_INFORMATION {
+    pub Reserved1: [u8; 312],
+}
+impl Default for SYSTEM_PERFORMANCE_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_POLICY_INFORMATION {
+    pub Reserved1: [*mut core::ffi::c_void; 2],
+    pub Reserved2: [u32; 3],
+}
+impl Default for SYSTEM_POLICY_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION {
+    pub IdleTime: super::LARGE_INTEGER,
+    pub KernelTime: super::LARGE_INTEGER,
+    pub UserTime: super::LARGE_INTEGER,
+    pub Reserved1: [super::LARGE_INTEGER; 2],
+    pub Reserved2: u32,
+}
+#[cfg(feature = "winnt")]
+impl Default for SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_PROCESS_INFORMATION {
+    pub NextEntryOffset: u32,
+    pub NumberOfThreads: u32,
+    pub Reserved1: [u8; 48],
+    pub ImageName: UNICODE_STRING,
+    pub BasePriority: KPRIORITY,
+    pub UniqueProcessId: super::HANDLE,
+    pub InheritedFromUniqueProcessId: super::HANDLE,
+    pub HandleCount: u32,
+    pub SessionId: u32,
+    pub Reserved3: *mut core::ffi::c_void,
+    pub PeakVirtualSize: usize,
+    pub VirtualSize: usize,
+    pub Reserved4: u32,
+    pub PeakWorkingSetSize: usize,
+    pub WorkingSetSize: usize,
+    pub Reserved5: *mut core::ffi::c_void,
+    pub QuotaPagedPoolUsage: usize,
+    pub Reserved6: *mut core::ffi::c_void,
+    pub QuotaNonPagedPoolUsage: usize,
+    pub PagefileUsage: usize,
+    pub PeakPagefileUsage: usize,
+    pub PrivatePageCount: usize,
+    pub Reserved7: [super::LARGE_INTEGER; 6],
+}
+#[cfg(feature = "winnt")]
+impl Default for SYSTEM_PROCESS_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct SYSTEM_REGISTRY_QUOTA_INFORMATION {
+    pub RegistryQuotaAllowed: u32,
+    pub RegistryQuotaUsed: u32,
+    pub Reserved1: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_THREAD_INFORMATION {
+    pub Reserved1: [super::LARGE_INTEGER; 3],
+    pub Reserved2: u32,
+    pub StartAddress: *mut core::ffi::c_void,
+    pub ClientId: CLIENT_ID,
+    pub Priority: KPRIORITY,
+    pub BasePriority: i32,
+    pub Reserved3: u32,
+    pub ThreadState: u32,
+    pub WaitReason: u32,
+}
+#[cfg(feature = "winnt")]
+impl Default for SYSTEM_THREAD_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYSTEM_TIMEOFDAY_INFORMATION {
+    pub Reserved1: [u8; 48],
+}
+impl Default for SYSTEM_TIMEOFDAY_INFORMATION {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub const SystemBasicInformation: SYSTEM_INFORMATION_CLASS = 0;
+pub const SystemBasicProcessInformation: SYSTEM_INFORMATION_CLASS = 252;
+pub const SystemCodeIntegrityInformation: SYSTEM_INFORMATION_CLASS = 103;
+pub const SystemExceptionInformation: SYSTEM_INFORMATION_CLASS = 33;
+pub const SystemHandleCountInformation: SYSTEM_INFORMATION_CLASS = 253;
+pub const SystemInterruptInformation: SYSTEM_INFORMATION_CLASS = 23;
+pub const SystemLookasideInformation: SYSTEM_INFORMATION_CLASS = 45;
+pub const SystemPerformanceInformation: SYSTEM_INFORMATION_CLASS = 2;
+pub const SystemPolicyInformation: SYSTEM_INFORMATION_CLASS = 134;
+pub const SystemProcessInformation: SYSTEM_INFORMATION_CLASS = 5;
+pub const SystemProcessorPerformanceInformation: SYSTEM_INFORMATION_CLASS = 8;
+pub const SystemRegistryQuotaInformation: SYSTEM_INFORMATION_CLASS = 37;
+pub const SystemTimeOfDayInformation: SYSTEM_INFORMATION_CLASS = 3;
+#[repr(C)]
+#[cfg(feature = "winnt")]
+#[derive(Clone, Copy)]
+pub struct TEB {
+    pub Reserved1: [*mut core::ffi::c_void; 12],
+    pub ProcessEnvironmentBlock: PPEB,
+    pub Reserved2: [*mut core::ffi::c_void; 399],
+    pub Reserved3: [u8; 1952],
+    pub TlsSlots: [*mut core::ffi::c_void; 64],
+    pub Reserved4: [u8; 8],
+    pub Reserved5: [*mut core::ffi::c_void; 26],
+    pub ReservedForOle: *mut core::ffi::c_void,
+    pub Reserved6: [*mut core::ffi::c_void; 4],
+    pub TlsExpansionSlots: *mut core::ffi::c_void,
+}
+#[cfg(feature = "winnt")]
+impl Default for TEB {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct THREAD_NAME_INFORMATION {
+    pub ThreadName: UNICODE_STRING,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct UNICODE_STRING {
+    pub Length: u16,
+    pub MaximumLength: u16,
+    pub Buffer: windows_sys::core::PWSTR,
+}
+pub type WINSTATIONINFOCLASS = i32;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct WINSTATIONINFORMATIONW {
+    pub Reserved2: [u8; 70],
+    pub LogonId: u32,
+    pub Reserved3: [u8; 1140],
+}
+impl Default for WINSTATIONINFORMATIONW {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub const WinStationInformation: WINSTATIONINFOCLASS = 8;

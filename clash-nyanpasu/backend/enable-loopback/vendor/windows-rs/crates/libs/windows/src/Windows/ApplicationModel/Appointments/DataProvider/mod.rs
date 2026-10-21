@@ -1,0 +1,894 @@
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarCancelMeetingRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarCancelMeetingRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarCancelMeetingRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentOriginalStartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentOriginalStartTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn Subject(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Subject)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Comment(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Comment)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn NotifyInvitees(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NotifyInvitees)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ReportCompletedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarCancelMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarCancelMeetingRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarCancelMeetingRequest {
+    type Vtable = <IAppointmentCalendarCancelMeetingRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarCancelMeetingRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarCancelMeetingRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarCancelMeetingRequest";
+}
+unsafe impl Send for AppointmentCalendarCancelMeetingRequest {}
+unsafe impl Sync for AppointmentCalendarCancelMeetingRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarCancelMeetingRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarCancelMeetingRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarCancelMeetingRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarCancelMeetingRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarCancelMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarCancelMeetingRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarCancelMeetingRequestEventArgs {
+    type Vtable = <IAppointmentCalendarCancelMeetingRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarCancelMeetingRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarCancelMeetingRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarCancelMeetingRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarCancelMeetingRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarCancelMeetingRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarCreateOrUpdateAppointmentRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarCreateOrUpdateAppointmentRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarCreateOrUpdateAppointmentRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Appointment(&self) -> windows_core::Result<super::Appointment> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Appointment)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn NotifyInvitees(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NotifyInvitees)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ChangedProperties(&self) -> windows_core::Result<windows_collections::IVectorView<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ChangedProperties)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportCompletedAsync<P0>(&self, createdorupdatedappointment: P0) -> windows_core::Result<windows_future::IAsyncAction>
+    where
+        P0: windows_core::Param<super::Appointment>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), createdorupdatedappointment.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarCreateOrUpdateAppointmentRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarCreateOrUpdateAppointmentRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarCreateOrUpdateAppointmentRequest {
+    type Vtable = <IAppointmentCalendarCreateOrUpdateAppointmentRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarCreateOrUpdateAppointmentRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarCreateOrUpdateAppointmentRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarCreateOrUpdateAppointmentRequest";
+}
+unsafe impl Send for AppointmentCalendarCreateOrUpdateAppointmentRequest {}
+unsafe impl Sync for AppointmentCalendarCreateOrUpdateAppointmentRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarCreateOrUpdateAppointmentRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {
+    type Vtable = <IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarForwardMeetingRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarForwardMeetingRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarForwardMeetingRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentOriginalStartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentOriginalStartTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn Invitees(&self) -> windows_core::Result<windows_collections::IVectorView<super::AppointmentInvitee>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Invitees)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Subject(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Subject)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ForwardHeader(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ForwardHeader)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Comment(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Comment)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ReportCompletedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarForwardMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarForwardMeetingRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarForwardMeetingRequest {
+    type Vtable = <IAppointmentCalendarForwardMeetingRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarForwardMeetingRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarForwardMeetingRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarForwardMeetingRequest";
+}
+unsafe impl Send for AppointmentCalendarForwardMeetingRequest {}
+unsafe impl Sync for AppointmentCalendarForwardMeetingRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarForwardMeetingRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarForwardMeetingRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarForwardMeetingRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarForwardMeetingRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarForwardMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarForwardMeetingRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarForwardMeetingRequestEventArgs {
+    type Vtable = <IAppointmentCalendarForwardMeetingRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarForwardMeetingRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarForwardMeetingRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarForwardMeetingRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarForwardMeetingRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarForwardMeetingRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarProposeNewTimeForMeetingRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarProposeNewTimeForMeetingRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarProposeNewTimeForMeetingRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentOriginalStartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentOriginalStartTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn NewStartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NewStartTime)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn NewDuration(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NewDuration)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Subject(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Subject)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Comment(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Comment)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ReportCompletedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarProposeNewTimeForMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarProposeNewTimeForMeetingRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarProposeNewTimeForMeetingRequest {
+    type Vtable = <IAppointmentCalendarProposeNewTimeForMeetingRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarProposeNewTimeForMeetingRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarProposeNewTimeForMeetingRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarProposeNewTimeForMeetingRequest";
+}
+unsafe impl Send for AppointmentCalendarProposeNewTimeForMeetingRequest {}
+unsafe impl Sync for AppointmentCalendarProposeNewTimeForMeetingRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarProposeNewTimeForMeetingRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {
+    type Vtable = <IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarSyncManagerSyncRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarSyncManagerSyncRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarSyncManagerSyncRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ReportCompletedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarSyncManagerSyncRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarSyncManagerSyncRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarSyncManagerSyncRequest {
+    type Vtable = <IAppointmentCalendarSyncManagerSyncRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarSyncManagerSyncRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarSyncManagerSyncRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarSyncManagerSyncRequest";
+}
+unsafe impl Send for AppointmentCalendarSyncManagerSyncRequest {}
+unsafe impl Sync for AppointmentCalendarSyncManagerSyncRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarSyncManagerSyncRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarSyncManagerSyncRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarSyncManagerSyncRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarSyncManagerSyncRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarSyncManagerSyncRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarSyncManagerSyncRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarSyncManagerSyncRequestEventArgs {
+    type Vtable = <IAppointmentCalendarSyncManagerSyncRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarSyncManagerSyncRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarSyncManagerSyncRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarSyncManagerSyncRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarSyncManagerSyncRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarSyncManagerSyncRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarUpdateMeetingResponseRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarUpdateMeetingResponseRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarUpdateMeetingResponseRequest {
+    pub fn AppointmentCalendarLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentCalendarLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentLocalId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentLocalId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AppointmentOriginalStartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AppointmentOriginalStartTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn Response(&self) -> windows_core::Result<super::AppointmentParticipantResponse> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Response)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Subject(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Subject)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Comment(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Comment)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SendUpdate(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SendUpdate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ReportCompletedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportCompletedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportFailedAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportFailedAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarUpdateMeetingResponseRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarUpdateMeetingResponseRequest>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarUpdateMeetingResponseRequest {
+    type Vtable = <IAppointmentCalendarUpdateMeetingResponseRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarUpdateMeetingResponseRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarUpdateMeetingResponseRequest {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarUpdateMeetingResponseRequest";
+}
+unsafe impl Send for AppointmentCalendarUpdateMeetingResponseRequest {}
+unsafe impl Sync for AppointmentCalendarUpdateMeetingResponseRequest {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentCalendarUpdateMeetingResponseRequestEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentCalendarUpdateMeetingResponseRequestEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentCalendarUpdateMeetingResponseRequestEventArgs {
+    pub fn Request(&self) -> windows_core::Result<AppointmentCalendarUpdateMeetingResponseRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<super::super::super::Foundation::Deferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentCalendarUpdateMeetingResponseRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentCalendarUpdateMeetingResponseRequestEventArgs>();
+}
+unsafe impl windows_core::Interface for AppointmentCalendarUpdateMeetingResponseRequestEventArgs {
+    type Vtable = <IAppointmentCalendarUpdateMeetingResponseRequestEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentCalendarUpdateMeetingResponseRequestEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentCalendarUpdateMeetingResponseRequestEventArgs {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentCalendarUpdateMeetingResponseRequestEventArgs";
+}
+unsafe impl Send for AppointmentCalendarUpdateMeetingResponseRequestEventArgs {}
+unsafe impl Sync for AppointmentCalendarUpdateMeetingResponseRequestEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentDataProviderConnection(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentDataProviderConnection, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentDataProviderConnection {
+    pub fn SyncRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarSyncManagerSyncRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarSyncManagerSyncRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).SyncRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveSyncRequested))
+        }
+    }
+    pub fn CreateOrUpdateAppointmentRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).CreateOrUpdateAppointmentRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveCreateOrUpdateAppointmentRequested))
+        }
+    }
+    pub fn CancelMeetingRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarCancelMeetingRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarCancelMeetingRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).CancelMeetingRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveCancelMeetingRequested))
+        }
+    }
+    pub fn ForwardMeetingRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarForwardMeetingRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarForwardMeetingRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).ForwardMeetingRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveForwardMeetingRequested))
+        }
+    }
+    pub fn ProposeNewTimeForMeetingRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarProposeNewTimeForMeetingRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).ProposeNewTimeForMeetingRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveProposeNewTimeForMeetingRequested))
+        }
+    }
+    pub fn UpdateMeetingResponseRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<AppointmentCalendarUpdateMeetingResponseRequestEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, AppointmentCalendarUpdateMeetingResponseRequestEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).UpdateMeetingResponseRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveUpdateMeetingResponseRequested))
+        }
+    }
+    pub fn Start(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).Start)(windows_core::Interface::as_raw(self)).ok() }
+    }
+}
+impl windows_core::RuntimeType for AppointmentDataProviderConnection {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentDataProviderConnection>();
+}
+unsafe impl windows_core::Interface for AppointmentDataProviderConnection {
+    type Vtable = <IAppointmentDataProviderConnection as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentDataProviderConnection as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentDataProviderConnection {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentDataProviderConnection";
+}
+unsafe impl Send for AppointmentDataProviderConnection {}
+unsafe impl Sync for AppointmentDataProviderConnection {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppointmentDataProviderTriggerDetails(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppointmentDataProviderTriggerDetails, windows_core::IUnknown, windows_core::IInspectable);
+impl AppointmentDataProviderTriggerDetails {
+    pub fn Connection(&self) -> windows_core::Result<AppointmentDataProviderConnection> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Connection)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppointmentDataProviderTriggerDetails {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppointmentDataProviderTriggerDetails>();
+}
+unsafe impl windows_core::Interface for AppointmentDataProviderTriggerDetails {
+    type Vtable = <IAppointmentDataProviderTriggerDetails as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppointmentDataProviderTriggerDetails as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppointmentDataProviderTriggerDetails {
+    const NAME: &'static str = "Windows.ApplicationModel.Appointments.DataProvider.AppointmentDataProviderTriggerDetails";
+}
+unsafe impl Send for AppointmentDataProviderTriggerDetails {}
+unsafe impl Sync for AppointmentDataProviderTriggerDetails {}
+windows_core::imp::define_interface!(IAppointmentCalendarCancelMeetingRequest, IAppointmentCalendarCancelMeetingRequest_Vtbl, 0x49460f8d_6434_40d7_ad46_6297419314d1);
+impl windows_core::RuntimeType for IAppointmentCalendarCancelMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarCancelMeetingRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarCancelMeetingRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentOriginalStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Subject: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Comment: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub NotifyInvitees: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarCancelMeetingRequestEventArgs, IAppointmentCalendarCancelMeetingRequestEventArgs_Vtbl, 0x1a79be16_7f30_4e35_beef_9d2c7b6dcae1);
+impl windows_core::RuntimeType for IAppointmentCalendarCancelMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarCancelMeetingRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarCancelMeetingRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarCreateOrUpdateAppointmentRequest, IAppointmentCalendarCreateOrUpdateAppointmentRequest_Vtbl, 0x2e62f2b2_ca96_48ac_9124_406b19fefa70);
+impl windows_core::RuntimeType for IAppointmentCalendarCreateOrUpdateAppointmentRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarCreateOrUpdateAppointmentRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarCreateOrUpdateAppointmentRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Appointment: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub NotifyInvitees: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ChangedProperties: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs, IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs_Vtbl, 0xcf8ded28_002e_4bf7_8e9d_5e20d49aa3ba);
+impl windows_core::RuntimeType for IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarCreateOrUpdateAppointmentRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarForwardMeetingRequest, IAppointmentCalendarForwardMeetingRequest_Vtbl, 0x82e5ee56_26b6_4253_8a8f_6cf5f2ff7884);
+impl windows_core::RuntimeType for IAppointmentCalendarForwardMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarForwardMeetingRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarForwardMeetingRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentOriginalStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Invitees: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Subject: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ForwardHeader: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Comment: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarForwardMeetingRequestEventArgs, IAppointmentCalendarForwardMeetingRequestEventArgs_Vtbl, 0x3109151a_23a2_42fd_9c82_c9a60d59f8a8);
+impl windows_core::RuntimeType for IAppointmentCalendarForwardMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarForwardMeetingRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarForwardMeetingRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarProposeNewTimeForMeetingRequest, IAppointmentCalendarProposeNewTimeForMeetingRequest_Vtbl, 0xce1c63f5_edf6_43c3_82b7_be6b368c6900);
+impl windows_core::RuntimeType for IAppointmentCalendarProposeNewTimeForMeetingRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarProposeNewTimeForMeetingRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarProposeNewTimeForMeetingRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentOriginalStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub NewStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub NewDuration: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub Subject: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Comment: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs, IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs_Vtbl, 0xd2d777d8_fed1_4280_a3ba_2e1f47609aa2);
+impl windows_core::RuntimeType for IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarProposeNewTimeForMeetingRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarSyncManagerSyncRequest, IAppointmentCalendarSyncManagerSyncRequest_Vtbl, 0x12ab382b_7163_4a56_9a4e_7223a84adf46);
+impl windows_core::RuntimeType for IAppointmentCalendarSyncManagerSyncRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarSyncManagerSyncRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarSyncManagerSyncRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarSyncManagerSyncRequestEventArgs, IAppointmentCalendarSyncManagerSyncRequestEventArgs_Vtbl, 0xca17c6f7_0284_4edd_87ba_4d8f69dcf5c0);
+impl windows_core::RuntimeType for IAppointmentCalendarSyncManagerSyncRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarSyncManagerSyncRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarSyncManagerSyncRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarUpdateMeetingResponseRequest, IAppointmentCalendarUpdateMeetingResponseRequest_Vtbl, 0xa36d608c_c29d_4b94_b086_7e9ff7bd84a0);
+impl windows_core::RuntimeType for IAppointmentCalendarUpdateMeetingResponseRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarUpdateMeetingResponseRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarUpdateMeetingResponseRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AppointmentCalendarLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentLocalId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AppointmentOriginalStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Response: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::AppointmentParticipantResponse) -> windows_core::HRESULT,
+    pub Subject: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Comment: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SendUpdate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ReportCompletedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportFailedAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentCalendarUpdateMeetingResponseRequestEventArgs, IAppointmentCalendarUpdateMeetingResponseRequestEventArgs_Vtbl, 0x88759883_97bf_479d_aed5_0be8ce567d1e);
+impl windows_core::RuntimeType for IAppointmentCalendarUpdateMeetingResponseRequestEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentCalendarUpdateMeetingResponseRequestEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentCalendarUpdateMeetingResponseRequestEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentDataProviderConnection, IAppointmentDataProviderConnection_Vtbl, 0xf3dd9d83_3254_465f_abdb_928046552cf4);
+impl windows_core::RuntimeType for IAppointmentDataProviderConnection {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentDataProviderConnection");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentDataProviderConnection_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SyncRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveSyncRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub CreateOrUpdateAppointmentRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveCreateOrUpdateAppointmentRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub CancelMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveCancelMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub ForwardMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveForwardMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub ProposeNewTimeForMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveProposeNewTimeForMeetingRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub UpdateMeetingResponseRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveUpdateMeetingResponseRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub Start: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppointmentDataProviderTriggerDetails, IAppointmentDataProviderTriggerDetails_Vtbl, 0xb3283c01_7e12_4e5e_b1ef_74fb68ac6f2a);
+impl windows_core::RuntimeType for IAppointmentDataProviderTriggerDetails {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Appointments.DataProvider.IAppointmentDataProviderTriggerDetails");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppointmentDataProviderTriggerDetails_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Connection: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}

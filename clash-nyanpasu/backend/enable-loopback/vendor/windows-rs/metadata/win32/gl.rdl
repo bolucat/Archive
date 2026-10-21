@@ -1,0 +1,1297 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const GL_2D: i32 = 1536;
+        const GL_2_BYTES: i32 = 5127;
+        const GL_3D: i32 = 1537;
+        const GL_3D_COLOR: i32 = 1538;
+        const GL_3D_COLOR_TEXTURE: i32 = 1539;
+        const GL_3_BYTES: i32 = 5128;
+        const GL_4D_COLOR_TEXTURE: i32 = 1540;
+        const GL_4_BYTES: i32 = 5129;
+        const GL_ACCUM: i32 = 256;
+        const GL_ACCUM_ALPHA_BITS: i32 = 3419;
+        const GL_ACCUM_BLUE_BITS: i32 = 3418;
+        const GL_ACCUM_BUFFER_BIT: i32 = 512;
+        const GL_ACCUM_CLEAR_VALUE: i32 = 2944;
+        const GL_ACCUM_GREEN_BITS: i32 = 3417;
+        const GL_ACCUM_RED_BITS: i32 = 3416;
+        const GL_ADD: i32 = 260;
+        const GL_ALL_ATTRIB_BITS: i32 = 1048575;
+        const GL_ALPHA: i32 = 6406;
+        const GL_ALPHA12: i32 = 32829;
+        const GL_ALPHA16: i32 = 32830;
+        const GL_ALPHA4: i32 = 32827;
+        const GL_ALPHA8: i32 = 32828;
+        const GL_ALPHA_BIAS: i32 = 3357;
+        const GL_ALPHA_BITS: i32 = 3413;
+        const GL_ALPHA_SCALE: i32 = 3356;
+        const GL_ALPHA_TEST: i32 = 3008;
+        const GL_ALPHA_TEST_FUNC: i32 = 3009;
+        const GL_ALPHA_TEST_REF: i32 = 3010;
+        const GL_ALWAYS: i32 = 519;
+        const GL_AMBIENT: i32 = 4608;
+        const GL_AMBIENT_AND_DIFFUSE: i32 = 5634;
+        const GL_AND: i32 = 5377;
+        const GL_AND_INVERTED: i32 = 5380;
+        const GL_AND_REVERSE: i32 = 5378;
+        const GL_ATTRIB_STACK_DEPTH: i32 = 2992;
+        const GL_AUTO_NORMAL: i32 = 3456;
+        const GL_AUX0: i32 = 1033;
+        const GL_AUX1: i32 = 1034;
+        const GL_AUX2: i32 = 1035;
+        const GL_AUX3: i32 = 1036;
+        const GL_AUX_BUFFERS: i32 = 3072;
+        const GL_BACK: i32 = 1029;
+        const GL_BACK_LEFT: i32 = 1026;
+        const GL_BACK_RIGHT: i32 = 1027;
+        const GL_BGRA_EXT: i32 = 32993;
+        const GL_BGR_EXT: i32 = 32992;
+        const GL_BITMAP: i32 = 6656;
+        const GL_BITMAP_TOKEN: i32 = 1796;
+        const GL_BLEND: i32 = 3042;
+        const GL_BLEND_DST: i32 = 3040;
+        const GL_BLEND_SRC: i32 = 3041;
+        const GL_BLUE: i32 = 6405;
+        const GL_BLUE_BIAS: i32 = 3355;
+        const GL_BLUE_BITS: i32 = 3412;
+        const GL_BLUE_SCALE: i32 = 3354;
+        const GL_BYTE: i32 = 5120;
+        const GL_C3F_V3F: i32 = 10788;
+        const GL_C4F_N3F_V3F: i32 = 10790;
+        const GL_C4UB_V2F: i32 = 10786;
+        const GL_C4UB_V3F: i32 = 10787;
+        const GL_CCW: i32 = 2305;
+        const GL_CLAMP: i32 = 10496;
+        const GL_CLEAR: i32 = 5376;
+        const GL_CLIENT_ALL_ATTRIB_BITS: u32 = 4294967295;
+        const GL_CLIENT_ATTRIB_STACK_DEPTH: i32 = 2993;
+        const GL_CLIENT_PIXEL_STORE_BIT: i32 = 1;
+        const GL_CLIENT_VERTEX_ARRAY_BIT: i32 = 2;
+        const GL_CLIP_PLANE0: i32 = 12288;
+        const GL_CLIP_PLANE1: i32 = 12289;
+        const GL_CLIP_PLANE2: i32 = 12290;
+        const GL_CLIP_PLANE3: i32 = 12291;
+        const GL_CLIP_PLANE4: i32 = 12292;
+        const GL_CLIP_PLANE5: i32 = 12293;
+        const GL_COEFF: i32 = 2560;
+        const GL_COLOR: i32 = 6144;
+        const GL_COLOR_ARRAY: i32 = 32886;
+        const GL_COLOR_ARRAY_COUNT_EXT: i32 = 32900;
+        const GL_COLOR_ARRAY_EXT: i32 = 32886;
+        const GL_COLOR_ARRAY_POINTER: i32 = 32912;
+        const GL_COLOR_ARRAY_POINTER_EXT: i32 = 32912;
+        const GL_COLOR_ARRAY_SIZE: i32 = 32897;
+        const GL_COLOR_ARRAY_SIZE_EXT: i32 = 32897;
+        const GL_COLOR_ARRAY_STRIDE: i32 = 32899;
+        const GL_COLOR_ARRAY_STRIDE_EXT: i32 = 32899;
+        const GL_COLOR_ARRAY_TYPE: i32 = 32898;
+        const GL_COLOR_ARRAY_TYPE_EXT: i32 = 32898;
+        const GL_COLOR_BUFFER_BIT: i32 = 16384;
+        const GL_COLOR_CLEAR_VALUE: i32 = 3106;
+        const GL_COLOR_INDEX: i32 = 6400;
+        const GL_COLOR_INDEX12_EXT: i32 = 32998;
+        const GL_COLOR_INDEX16_EXT: i32 = 32999;
+        const GL_COLOR_INDEX1_EXT: i32 = 32994;
+        const GL_COLOR_INDEX2_EXT: i32 = 32995;
+        const GL_COLOR_INDEX4_EXT: i32 = 32996;
+        const GL_COLOR_INDEX8_EXT: i32 = 32997;
+        const GL_COLOR_INDEXES: i32 = 5635;
+        const GL_COLOR_LOGIC_OP: i32 = 3058;
+        const GL_COLOR_MATERIAL: i32 = 2903;
+        const GL_COLOR_MATERIAL_FACE: i32 = 2901;
+        const GL_COLOR_MATERIAL_PARAMETER: i32 = 2902;
+        const GL_COLOR_TABLE_ALPHA_SIZE_EXT: i32 = 32989;
+        const GL_COLOR_TABLE_BLUE_SIZE_EXT: i32 = 32988;
+        const GL_COLOR_TABLE_FORMAT_EXT: i32 = 32984;
+        const GL_COLOR_TABLE_GREEN_SIZE_EXT: i32 = 32987;
+        const GL_COLOR_TABLE_INTENSITY_SIZE_EXT: i32 = 32991;
+        const GL_COLOR_TABLE_LUMINANCE_SIZE_EXT: i32 = 32990;
+        const GL_COLOR_TABLE_RED_SIZE_EXT: i32 = 32986;
+        const GL_COLOR_TABLE_WIDTH_EXT: i32 = 32985;
+        const GL_COLOR_WRITEMASK: i32 = 3107;
+        const GL_COMPILE: i32 = 4864;
+        const GL_COMPILE_AND_EXECUTE: i32 = 4865;
+        const GL_CONSTANT_ATTENUATION: i32 = 4615;
+        const GL_COPY: i32 = 5379;
+        const GL_COPY_INVERTED: i32 = 5388;
+        const GL_COPY_PIXEL_TOKEN: i32 = 1798;
+        const GL_CULL_FACE: i32 = 2884;
+        const GL_CULL_FACE_MODE: i32 = 2885;
+        const GL_CURRENT_BIT: i32 = 1;
+        const GL_CURRENT_COLOR: i32 = 2816;
+        const GL_CURRENT_INDEX: i32 = 2817;
+        const GL_CURRENT_NORMAL: i32 = 2818;
+        const GL_CURRENT_RASTER_COLOR: i32 = 2820;
+        const GL_CURRENT_RASTER_DISTANCE: i32 = 2825;
+        const GL_CURRENT_RASTER_INDEX: i32 = 2821;
+        const GL_CURRENT_RASTER_POSITION: i32 = 2823;
+        const GL_CURRENT_RASTER_POSITION_VALID: i32 = 2824;
+        const GL_CURRENT_RASTER_TEXTURE_COORDS: i32 = 2822;
+        const GL_CURRENT_TEXTURE_COORDS: i32 = 2819;
+        const GL_CW: i32 = 2304;
+        const GL_DECAL: i32 = 8449;
+        const GL_DECR: i32 = 7683;
+        const GL_DEPTH: i32 = 6145;
+        const GL_DEPTH_BIAS: i32 = 3359;
+        const GL_DEPTH_BITS: i32 = 3414;
+        const GL_DEPTH_BUFFER_BIT: i32 = 256;
+        const GL_DEPTH_CLEAR_VALUE: i32 = 2931;
+        const GL_DEPTH_COMPONENT: i32 = 6402;
+        const GL_DEPTH_FUNC: i32 = 2932;
+        const GL_DEPTH_RANGE: i32 = 2928;
+        const GL_DEPTH_SCALE: i32 = 3358;
+        const GL_DEPTH_TEST: i32 = 2929;
+        const GL_DEPTH_WRITEMASK: i32 = 2930;
+        const GL_DIFFUSE: i32 = 4609;
+        const GL_DITHER: i32 = 3024;
+        const GL_DOMAIN: i32 = 2562;
+        const GL_DONT_CARE: i32 = 4352;
+        const GL_DOUBLE: i32 = 5130;
+        const GL_DOUBLEBUFFER: i32 = 3122;
+        const GL_DOUBLE_EXT: i32 = 5130;
+        const GL_DRAW_BUFFER: i32 = 3073;
+        const GL_DRAW_PIXEL_TOKEN: i32 = 1797;
+        const GL_DST_ALPHA: i32 = 772;
+        const GL_DST_COLOR: i32 = 774;
+        const GL_EDGE_FLAG: i32 = 2883;
+        const GL_EDGE_FLAG_ARRAY: i32 = 32889;
+        const GL_EDGE_FLAG_ARRAY_COUNT_EXT: i32 = 32909;
+        const GL_EDGE_FLAG_ARRAY_EXT: i32 = 32889;
+        const GL_EDGE_FLAG_ARRAY_POINTER: i32 = 32915;
+        const GL_EDGE_FLAG_ARRAY_POINTER_EXT: i32 = 32915;
+        const GL_EDGE_FLAG_ARRAY_STRIDE: i32 = 32908;
+        const GL_EDGE_FLAG_ARRAY_STRIDE_EXT: i32 = 32908;
+        const GL_EMISSION: i32 = 5632;
+        const GL_ENABLE_BIT: i32 = 8192;
+        const GL_EQUAL: i32 = 514;
+        const GL_EQUIV: i32 = 5385;
+        const GL_EVAL_BIT: i32 = 65536;
+        const GL_EXP: i32 = 2048;
+        const GL_EXP2: i32 = 2049;
+        const GL_EXTENSIONS: i32 = 7939;
+        const GL_EXT_bgra: i32 = 1;
+        const GL_EXT_paletted_texture: i32 = 1;
+        const GL_EXT_vertex_array: i32 = 1;
+        const GL_EYE_LINEAR: i32 = 9216;
+        const GL_EYE_PLANE: i32 = 9474;
+        const GL_FALSE: i32 = 0;
+        const GL_FASTEST: i32 = 4353;
+        const GL_FEEDBACK: i32 = 7169;
+        const GL_FEEDBACK_BUFFER_POINTER: i32 = 3568;
+        const GL_FEEDBACK_BUFFER_SIZE: i32 = 3569;
+        const GL_FEEDBACK_BUFFER_TYPE: i32 = 3570;
+        const GL_FILL: i32 = 6914;
+        const GL_FLAT: i32 = 7424;
+        const GL_FLOAT: i32 = 5126;
+        const GL_FOG: i32 = 2912;
+        const GL_FOG_BIT: i32 = 128;
+        const GL_FOG_COLOR: i32 = 2918;
+        const GL_FOG_DENSITY: i32 = 2914;
+        const GL_FOG_END: i32 = 2916;
+        const GL_FOG_HINT: i32 = 3156;
+        const GL_FOG_INDEX: i32 = 2913;
+        const GL_FOG_MODE: i32 = 2917;
+        const GL_FOG_SPECULAR_TEXTURE_WIN: i32 = 33004;
+        const GL_FOG_START: i32 = 2915;
+        const GL_FRONT: i32 = 1028;
+        const GL_FRONT_AND_BACK: i32 = 1032;
+        const GL_FRONT_FACE: i32 = 2886;
+        const GL_FRONT_LEFT: i32 = 1024;
+        const GL_FRONT_RIGHT: i32 = 1025;
+        const GL_GEQUAL: i32 = 518;
+        const GL_GREATER: i32 = 516;
+        const GL_GREEN: i32 = 6404;
+        const GL_GREEN_BIAS: i32 = 3353;
+        const GL_GREEN_BITS: i32 = 3411;
+        const GL_GREEN_SCALE: i32 = 3352;
+        const GL_HINT_BIT: i32 = 32768;
+        const GL_INCR: i32 = 7682;
+        const GL_INDEX_ARRAY: i32 = 32887;
+        const GL_INDEX_ARRAY_COUNT_EXT: i32 = 32903;
+        const GL_INDEX_ARRAY_EXT: i32 = 32887;
+        const GL_INDEX_ARRAY_POINTER: i32 = 32913;
+        const GL_INDEX_ARRAY_POINTER_EXT: i32 = 32913;
+        const GL_INDEX_ARRAY_STRIDE: i32 = 32902;
+        const GL_INDEX_ARRAY_STRIDE_EXT: i32 = 32902;
+        const GL_INDEX_ARRAY_TYPE: i32 = 32901;
+        const GL_INDEX_ARRAY_TYPE_EXT: i32 = 32901;
+        const GL_INDEX_BITS: i32 = 3409;
+        const GL_INDEX_CLEAR_VALUE: i32 = 3104;
+        const GL_INDEX_LOGIC_OP: i32 = 3057;
+        const GL_INDEX_MODE: i32 = 3120;
+        const GL_INDEX_OFFSET: i32 = 3347;
+        const GL_INDEX_SHIFT: i32 = 3346;
+        const GL_INDEX_WRITEMASK: i32 = 3105;
+        const GL_INT: i32 = 5124;
+        const GL_INTENSITY: i32 = 32841;
+        const GL_INTENSITY12: i32 = 32844;
+        const GL_INTENSITY16: i32 = 32845;
+        const GL_INTENSITY4: i32 = 32842;
+        const GL_INTENSITY8: i32 = 32843;
+        const GL_INVALID_ENUM: i32 = 1280;
+        const GL_INVALID_OPERATION: i32 = 1282;
+        const GL_INVALID_VALUE: i32 = 1281;
+        const GL_INVERT: i32 = 5386;
+        const GL_KEEP: i32 = 7680;
+        const GL_LEFT: i32 = 1030;
+        const GL_LEQUAL: i32 = 515;
+        const GL_LESS: i32 = 513;
+        const GL_LIGHT0: i32 = 16384;
+        const GL_LIGHT1: i32 = 16385;
+        const GL_LIGHT2: i32 = 16386;
+        const GL_LIGHT3: i32 = 16387;
+        const GL_LIGHT4: i32 = 16388;
+        const GL_LIGHT5: i32 = 16389;
+        const GL_LIGHT6: i32 = 16390;
+        const GL_LIGHT7: i32 = 16391;
+        const GL_LIGHTING: i32 = 2896;
+        const GL_LIGHTING_BIT: i32 = 64;
+        const GL_LIGHT_MODEL_AMBIENT: i32 = 2899;
+        const GL_LIGHT_MODEL_LOCAL_VIEWER: i32 = 2897;
+        const GL_LIGHT_MODEL_TWO_SIDE: i32 = 2898;
+        const GL_LINE: i32 = 6913;
+        const GL_LINEAR: i32 = 9729;
+        const GL_LINEAR_ATTENUATION: i32 = 4616;
+        const GL_LINEAR_MIPMAP_LINEAR: i32 = 9987;
+        const GL_LINEAR_MIPMAP_NEAREST: i32 = 9985;
+        const GL_LINES: i32 = 1;
+        const GL_LINE_BIT: i32 = 4;
+        const GL_LINE_LOOP: i32 = 2;
+        const GL_LINE_RESET_TOKEN: i32 = 1799;
+        const GL_LINE_SMOOTH: i32 = 2848;
+        const GL_LINE_SMOOTH_HINT: i32 = 3154;
+        const GL_LINE_STIPPLE: i32 = 2852;
+        const GL_LINE_STIPPLE_PATTERN: i32 = 2853;
+        const GL_LINE_STIPPLE_REPEAT: i32 = 2854;
+        const GL_LINE_STRIP: i32 = 3;
+        const GL_LINE_TOKEN: i32 = 1794;
+        const GL_LINE_WIDTH: i32 = 2849;
+        const GL_LINE_WIDTH_GRANULARITY: i32 = 2851;
+        const GL_LINE_WIDTH_RANGE: i32 = 2850;
+        const GL_LIST_BASE: i32 = 2866;
+        const GL_LIST_BIT: i32 = 131072;
+        const GL_LIST_INDEX: i32 = 2867;
+        const GL_LIST_MODE: i32 = 2864;
+        const GL_LOAD: i32 = 257;
+        const GL_LOGIC_OP: i32 = 3057;
+        const GL_LOGIC_OP_MODE: i32 = 3056;
+        const GL_LUMINANCE: i32 = 6409;
+        const GL_LUMINANCE12: i32 = 32833;
+        const GL_LUMINANCE12_ALPHA12: i32 = 32839;
+        const GL_LUMINANCE12_ALPHA4: i32 = 32838;
+        const GL_LUMINANCE16: i32 = 32834;
+        const GL_LUMINANCE16_ALPHA16: i32 = 32840;
+        const GL_LUMINANCE4: i32 = 32831;
+        const GL_LUMINANCE4_ALPHA4: i32 = 32835;
+        const GL_LUMINANCE6_ALPHA2: i32 = 32836;
+        const GL_LUMINANCE8: i32 = 32832;
+        const GL_LUMINANCE8_ALPHA8: i32 = 32837;
+        const GL_LUMINANCE_ALPHA: i32 = 6410;
+        const GL_MAP1_COLOR_4: i32 = 3472;
+        const GL_MAP1_GRID_DOMAIN: i32 = 3536;
+        const GL_MAP1_GRID_SEGMENTS: i32 = 3537;
+        const GL_MAP1_INDEX: i32 = 3473;
+        const GL_MAP1_NORMAL: i32 = 3474;
+        const GL_MAP1_TEXTURE_COORD_1: i32 = 3475;
+        const GL_MAP1_TEXTURE_COORD_2: i32 = 3476;
+        const GL_MAP1_TEXTURE_COORD_3: i32 = 3477;
+        const GL_MAP1_TEXTURE_COORD_4: i32 = 3478;
+        const GL_MAP1_VERTEX_3: i32 = 3479;
+        const GL_MAP1_VERTEX_4: i32 = 3480;
+        const GL_MAP2_COLOR_4: i32 = 3504;
+        const GL_MAP2_GRID_DOMAIN: i32 = 3538;
+        const GL_MAP2_GRID_SEGMENTS: i32 = 3539;
+        const GL_MAP2_INDEX: i32 = 3505;
+        const GL_MAP2_NORMAL: i32 = 3506;
+        const GL_MAP2_TEXTURE_COORD_1: i32 = 3507;
+        const GL_MAP2_TEXTURE_COORD_2: i32 = 3508;
+        const GL_MAP2_TEXTURE_COORD_3: i32 = 3509;
+        const GL_MAP2_TEXTURE_COORD_4: i32 = 3510;
+        const GL_MAP2_VERTEX_3: i32 = 3511;
+        const GL_MAP2_VERTEX_4: i32 = 3512;
+        const GL_MAP_COLOR: i32 = 3344;
+        const GL_MAP_STENCIL: i32 = 3345;
+        const GL_MATRIX_MODE: i32 = 2976;
+        const GL_MAX_ATTRIB_STACK_DEPTH: i32 = 3381;
+        const GL_MAX_CLIENT_ATTRIB_STACK_DEPTH: i32 = 3387;
+        const GL_MAX_CLIP_PLANES: i32 = 3378;
+        const GL_MAX_ELEMENTS_INDICES_WIN: i32 = 33001;
+        const GL_MAX_ELEMENTS_VERTICES_WIN: i32 = 33000;
+        const GL_MAX_EVAL_ORDER: i32 = 3376;
+        const GL_MAX_LIGHTS: i32 = 3377;
+        const GL_MAX_LIST_NESTING: i32 = 2865;
+        const GL_MAX_MODELVIEW_STACK_DEPTH: i32 = 3382;
+        const GL_MAX_NAME_STACK_DEPTH: i32 = 3383;
+        const GL_MAX_PIXEL_MAP_TABLE: i32 = 3380;
+        const GL_MAX_PROJECTION_STACK_DEPTH: i32 = 3384;
+        const GL_MAX_TEXTURE_SIZE: i32 = 3379;
+        const GL_MAX_TEXTURE_STACK_DEPTH: i32 = 3385;
+        const GL_MAX_VIEWPORT_DIMS: i32 = 3386;
+        const GL_MODELVIEW: i32 = 5888;
+        const GL_MODELVIEW_MATRIX: i32 = 2982;
+        const GL_MODELVIEW_STACK_DEPTH: i32 = 2979;
+        const GL_MODULATE: i32 = 8448;
+        const GL_MULT: i32 = 259;
+        const GL_N3F_V3F: i32 = 10789;
+        const GL_NAME_STACK_DEPTH: i32 = 3440;
+        const GL_NAND: i32 = 5390;
+        const GL_NEAREST: i32 = 9728;
+        const GL_NEAREST_MIPMAP_LINEAR: i32 = 9986;
+        const GL_NEAREST_MIPMAP_NEAREST: i32 = 9984;
+        const GL_NEVER: i32 = 512;
+        const GL_NICEST: i32 = 4354;
+        const GL_NONE: i32 = 0;
+        const GL_NOOP: i32 = 5381;
+        const GL_NOR: i32 = 5384;
+        const GL_NORMALIZE: i32 = 2977;
+        const GL_NORMAL_ARRAY: i32 = 32885;
+        const GL_NORMAL_ARRAY_COUNT_EXT: i32 = 32896;
+        const GL_NORMAL_ARRAY_EXT: i32 = 32885;
+        const GL_NORMAL_ARRAY_POINTER: i32 = 32911;
+        const GL_NORMAL_ARRAY_POINTER_EXT: i32 = 32911;
+        const GL_NORMAL_ARRAY_STRIDE: i32 = 32895;
+        const GL_NORMAL_ARRAY_STRIDE_EXT: i32 = 32895;
+        const GL_NORMAL_ARRAY_TYPE: i32 = 32894;
+        const GL_NORMAL_ARRAY_TYPE_EXT: i32 = 32894;
+        const GL_NOTEQUAL: i32 = 517;
+        const GL_NO_ERROR: i32 = 0;
+        const GL_OBJECT_LINEAR: i32 = 9217;
+        const GL_OBJECT_PLANE: i32 = 9473;
+        const GL_ONE: i32 = 1;
+        const GL_ONE_MINUS_DST_ALPHA: i32 = 773;
+        const GL_ONE_MINUS_DST_COLOR: i32 = 775;
+        const GL_ONE_MINUS_SRC_ALPHA: i32 = 771;
+        const GL_ONE_MINUS_SRC_COLOR: i32 = 769;
+        const GL_OR: i32 = 5383;
+        const GL_ORDER: i32 = 2561;
+        const GL_OR_INVERTED: i32 = 5389;
+        const GL_OR_REVERSE: i32 = 5387;
+        const GL_OUT_OF_MEMORY: i32 = 1285;
+        const GL_PACK_ALIGNMENT: i32 = 3333;
+        const GL_PACK_LSB_FIRST: i32 = 3329;
+        const GL_PACK_ROW_LENGTH: i32 = 3330;
+        const GL_PACK_SKIP_PIXELS: i32 = 3332;
+        const GL_PACK_SKIP_ROWS: i32 = 3331;
+        const GL_PACK_SWAP_BYTES: i32 = 3328;
+        const GL_PASS_THROUGH_TOKEN: i32 = 1792;
+        const GL_PERSPECTIVE_CORRECTION_HINT: i32 = 3152;
+        const GL_PHONG_HINT_WIN: i32 = 33003;
+        const GL_PHONG_WIN: i32 = 33002;
+        const GL_PIXEL_MAP_A_TO_A: i32 = 3193;
+        const GL_PIXEL_MAP_A_TO_A_SIZE: i32 = 3257;
+        const GL_PIXEL_MAP_B_TO_B: i32 = 3192;
+        const GL_PIXEL_MAP_B_TO_B_SIZE: i32 = 3256;
+        const GL_PIXEL_MAP_G_TO_G: i32 = 3191;
+        const GL_PIXEL_MAP_G_TO_G_SIZE: i32 = 3255;
+        const GL_PIXEL_MAP_I_TO_A: i32 = 3189;
+        const GL_PIXEL_MAP_I_TO_A_SIZE: i32 = 3253;
+        const GL_PIXEL_MAP_I_TO_B: i32 = 3188;
+        const GL_PIXEL_MAP_I_TO_B_SIZE: i32 = 3252;
+        const GL_PIXEL_MAP_I_TO_G: i32 = 3187;
+        const GL_PIXEL_MAP_I_TO_G_SIZE: i32 = 3251;
+        const GL_PIXEL_MAP_I_TO_I: i32 = 3184;
+        const GL_PIXEL_MAP_I_TO_I_SIZE: i32 = 3248;
+        const GL_PIXEL_MAP_I_TO_R: i32 = 3186;
+        const GL_PIXEL_MAP_I_TO_R_SIZE: i32 = 3250;
+        const GL_PIXEL_MAP_R_TO_R: i32 = 3190;
+        const GL_PIXEL_MAP_R_TO_R_SIZE: i32 = 3254;
+        const GL_PIXEL_MAP_S_TO_S: i32 = 3185;
+        const GL_PIXEL_MAP_S_TO_S_SIZE: i32 = 3249;
+        const GL_PIXEL_MODE_BIT: i32 = 32;
+        const GL_POINT: i32 = 6912;
+        const GL_POINTS: i32 = 0;
+        const GL_POINT_BIT: i32 = 2;
+        const GL_POINT_SIZE: i32 = 2833;
+        const GL_POINT_SIZE_GRANULARITY: i32 = 2835;
+        const GL_POINT_SIZE_RANGE: i32 = 2834;
+        const GL_POINT_SMOOTH: i32 = 2832;
+        const GL_POINT_SMOOTH_HINT: i32 = 3153;
+        const GL_POINT_TOKEN: i32 = 1793;
+        const GL_POLYGON: i32 = 9;
+        const GL_POLYGON_BIT: i32 = 8;
+        const GL_POLYGON_MODE: i32 = 2880;
+        const GL_POLYGON_OFFSET_FACTOR: i32 = 32824;
+        const GL_POLYGON_OFFSET_FILL: i32 = 32823;
+        const GL_POLYGON_OFFSET_LINE: i32 = 10754;
+        const GL_POLYGON_OFFSET_POINT: i32 = 10753;
+        const GL_POLYGON_OFFSET_UNITS: i32 = 10752;
+        const GL_POLYGON_SMOOTH: i32 = 2881;
+        const GL_POLYGON_SMOOTH_HINT: i32 = 3155;
+        const GL_POLYGON_STIPPLE: i32 = 2882;
+        const GL_POLYGON_STIPPLE_BIT: i32 = 16;
+        const GL_POLYGON_TOKEN: i32 = 1795;
+        const GL_POSITION: i32 = 4611;
+        const GL_PROJECTION: i32 = 5889;
+        const GL_PROJECTION_MATRIX: i32 = 2983;
+        const GL_PROJECTION_STACK_DEPTH: i32 = 2980;
+        const GL_PROXY_TEXTURE_1D: i32 = 32867;
+        const GL_PROXY_TEXTURE_2D: i32 = 32868;
+        const GL_Q: i32 = 8195;
+        const GL_QUADRATIC_ATTENUATION: i32 = 4617;
+        const GL_QUADS: i32 = 7;
+        const GL_QUAD_STRIP: i32 = 8;
+        const GL_R: i32 = 8194;
+        const GL_R3_G3_B2: i32 = 10768;
+        const GL_READ_BUFFER: i32 = 3074;
+        const GL_RED: i32 = 6403;
+        const GL_RED_BIAS: i32 = 3349;
+        const GL_RED_BITS: i32 = 3410;
+        const GL_RED_SCALE: i32 = 3348;
+        const GL_RENDER: i32 = 7168;
+        const GL_RENDERER: i32 = 7937;
+        const GL_RENDER_MODE: i32 = 3136;
+        const GL_REPEAT: i32 = 10497;
+        const GL_REPLACE: i32 = 7681;
+        const GL_RETURN: i32 = 258;
+        const GL_RGB: i32 = 6407;
+        const GL_RGB10: i32 = 32850;
+        const GL_RGB10_A2: i32 = 32857;
+        const GL_RGB12: i32 = 32851;
+        const GL_RGB16: i32 = 32852;
+        const GL_RGB4: i32 = 32847;
+        const GL_RGB5: i32 = 32848;
+        const GL_RGB5_A1: i32 = 32855;
+        const GL_RGB8: i32 = 32849;
+        const GL_RGBA: i32 = 6408;
+        const GL_RGBA12: i32 = 32858;
+        const GL_RGBA16: i32 = 32859;
+        const GL_RGBA2: i32 = 32853;
+        const GL_RGBA4: i32 = 32854;
+        const GL_RGBA8: i32 = 32856;
+        const GL_RGBA_MODE: i32 = 3121;
+        const GL_RIGHT: i32 = 1031;
+        const GL_S: i32 = 8192;
+        const GL_SCISSOR_BIT: i32 = 524288;
+        const GL_SCISSOR_BOX: i32 = 3088;
+        const GL_SCISSOR_TEST: i32 = 3089;
+        const GL_SELECT: i32 = 7170;
+        const GL_SELECTION_BUFFER_POINTER: i32 = 3571;
+        const GL_SELECTION_BUFFER_SIZE: i32 = 3572;
+        const GL_SET: i32 = 5391;
+        const GL_SHADE_MODEL: i32 = 2900;
+        const GL_SHININESS: i32 = 5633;
+        const GL_SHORT: i32 = 5122;
+        const GL_SMOOTH: i32 = 7425;
+        const GL_SPECULAR: i32 = 4610;
+        const GL_SPHERE_MAP: i32 = 9218;
+        const GL_SPOT_CUTOFF: i32 = 4614;
+        const GL_SPOT_DIRECTION: i32 = 4612;
+        const GL_SPOT_EXPONENT: i32 = 4613;
+        const GL_SRC_ALPHA: i32 = 770;
+        const GL_SRC_ALPHA_SATURATE: i32 = 776;
+        const GL_SRC_COLOR: i32 = 768;
+        const GL_STACK_OVERFLOW: i32 = 1283;
+        const GL_STACK_UNDERFLOW: i32 = 1284;
+        const GL_STENCIL: i32 = 6146;
+        const GL_STENCIL_BITS: i32 = 3415;
+        const GL_STENCIL_BUFFER_BIT: i32 = 1024;
+        const GL_STENCIL_CLEAR_VALUE: i32 = 2961;
+        const GL_STENCIL_FAIL: i32 = 2964;
+        const GL_STENCIL_FUNC: i32 = 2962;
+        const GL_STENCIL_INDEX: i32 = 6401;
+        const GL_STENCIL_PASS_DEPTH_FAIL: i32 = 2965;
+        const GL_STENCIL_PASS_DEPTH_PASS: i32 = 2966;
+        const GL_STENCIL_REF: i32 = 2967;
+        const GL_STENCIL_TEST: i32 = 2960;
+        const GL_STENCIL_VALUE_MASK: i32 = 2963;
+        const GL_STENCIL_WRITEMASK: i32 = 2968;
+        const GL_STEREO: i32 = 3123;
+        const GL_SUBPIXEL_BITS: i32 = 3408;
+        const GL_T: i32 = 8193;
+        const GL_T2F_C3F_V3F: i32 = 10794;
+        const GL_T2F_C4F_N3F_V3F: i32 = 10796;
+        const GL_T2F_C4UB_V3F: i32 = 10793;
+        const GL_T2F_N3F_V3F: i32 = 10795;
+        const GL_T2F_V3F: i32 = 10791;
+        const GL_T4F_C4F_N3F_V4F: i32 = 10797;
+        const GL_T4F_V4F: i32 = 10792;
+        const GL_TEXTURE: i32 = 5890;
+        const GL_TEXTURE_1D: i32 = 3552;
+        const GL_TEXTURE_2D: i32 = 3553;
+        const GL_TEXTURE_ALPHA_SIZE: i32 = 32863;
+        const GL_TEXTURE_BINDING_1D: i32 = 32872;
+        const GL_TEXTURE_BINDING_2D: i32 = 32873;
+        const GL_TEXTURE_BIT: i32 = 262144;
+        const GL_TEXTURE_BLUE_SIZE: i32 = 32862;
+        const GL_TEXTURE_BORDER: i32 = 4101;
+        const GL_TEXTURE_BORDER_COLOR: i32 = 4100;
+        const GL_TEXTURE_COMPONENTS: i32 = 4099;
+        const GL_TEXTURE_COORD_ARRAY: i32 = 32888;
+        const GL_TEXTURE_COORD_ARRAY_COUNT_EXT: i32 = 32907;
+        const GL_TEXTURE_COORD_ARRAY_EXT: i32 = 32888;
+        const GL_TEXTURE_COORD_ARRAY_POINTER: i32 = 32914;
+        const GL_TEXTURE_COORD_ARRAY_POINTER_EXT: i32 = 32914;
+        const GL_TEXTURE_COORD_ARRAY_SIZE: i32 = 32904;
+        const GL_TEXTURE_COORD_ARRAY_SIZE_EXT: i32 = 32904;
+        const GL_TEXTURE_COORD_ARRAY_STRIDE: i32 = 32906;
+        const GL_TEXTURE_COORD_ARRAY_STRIDE_EXT: i32 = 32906;
+        const GL_TEXTURE_COORD_ARRAY_TYPE: i32 = 32905;
+        const GL_TEXTURE_COORD_ARRAY_TYPE_EXT: i32 = 32905;
+        const GL_TEXTURE_ENV: i32 = 8960;
+        const GL_TEXTURE_ENV_COLOR: i32 = 8705;
+        const GL_TEXTURE_ENV_MODE: i32 = 8704;
+        const GL_TEXTURE_GEN_MODE: i32 = 9472;
+        const GL_TEXTURE_GEN_Q: i32 = 3171;
+        const GL_TEXTURE_GEN_R: i32 = 3170;
+        const GL_TEXTURE_GEN_S: i32 = 3168;
+        const GL_TEXTURE_GEN_T: i32 = 3169;
+        const GL_TEXTURE_GREEN_SIZE: i32 = 32861;
+        const GL_TEXTURE_HEIGHT: i32 = 4097;
+        const GL_TEXTURE_INTENSITY_SIZE: i32 = 32865;
+        const GL_TEXTURE_INTERNAL_FORMAT: i32 = 4099;
+        const GL_TEXTURE_LUMINANCE_SIZE: i32 = 32864;
+        const GL_TEXTURE_MAG_FILTER: i32 = 10240;
+        const GL_TEXTURE_MATRIX: i32 = 2984;
+        const GL_TEXTURE_MIN_FILTER: i32 = 10241;
+        const GL_TEXTURE_PRIORITY: i32 = 32870;
+        const GL_TEXTURE_RED_SIZE: i32 = 32860;
+        const GL_TEXTURE_RESIDENT: i32 = 32871;
+        const GL_TEXTURE_STACK_DEPTH: i32 = 2981;
+        const GL_TEXTURE_WIDTH: i32 = 4096;
+        const GL_TEXTURE_WRAP_S: i32 = 10242;
+        const GL_TEXTURE_WRAP_T: i32 = 10243;
+        const GL_TRANSFORM_BIT: i32 = 4096;
+        const GL_TRIANGLES: i32 = 4;
+        const GL_TRIANGLE_FAN: i32 = 6;
+        const GL_TRIANGLE_STRIP: i32 = 5;
+        const GL_TRUE: i32 = 1;
+        const GL_UNPACK_ALIGNMENT: i32 = 3317;
+        const GL_UNPACK_LSB_FIRST: i32 = 3313;
+        const GL_UNPACK_ROW_LENGTH: i32 = 3314;
+        const GL_UNPACK_SKIP_PIXELS: i32 = 3316;
+        const GL_UNPACK_SKIP_ROWS: i32 = 3315;
+        const GL_UNPACK_SWAP_BYTES: i32 = 3312;
+        const GL_UNSIGNED_BYTE: i32 = 5121;
+        const GL_UNSIGNED_INT: i32 = 5125;
+        const GL_UNSIGNED_SHORT: i32 = 5123;
+        const GL_V2F: i32 = 10784;
+        const GL_V3F: i32 = 10785;
+        const GL_VENDOR: i32 = 7936;
+        const GL_VERSION: i32 = 7938;
+        const GL_VERSION_1_1: i32 = 1;
+        const GL_VERTEX_ARRAY: i32 = 32884;
+        const GL_VERTEX_ARRAY_COUNT_EXT: i32 = 32893;
+        const GL_VERTEX_ARRAY_EXT: i32 = 32884;
+        const GL_VERTEX_ARRAY_POINTER: i32 = 32910;
+        const GL_VERTEX_ARRAY_POINTER_EXT: i32 = 32910;
+        const GL_VERTEX_ARRAY_SIZE: i32 = 32890;
+        const GL_VERTEX_ARRAY_SIZE_EXT: i32 = 32890;
+        const GL_VERTEX_ARRAY_STRIDE: i32 = 32892;
+        const GL_VERTEX_ARRAY_STRIDE_EXT: i32 = 32892;
+        const GL_VERTEX_ARRAY_TYPE: i32 = 32891;
+        const GL_VERTEX_ARRAY_TYPE_EXT: i32 = 32891;
+        const GL_VIEWPORT: i32 = 2978;
+        const GL_VIEWPORT_BIT: i32 = 2048;
+        const GL_WIN_draw_range_elements: i32 = 1;
+        const GL_WIN_swap_hint: i32 = 1;
+        const GL_XOR: i32 = 5382;
+        const GL_ZERO: i32 = 0;
+        const GL_ZOOM_X: i32 = 3350;
+        const GL_ZOOM_Y: i32 = 3351;
+        type GLbitfield = u32;
+        type GLboolean = u8;
+        type GLbyte = i8;
+        type GLclampd = f64;
+        type GLclampf = f32;
+        type GLdouble = f64;
+        type GLenum = u32;
+        type GLfloat = f32;
+        type GLint = i32;
+        type GLshort = i16;
+        type GLsizei = i32;
+        type GLubyte = u8;
+        type GLuint = u32;
+        type GLushort = u16;
+        type GLvoid = void;
+        extern fn PFNGLADDSWAPHINTRECTWINPROC(x: GLint, y: GLint, width: GLsizei, height: GLsizei);
+        extern fn PFNGLARRAYELEMENTARRAYEXTPROC(mode: GLenum, count: GLsizei, pi: *const GLvoid);
+        extern fn PFNGLARRAYELEMENTEXTPROC(i: GLint);
+        extern fn PFNGLCOLORPOINTEREXTPROC(size: GLint, r#type: GLenum, stride: GLsizei, count: GLsizei, pointer: *const GLvoid);
+        extern fn PFNGLCOLORSUBTABLEEXTPROC(target: GLenum, start: GLsizei, count: GLsizei, format: GLenum, r#type: GLenum, data: *const GLvoid);
+        extern fn PFNGLCOLORTABLEEXTPROC(target: GLenum, internalFormat: GLenum, width: GLsizei, format: GLenum, r#type: GLenum, data: *const GLvoid);
+        extern fn PFNGLDRAWARRAYSEXTPROC(mode: GLenum, first: GLint, count: GLsizei);
+        extern fn PFNGLDRAWRANGEELEMENTSWINPROC(mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, r#type: GLenum, indices: *const GLvoid);
+        extern fn PFNGLEDGEFLAGPOINTEREXTPROC(stride: GLsizei, count: GLsizei, pointer: *const GLboolean);
+        extern fn PFNGLGETCOLORTABLEEXTPROC(target: GLenum, format: GLenum, r#type: GLenum, data: *mut GLvoid);
+        extern fn PFNGLGETCOLORTABLEPARAMETERFVEXTPROC(target: GLenum, pname: GLenum, params: *mut GLfloat);
+        extern fn PFNGLGETCOLORTABLEPARAMETERIVEXTPROC(target: GLenum, pname: GLenum, params: *mut GLint);
+        extern fn PFNGLGETPOINTERVEXTPROC(pname: GLenum, params: *mut *mut GLvoid);
+        extern fn PFNGLINDEXPOINTEREXTPROC(r#type: GLenum, stride: GLsizei, count: GLsizei, pointer: *const GLvoid);
+        extern fn PFNGLNORMALPOINTEREXTPROC(r#type: GLenum, stride: GLsizei, count: GLsizei, pointer: *const GLvoid);
+        extern fn PFNGLTEXCOORDPOINTEREXTPROC(size: GLint, r#type: GLenum, stride: GLsizei, count: GLsizei, pointer: *const GLvoid);
+        extern fn PFNGLVERTEXPOINTEREXTPROC(size: GLint, r#type: GLenum, stride: GLsizei, count: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glAccum(op: GLenum, value: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glAlphaFunc(func: GLenum, r#ref: GLclampf);
+        #[library("OPENGL32.dll")]
+        extern fn glAreTexturesResident(n: GLsizei, textures: *const GLuint, residences: *mut GLboolean) -> GLboolean;
+        #[library("OPENGL32.dll")]
+        extern fn glArrayElement(i: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glBegin(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glBindTexture(target: GLenum, texture: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glBitmap(width: GLsizei, height: GLsizei, xorig: GLfloat, yorig: GLfloat, xmove: GLfloat, ymove: GLfloat, bitmap: *const GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glBlendFunc(sfactor: GLenum, dfactor: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glCallList(list: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glCallLists(n: GLsizei, r#type: GLenum, lists: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glClear(mask: GLbitfield);
+        #[library("OPENGL32.dll")]
+        extern fn glClearAccum(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glClearColor(red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf);
+        #[library("OPENGL32.dll")]
+        extern fn glClearDepth(depth: GLclampd);
+        #[library("OPENGL32.dll")]
+        extern fn glClearIndex(c: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glClearStencil(s: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glClipPlane(plane: GLenum, equation: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3b(red: GLbyte, green: GLbyte, blue: GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3bv(v: *const GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3d(red: GLdouble, green: GLdouble, blue: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3f(red: GLfloat, green: GLfloat, blue: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3i(red: GLint, green: GLint, blue: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3s(red: GLshort, green: GLshort, blue: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3ub(red: GLubyte, green: GLubyte, blue: GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3ubv(v: *const GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3ui(red: GLuint, green: GLuint, blue: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3uiv(v: *const GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3us(red: GLushort, green: GLushort, blue: GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor3usv(v: *const GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4b(red: GLbyte, green: GLbyte, blue: GLbyte, alpha: GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4bv(v: *const GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4d(red: GLdouble, green: GLdouble, blue: GLdouble, alpha: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4f(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4i(red: GLint, green: GLint, blue: GLint, alpha: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4s(red: GLshort, green: GLshort, blue: GLshort, alpha: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4ub(red: GLubyte, green: GLubyte, blue: GLubyte, alpha: GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4ubv(v: *const GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4ui(red: GLuint, green: GLuint, blue: GLuint, alpha: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4uiv(v: *const GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4us(red: GLushort, green: GLushort, blue: GLushort, alpha: GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glColor4usv(v: *const GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean);
+        #[library("OPENGL32.dll")]
+        extern fn glColorMaterial(face: GLenum, mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glColorPointer(size: GLint, r#type: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glCopyPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, r#type: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glCopyTexImage1D(target: GLenum, level: GLint, internalFormat: GLenum, x: GLint, y: GLint, width: GLsizei, border: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glCopyTexImage2D(target: GLenum, level: GLint, internalFormat: GLenum, x: GLint, y: GLint, width: GLsizei, height: GLsizei, border: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glCopyTexSubImage1D(target: GLenum, level: GLint, xoffset: GLint, x: GLint, y: GLint, width: GLsizei);
+        #[library("OPENGL32.dll")]
+        extern fn glCopyTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, x: GLint, y: GLint, width: GLsizei, height: GLsizei);
+        #[library("OPENGL32.dll")]
+        extern fn glCullFace(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glDeleteLists(list: GLuint, range: GLsizei);
+        #[library("OPENGL32.dll")]
+        extern fn glDeleteTextures(n: GLsizei, textures: *const GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glDepthFunc(func: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glDepthMask(flag: GLboolean);
+        #[library("OPENGL32.dll")]
+        extern fn glDepthRange(zNear: GLclampd, zFar: GLclampd);
+        #[library("OPENGL32.dll")]
+        extern fn glDisable(cap: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glDisableClientState(array: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei);
+        #[library("OPENGL32.dll")]
+        extern fn glDrawBuffer(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glDrawElements(mode: GLenum, count: GLsizei, r#type: GLenum, indices: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glDrawPixels(width: GLsizei, height: GLsizei, format: GLenum, r#type: GLenum, pixels: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glEdgeFlag(flag: GLboolean);
+        #[library("OPENGL32.dll")]
+        extern fn glEdgeFlagPointer(stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glEdgeFlagv(flag: *const GLboolean);
+        #[library("OPENGL32.dll")]
+        extern fn glEnable(cap: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glEnableClientState(array: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glEnd();
+        #[library("OPENGL32.dll")]
+        extern fn glEndList();
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord1d(u: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord1dv(u: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord1f(u: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord1fv(u: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord2d(u: GLdouble, v: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord2dv(u: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord2f(u: GLfloat, v: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalCoord2fv(u: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalMesh1(mode: GLenum, i1: GLint, i2: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalMesh2(mode: GLenum, i1: GLint, i2: GLint, j1: GLint, j2: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalPoint1(i: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glEvalPoint2(i: GLint, j: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glFeedbackBuffer(size: GLsizei, r#type: GLenum, buffer: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glFinish();
+        #[library("OPENGL32.dll")]
+        extern fn glFlush();
+        #[library("OPENGL32.dll")]
+        extern fn glFogf(pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glFogfv(pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glFogi(pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glFogiv(pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glFrontFace(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glFrustum(left: GLdouble, right: GLdouble, bottom: GLdouble, top: GLdouble, zNear: GLdouble, zFar: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glGenLists(range: GLsizei) -> GLuint;
+        #[library("OPENGL32.dll")]
+        extern fn glGenTextures(n: GLsizei, textures: *mut GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetBooleanv(pname: GLenum, params: *mut GLboolean);
+        #[library("OPENGL32.dll")]
+        extern fn glGetClipPlane(plane: GLenum, equation: *mut GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glGetDoublev(pname: GLenum, params: *mut GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glGetError() -> GLenum;
+        #[library("OPENGL32.dll")]
+        extern fn glGetFloatv(pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetIntegerv(pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetLightfv(light: GLenum, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetLightiv(light: GLenum, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetMapdv(target: GLenum, query: GLenum, v: *mut GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glGetMapfv(target: GLenum, query: GLenum, v: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetMapiv(target: GLenum, query: GLenum, v: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetMaterialfv(face: GLenum, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetMaterialiv(face: GLenum, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetPixelMapfv(map: GLenum, values: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetPixelMapuiv(map: GLenum, values: *mut GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetPixelMapusv(map: GLenum, values: *mut GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glGetPointerv(pname: GLenum, params: *mut *mut GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glGetPolygonStipple(mask: *mut GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glGetString(name: GLenum) -> *const GLubyte;
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexEnvfv(target: GLenum, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexEnviv(target: GLenum, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexGendv(coord: GLenum, pname: GLenum, params: *mut GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexGenfv(coord: GLenum, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexGeniv(coord: GLenum, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexImage(target: GLenum, level: GLint, format: GLenum, r#type: GLenum, pixels: *mut GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexLevelParameterfv(target: GLenum, level: GLint, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexLevelParameteriv(target: GLenum, level: GLint, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexParameterfv(target: GLenum, pname: GLenum, params: *mut GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glGetTexParameteriv(target: GLenum, pname: GLenum, params: *mut GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glHint(target: GLenum, mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexMask(mask: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexPointer(r#type: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexd(c: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexdv(c: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexf(c: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexfv(c: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexi(c: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexiv(c: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexs(c: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexsv(c: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexub(c: GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glIndexubv(c: *const GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glInitNames();
+        #[library("OPENGL32.dll")]
+        extern fn glInterleavedArrays(format: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glIsEnabled(cap: GLenum) -> GLboolean;
+        #[library("OPENGL32.dll")]
+        extern fn glIsList(list: GLuint) -> GLboolean;
+        #[library("OPENGL32.dll")]
+        extern fn glIsTexture(texture: GLuint) -> GLboolean;
+        #[library("OPENGL32.dll")]
+        extern fn glLightModelf(pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glLightModelfv(pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glLightModeli(pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glLightModeliv(pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glLightf(light: GLenum, pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glLightfv(light: GLenum, pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glLighti(light: GLenum, pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glLightiv(light: GLenum, pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glLineStipple(factor: GLint, pattern: GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glLineWidth(width: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glListBase(base: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glLoadIdentity();
+        #[library("OPENGL32.dll")]
+        extern fn glLoadMatrixd(m: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glLoadMatrixf(m: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glLoadName(name: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glLogicOp(opcode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glMap1d(target: GLenum, u1: GLdouble, u2: GLdouble, stride: GLint, order: GLint, points: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glMap1f(target: GLenum, u1: GLfloat, u2: GLfloat, stride: GLint, order: GLint, points: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMap2d(target: GLenum, u1: GLdouble, u2: GLdouble, ustride: GLint, uorder: GLint, v1: GLdouble, v2: GLdouble, vstride: GLint, vorder: GLint, points: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glMap2f(target: GLenum, u1: GLfloat, u2: GLfloat, ustride: GLint, uorder: GLint, v1: GLfloat, v2: GLfloat, vstride: GLint, vorder: GLint, points: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMapGrid1d(un: GLint, u1: GLdouble, u2: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glMapGrid1f(un: GLint, u1: GLfloat, u2: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMapGrid2d(un: GLint, u1: GLdouble, u2: GLdouble, vn: GLint, v1: GLdouble, v2: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glMapGrid2f(un: GLint, u1: GLfloat, u2: GLfloat, vn: GLint, v1: GLfloat, v2: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMaterialf(face: GLenum, pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMaterialfv(face: GLenum, pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glMateriali(face: GLenum, pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glMaterialiv(face: GLenum, pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glMatrixMode(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glMultMatrixd(m: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glMultMatrixf(m: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glNewList(list: GLuint, mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3b(nx: GLbyte, ny: GLbyte, nz: GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3bv(v: *const GLbyte);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3d(nx: GLdouble, ny: GLdouble, nz: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3f(nx: GLfloat, ny: GLfloat, nz: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3i(nx: GLint, ny: GLint, nz: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3s(nx: GLshort, ny: GLshort, nz: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glNormal3sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glNormalPointer(r#type: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glOrtho(left: GLdouble, right: GLdouble, bottom: GLdouble, top: GLdouble, zNear: GLdouble, zFar: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glPassThrough(token: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelMapfv(map: GLenum, mapsize: GLsizei, values: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelMapuiv(map: GLenum, mapsize: GLsizei, values: *const GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelMapusv(map: GLenum, mapsize: GLsizei, values: *const GLushort);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelStoref(pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelStorei(pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelTransferf(pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelTransferi(pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glPixelZoom(xfactor: GLfloat, yfactor: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPointSize(size: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPolygonMode(face: GLenum, mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glPolygonOffset(factor: GLfloat, units: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glPolygonStipple(mask: *const GLubyte);
+        #[library("OPENGL32.dll")]
+        extern fn glPopAttrib();
+        #[library("OPENGL32.dll")]
+        extern fn glPopClientAttrib();
+        #[library("OPENGL32.dll")]
+        extern fn glPopMatrix();
+        #[library("OPENGL32.dll")]
+        extern fn glPopName();
+        #[library("OPENGL32.dll")]
+        extern fn glPrioritizeTextures(n: GLsizei, textures: *const GLuint, priorities: *const GLclampf);
+        #[library("OPENGL32.dll")]
+        extern fn glPushAttrib(mask: GLbitfield);
+        #[library("OPENGL32.dll")]
+        extern fn glPushClientAttrib(mask: GLbitfield);
+        #[library("OPENGL32.dll")]
+        extern fn glPushMatrix();
+        #[library("OPENGL32.dll")]
+        extern fn glPushName(name: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2d(x: GLdouble, y: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2f(x: GLfloat, y: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2i(x: GLint, y: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2s(x: GLshort, y: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos2sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3d(x: GLdouble, y: GLdouble, z: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3f(x: GLfloat, y: GLfloat, z: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3i(x: GLint, y: GLint, z: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3s(x: GLshort, y: GLshort, z: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos3sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4d(x: GLdouble, y: GLdouble, z: GLdouble, w: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4f(x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4i(x: GLint, y: GLint, z: GLint, w: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4s(x: GLshort, y: GLshort, z: GLshort, w: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRasterPos4sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glReadBuffer(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, r#type: GLenum, pixels: *mut GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glRectd(x1: GLdouble, y1: GLdouble, x2: GLdouble, y2: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRectdv(v1: *const GLdouble, v2: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRectf(x1: GLfloat, y1: GLfloat, x2: GLfloat, y2: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRectfv(v1: *const GLfloat, v2: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glRecti(x1: GLint, y1: GLint, x2: GLint, y2: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRectiv(v1: *const GLint, v2: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glRects(x1: GLshort, y1: GLshort, x2: GLshort, y2: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRectsv(v1: *const GLshort, v2: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glRenderMode(mode: GLenum) -> GLint;
+        #[library("OPENGL32.dll")]
+        extern fn glRotated(angle: GLdouble, x: GLdouble, y: GLdouble, z: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glRotatef(angle: GLfloat, x: GLfloat, y: GLfloat, z: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glScaled(x: GLdouble, y: GLdouble, z: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glScalef(x: GLfloat, y: GLfloat, z: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei);
+        #[library("OPENGL32.dll")]
+        extern fn glSelectBuffer(size: GLsizei, buffer: *mut GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glShadeModel(mode: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glStencilFunc(func: GLenum, r#ref: GLint, mask: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glStencilMask(mask: GLuint);
+        #[library("OPENGL32.dll")]
+        extern fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1d(s: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1f(s: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1i(s: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1s(s: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord1sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2d(s: GLdouble, t: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2f(s: GLfloat, t: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2i(s: GLint, t: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2s(s: GLshort, t: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord2sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3d(s: GLdouble, t: GLdouble, r: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3f(s: GLfloat, t: GLfloat, r: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3i(s: GLint, t: GLint, r: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3s(s: GLshort, t: GLshort, r: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord3sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4d(s: GLdouble, t: GLdouble, r: GLdouble, q: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4f(s: GLfloat, t: GLfloat, r: GLfloat, q: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4i(s: GLint, t: GLint, r: GLint, q: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4s(s: GLshort, t: GLshort, r: GLshort, q: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoord4sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glTexCoordPointer(size: GLint, r#type: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glTexEnvf(target: GLenum, pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexEnvfv(target: GLenum, pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexEnvi(target: GLenum, pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexEnviv(target: GLenum, pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGend(coord: GLenum, pname: GLenum, param: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGendv(coord: GLenum, pname: GLenum, params: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGenf(coord: GLenum, pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGenfv(coord: GLenum, pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGeni(coord: GLenum, pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexGeniv(coord: GLenum, pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexImage1D(target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, border: GLint, format: GLenum, r#type: GLenum, pixels: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glTexImage2D(target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, r#type: GLenum, pixels: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glTexParameterf(target: GLenum, pname: GLenum, param: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexParameterfv(target: GLenum, pname: GLenum, params: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexParameteriv(target: GLenum, pname: GLenum, params: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glTexSubImage1D(target: GLenum, level: GLint, xoffset: GLint, width: GLsizei, format: GLenum, r#type: GLenum, pixels: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, r#type: GLenum, pixels: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glTranslated(x: GLdouble, y: GLdouble, z: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glTranslatef(x: GLfloat, y: GLfloat, z: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2d(x: GLdouble, y: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2f(x: GLfloat, y: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2i(x: GLint, y: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2s(x: GLshort, y: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex2sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3d(x: GLdouble, y: GLdouble, z: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3f(x: GLfloat, y: GLfloat, z: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3i(x: GLint, y: GLint, z: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3s(x: GLshort, y: GLshort, z: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex3sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4d(x: GLdouble, y: GLdouble, z: GLdouble, w: GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4dv(v: *const GLdouble);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4f(x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4fv(v: *const GLfloat);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4i(x: GLint, y: GLint, z: GLint, w: GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4iv(v: *const GLint);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4s(x: GLshort, y: GLshort, z: GLshort, w: GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertex4sv(v: *const GLshort);
+        #[library("OPENGL32.dll")]
+        extern fn glVertexPointer(size: GLint, r#type: GLenum, stride: GLsizei, pointer: *const GLvoid);
+        #[library("OPENGL32.dll")]
+        extern fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei);
+    }
+}

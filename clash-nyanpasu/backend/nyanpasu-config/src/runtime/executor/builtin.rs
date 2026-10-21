@@ -1,17 +1,13 @@
-//! WhitelistFieldFilter / GuardOverrides / Finalizing (spec 7.4).
-//! Constants transplanted verbatim from enhance/field.rs:4-56.
+//! The field filter of post-processing (spec 7.4). Constants transplanted
+//! verbatim from enhance/field.rs:4-56.
 
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::runtime::value::{ConfigObject, ConfigValue};
+use json_patch::{Patch, PatchOperation, RemoveOperation, jsonptr::PointerBuf};
 
-use super::{
-    GuardInputs, TunFlavor, TunParams,
-    error::{InternalSnafu, RuntimePipelineError},
-    value_util::{obj_get, obj_insert, remove_at},
-};
+use crate::runtime::value::{ConfigObject, ConfigValue};
 
 pub(super) const HANDLE_FIELDS: [&str; 9] = [
     "mode",
@@ -68,7 +64,7 @@ pub(super) const OTHERS_FIELDS: [&str; 31] = [
 ];
 
 /// 45-key full whitelist, DEFAULT ++ HANDLE ++ OTHERS (field.rs:58-65 order).
-pub(super) fn known_fields() -> impl Iterator<Item = &'static str> {
+pub fn known_fields() -> impl Iterator<Item = &'static str> {
     DEFAULT_FIELDS
         .into_iter()
         .chain(HANDLE_FIELDS)
@@ -87,194 +83,31 @@ pub(super) fn stage1_fields(valid: &[String]) -> Vec<String> {
     fields
 }
 
-pub(super) fn whitelist_filter(
-    config: &ConfigValue,
-    allow: &[String],
-    enabled: bool,
-) -> ConfigValue {
-    if !enabled {
-        return config.clone();
-    }
+/// Keeps the top-level keys in `allow`, with the patch that removes the rest.
+pub(super) fn filter_fields(config: &ConfigValue, allow: &[String]) -> (ConfigValue, Patch) {
     let Some(map) = config.as_object_arc() else {
-        return config.clone();
+        return (config.clone(), Patch(Vec::new()));
     };
-    let filtered: ConfigObject = map
-        .iter()
-        .filter(|(key, _)| allow.iter().any(|allowed| allowed.as_str() == key.as_ref()))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    ConfigValue::Object(Arc::new(filtered))
-}
-
-/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): the keys the typed
-/// overrides force + caller resolved ports, inserted at top level, bypassing
-/// stage-1 whitelist. Unmanaged override fields are not inserted. Nyanpasu
-/// owns `port` and `socks-port` like `mixed-port`: an unset one is removed, so
-/// a profile cannot open a listener the user turned off or take the
-/// `mixed-port` before the mixed listener binds (#5678).
-pub(super) fn apply_guard(
-    config: &ConfigValue,
-    guard: &GuardInputs<'_>,
-) -> Result<ConfigValue, RuntimePipelineError> {
-    let mut next = config.clone();
-    for (key, raw) in guard.overrides.forced_entries() {
-        let value = match ConfigValue::try_from(raw) {
-            Ok(value) => value,
-            Err(error) => {
-                return InternalSnafu {
-                    message: format!("convert guard override {key}: {error:?}"),
-                }
-                .fail();
-            }
-        };
-        next = obj_insert(&next, key, value);
-    }
-
-    next = obj_insert(
-        &next,
-        "mixed-port",
-        ConfigValue::Number(serde_json::Number::from(guard.ports.mixed_port)),
-    );
-    for (key, port) in [
-        ("port", guard.ports.port),
-        ("socks-port", guard.ports.socks_port),
-    ] {
-        next = match port {
-            Some(port) => obj_insert(
-                &next,
-                key,
-                ConfigValue::Number(serde_json::Number::from(port)),
-            ),
-            None => remove_at(&next, &[key.to_string()]).unwrap_or(next),
-        };
-    }
-    if let Some(controller) = &guard.ports.external_controller {
-        next = obj_insert(
-            &next,
-            "external-controller",
-            ConfigValue::String(Arc::from(controller.as_str())),
-        );
-    }
-    Ok(next)
-}
-
-/// Finalizing composite node (spec 7.4): stage-2 filter, tun, then cache.
-/// One recorded node; changed_fields shows the net effect.
-pub(super) fn finalize(
-    config: &ConfigValue,
-    tun: &TunParams,
-    whitelist_enabled: bool,
-) -> ConfigValue {
-    let full: Vec<String> = known_fields().map(str::to_string).collect();
-    let mut next = whitelist_filter(config, &full, whitelist_enabled);
-    next = apply_tun(&next, tun);
-    next = apply_cache(&next);
-    // TODO: 可选排序算法
-    // next = apply_sort(&next);
-    next
-}
-
-fn object_of(value: Option<&ConfigValue>) -> ConfigObject {
-    value
-        .and_then(ConfigValue::as_object_arc)
-        .map(|map| (**map).clone())
-        .unwrap_or_default()
-}
-
-fn append_default(map: &mut ConfigObject, key: &str, value: ConfigValue) {
-    if !map.contains_key(key) {
-        map.insert(Arc::from(key), value);
-    }
-}
-
-fn string_value(text: &str) -> ConfigValue {
-    ConfigValue::String(Arc::from(text))
-}
-
-fn string_list(items: &[&str]) -> ConfigValue {
-    ConfigValue::Array(Arc::from(
-        items
-            .iter()
-            .map(|item| string_value(item))
-            .collect::<Vec<_>>(),
-    ))
-}
-
-/// Mirrors enhance/tun.rs:26-109; `revise!` overwrites and `append!` fills
-/// missing keys only.
-fn apply_tun(config: &ConfigValue, params: &TunParams) -> ConfigValue {
-    let existing = obj_get(config, "tun");
-    if !params.enable && existing.is_none() {
-        return config.clone();
-    }
-
-    let mut tun = object_of(existing);
-    tun.insert(Arc::from("enable"), ConfigValue::Bool(params.enable));
-    if params.enable {
-        match params.flavor {
-            TunFlavor::ClashRs => {
-                append_default(&mut tun, "device-id", string_value("dev://utun1989"));
-                append_default(&mut tun, "auto-route", ConfigValue::Bool(true));
-            }
-            TunFlavor::Standard { stack } => {
-                append_default(&mut tun, "stack", string_value(stack.as_ref()));
-                append_default(&mut tun, "dns-hijack", string_list(&["any:53"]));
-                append_default(&mut tun, "auto-route", ConfigValue::Bool(true));
-                append_default(&mut tun, "auto-detect-interface", ConfigValue::Bool(true));
-            }
+    let mut removed = Vec::new();
+    let mut filtered = ConfigObject::with_capacity(map.len());
+    for (key, value) in map.iter() {
+        if allow.iter().any(|allowed| allowed.as_str() == key.as_ref()) {
+            filtered.insert(key.clone(), value.clone());
+        } else {
+            removed.push(PatchOperation::Remove(RemoveOperation {
+                path: PointerBuf::from_tokens([key.as_ref()]),
+            }));
         }
     }
-
-    let mut next = obj_insert(config, "tun", ConfigValue::Object(Arc::new(tun)));
-    if params.enable {
-        next = apply_tun_dns(&next, params.windows_fake_ip_filter);
+    if removed.is_empty() {
+        return (config.clone(), Patch(removed));
     }
-    next
-}
-
-fn apply_tun_dns(config: &ConfigValue, windows_fake_ip_filter: bool) -> ConfigValue {
-    let mut dns = object_of(obj_get(config, "dns"));
-    dns.insert(Arc::from("enable"), ConfigValue::Bool(true));
-    append_default(&mut dns, "enhanced-mode", string_value("fake-ip"));
-    append_default(&mut dns, "fake-ip-range", string_value("198.18.0.1/16"));
-    append_default(
-        &mut dns,
-        "nameserver",
-        string_list(&["114.114.114.114", "223.5.5.5", "8.8.8.8"]),
-    );
-    append_default(
-        &mut dns,
-        "fallback",
-        ConfigValue::Array(Arc::from(Vec::<ConfigValue>::new())),
-    );
-    if windows_fake_ip_filter {
-        append_default(
-            &mut dns,
-            "fake-ip-filter",
-            string_list(&[
-                "dns.msftncsi.com",
-                "www.msftncsi.com",
-                "www.msftconnecttest.com",
-            ]),
-        );
-    }
-    obj_insert(config, "dns", ConfigValue::Object(Arc::new(dns)))
-}
-
-/// Mirrors enhance/mod.rs:250-261: existing `profile` keys are not merged.
-fn apply_cache(config: &ConfigValue) -> ConfigValue {
-    if obj_get(config, "profile").is_some() {
-        return config.clone();
-    }
-    let mut profile: ConfigObject = IndexMap::new();
-    profile.insert(Arc::from("store-selected"), ConfigValue::Bool(true));
-    profile.insert(Arc::from("store-fake-ip"), ConfigValue::Bool(false));
-    obj_insert(config, "profile", ConfigValue::Object(Arc::new(profile)))
+    (ConfigValue::Object(Arc::new(filtered)), Patch(removed))
 }
 
 /// Mirrors field.rs:115-147: known keys use HANDLE++OTHERS++DEFAULT order;
 /// unknown keys keep their original relative order at the end.
-#[allow(dead_code)] // Unwired from `finalize` until the ordering TODO there is decided.
+#[allow(dead_code)] // Unwired until the ordering TODO in `execute` is decided.
 fn apply_sort(config: &ConfigValue) -> ConfigValue {
     let Some(map) = config.as_object_arc() else {
         return config.clone();

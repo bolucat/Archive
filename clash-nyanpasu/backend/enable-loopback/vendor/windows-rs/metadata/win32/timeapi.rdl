@@ -1,0 +1,26 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        type LPTIMECAPS = *mut TIMECAPS;
+        type NPTIMECAPS = *mut TIMECAPS;
+        type PTIMECAPS = *mut TIMECAPS;
+        #[packed(1)]
+        struct TIMECAPS {
+            wPeriodMin: u32,
+            wPeriodMax: u32,
+        }
+        const TIMERR_NOCANDO: i32 = 97;
+        const TIMERR_NOERROR: i32 = 0;
+        const TIMERR_STRUCT: i32 = 129;
+        #[library("WINMM.dll")]
+        extern fn timeBeginPeriod(uPeriod: u32) -> MMRESULT;
+        #[library("WINMM.dll")]
+        extern fn timeEndPeriod(uPeriod: u32) -> MMRESULT;
+        #[library("WINMM.dll")]
+        extern fn timeGetDevCaps(#[size_param(1)] #[out] ptc: LPTIMECAPS, cbtc: u32) -> MMRESULT;
+        #[library("WINMM.dll")]
+        extern fn timeGetSystemTime(#[size_param(1)] #[out] pmmt: LPMMTIME, cbmmt: u32) -> MMRESULT;
+        #[library("WINMM.dll")]
+        extern fn timeGetTime() -> u32;
+    }
+}

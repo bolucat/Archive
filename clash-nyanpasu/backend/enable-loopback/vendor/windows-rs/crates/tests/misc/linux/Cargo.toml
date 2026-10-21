@@ -1,0 +1,19 @@
+[package]
+name = "test_linux"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dependencies.windows-result]
+workspace = true
+
+[dev-dependencies.windows-core]
+workspace = true
+features = ["proc-macros"]
+
+[lints]
+workspace = true

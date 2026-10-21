@@ -12,6 +12,7 @@ import {
   useState,
 } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
@@ -42,7 +43,6 @@ import { Route } from '../route'
 import { LogFileMenu } from './log-file-menu'
 import {
   LogClearButton,
-  LogEmptyState,
   LogFollowButton,
   logPanelVariants,
   LogRecord,
@@ -163,10 +163,11 @@ export default function FileLogs({ source }: { source: LogSource }) {
           >
             <ModalTrigger asChild>
               <Button
+                variant="glass"
                 icon
                 aria-label={m.logs_filters()}
                 title={m.logs_filters()}
-                className="focus-visible:ring-primary shrink-0 rounded-full focus-visible:ring-2"
+                className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
               >
                 <FilterListRounded aria-hidden className="size-5" />
                 {filterCount > 0 && (
@@ -455,9 +456,13 @@ function FileRows({
   return (
     <div>
       {!logs.rows.length && !logs.loading && !logs.error && (
-        <LogEmptyState>
-          {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
-        </LogEmptyState>
+        <EmptyState
+          className="py-16"
+          data-slot="logs-no-logs"
+          message={
+            logs.more ? m.logs_search_incomplete() : m.logs_empty_message()
+          }
+        />
       )}
       <div className="relative" style={{ height: totalSize }}>
         {showRows &&

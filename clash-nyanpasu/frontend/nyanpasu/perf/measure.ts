@@ -1,4 +1,10 @@
 import type { ProfilerOnRenderCallback } from 'react'
+import {
+  startCountingRenders,
+  stopCountingRenders,
+  summarizeRenders,
+  type Renders,
+} from './fixtures/render-census'
 
 export type FrameSample = {
   // Longest gap between two animation frames; 16.7 ms at 60 Hz is smooth.
@@ -6,6 +12,10 @@ export type FrameSample = {
   framesOver50: number
   // Longest task the browser reported (Chromium only; 0 elsewhere).
   longTaskMax: number
+  // Longest stretch the main thread was busy, rendering included. Frame gaps
+  // never read below a frame at 60 Hz; this is what a 120 Hz budget of 8.3 ms
+  // is checked against.
+  maxBusy: number
   // From the action to the first DOM mutation it caused: the synchronous
   // JavaScript (router + React render and commit) that blocks the frame.
   syncTime: number
@@ -13,6 +23,8 @@ export type FrameSample = {
   reactRender: number
   // Every frame gap, for eyeballing where the drops are.
   gaps: number[]
+  // The components the action rendered, with `VITE_PERF_RENDERS`.
+  renders?: Renders
 }
 
 let reactRender = 0
@@ -51,6 +63,24 @@ export async function measureFrames(
   })
   mutationObserver.observe(document.body, { childList: true, subtree: true })
 
+  // A message posted as soon as the previous one arrives runs between any two
+  // tasks and rendering steps, so the longest wait between two is the longest
+  // busy stretch. A CPU profile would mostly record the messages, so there is
+  // no probe while one is recorded.
+  let maxBusy = 0
+  let probing = !import.meta.env.VITE_PERF_PROFILE
+  let lastProbe = performance.now()
+  const probe = new MessageChannel()
+  probe.port1.onmessage = () => {
+    const now = performance.now()
+    maxBusy = Math.max(maxBusy, now - lastProbe)
+    lastProbe = now
+
+    if (probing) {
+      probe.port2.postMessage(null)
+    }
+  }
+
   reactRender = 0
   const gaps: number[] = []
   let last = 0
@@ -68,11 +98,20 @@ export async function measureFrames(
     last = time
     requestAnimationFrame(loop)
     actionAt = performance.now()
+    lastProbe = actionAt
+    maxBusy = 0
+    if (probing) {
+      probe.port2.postMessage(null)
+    }
+    startCountingRenders()
     action()
   })
 
   await new Promise((resolve) => setTimeout(resolve, ms))
+  const renders = stopCountingRenders()
   running = false
+  probing = false
+  probe.port1.close()
   longTaskObserver.disconnect()
   mutationObserver.disconnect()
 
@@ -80,14 +119,16 @@ export async function measureFrames(
     maxFrameGap: Math.max(...gaps),
     framesOver50: gaps.filter((gap) => gap > 50).length,
     longTaskMax: Math.max(0, ...longTasks),
+    maxBusy,
     syncTime: mutatedAt ? mutatedAt - actionAt : 0,
     reactRender,
     gaps,
+    renders,
   }
 }
 
 export function summarize(samples: FrameSample[]) {
-  const average = (key: Exclude<keyof FrameSample, 'gaps'>) =>
+  const average = (key: Exclude<keyof FrameSample, 'gaps' | 'renders'>) =>
     Number(
       (samples.reduce((sum, s) => sum + s[key], 0) / samples.length).toFixed(1),
     )
@@ -96,8 +137,14 @@ export function summarize(samples: FrameSample[]) {
     avgMaxFrameGap: average('maxFrameGap'),
     avgFramesOver50: average('framesOver50'),
     avgLongTaskMax: average('longTaskMax'),
+    avgMaxBusy: average('maxBusy'),
     avgSyncTime: average('syncTime'),
     avgReactRender: average('reactRender'),
+    ...(samples[0]?.renders && {
+      renders: summarizeRenders(
+        samples.flatMap(({ renders }) => renders ?? []),
+      ),
+    }),
   }
 }
 

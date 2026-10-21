@@ -1,0 +1,41 @@
+[package]
+name = "windows-canvas"
+version = "0.100.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Windows 2D graphics library"
+repository = "https://github.com/microsoft/windows-rs"
+categories = ["os::windows-apis"]
+readme = "readme.md"
+
+[features]
+default = []
+system = ["dep:windows-window", "windows-composition?/system"]
+composition = ["dep:windows-composition"]
+reactor = ["dep:windows-reactor", "windows-composition?/reactor"]
+
+[dependencies]
+windows-core = { workspace = true }
+windows-numerics = { workspace = true }
+
+[dependencies.windows-composition]
+workspace = true
+optional = true
+
+[dependencies.windows-reactor]
+workspace = true
+optional = true
+
+[dependencies.windows-window]
+workspace = true
+optional = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = []
+features = ["composition", "reactor"]
+no-default-features = true

@@ -1,0 +1,14 @@
+[package]
+name = "canvas-image-source"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+windows-canvas = { workspace = true, features = ["reactor"] }
+windows-core = { workspace = true }
+windows-numerics = { workspace = true, features = ["std"] }
+windows-reactor = { workspace = true }
+
+[lints]
+workspace = true

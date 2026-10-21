@@ -1,0 +1,98 @@
+name: cross
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+  push:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+    branches:
+      - master
+
+env:
+  LLVM-MINGW-TOOLCHAIN-NAME: llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  cross:
+    name: ${{ matrix.name }}
+    strategy:
+      matrix:
+        #
+        # i686 cross compilation requires mingw packages that are configured
+        # to use DWARF-2 exception handling (vice SJLJ).
+        #
+        # The mingw package ecosystem is fragmented so we avoid that target
+        # for now. (e.g. macOS hosts will require mingw recompile)
+        #
+        # See also:
+        # https://github.com/rust-lang/rust/issues/79577
+        # https://sourceforge.net/p/mingw-w64/wiki2/Exception%20Handling
+        #
+        include:
+          - name: x64 gnu
+            target: x86_64-pc-windows-gnu
+          - name: arm64 gnullvm
+            target: aarch64-pc-windows-gnullvm
+          - name: x64 gnullvm
+            target: x86_64-pc-windows-gnullvm
+          - name: i686 gnullvm
+            target: i686-pc-windows-gnullvm
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update toolchain
+        run: rustup update --no-self-update stable && rustup default stable
+
+      - name: Add toolchain target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install gcc-mingw-w64-x86-64
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+
+      - name: LLVM MinGW toolchain cache configuration
+        id: cache-llvm-mingw-toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: contains(matrix.target, 'gnullvm')
+        with:
+          path: ${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}
+          key: ${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}
+
+      - name: Install LLVM MinGW toolchain
+        if: contains(matrix.target, 'gnullvm') && steps.cache-llvm-mingw-toolchain.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o ${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}.tar.xz https://github.com/mstorsjo/llvm-mingw/releases/download/20220906/${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}.tar.xz
+          tar -xf ${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}.tar.xz
+          echo "${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}/bin" >> $GITHUB_PATH
+          
+      - name: Add LLVM MinGW toolchain to PATH
+        if: contains(matrix.target, 'gnullvm')
+        run: |
+          echo "${{ env.LLVM-MINGW-TOOLCHAIN-NAME }}/bin" >> $GITHUB_PATH
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Test
+        shell: pwsh
+        if: contains(matrix.target, 'gnullvm') || endsWith(matrix.target, 'gnu')
+        run: |
+          cargo test --no-run --target ${{ matrix.target }} -p test_win32
+          if (-Not (Resolve-Path "target/*/debug/deps/test_win32-*.exe" | Test-Path)) {
+            throw "Failed to find test_win32 executable."
+          }

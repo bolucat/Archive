@@ -1,0 +1,51 @@
+[package]
+name = "test_implement"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "ApplicationModel_Activation",
+    "ApplicationModel_Background",
+    "Foundation_Collections",
+    "Storage_Streams",
+    "minwindef",
+    "objidl",
+    "oaidl",
+    "objidlbase",
+    "oleidl",
+    "propidlbase",
+    "propsys",
+    "ro",
+    "rpc",
+    "servprov",
+    "shobjidl_core",
+    "unknwnbase",
+    "weakreference",
+    "windef",
+    "windowsdevicesdisplaycoreinterop",
+    "winerror",
+    "winnt",
+    "winuser",
+    "wtypes",
+    "wtypesbase",
+]
+
+[dependencies.windows-core]
+workspace = true
+
+[dependencies.windows-collections]
+workspace = true
+
+[dependencies.windows-future]
+workspace = true
+
+[lints]
+workspace = true

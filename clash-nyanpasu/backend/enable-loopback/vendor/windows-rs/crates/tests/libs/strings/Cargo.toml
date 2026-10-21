@@ -1,0 +1,31 @@
+[package]
+name = "test_strings"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dependencies.windows-strings]
+workspace = true
+features = ["std"]
+
+[dependencies.windows-link]
+workspace = true
+
+[dev-dependencies.windows]
+workspace = true
+features = [
+    "oleauto",
+    "winerror",
+    "winstring",
+    "wtypesbase",
+]
+
+[dev-dependencies]
+helpers = { workspace = true }
+
+[lints]
+workspace = true

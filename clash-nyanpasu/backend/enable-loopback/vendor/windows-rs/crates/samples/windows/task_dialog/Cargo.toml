@@ -1,0 +1,16 @@
+[package]
+name = "windows-task-dialog"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+features = [
+    "commctrl",
+    "windef",
+    "minwindef",
+]
+
+[lints]
+workspace = true

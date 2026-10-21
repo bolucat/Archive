@@ -1,0 +1,265 @@
+#![cfg(windows)]
+use windows::{Win32::*, core::*};
+
+#[test]
+fn signed_enum32() {
+    assert!(ACCESS_MODE::default() == 0);
+    let e: ACCESS_MODE = REVOKE_ACCESS;
+    assert!(e == REVOKE_ACCESS);
+}
+
+#[test]
+fn unsigned_enum32() {
+    assert!(DXGI_ADAPTER_FLAG::default() == 0);
+
+    let both = DXGI_ADAPTER_FLAG_SOFTWARE | DXGI_ADAPTER_FLAG_REMOTE;
+    assert!(both == 3);
+}
+
+#[test]
+fn rect() {
+    let rect = RECT {
+        left: 1,
+        top: 2,
+        right: 3,
+        bottom: 4,
+    };
+
+    assert!(rect.left == 1);
+    assert!(rect.top == 2);
+    assert!(rect.right == 3);
+    assert!(rect.bottom == 4);
+
+    let clone = rect;
+
+    assert!(
+        clone
+            == RECT {
+                left: 1,
+                top: 2,
+                right: 3,
+                bottom: 4
+            }
+    );
+}
+
+#[test]
+fn dxgi_mode_desc() {
+    _ = DXGI_MODE_DESC {
+        Width: 1,
+        Height: 2,
+        RefreshRate: DXGI_RATIONAL {
+            Numerator: 3,
+            Denominator: 5,
+        },
+        Format: DXGI_FORMAT_R32_TYPELESS,
+        ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE,
+        Scaling: DXGI_MODE_SCALING_CENTERED,
+    };
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn size64() {
+    assert!(size_of::<ACCESS_MODE>() == 4);
+    assert!(size_of::<DXGI_ADAPTER_FLAG>() == 4);
+    assert!(size_of::<RECT>() == 16);
+    assert!(size_of::<DXGI_MODE_DESC>() == 28);
+    assert_eq!(size_of::<CHOOSECOLORW>(), 72);
+}
+
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn size32() {
+    assert!(size_of::<ACCESS_MODE>() == 4);
+    assert!(size_of::<DXGI_ADAPTER_FLAG>() == 4);
+    assert!(size_of::<RECT>() == 16);
+    assert!(size_of::<DXGI_MODE_DESC>() == 28);
+    assert!(size_of::<CHOOSECOLORW>() == 36);
+}
+
+#[test]
+fn constant() {
+    assert_eq!(WM_KEYUP, 257i32);
+    assert_eq!(D3D12_DEFAULT_BLEND_FACTOR_ALPHA, 1f32);
+    assert_eq!(UIA_ScrollPatternNoScroll, -1f64);
+    assert_eq!(
+        CLSID_D2D1Shadow,
+        GUID::try_from("C67EA361-1863-4e69-89DB-695D3E9A5B6B").unwrap()
+    );
+
+    let b: PCSTR = D3DCOMPILER_DLL_A;
+    let c: PCWSTR = D3DCOMPILER_DLL_W;
+
+    unsafe {
+        assert_eq!(b.to_string().unwrap(), "d3dcompiler_47.dll");
+        assert_eq!(c.to_string().unwrap(), "d3dcompiler_47.dll");
+    }
+}
+
+#[test]
+fn function() -> Result<()> {
+    unsafe {
+        let event = CreateEventW(None, true, false, None);
+        SetEvent(event).ok()?;
+
+        WaitForSingleObject(event, 0);
+
+        CloseHandle(event).ok()?;
+        Ok(())
+    }
+}
+
+#[test]
+fn bool_as_error() {
+    unsafe {
+        helpers::set_thread_ui_language();
+        let error = SetEvent(core::ptr::null_mut()).ok().unwrap_err();
+
+        assert_eq!(error.code(), HRESULT(-2147024890));
+        let message: String = error.message();
+        assert_eq!(message, "The handle is invalid.");
+    }
+}
+
+#[test]
+fn com() -> Result<()> {
+    unsafe {
+        let stream = CreateStreamOnHGlobal(Default::default(), true)?;
+        let values = [1u8, 2u8, 3u8, 4u8];
+
+        let mut copied = 0;
+        stream
+            .Write(values.as_ptr() as _, values.len() as u32, Some(&mut copied))
+            .ok()?;
+        assert!(copied == 4);
+
+        let mut position = ULARGE_INTEGER::default();
+        stream
+            .Seek(
+                LARGE_INTEGER { QuadPart: 0 },
+                STREAM_SEEK_SET as u32,
+                Some(&mut position),
+            )
+            .ok()?;
+        assert!(position.QuadPart == 0);
+
+        let mut values = vec![0, 0, 0, 0];
+        let mut copied = 0;
+        stream
+            .Read(
+                values.as_mut_ptr() as _,
+                values.len() as u32,
+                Some(&mut copied),
+            )
+            .ok()?;
+        assert!(copied == 4);
+        assert_eq!(values, vec![1u8, 2u8, 3u8, 4u8]);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn com_inheritance() {
+    unsafe {
+        let factory: IDXGIFactory7 = CreateDXGIFactory1().unwrap();
+
+        // IDXGIFactory
+        assert!(factory.MakeWindowAssociation(HWND::default(), 0).is_ok());
+
+        // IDXGIFactory1
+        assert!(factory.IsCurrent().as_bool());
+
+        // IDXGIFactory2
+        _ = factory.IsWindowedStereoEnabled();
+
+        // IDXGIFactory3
+        assert!(factory.GetCreationFlags() == 0);
+
+        // IDXGIFactory7 (default)
+        assert!(
+            factory
+                .RegisterAdaptersChangedEvent(HANDLE::default())
+                .unwrap_err()
+                .code()
+                == DXGI_ERROR_INVALID_CALL
+        );
+    }
+}
+
+// Tests for https://github.com/microsoft/windows-rs/issues/463
+#[test]
+fn onecore_imports() -> Result<()> {
+    unsafe {
+        _ = HasExpandedResources()?;
+
+        let uri = CreateUri(w!("http://kennykerr.ca"), 0, None)?;
+
+        let port = uri.GetPort()?;
+        assert!(port == 80);
+
+        MiniDumpWriteDump(
+            Default::default(),
+            0,
+            Default::default(),
+            MiniDumpNormal,
+            None,
+            None,
+            None,
+        )
+        .ok()
+        .unwrap_err();
+
+        assert!(D3DDisassemble11Trace(std::ptr::null(), 0, None, 0, 0, 0).is_err());
+
+        Ok(())
+    }
+}
+
+#[test]
+fn interface() -> Result<()> {
+    unsafe {
+        let uri = CreateUri(w!("http://kennykerr.ca"), 0, None)?;
+
+        let domain = uri.GetDomain()?;
+        assert!(domain == "kennykerr.ca");
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::unnecessary_literal_unwrap)] // callback type is intentionally being tested
+fn callback() {
+    unsafe {
+        let a: PROPENUMPROCA = Some(callback_a);
+        assert!(BOOL(789) == a.unwrap()(123 as HWND, s!("hello a"), 456 as HANDLE));
+
+        let a: PROPENUMPROCW = Some(callback_w);
+        assert!(BOOL(789) == a.unwrap()(123 as HWND, w!("hello w"), 456 as HANDLE));
+    }
+}
+
+extern "system" fn callback_a(param0: HWND, param1: PCSTR, param2: HANDLE) -> BOOL {
+    assert!(param0 as usize == 123);
+    assert!(param2 as usize == 456);
+
+    let s = unsafe { param1.to_string().unwrap() };
+    assert!(s == "hello a");
+    BOOL(789)
+}
+
+extern "system" fn callback_w(param0: HWND, param1: PCWSTR, param2: HANDLE) -> BOOL {
+    assert!(param0 as usize == 123);
+    assert!(param2 as usize == 456);
+    let s = unsafe { param1.to_string().unwrap() };
+    assert!(s == "hello w");
+    BOOL(789)
+}
+
+#[test]
+fn empty_struct() {
+    let ldap: PLDAPSearch = 123 as _;
+    assert!(ldap == 123 as _);
+    assert!(size_of::<PLDAPSearch>() == size_of::<usize>());
+}

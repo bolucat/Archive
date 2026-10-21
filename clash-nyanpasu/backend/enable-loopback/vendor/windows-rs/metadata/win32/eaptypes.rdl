@@ -1,0 +1,410 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const CERTIFICATE_HASH_LENGTH: i32 = 20;
+        struct EAPHOST_IDENTITY_UI_PARAMS {
+            eapMethodType: EAP_METHOD_TYPE,
+            dwFlags: u32,
+            dwSizeofConnectionData: u32,
+            pConnectionData: *mut u8,
+            dwSizeofUserData: u32,
+            pUserData: *mut u8,
+            dwSizeofUserDataOut: u32,
+            pUserDataOut: *mut u8,
+            pwszIdentity: PWSTR,
+            dwError: u32,
+            pEapError: *mut EAP_ERROR,
+        }
+        struct EAPHOST_INTERACTIVE_UI_PARAMS {
+            dwSizeofContextData: u32,
+            pContextData: *mut u8,
+            dwSizeofInteractiveUIData: u32,
+            pInteractiveUIData: *mut u8,
+            dwError: u32,
+            pEapError: *mut EAP_ERROR,
+        }
+        const EAPHOST_METHOD_API_VERSION: i32 = 1;
+        const EAPHOST_PEER_API_VERSION: i32 = 1;
+        type EAP_ATTRIBUTE = _EAP_ATTRIBUTE;
+        type EAP_ATTRIBUTES = _EAP_ATTRIBUTES;
+        type EAP_ATTRIBUTE_TYPE = _EAP_ATTRIBUTE_TYPE;
+        struct EAP_CONFIG_INPUT_FIELD_ARRAY {
+            dwVersion: u32,
+            dwNumberOfFields: u32,
+            pFields: *mut EAP_CONFIG_INPUT_FIELD_DATA,
+        }
+        struct EAP_CONFIG_INPUT_FIELD_DATA {
+            dwSize: u32,
+            Type: EAP_CONFIG_INPUT_FIELD_TYPE,
+            dwFlagProps: u32,
+            pwszLabel: PWSTR,
+            pwszData: PWSTR,
+            dwMinDataLength: u32,
+            dwMaxDataLength: u32,
+        }
+        const EAP_CONFIG_INPUT_FIELD_PROPS_DEFAULT: i32 = 0;
+        const EAP_CONFIG_INPUT_FIELD_PROPS_NON_DISPLAYABLE: i32 = 1;
+        const EAP_CONFIG_INPUT_FIELD_PROPS_NON_PERSIST: i32 = 2;
+        #[repr(i32)]
+        enum EAP_CONFIG_INPUT_FIELD_TYPE {
+            EapConfigInputUsername = 0,
+            EapConfigInputPassword = 1,
+            EapConfigInputNetworkUsername = 2,
+            EapConfigInputNetworkPassword = 3,
+            EapConfigInputPin = 4,
+            EapConfigInputPSK = 5,
+            EapConfigInputEdit = 6,
+            EapConfigSmartCardUsername = 7,
+            EapConfigSmartCardError = 8,
+        }
+        const EAP_CREDENTIAL_VERSION: i32 = 1;
+        type EAP_CRED_EXPIRY_REQ = _EAP_CRED_EXPIRY_REQ;
+        type EAP_CRED_EXPIRY_RESP = _EAP_CRED_EXPIRY_REQ;
+        type EAP_CRED_LOGON_REQ = EAP_CONFIG_INPUT_FIELD_ARRAY;
+        type EAP_CRED_LOGON_RESP = EAP_CONFIG_INPUT_FIELD_ARRAY;
+        type EAP_CRED_REQ = EAP_CONFIG_INPUT_FIELD_ARRAY;
+        type EAP_CRED_RESP = EAP_CONFIG_INPUT_FIELD_ARRAY;
+        struct EAP_ERROR {
+            dwWinError: u32,
+            r#type: EAP_METHOD_TYPE,
+            dwReasonCode: u32,
+            rootCauseGuid: GUID,
+            repairGuid: GUID,
+            helpLinkGuid: GUID,
+            pRootCauseString: PWSTR,
+            pRepairString: PWSTR,
+        }
+        const EAP_FLAG_CONFG_READONLY: i32 = 524288;
+        const EAP_FLAG_DISABLE_SESSION_RESUMPTION: i32 = 67108864;
+        const EAP_FLAG_FULL_AUTH: i32 = 4096;
+        const EAP_FLAG_GUEST_ACCESS: i32 = 64;
+        const EAP_FLAG_LOGON: i32 = 4;
+        const EAP_FLAG_MACHINE_AUTH: i32 = 32;
+        const EAP_FLAG_NON_INTERACTIVE: i32 = 2;
+        const EAP_FLAG_ONLY_EAP_TLS: i32 = 16777216;
+        const EAP_FLAG_PREFER_ALT_CREDENTIALS: i32 = 8192;
+        const EAP_FLAG_PREVIEW: i32 = 8;
+        const EAP_FLAG_PRE_LOGON: i32 = 131072;
+        const EAP_FLAG_RESUME_FROM_HIBERNATE: i32 = 512;
+        const EAP_FLAG_Reserved1: i32 = 1;
+        const EAP_FLAG_Reserved2: i32 = 16;
+        const EAP_FLAG_Reserved3: i32 = 128;
+        const EAP_FLAG_Reserved4: i32 = 256;
+        const EAP_FLAG_Reserved5: i32 = 1024;
+        const EAP_FLAG_Reserved6: i32 = 2048;
+        const EAP_FLAG_Reserved7: i32 = 16384;
+        const EAP_FLAG_Reserved8: i32 = 1048576;
+        const EAP_FLAG_Reserved9: i32 = 4194304;
+        const EAP_FLAG_SERVER_VALIDATION_REQUIRED: i32 = 33554432;
+        const EAP_FLAG_SUPRESS_UI: i32 = 65536;
+        const EAP_FLAG_USER_AUTH: i32 = 262144;
+        const EAP_FLAG_VPN: i32 = 8388608;
+        struct EAP_INTERACTIVE_UI_DATA {
+            dwVersion: u32,
+            dwSize: u32,
+            dwDataType: EAP_INTERACTIVE_UI_DATA_TYPE,
+            cbUiData: u32,
+            pbUiData: EAP_UI_DATA_FORMAT,
+        }
+        #[repr(i32)]
+        enum EAP_INTERACTIVE_UI_DATA_TYPE {
+            EapCredReq = 0,
+            EapCredResp = 1,
+            EapCredExpiryReq = 2,
+            EapCredExpiryResp = 3,
+            EapCredLogonReq = 4,
+            EapCredLogonResp = 5,
+        }
+        const EAP_INTERACTIVE_UI_DATA_VERSION: i32 = 1;
+        struct EAP_METHOD_INFO {
+            eaptype: EAP_METHOD_TYPE,
+            pwszAuthorName: PWSTR,
+            pwszFriendlyName: PWSTR,
+            eapProperties: u32,
+            pInnerMethodInfo: *mut EAP_METHOD_INFO,
+        }
+        struct EAP_METHOD_INFO_ARRAY {
+            dwNumberOfMethods: u32,
+            pEapMethods: *mut EAP_METHOD_INFO,
+        }
+        struct EAP_METHOD_INFO_ARRAY_EX {
+            dwNumberOfMethods: u32,
+            pEapMethods: *mut EAP_METHOD_INFO_EX,
+        }
+        struct EAP_METHOD_INFO_EX {
+            eaptype: EAP_METHOD_TYPE,
+            pwszAuthorName: PWSTR,
+            pwszFriendlyName: PWSTR,
+            eapProperties: u32,
+            pInnerMethodInfoArray: *mut EAP_METHOD_INFO_ARRAY_EX,
+        }
+        struct EAP_METHOD_PROPERTY {
+            eapMethodPropertyType: EAP_METHOD_PROPERTY_TYPE,
+            eapMethodPropertyValueType: EAP_METHOD_PROPERTY_VALUE_TYPE,
+            eapMethodPropertyValue: EAP_METHOD_PROPERTY_VALUE,
+        }
+        struct EAP_METHOD_PROPERTY_ARRAY {
+            dwNumberOfProperties: u32,
+            pMethodProperty: *mut EAP_METHOD_PROPERTY,
+        }
+        #[repr(i32)]
+        enum EAP_METHOD_PROPERTY_TYPE {
+            emptPropCipherSuiteNegotiation = 0,
+            emptPropMutualAuth = 1,
+            emptPropIntegrity = 2,
+            emptPropReplayProtection = 3,
+            emptPropConfidentiality = 4,
+            emptPropKeyDerivation = 5,
+            emptPropKeyStrength64 = 6,
+            emptPropKeyStrength128 = 7,
+            emptPropKeyStrength256 = 8,
+            emptPropKeyStrength512 = 9,
+            emptPropKeyStrength1024 = 10,
+            emptPropDictionaryAttackResistance = 11,
+            emptPropFastReconnect = 12,
+            emptPropCryptoBinding = 13,
+            emptPropSessionIndependence = 14,
+            emptPropFragmentation = 15,
+            emptPropChannelBinding = 16,
+            emptPropNap = 17,
+            emptPropStandalone = 18,
+            emptPropMppeEncryption = 19,
+            emptPropTunnelMethod = 20,
+            emptPropSupportsConfig = 21,
+            emptPropCertifiedMethod = 22,
+            emptPropHiddenMethod = 23,
+            emptPropMachineAuth = 24,
+            emptPropUserAuth = 25,
+            emptPropIdentityPrivacy = 26,
+            emptPropMethodChaining = 27,
+            emptPropSharedStateEquivalence = 28,
+            emptLegacyMethodPropertyFlag = 31,
+            emptPropVendorSpecific = 255,
+        }
+        union EAP_METHOD_PROPERTY_VALUE {
+            empvBool: EAP_METHOD_PROPERTY_VALUE_BOOL,
+            empvDword: EAP_METHOD_PROPERTY_VALUE_DWORD,
+            empvString: EAP_METHOD_PROPERTY_VALUE_STRING,
+        }
+        struct EAP_METHOD_PROPERTY_VALUE_BOOL {
+            length: u32,
+            value: BOOL,
+        }
+        struct EAP_METHOD_PROPERTY_VALUE_DWORD {
+            length: u32,
+            value: u32,
+        }
+        struct EAP_METHOD_PROPERTY_VALUE_STRING {
+            length: u32,
+            value: *mut u8,
+        }
+        #[repr(i32)]
+        enum EAP_METHOD_PROPERTY_VALUE_TYPE {
+            empvtBool = 0,
+            empvtDword = 1,
+            empvtString = 2,
+        }
+        struct EAP_METHOD_TYPE {
+            eapType: EAP_TYPE,
+            dwAuthorId: u32,
+        }
+        const EAP_PEER_FLAG_HEALTH_STATE_CHANGE: i32 = 32768;
+        type EAP_SESSIONID = u32;
+        struct EAP_TYPE {
+            r#type: u8,
+            dwVendorId: u32,
+            dwVendorType: u32,
+        }
+        union EAP_UI_DATA_FORMAT {
+            credData: *mut EAP_CRED_REQ,
+            credExpiryData: *mut EAP_CRED_EXPIRY_REQ,
+            credLogonData: *mut EAP_CRED_LOGON_REQ,
+        }
+        const EAP_UI_INPUT_FIELD_PROPS_DEFAULT: i32 = 0;
+        const EAP_UI_INPUT_FIELD_PROPS_NON_DISPLAYABLE: i32 = 1;
+        const EAP_UI_INPUT_FIELD_PROPS_NON_PERSIST: i32 = 2;
+        const EAP_UI_INPUT_FIELD_PROPS_READ_ONLY: i32 = 4;
+        #[encoding("utf-16")]
+        const EAP_VALUENAME_PROPERTIES: String = "Properties";
+        type EapAttribute = _EAP_ATTRIBUTE;
+        type EapAttributeType = _EAP_ATTRIBUTE_TYPE;
+        type EapAttributes = _EAP_ATTRIBUTES;
+        struct EapCertificateCredential {
+            certHash: [u8; 20],
+            password: PWSTR,
+        }
+        struct EapCredential {
+            credType: EapCredentialType,
+            credData: EapCredentialTypeData,
+        }
+        #[repr(i32)]
+        enum EapCredentialType {
+            EAP_EMPTY_CREDENTIAL = 0,
+            EAP_USERNAME_PASSWORD_CREDENTIAL = 1,
+            EAP_WINLOGON_CREDENTIAL = 2,
+            EAP_CERTIFICATE_CREDENTIAL = 3,
+            EAP_SIM_CREDENTIAL = 4,
+        }
+        union EapCredentialTypeData {
+            username_password: EapUsernamePasswordCredential,
+            certificate: EapCertificateCredential,
+            sim: EapSimCredential,
+        }
+        struct EapSimCredential {
+            iccID: PWSTR,
+        }
+        struct EapUsernamePasswordCredential {
+            username: PWSTR,
+            password: PWSTR,
+        }
+        const MAX_EAP_CONFIG_INPUT_FIELD_LENGTH: i32 = 256;
+        const MAX_EAP_CONFIG_INPUT_FIELD_VALUE_LENGTH: i32 = 1024;
+        type PEAP_CONFIG_INPUT_FIELD_ARRAY = *mut EAP_CONFIG_INPUT_FIELD_ARRAY;
+        type PEAP_CONFIG_INPUT_FIELD_DATA = *mut EAP_CONFIG_INPUT_FIELD_DATA;
+        type PEAP_CONFIG_INPUT_FIELD_TYPE = *mut EAP_CONFIG_INPUT_FIELD_TYPE;
+        struct _EAP_ATTRIBUTE {
+            eaType: EAP_ATTRIBUTE_TYPE,
+            dwLength: u32,
+            pValue: *mut u8,
+        }
+        struct _EAP_ATTRIBUTES {
+            dwNumberOfAttributes: u32,
+            pAttribs: *mut EAP_ATTRIBUTE,
+        }
+        #[repr(i32)]
+        enum _EAP_ATTRIBUTE_TYPE {
+            eatMinimum = 0,
+            eatUserName = 1,
+            eatUserPassword = 2,
+            eatMD5CHAPPassword = 3,
+            eatNASIPAddress = 4,
+            eatNASPort = 5,
+            eatServiceType = 6,
+            eatFramedProtocol = 7,
+            eatFramedIPAddress = 8,
+            eatFramedIPNetmask = 9,
+            eatFramedRouting = 10,
+            eatFilterId = 11,
+            eatFramedMTU = 12,
+            eatFramedCompression = 13,
+            eatLoginIPHost = 14,
+            eatLoginService = 15,
+            eatLoginTCPPort = 16,
+            eatUnassigned17 = 17,
+            eatReplyMessage = 18,
+            eatCallbackNumber = 19,
+            eatCallbackId = 20,
+            eatUnassigned21 = 21,
+            eatFramedRoute = 22,
+            eatFramedIPXNetwork = 23,
+            eatState = 24,
+            eatClass = 25,
+            eatVendorSpecific = 26,
+            eatSessionTimeout = 27,
+            eatIdleTimeout = 28,
+            eatTerminationAction = 29,
+            eatCalledStationId = 30,
+            eatCallingStationId = 31,
+            eatNASIdentifier = 32,
+            eatProxyState = 33,
+            eatLoginLATService = 34,
+            eatLoginLATNode = 35,
+            eatLoginLATGroup = 36,
+            eatFramedAppleTalkLink = 37,
+            eatFramedAppleTalkNetwork = 38,
+            eatFramedAppleTalkZone = 39,
+            eatAcctStatusType = 40,
+            eatAcctDelayTime = 41,
+            eatAcctInputOctets = 42,
+            eatAcctOutputOctets = 43,
+            eatAcctSessionId = 44,
+            eatAcctAuthentic = 45,
+            eatAcctSessionTime = 46,
+            eatAcctInputPackets = 47,
+            eatAcctOutputPackets = 48,
+            eatAcctTerminateCause = 49,
+            eatAcctMultiSessionId = 50,
+            eatAcctLinkCount = 51,
+            eatAcctEventTimeStamp = 55,
+            eatMD5CHAPChallenge = 60,
+            eatNASPortType = 61,
+            eatPortLimit = 62,
+            eatLoginLATPort = 63,
+            eatTunnelType = 64,
+            eatTunnelMediumType = 65,
+            eatTunnelClientEndpoint = 66,
+            eatTunnelServerEndpoint = 67,
+            eatARAPPassword = 70,
+            eatARAPFeatures = 71,
+            eatARAPZoneAccess = 72,
+            eatARAPSecurity = 73,
+            eatARAPSecurityData = 74,
+            eatPasswordRetry = 75,
+            eatPrompt = 76,
+            eatConnectInfo = 77,
+            eatConfigurationToken = 78,
+            eatEAPMessage = 79,
+            eatSignature = 80,
+            eatARAPChallengeResponse = 84,
+            eatAcctInterimInterval = 85,
+            eatNASIPv6Address = 95,
+            eatFramedInterfaceId = 96,
+            eatFramedIPv6Prefix = 97,
+            eatLoginIPv6Host = 98,
+            eatFramedIPv6Route = 99,
+            eatFramedIPv6Pool = 100,
+            eatARAPGuestLogon = 8096,
+            eatCertificateOID = 8097,
+            eatEAPConfiguration = 8098,
+            eatPEAPEmbeddedEAPTypeId = 8099,
+            eatPEAPFastRoamedSession = 8100,
+            eatFastRoamedSession = 8100,
+            eatEAPTLV = 8102,
+            eatCredentialsChanged = 8103,
+            eatInnerEapMethodType = 8104,
+            eatClearTextPassword = 8107,
+            eatQuarantineSoH = 8150,
+            eatCertificateThumbprint = 8250,
+            eatPeerId = 9000,
+            eatServerId = 9001,
+            eatMethodId = 9002,
+            eatEMSK = 9003,
+            eatSessionId = 9004,
+            eatReserved = -1,
+        }
+        struct _EAP_CRED_EXPIRY_REQ {
+            curCreds: EAP_CONFIG_INPUT_FIELD_ARRAY,
+            newCreds: EAP_CONFIG_INPUT_FIELD_ARRAY,
+        }
+        const eapPropCertifiedMethod: i32 = 4194304;
+        const eapPropChannelBinding: i32 = 65536;
+        const eapPropCipherSuiteNegotiation: i32 = 1;
+        const eapPropConfidentiality: i32 = 16;
+        const eapPropCryptoBinding: i32 = 8192;
+        const eapPropDictionaryAttackResistance: i32 = 2048;
+        const eapPropFastReconnect: i32 = 4096;
+        const eapPropFragmentation: i32 = 32768;
+        const eapPropHiddenMethod: i32 = 8388608;
+        const eapPropIdentityPrivacy: i32 = 67108864;
+        const eapPropIntegrity: i32 = 4;
+        const eapPropKeyDerivation: i32 = 32;
+        const eapPropKeyStrength1024: i32 = 1024;
+        const eapPropKeyStrength128: i32 = 128;
+        const eapPropKeyStrength256: i32 = 256;
+        const eapPropKeyStrength512: i32 = 512;
+        const eapPropKeyStrength64: i32 = 64;
+        const eapPropMachineAuth: i32 = 16777216;
+        const eapPropMethodChaining: i32 = 134217728;
+        const eapPropMppeEncryption: i32 = 524288;
+        const eapPropMutualAuth: i32 = 2;
+        const eapPropNap: i32 = 131072;
+        const eapPropReplayProtection: i32 = 8;
+        const eapPropReserved: u32 = 2147483648;
+        const eapPropSessionIndependence: i32 = 16384;
+        const eapPropSharedStateEquivalence: i32 = 268435456;
+        const eapPropStandalone: i32 = 262144;
+        const eapPropSupportsConfig: i32 = 2097152;
+        const eapPropTunnelMethod: i32 = 1048576;
+        const eapPropUserAuth: i32 = 33554432;
+    }
+}

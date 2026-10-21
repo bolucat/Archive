@@ -1,0 +1,161 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const AGP_FLAG_NO_1X_RATE: i32 = 1;
+        const AGP_FLAG_NO_2X_RATE: i32 = 2;
+        const AGP_FLAG_NO_4X_RATE: i32 = 4;
+        const AGP_FLAG_NO_8X_RATE: i32 = 8;
+        const AGP_FLAG_NO_FW_ENABLE: i32 = 512;
+        const AGP_FLAG_NO_SBA_ENABLE: i32 = 256;
+        const AGP_FLAG_REVERSE_INITIALIZATION: i32 = 128;
+        const AGP_FLAG_SPECIAL_RESERVE: i32 = 1015808;
+        const AGP_FLAG_SPECIAL_TARGET: i32 = 1048575;
+        const APMMENUSUSPEND_DISABLED: i32 = 0;
+        const APMMENUSUSPEND_ENABLED: i32 = 1;
+        const APMMENUSUSPEND_NOCHANGE: i32 = 128;
+        const APMMENUSUSPEND_UNDOCKED: i32 = 2;
+        const APMTIMEOUT_DISABLED: i32 = 0;
+        const BIF_RAWDEVICENEEDSDRIVER: i32 = 2;
+        const BIF_SHOWSIMILARDRIVERS: i32 = 1;
+        const CONFIGFLAG_BOOT_DEVICE: i32 = 262144;
+        const CONFIGFLAG_CANTSTOPACHILD: i32 = 128;
+        const CONFIGFLAG_DISABLED: i32 = 1;
+        const CONFIGFLAG_FAILEDINSTALL: i32 = 64;
+        const CONFIGFLAG_FINISHINSTALL_ACTION: i32 = 131072;
+        const CONFIGFLAG_FINISHINSTALL_UI: i32 = 65536;
+        const CONFIGFLAG_FINISH_INSTALL: i32 = 1024;
+        const CONFIGFLAG_IGNORE_BOOT_LC: i32 = 8;
+        const CONFIGFLAG_MANUAL_INSTALL: i32 = 4;
+        const CONFIGFLAG_NEEDS_CLASS_CONFIG: i32 = 524288;
+        const CONFIGFLAG_NEEDS_FORCED_CONFIG: i32 = 2048;
+        const CONFIGFLAG_NET_BOOT: i32 = 16;
+        const CONFIGFLAG_NOREMOVEEXIT: i32 = 512;
+        const CONFIGFLAG_OKREMOVEROM: i32 = 256;
+        const CONFIGFLAG_PARTIAL_LOG_CONF: i32 = 8192;
+        const CONFIGFLAG_REINSTALL: i32 = 32;
+        const CONFIGFLAG_REMOVED: i32 = 2;
+        const CONFIGFLAG_SUPPRESS_SURPRISE: i32 = 16384;
+        const CONFIGFLAG_VERIFY_HARDWARE: i32 = 32768;
+        const CSCONFIGFLAG_BITS: i32 = 7;
+        const CSCONFIGFLAG_DISABLED: i32 = 1;
+        const CSCONFIGFLAG_DO_NOT_CREATE: i32 = 2;
+        const CSCONFIGFLAG_DO_NOT_START: i32 = 4;
+        const DMSTATEFLAG_APPLYTOALL: i32 = 1;
+        const DOSOPTF_ALWAYSUSE: i32 = 4;
+        const DOSOPTF_DEFAULT: i32 = 1;
+        const DOSOPTF_INDOSSTART: i32 = 64;
+        const DOSOPTF_MULTIPLE: i32 = 128;
+        const DOSOPTF_NEEDSETUP: i32 = 32;
+        const DOSOPTF_PROVIDESUMB: i32 = 16;
+        const DOSOPTF_SUPPORTED: i32 = 2;
+        const DOSOPTF_USESPMODE: i32 = 8;
+        const DOSOPTGF_DEFCLEAN: i32 = 1;
+        const DRIVERSIGN_BLOCKING: i32 = 2;
+        const DRIVERSIGN_NONE: i32 = 0;
+        const DRIVERSIGN_WARNING: i32 = 1;
+        struct DSKTLSYSTEMTIME {
+            wYear: u16,
+            wMonth: u16,
+            wDayOfWeek: u16,
+            wDay: u16,
+            wHour: u16,
+            wMinute: u16,
+            wSecond: u16,
+            wMilliseconds: u16,
+            wResult: u16,
+        }
+        const DTRESULTFIX: i32 = 1;
+        const DTRESULTOK: i32 = 0;
+        const DTRESULTPART: i32 = 3;
+        const DTRESULTPROB: i32 = 2;
+        const EISAFLAG_NO_IO_MERGE: i32 = 1;
+        const EISAFLAG_SLOT_IO_FIRST: i32 = 2;
+        const EISA_NO_MAX_FUNCTION: i32 = 255;
+        const IT_COMPACT: i32 = 0;
+        const IT_CUSTOM: i32 = 3;
+        const IT_PORTABLE: i32 = 2;
+        const IT_TYPICAL: i32 = 1;
+        const LASTGOOD_OPERATION: i32 = 255;
+        const LASTGOOD_OPERATION_DELETE: i32 = 1;
+        const LASTGOOD_OPERATION_NOPOSTPROC: i32 = 0;
+        type LPDSKTLSYSTEMTIME = *mut DSKTLSYSTEMTIME;
+        const MF_FLAGS_CREATE_BUT_NO_SHOW_DISABLED: i32 = 8;
+        const MF_FLAGS_EVEN_IF_NO_RESOURCE: i32 = 1;
+        const MF_FLAGS_FILL_IN_UNKNOWN_RESOURCE: i32 = 4;
+        const MF_FLAGS_NO_CREATE_IF_NO_RESOURCE: i32 = 2;
+        const NUM_EISA_RANGES: i32 = 4;
+        const NUM_RESOURCE_MAP: i32 = 256;
+        const PCIC_DEFAULT_IRQMASK: i32 = 20152;
+        const PCIC_DEFAULT_NUMSOCKETS: i32 = 0;
+        const PCI_OPTIONS_USE_BIOS: i32 = 1;
+        const PCI_OPTIONS_USE_IRQ_STEERING: i32 = 2;
+        const PCMCIA_DEF_MEMBEGIN: i32 = 786432;
+        const PCMCIA_DEF_MEMEND: i32 = 16777215;
+        const PCMCIA_DEF_MEMLEN: i32 = 4096;
+        const PCMCIA_DEF_MIN_REGION: i32 = 65536;
+        const PCMCIA_OPT_AUTOMEM: i32 = 4;
+        const PCMCIA_OPT_HAVE_SOCKET: i32 = 1;
+        const PCMCIA_OPT_NO_APMREMOVE: i32 = 32;
+        const PCMCIA_OPT_NO_AUDIO: i32 = 16;
+        const PCMCIA_OPT_NO_SOUND: i32 = 8;
+        type PDSKTLSYSTEMTIME = *mut DSKTLSYSTEMTIME;
+        const PIR_OPTION_DEFAULT: i32 = 15;
+        const PIR_OPTION_ENABLED: i32 = 1;
+        const PIR_OPTION_MSSPEC: i32 = 4;
+        const PIR_OPTION_REALMODE: i32 = 8;
+        const PIR_OPTION_REGISTRY: i32 = 2;
+        const PIR_STATUS_DISABLED: i32 = 2;
+        const PIR_STATUS_ENABLED: i32 = 1;
+        const PIR_STATUS_ERROR: i32 = 0;
+        const PIR_STATUS_MAX: i32 = 3;
+        const PIR_STATUS_MINIPORT_COMPATIBLE: i32 = 1;
+        const PIR_STATUS_MINIPORT_ERROR: i32 = 4;
+        const PIR_STATUS_MINIPORT_INVALID: i32 = 7;
+        const PIR_STATUS_MINIPORT_MAX: i32 = 8;
+        const PIR_STATUS_MINIPORT_NOKEY: i32 = 5;
+        const PIR_STATUS_MINIPORT_NONE: i32 = 3;
+        const PIR_STATUS_MINIPORT_NORMAL: i32 = 0;
+        const PIR_STATUS_MINIPORT_OVERRIDE: i32 = 2;
+        const PIR_STATUS_MINIPORT_SUCCESS: i32 = 6;
+        const PIR_STATUS_TABLE_BAD: i32 = 5;
+        const PIR_STATUS_TABLE_ERROR: i32 = 4;
+        const PIR_STATUS_TABLE_MAX: i32 = 7;
+        const PIR_STATUS_TABLE_MSSPEC: i32 = 1;
+        const PIR_STATUS_TABLE_NONE: i32 = 3;
+        const PIR_STATUS_TABLE_REALMODE: i32 = 2;
+        const PIR_STATUS_TABLE_REGISTRY: i32 = 0;
+        const PIR_STATUS_TABLE_SUCCESS: i32 = 6;
+        const REGDF_CONFLICTALL: i32 = 983040;
+        const REGDF_CONFLICTDMA: i32 = 524288;
+        const REGDF_CONFLICTIO: i32 = 65536;
+        const REGDF_CONFLICTIRQ: i32 = 262144;
+        const REGDF_CONFLICTMEM: i32 = 131072;
+        const REGDF_GENFORCEDCONFIG: i32 = 32;
+        const REGDF_MAPIRQ2TO9: i32 = 1048576;
+        const REGDF_NEEDFULLCONFIG: i32 = 16;
+        const REGDF_NODETCONFIG: i32 = 32768;
+        const REGDF_NOTDETALL: i32 = 15;
+        const REGDF_NOTDETDMA: i32 = 8;
+        const REGDF_NOTDETIO: i32 = 1;
+        const REGDF_NOTDETIRQ: i32 = 4;
+        const REGDF_NOTDETMEM: i32 = 2;
+        const REGDF_NOTVERIFIED: u32 = 2147483648;
+        const REGSTR_MAX_VALUE_LENGTH: i32 = 256;
+        const REGSTR_VAL_MAX_HCID_LEN: i32 = 1024;
+        const SUF_BATCHINF: i32 = 4;
+        const SUF_CLEAN: i32 = 8;
+        const SUF_EXPRESS: i32 = 2;
+        const SUF_FIRSTTIME: i32 = 1;
+        const SUF_INSETUP: i32 = 16;
+        const SUF_NETHDBOOT: i32 = 64;
+        const SUF_NETRPLBOOT: i32 = 128;
+        const SUF_NETSETUP: i32 = 32;
+        const SUF_SBSCOPYOK: i32 = 256;
+        const VPDF_DISABLEPWRMGMT: i32 = 1;
+        const VPDF_DISABLEPWRSTATUSPOLL: i32 = 8;
+        const VPDF_DISABLERINGRESUME: i32 = 16;
+        const VPDF_FORCEAPM10MODE: i32 = 2;
+        const VPDF_SHOWMULTIBATT: i32 = 32;
+        const VPDF_SKIPINTELSLCHECK: i32 = 4;
+    }
+}

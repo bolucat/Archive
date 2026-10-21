@@ -69,6 +69,18 @@
       "description": "Build neutral backend tests with musl in Docker and run them in ImmortalWrt or a supplied OpenWrt rootfs",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/testing/test-backend-musl.ts"
     },
+    "bench:ab": {
+      "description": "Run a frontend page benchmark alternately without and with the working tree's frontend changes and compare the rounds",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/bench-ab.ts"
+    },
+    "bench:profile": {
+      "description": "Summarize a frontend page benchmark's CPU profile by category, source and function, or one function's callers",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/profile-report.ts"
+    },
+    "bench:trace": {
+      "description": "Break the longest main-thread tasks of frontend page benchmark traces into their steps",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/trace-report.ts"
+    },
     "upload-macos-updater": {
       "description": "Upload the macOS updater to GitHub Releases",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-macos-updater.ts"
@@ -148,6 +160,14 @@
     "generate:topology-map": {
       "description": "Generate the frontend topology map data",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/generate-topology-map.ts"
+    },
+    "generate:credits": {
+      "description": "Generate the open source credits the about page lists",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/credits/generate-credits.ts"
+    },
+    "lint:credits": {
+      "description": "Check that every shipped dependency and component is credited under an accepted license",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/credits/generate-credits.ts --check"
     },
     "publish": {
       "description": "Bump monorepo versions for a release",

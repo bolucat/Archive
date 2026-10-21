@@ -1,0 +1,258 @@
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppBroadcastingMonitor(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppBroadcastingMonitor, windows_core::IUnknown, windows_core::IInspectable);
+impl AppBroadcastingMonitor {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<AppBroadcastingMonitor, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn IsCurrentAppBroadcasting(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsCurrentAppBroadcasting)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsCurrentAppBroadcastingChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).IsCurrentAppBroadcastingChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveIsCurrentAppBroadcastingChanged))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppBroadcastingMonitor {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppBroadcastingMonitor>();
+}
+unsafe impl windows_core::Interface for AppBroadcastingMonitor {
+    type Vtable = <IAppBroadcastingMonitor as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppBroadcastingMonitor as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppBroadcastingMonitor {
+    const NAME: &'static str = "Windows.Media.AppBroadcasting.AppBroadcastingMonitor";
+}
+unsafe impl Send for AppBroadcastingMonitor {}
+unsafe impl Sync for AppBroadcastingMonitor {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppBroadcastingStatus(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppBroadcastingStatus, windows_core::IUnknown, windows_core::IInspectable);
+impl AppBroadcastingStatus {
+    pub fn CanStartBroadcast(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CanStartBroadcast)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Details(&self) -> windows_core::Result<AppBroadcastingStatusDetails> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Details)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for AppBroadcastingStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppBroadcastingStatus>();
+}
+unsafe impl windows_core::Interface for AppBroadcastingStatus {
+    type Vtable = <IAppBroadcastingStatus as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppBroadcastingStatus as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppBroadcastingStatus {
+    const NAME: &'static str = "Windows.Media.AppBroadcasting.AppBroadcastingStatus";
+}
+unsafe impl Send for AppBroadcastingStatus {}
+unsafe impl Sync for AppBroadcastingStatus {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppBroadcastingStatusDetails(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppBroadcastingStatusDetails, windows_core::IUnknown, windows_core::IInspectable);
+impl AppBroadcastingStatusDetails {
+    pub fn IsAnyAppBroadcasting(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsAnyAppBroadcasting)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsCaptureResourceUnavailable(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsCaptureResourceUnavailable)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsGameStreamInProgress(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsGameStreamInProgress)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsGpuConstrained(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsGpuConstrained)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsAppInactive(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsAppInactive)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsBlockedForApp(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsBlockedForApp)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsDisabledByUser(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsDisabledByUser)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsDisabledBySystem(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsDisabledBySystem)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for AppBroadcastingStatusDetails {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppBroadcastingStatusDetails>();
+}
+unsafe impl windows_core::Interface for AppBroadcastingStatusDetails {
+    type Vtable = <IAppBroadcastingStatusDetails as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppBroadcastingStatusDetails as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppBroadcastingStatusDetails {
+    const NAME: &'static str = "Windows.Media.AppBroadcasting.AppBroadcastingStatusDetails";
+}
+unsafe impl Send for AppBroadcastingStatusDetails {}
+unsafe impl Sync for AppBroadcastingStatusDetails {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppBroadcastingUI(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AppBroadcastingUI, windows_core::IUnknown, windows_core::IInspectable);
+impl AppBroadcastingUI {
+    pub fn GetStatus(&self) -> windows_core::Result<AppBroadcastingStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetStatus)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ShowBroadcastUI(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).ShowBroadcastUI)(windows_core::Interface::as_raw(self)).ok() }
+    }
+    pub fn GetDefault() -> windows_core::Result<Self> {
+        Self::IAppBroadcastingUIStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetDefault)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    #[cfg(feature = "System")]
+    pub fn GetForUser<P0>(user: P0) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::super::System::User>,
+    {
+        Self::IAppBroadcastingUIStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetForUser)(windows_core::Interface::as_raw(this), user.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IAppBroadcastingUIStatics<R, F: FnOnce(&IAppBroadcastingUIStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<AppBroadcastingUI, IAppBroadcastingUIStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for AppBroadcastingUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAppBroadcastingUI>();
+}
+unsafe impl windows_core::Interface for AppBroadcastingUI {
+    type Vtable = <IAppBroadcastingUI as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAppBroadcastingUI as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AppBroadcastingUI {
+    const NAME: &'static str = "Windows.Media.AppBroadcasting.AppBroadcastingUI";
+}
+unsafe impl Send for AppBroadcastingUI {}
+unsafe impl Sync for AppBroadcastingUI {}
+windows_core::imp::define_interface!(IAppBroadcastingMonitor, IAppBroadcastingMonitor_Vtbl, 0x00f95a68_8907_48a0_b8ef_24d208137542);
+impl windows_core::RuntimeType for IAppBroadcastingMonitor {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.AppBroadcasting.IAppBroadcastingMonitor");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppBroadcastingMonitor_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsCurrentAppBroadcasting: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsCurrentAppBroadcastingChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveIsCurrentAppBroadcastingChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppBroadcastingStatus, IAppBroadcastingStatus_Vtbl, 0x1225e4df_03a1_42f8_8b80_c9228cd9cf2e);
+impl windows_core::RuntimeType for IAppBroadcastingStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.AppBroadcasting.IAppBroadcastingStatus");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppBroadcastingStatus_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub CanStartBroadcast: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub Details: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppBroadcastingStatusDetails, IAppBroadcastingStatusDetails_Vtbl, 0x069dada4_b573_4e3c_8e19_1bafacd09713);
+impl windows_core::RuntimeType for IAppBroadcastingStatusDetails {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.AppBroadcasting.IAppBroadcastingStatusDetails");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppBroadcastingStatusDetails_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsAnyAppBroadcasting: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsCaptureResourceUnavailable: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsGameStreamInProgress: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsGpuConstrained: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsAppInactive: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsBlockedForApp: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsDisabledByUser: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsDisabledBySystem: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppBroadcastingUI, IAppBroadcastingUI_Vtbl, 0xe56f9f8f_ee99_4dca_a3c3_70af3db44f5f);
+impl windows_core::RuntimeType for IAppBroadcastingUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.AppBroadcasting.IAppBroadcastingUI");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppBroadcastingUI_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetStatus: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ShowBroadcastUI: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IAppBroadcastingUIStatics, IAppBroadcastingUIStatics_Vtbl, 0x55a8a79d_23cb_4579_9c34_886fe02c045a);
+impl windows_core::RuntimeType for IAppBroadcastingUIStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.AppBroadcasting.IAppBroadcastingUIStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAppBroadcastingUIStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetDefault: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "System")]
+    pub GetForUser: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "System"))]
+    GetForUser: usize,
+}

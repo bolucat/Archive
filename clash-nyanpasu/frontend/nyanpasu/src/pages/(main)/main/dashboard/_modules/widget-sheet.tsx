@@ -25,8 +25,10 @@ import {
   DrawerHandle,
   DrawerTitle,
 } from '@nyanpasu/ui/drawer'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SearchField } from '@nyanpasu/ui/search-field'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import {
   RENDER_MAP,
   WIDGET_MIN_SIZE_MAP,
@@ -122,7 +124,7 @@ function WidgetEntry({
     >
       <Icon className="text-on-surface-variant size-5 shrink-0" />
 
-      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
+      <TextMarquee className="min-w-0 flex-1 text-sm">{title}</TextMarquee>
 
       <span className="text-on-surface-variant text-xs tabular-nums">
         {w}×{h}
@@ -220,9 +222,11 @@ export function WidgetSheet({
             ))}
 
             {filteredIds.length === 0 && (
-              <p className="text-on-surface-variant col-span-full py-4 text-center text-sm">
-                {m.dashboard_widget_library_no_results()}
-              </p>
+              <EmptyState
+                tone="normal"
+                className="col-span-full"
+                message={m.dashboard_widget_library_no_results()}
+              />
             )}
           </div>
         </ScrollArea>

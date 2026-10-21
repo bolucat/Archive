@@ -1,0 +1,34 @@
+#![cfg(windows)]
+use windows::{Win32::ERROR_NO_UNICODE_TRANSLATION, core::*};
+
+#[test]
+fn test() -> Result<()> {
+    helpers::set_thread_ui_language();
+
+    let p: PCSTR = s!("hello");
+    let s: String = unsafe { p.to_string()? };
+    assert_eq!("hello", s);
+    assert_eq!("hello", format!("{}", unsafe { p.display() }));
+
+    let invalid = &[0xc0, 0x80];
+    let p = PCSTR::from_raw(invalid.as_ptr());
+    let e: Error = unsafe { p.to_string().unwrap_err().into() };
+    assert_eq!(
+        e.code(),
+        WIN32_ERROR(ERROR_NO_UNICODE_TRANSLATION as u32).into()
+    );
+    assert_eq!(
+        e.message(),
+        "No mapping for the Unicode character exists in the target multi-byte code page."
+    );
+
+    Ok(())
+}
+
+#[test]
+fn can_display() {
+    // Valid UTF-8 is followed by invalid and incomplete byte sequences.
+    let s = [240, 159, 146, 150, 255, 240, 159, 0];
+    let s = PCSTR::from_raw(s.as_ptr());
+    assert_eq!("💖�", format!("{}", unsafe { s.display() }));
+}

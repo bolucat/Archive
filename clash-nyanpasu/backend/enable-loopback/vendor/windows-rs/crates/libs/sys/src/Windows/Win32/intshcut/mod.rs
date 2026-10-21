@@ -1,0 +1,56 @@
+pub type CIUniformResourceLocator = *mut core::ffi::c_void;
+#[cfg(feature = "windef")]
+pub type CURLINVOKECOMMANDINFOA = URLINVOKECOMMANDINFOA;
+#[cfg(feature = "windef")]
+pub type CURLINVOKECOMMANDINFOW = URLINVOKECOMMANDINFOW;
+#[cfg(feature = "wtypesbase")]
+pub const E_FLAGS: super::SCODE = 0x80041000_u32 as _;
+#[cfg(feature = "wtypesbase")]
+pub const IS_E_EXEC_FAILED: super::SCODE = 0x80042002_u32 as _;
+pub type IURL_INVOKECOMMAND_FLAGS = i32;
+pub const IURL_INVOKECOMMAND_FL_ALLOW_UI: IURL_INVOKECOMMAND_FLAGS = 1;
+pub const IURL_INVOKECOMMAND_FL_ASYNCOK: IURL_INVOKECOMMAND_FLAGS = 8;
+pub const IURL_INVOKECOMMAND_FL_DDEWAIT: IURL_INVOKECOMMAND_FLAGS = 4;
+pub const IURL_INVOKECOMMAND_FL_LOG_USAGE: IURL_INVOKECOMMAND_FLAGS = 16;
+pub const IURL_INVOKECOMMAND_FL_USE_DEFAULT_VERB: IURL_INVOKECOMMAND_FLAGS = 2;
+pub type IURL_SETURL_FLAGS = i32;
+pub const IURL_SETURL_FL_GUESS_PROTOCOL: IURL_SETURL_FLAGS = 1;
+pub const IURL_SETURL_FL_USE_DEFAULT_PROTOCOL: IURL_SETURL_FLAGS = 2;
+pub const MIMEASSOCDLG_FL_REGISTER_ASSOC: MIMEASSOCIATIONDIALOG_IN_FLAGS = 1;
+pub type MIMEASSOCIATIONDIALOG_IN_FLAGS = i32;
+#[cfg(feature = "windef")]
+pub type PCURLINVOKECOMMANDINFOA = *const URLINVOKECOMMANDINFOA;
+#[cfg(feature = "windef")]
+pub type PCURLINVOKECOMMANDINFOW = *const URLINVOKECOMMANDINFOW;
+#[cfg(feature = "windef")]
+pub type PURLINVOKECOMMANDINFOA = *mut URLINVOKECOMMANDINFOA;
+#[cfg(feature = "windef")]
+pub type PURLINVOKECOMMANDINFOW = *mut URLINVOKECOMMANDINFOW;
+pub const TRANSLATEURL_FL_GUESS_PROTOCOL: TRANSLATEURL_IN_FLAGS = 1;
+pub const TRANSLATEURL_FL_USE_DEFAULT_PROTOCOL: TRANSLATEURL_IN_FLAGS = 2;
+pub type TRANSLATEURL_IN_FLAGS = i32;
+pub const URLASSOCDLG_FL_REGISTER_ASSOC: URLASSOCIATIONDIALOG_IN_FLAGS = 2;
+pub const URLASSOCDLG_FL_USE_DEFAULT_NAME: URLASSOCIATIONDIALOG_IN_FLAGS = 1;
+pub type URLASSOCIATIONDIALOG_IN_FLAGS = i32;
+#[repr(C)]
+#[cfg(feature = "windef")]
+#[derive(Clone, Copy, Default)]
+pub struct URLINVOKECOMMANDINFOA {
+    pub dwcbSize: u32,
+    pub dwFlags: u32,
+    pub hwndParent: super::HWND,
+    pub pcszVerb: windows_sys::core::PCSTR,
+}
+#[repr(C)]
+#[cfg(feature = "windef")]
+#[derive(Clone, Copy, Default)]
+pub struct URLINVOKECOMMANDINFOW {
+    pub dwcbSize: u32,
+    pub dwFlags: u32,
+    pub hwndParent: super::HWND,
+    pub pcszVerb: windows_sys::core::PCWSTR,
+}
+#[cfg(feature = "wtypesbase")]
+pub const URL_E_INVALID_SYNTAX: super::SCODE = 0x80041001_u32 as _;
+#[cfg(feature = "wtypesbase")]
+pub const URL_E_UNREGISTERED_PROTOCOL: super::SCODE = 0x80041002_u32 as _;

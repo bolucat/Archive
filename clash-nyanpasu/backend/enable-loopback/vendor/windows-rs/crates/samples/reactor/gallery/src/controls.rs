@@ -1,0 +1,184 @@
+//! Shared page headers, live sample cards, scrollable content, and navigation card grids.
+//! Examples stay in compiled page components rather than duplicated display-only snippets.
+
+use windows_reactor::*;
+
+/// Resolves a bundled asset file relative to this crate's `assets` directory.
+pub fn asset_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets")
+        .join(name)
+}
+
+pub fn key_label(key: &Key) -> String {
+    key.as_str()
+        .unwrap()
+        .split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Loads a bundled asset as an `Image`, or returns `None` when `name` is blank.
+pub fn asset_image(name: &str, width: f64, height: f64) -> Option<View> {
+    if name.is_empty() {
+        return None;
+    }
+    Some(
+        Image::new()
+            .source_file(asset_path(name))
+            .unwrap()
+            .width(width)
+            .height(height)
+            .stretch(Stretch::Uniform)
+            .into(),
+    )
+}
+
+pub fn page_header(title: &str, description: &str) -> View {
+    StackPanel::new()
+        .spacing(4.0)
+        .children((
+            TextBlock::new()
+                .text(title)
+                .font_size(28.0)
+                .font_weight(FontWeight::BOLD),
+            description,
+        ))
+        .into()
+}
+
+/// Wraps a live sample in a titled card.
+pub fn sample_card(title: &str, sample: impl Into<View>) -> View {
+    StackPanel::new()
+        .spacing(8.0)
+        .children((
+            TextBlock::new()
+                .text(title)
+                .font_size(14.0)
+                .font_weight(FontWeight::SEMI_BOLD),
+            Border::new()
+                .border_thickness(1.0)
+                .corner_radius(8.0)
+                .background(ThemeBrush::CardBackground)
+                .border_brush(ThemeBrush::CardStroke)
+                .content(
+                    Border::new()
+                        .padding(24.0)
+                        .background(ThemeBrush::SolidBackground)
+                        .content(sample),
+                ),
+        ))
+        .into()
+}
+
+/// Lays out a page title, description, and a list of keyed sample cards inside a scroll viewer.
+pub fn page_content(
+    title: &str,
+    description: &str,
+    cards: impl IntoIterator<Item = KeyedView>,
+) -> View {
+    let children = std::iter::once(KeyedView::new("header", page_header(title, description)))
+        .chain(cards)
+        .collect::<Vec<_>>();
+    ScrollViewer::new()
+        .content(
+            Border::new()
+                .padding(Thickness::new(36.0, 24.0, 36.0, 36.0))
+                .content(StackPanel::new().spacing(16.0).keyed_children(children)),
+        )
+        .into()
+}
+
+/// One card in a home or category grid: a destination title, subtitle, bundled screenshot, and
+/// the navigation tag to route to when the card is activated.
+#[derive(Clone, PartialEq)]
+pub struct CardItem {
+    pub title: String,
+    pub subtitle: String,
+    pub image_file: String,
+    pub key: String,
+}
+
+const CARD_WIDTH: f64 = 300.0;
+const CARD_HEIGHT: f64 = 88.0;
+const CARD_GAP: f64 = 12.0;
+
+/// Arranges `items` in a wrapping grid of clickable cards.
+pub fn card_grid(items: &[CardItem], on_click: impl Fn(String) + Clone + 'static) -> View {
+    let children = items.iter().map(|item| {
+        let on_click = on_click.clone();
+        let key = item.key.clone();
+        KeyedView::new(
+            item.key.clone(),
+            Button::new()
+                .style(ButtonStyle::Subtle)
+                .width(CARD_WIDTH)
+                .height(CARD_HEIGHT)
+                .margin(CARD_GAP / 2.0)
+                .horizontal_content_alignment(HorizontalAlignment::Stretch)
+                .vertical_content_alignment(VerticalAlignment::Stretch)
+                .on_click(move || on_click(key.clone()))
+                .content(
+                    Border::new()
+                        .background(ThemeBrush::CardBackground)
+                        .border_brush(ThemeBrush::CardStroke)
+                        .border_thickness(1.0)
+                        .corner_radius(8.0)
+                        .padding(16.0)
+                        .content(
+                            StackPanel::new()
+                                .orientation(Orientation::Horizontal)
+                                .spacing(12.0)
+                                .children(
+                                    asset_image(&item.image_file, 32.0, 32.0)
+                                        .into_iter()
+                                        .chain(std::iter::once(
+                                            StackPanel::new()
+                                                .spacing(4.0)
+                                                .children((
+                                                    TextBlock::new()
+                                                        .text(item.title.clone())
+                                                        .font_size(14.0)
+                                                        .font_weight(FontWeight::SEMI_BOLD),
+                                                    TextBlock::new()
+                                                        .text(item.subtitle.clone())
+                                                        .opacity(0.6),
+                                                ))
+                                                .into(),
+                                        ))
+                                        .collect::<Vec<_>>(),
+                                ),
+                        ),
+                ),
+        )
+    });
+
+    VariableSizedWrapGrid::new()
+        .orientation(Orientation::Horizontal)
+        .item_width(CARD_WIDTH + CARD_GAP)
+        .item_height(CARD_HEIGHT + CARD_GAP)
+        .keyed_children(children)
+        .into()
+}
+
+/// Picks a representative pane icon for a category, mirroring the incumbent gallery's mapping.
+pub fn category_icon(category: &str) -> Symbol {
+    match category {
+        "Basic Input" | "Text" => Symbol::Edit,
+        "Collections" | "Menus and Toolbars" => Symbol::More,
+        "Date and Time" => Symbol::Favorite,
+        "Design Guidance" => Symbol::People,
+        "Dialogs and Flyouts" => Symbol::Mail,
+        "Layout" => Symbol::Find,
+        "Media" => Symbol::Camera,
+        "Navigation" => Symbol::World,
+        "Status and Info" => Symbol::Flag,
+        _ => Symbol::Help,
+    }
+}

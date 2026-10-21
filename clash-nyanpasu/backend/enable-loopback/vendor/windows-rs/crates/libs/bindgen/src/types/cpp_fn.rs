@@ -1,0 +1,397 @@
+use super::*;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CppFn {
+    pub namespace: &'static str,
+    pub method: MethodDef,
+}
+
+impl Ord for CppFn {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.method.name(), self.method).cmp(&(other.method.name(), other.method))
+    }
+}
+
+impl PartialOrd for CppFn {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl CppFn {
+    pub fn type_name(&self) -> TypeName {
+        TypeName(self.namespace, self.method.name())
+    }
+
+    pub fn write_name(&self, config: &Config) -> TokenStream {
+        self.type_name().write(config, &[])
+    }
+
+    fn write_extern_signature(&self, config: &Config<'_>, underlying_types: bool) -> TokenStream {
+        let signature = self.method.method_signature(&[], config.reader);
+
+        let params = signature.params.iter().map(|param| {
+            let name = param.write_ident();
+            let ty = if underlying_types {
+                param.underlying_type(config.reader).write_abi(config)
+            } else {
+                param.write_abi(config)
+            };
+            quote! { #name: #ty }
+        });
+
+        let return_sig = config.write_return_sig(self.method, &signature, underlying_types);
+
+        let vararg = if signature.call_flags.contains(MethodCallAttributes::VARARG) {
+            quote! { , ... }
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            (#(#params),* #vararg) #return_sig
+        }
+    }
+
+    fn abi(&self, config: &Config<'_>) -> &'static str {
+        self.variadic_abi(config)
+            .unwrap_or_else(|| self.method.calling_convention())
+    }
+
+    fn variadic_abi(&self, config: &Config<'_>) -> Option<&'static str> {
+        if !self
+            .method
+            .method_signature(&[], config.reader)
+            .call_flags
+            .contains(MethodCallAttributes::VARARG)
+        {
+            return None;
+        }
+
+        let flags = self.method.impl_map()?.flags();
+        if flags.contains(windows_metadata::PInvokeAttributes::CallConvFastcall) {
+            None
+        } else if flags.contains(windows_metadata::PInvokeAttributes::CallConvCdecl) {
+            Some("C")
+        } else if flags.contains(windows_metadata::PInvokeAttributes::CallConvPlatformapi) {
+            Some("system")
+        } else {
+            None
+        }
+    }
+
+    fn directly_selected(&self, config: &Config<'_>) -> bool {
+        config
+            .filter
+            .direct_types
+            .iter()
+            .any(|(namespace, name)| namespace == self.namespace && name == self.method.name())
+    }
+
+    fn reject_variadic(&self, config: &Config<'_>, reason: &str) -> TokenStream {
+        assert!(
+            !self.directly_selected(config),
+            "windows-bindgen: selected variadic function `{}.{}` {reason}",
+            self.namespace,
+            self.method.name()
+        );
+        quote! {}
+    }
+
+    pub fn write_fn_ptr(&self, config: &Config<'_>, underlying_types: bool) -> TokenStream {
+        let ptr_name = self.method.name().to_string();
+        let name = to_ident(&ptr_name);
+        let abi = self.abi(config);
+        let signature = self.write_extern_signature(config, underlying_types);
+
+        quote! {
+            pub type #name = unsafe extern #abi fn #signature;
+        }
+    }
+
+    pub fn write_link(&self, config: &Config, underlying_types: bool) -> TokenStream {
+        let library = self.method.module_name();
+        let symbol = self.method.import_name();
+        let name = to_ident(self.method.name());
+        let abi = self.abi(config);
+        let signature = self.write_extern_signature(config, underlying_types);
+        let link = to_ident(config.link);
+
+        if config.bindgen.style.sys_fn_extern() {
+            quote! {
+                unsafe extern #abi {
+                    pub fn #name #signature;
+                }
+            }
+        } else {
+            quote! {
+                #link::link!(#library #abi #symbol fn #name #signature);
+            }
+        }
+    }
+
+    pub fn write_cfg(&self, config: &Config) -> TokenStream {
+        write_simple_cfg(self, config)
+    }
+
+    pub fn combine_sys(&self, dependencies: &mut TypeMap, reader: &Reader) {
+        let signature = self.method.method_signature(&[], reader);
+
+        for ty in signature.types() {
+            ty.combine_sys(dependencies, reader);
+        }
+
+        if let Some(dependency) = self.window_long_dependency() {
+            reader
+                .unwrap_full_name(self.namespace, dependency)
+                .combine_sys(dependencies, reader);
+        }
+    }
+
+    pub fn write(&self, config: &Config) -> TokenStream {
+        let name = to_ident(self.method.name());
+        let signature = self.method.method_signature(&[], config.reader);
+        let variadic = signature.call_flags.contains(MethodCallAttributes::VARARG);
+
+        if variadic && !config.bindgen.style.is_sys() {
+            return self.reject_variadic(
+                config,
+                "cannot be projected by rich or minimal bindings; use `--sys` for its raw \
+                 declaration",
+            );
+        }
+        if variadic && self.variadic_abi(config).is_none() {
+            return self.reject_variadic(
+                config,
+                "uses a calling convention that stable Rust cannot represent for C variadics",
+            );
+        }
+
+        let link = self.write_link(config, false);
+        let arches = write_arches(self.method);
+        let cfg = self.write_cfg(config);
+        let cfg = quote! { #arches #cfg };
+        let window_long = self.write_window_long();
+
+        if config.bindgen.style.is_sys() || config.bindgen.style.is_minimal() {
+            // `link!` already emits the function-pointer alias unless `--extern` bypasses it.
+            let link_emits_fn_ptr = !config.bindgen.style.sys_fn_extern();
+
+            let fn_ptr = if config.bindgen.style.is_sys() && !link_emits_fn_ptr {
+                let fn_ptr = self.write_fn_ptr(config, false);
+
+                quote! {
+                    #cfg
+                    #fn_ptr
+                }
+            } else {
+                quote! {}
+            };
+
+            return quote! {
+                #fn_ptr
+                #cfg
+                #link
+                #window_long
+            };
+        }
+
+        let method = CppMethod::new(self.method, config.reader);
+        let args = method.write_args(config);
+        let params = method.write_params(config);
+        let generics = method.write_generics();
+        let abi_return_type = method.write_return(config);
+        let result = config.write_core();
+
+        let wrapper = match method.return_hint {
+            ReturnHint::Query(..) => {
+                let where_clause = method.write_where(config, true);
+
+                quote! {
+                    #cfg
+                    #[inline]
+                    pub unsafe fn #name<#generics T>(#params) -> #result Result<T> #where_clause {
+                        #link
+                        let mut result__ = core::ptr::null_mut();
+                        unsafe { #name(#args).and_then(||windows_core::imp::Type::from_abi(result__)) }
+                    }
+                }
+            }
+            ReturnHint::QueryOptional(..) => {
+                let where_clause = method.write_where(config, true);
+
+                quote! {
+                    #cfg
+                    #[inline]
+                    pub unsafe fn #name<#generics T>(#params result__: *mut Option<T>) -> #result Result<()> #where_clause {
+                        #link
+                        unsafe { #name(#args).ok() }
+                    }
+                }
+            }
+            ReturnHint::ResultValue => {
+                let where_clause = method.write_where(config, false);
+                let return_type =
+                    signature.params[signature.params.len() - 1].projection_pointee(config.reader);
+                let map = return_type
+                    .projection_type(config.reader)
+                    .write_result_map(config.reader);
+                let return_type = return_type.write_name(config);
+
+                quote! {
+                    #cfg
+                    #[inline]
+                    pub unsafe fn #name<#generics>(#params) -> #result Result<#return_type> #where_clause {
+                        #link
+                        unsafe {
+                            let mut result__ = core::mem::zeroed();
+                            #name(#args).#map
+                        }
+                    }
+                }
+            }
+            ReturnHint::ReturnValue => {
+                let where_clause = method.write_where(config, false);
+
+                let return_type = method.signature.params[method.signature.params.len() - 1]
+                    .projection_pointee(config.reader);
+                let projection_type = return_type.projection_type(config.reader);
+
+                if projection_type.is_interface_with_reader(config.reader) {
+                    let return_type = return_type.write_name(config);
+
+                    quote! {
+                        #cfg
+                        #[inline]
+                        pub unsafe fn #name<#generics>(#params) -> #result Result<#return_type> #where_clause {
+                            #link
+                            unsafe {
+                                let mut result__ = core::mem::zeroed();
+                                #name(#args);
+                                windows_core::imp::Type::from_abi(result__)
+                            }
+                        }
+                    }
+                } else {
+                    let map = if projection_type.is_copyable(config.reader) {
+                        quote! { result__ }
+                    } else {
+                        quote! { core::mem::transmute(result__) }
+                    };
+
+                    let where_clause = method.write_where(config, false);
+                    let return_type = return_type.write_name(config);
+
+                    quote! {
+                        #cfg
+                        #[inline]
+                        pub unsafe fn #name<#generics>(#params) -> #return_type #where_clause {
+                            #link
+                            unsafe {
+                                let mut result__ = core::mem::zeroed();
+                                #name(#args);
+                                #map
+                            }
+                        }
+                    }
+                }
+            }
+            ReturnHint::ReturnStruct | ReturnHint::None | ReturnHint::HResult => {
+                let where_clause = method.write_where(config, false);
+
+                quote! {
+                    #cfg
+                    #[inline]
+                    pub unsafe fn #name<#generics>(#params) #abi_return_type #where_clause {
+                        #link
+                        unsafe { #name(#args) }
+                    }
+                }
+            }
+        };
+
+        quote! {
+            #wrapper
+            #window_long
+        }
+    }
+
+    /// On 32-bit targets `GetWindowLongPtr*` / `SetWindowLongPtr*` are aliased
+    /// to the non-`Ptr` variants (which is what `write_window_long` emits), so
+    /// those siblings must be generated alongside them.
+    pub fn window_long_dependency(&self) -> Option<&'static str> {
+        match self.method.name() {
+            "GetWindowLongPtrA" => Some("GetWindowLongA"),
+            "GetWindowLongPtrW" => Some("GetWindowLongW"),
+            "SetWindowLongPtrA" => Some("SetWindowLongA"),
+            "SetWindowLongPtrW" => Some("SetWindowLongW"),
+            _ => None,
+        }
+    }
+
+    fn write_window_long(&self) -> TokenStream {
+        match self.method.name() {
+            "GetWindowLongPtrA" => quote! {
+                #[cfg(target_pointer_width = "32")]
+                pub use GetWindowLongA as GetWindowLongPtrA;
+            },
+            "GetWindowLongPtrW" => quote! {
+                #[cfg(target_pointer_width = "32")]
+                pub use GetWindowLongW as GetWindowLongPtrW;
+            },
+            "SetWindowLongPtrA" => quote! {
+                #[cfg(target_pointer_width = "32")]
+                pub use SetWindowLongA as SetWindowLongPtrA;
+            },
+            "SetWindowLongPtrW" => quote! {
+                #[cfg(target_pointer_width = "32")]
+                pub use SetWindowLongW as SetWindowLongPtrW;
+            },
+            _ => quote! {},
+        }
+    }
+}
+
+impl Dependencies for CppFn {
+    fn combine(&self, dependencies: &mut TypeMap, reader: &Reader) {
+        self.method
+            .method_signature(&[], reader)
+            .combine(dependencies, reader);
+
+        let dependency = self.window_long_dependency();
+
+        if let Some(dependency) = dependency {
+            reader
+                .unwrap_full_name(self.namespace, dependency)
+                .combine(dependencies, reader);
+        }
+    }
+}
+
+impl Config<'_> {
+    pub fn write_return_sig(
+        &self,
+        method: MethodDef,
+        signature: &Signature,
+        underlying_types: bool,
+    ) -> TokenStream {
+        match &signature.return_type {
+            Type::Void => {
+                if method.has_attribute("DoesNotReturnAttribute") {
+                    quote! { -> ! }
+                } else {
+                    quote! {}
+                }
+            }
+            ty => {
+                let ty = if underlying_types {
+                    ty.underlying_type(self.reader).write_default(self)
+                } else {
+                    ty.write_default(self)
+                };
+
+                quote! { -> #ty }
+            }
+        }
+    }
+}

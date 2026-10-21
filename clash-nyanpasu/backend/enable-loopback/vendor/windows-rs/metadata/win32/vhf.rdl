@@ -1,0 +1,42 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        extern "C" fn EVT_VHF_ASYNC_OPERATION(#[in] VhfClientContext: *mut void, VhfOperationHandle: VHFOPERATIONHANDLE, #[in] #[opt] VhfOperationContext: *mut void, HidTransferPacket: PHID_XFER_PACKET);
+        extern "C" fn EVT_VHF_CLEANUP(#[in] VhfClientContext: *mut void);
+        extern "C" fn EVT_VHF_READY_FOR_NEXT_READ_REPORT(#[in] VhfClientContext: *mut void);
+        struct HID_XFER_PACKET {
+            reportBuffer: PUCHAR,
+            reportBufferLen: u32,
+            reportId: u8,
+        }
+        type PEVT_VHF_ASYNC_OPERATION = *mut u8;
+        type PEVT_VHF_CLEANUP = *mut u8;
+        type PEVT_VHF_READY_FOR_NEXT_READ_REPORT = *mut u8;
+        type PHID_XFER_PACKET = *mut HID_XFER_PACKET;
+        type PVHF_CONFIG = *mut VHF_CONFIG;
+        type VHFHANDLE = *mut void;
+        type VHFOPERATIONHANDLE = *mut void;
+        struct VHF_CONFIG {
+            Size: u32,
+            VhfClientContext: *mut void,
+            OperationContextSize: u32,
+            FileHandle: HANDLE,
+            VendorID: u16,
+            ProductID: u16,
+            VersionNumber: u16,
+            ContainerID: GUID,
+            InstanceIDLength: u16,
+            InstanceID: PWSTR,
+            ReportDescriptorLength: u16,
+            ReportDescriptor: PUCHAR,
+            EvtVhfReadyForNextReadReport: PEVT_VHF_READY_FOR_NEXT_READ_REPORT,
+            EvtVhfAsyncOperationGetFeature: PEVT_VHF_ASYNC_OPERATION,
+            EvtVhfAsyncOperationSetFeature: PEVT_VHF_ASYNC_OPERATION,
+            EvtVhfAsyncOperationWriteReport: PEVT_VHF_ASYNC_OPERATION,
+            EvtVhfAsyncOperationGetInputReport: PEVT_VHF_ASYNC_OPERATION,
+            EvtVhfCleanup: PEVT_VHF_CLEANUP,
+            HardwareIDsLength: u16,
+            HardwareIDs: PWSTR,
+        }
+    }
+}

@@ -1,0 +1,500 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const ODBCVER: i32 = 896;
+        #[library("ODBC32.dll")]
+        extern fn SQLAllocConnect(EnvironmentHandle: SQLHENV, ConnectionHandle: *mut SQLHDBC) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLAllocEnv(EnvironmentHandle: *mut SQLHENV) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLAllocHandle(HandleType: SQLSMALLINT, InputHandle: SQLHANDLE, OutputHandle: *mut SQLHANDLE) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLAllocStmt(ConnectionHandle: SQLHDBC, StatementHandle: *mut SQLHSTMT) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLBindCol(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, TargetType: SQLSMALLINT, #[in] #[out] #[opt] TargetValue: SQLPOINTER, BufferLength: SQLLEN, #[in] #[out] #[opt] StrLen_or_Ind: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLBindCol(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, TargetType: SQLSMALLINT, #[in] #[out] #[opt] TargetValue: SQLPOINTER, BufferLength: SQLINTEGER, #[in] #[out] #[opt] StrLen_or_Ind: *mut SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLBindParam(StatementHandle: SQLHSTMT, ParameterNumber: SQLUSMALLINT, ValueType: SQLSMALLINT, ParameterType: SQLSMALLINT, LengthPrecision: SQLULEN, ParameterScale: SQLSMALLINT, ParameterValue: SQLPOINTER, StrLen_or_Ind: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLBindParam(StatementHandle: SQLHSTMT, ParameterNumber: SQLUSMALLINT, ValueType: SQLSMALLINT, ParameterType: SQLSMALLINT, LengthPrecision: SQLUINTEGER, ParameterScale: SQLSMALLINT, ParameterValue: SQLPOINTER, StrLen_or_Ind: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLCancel(StatementHandle: SQLHSTMT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLCancelHandle(HandleType: SQLSMALLINT, InputHandle: SQLHANDLE) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLCloseCursor(StatementHandle: SQLHSTMT) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLColAttribute(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, FieldIdentifier: SQLUSMALLINT, #[size_param(4)] #[out] #[opt] CharacterAttribute: SQLPOINTER, BufferLength: SQLSMALLINT, #[opt] StringLength: *mut SQLSMALLINT, #[opt] NumericAttribute: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLColAttribute(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, FieldIdentifier: SQLUSMALLINT, #[size_param(4)] #[out] #[opt] CharacterAttribute: SQLPOINTER, BufferLength: SQLSMALLINT, #[opt] StringLength: *mut SQLSMALLINT, #[out] #[opt] NumericAttribute: SQLPOINTER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLColumns(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] #[opt] CatalogName: *mut SQLCHAR, NameLength1: SQLSMALLINT, #[len_param(4)] #[in] #[opt] SchemaName: *mut SQLCHAR, NameLength2: SQLSMALLINT, #[len_param(6)] #[in] #[opt] TableName: *mut SQLCHAR, NameLength3: SQLSMALLINT, #[len_param(8)] #[in] #[opt] ColumnName: *mut SQLCHAR, NameLength4: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLCompleteAsync(HandleType: SQLSMALLINT, Handle: SQLHANDLE, AsyncRetCodePtr: *mut RETCODE) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLConnect(ConnectionHandle: SQLHDBC, #[len_param(2)] #[in] ServerName: *mut SQLCHAR, NameLength1: SQLSMALLINT, #[len_param(4)] #[in] UserName: *mut SQLCHAR, NameLength2: SQLSMALLINT, #[len_param(6)] #[in] Authentication: *mut SQLCHAR, NameLength3: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLCopyDesc(SourceDescHandle: SQLHDESC, TargetDescHandle: SQLHDESC) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLDataSources(EnvironmentHandle: SQLHENV, Direction: SQLUSMALLINT, #[len_param(3)] #[opt] ServerName: *mut SQLCHAR, BufferLength1: SQLSMALLINT, #[opt] NameLength1Ptr: *mut SQLSMALLINT, #[len_param(6)] #[opt] Description: *mut SQLCHAR, BufferLength2: SQLSMALLINT, #[opt] NameLength2Ptr: *mut SQLSMALLINT) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLDescribeCol(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, #[len_param(3)] #[opt] ColumnName: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] NameLength: *mut SQLSMALLINT, #[opt] DataType: *mut SQLSMALLINT, #[opt] ColumnSize: *mut SQLULEN, #[opt] DecimalDigits: *mut SQLSMALLINT, #[opt] Nullable: *mut SQLSMALLINT) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLDescribeCol(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, #[len_param(3)] #[opt] ColumnName: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] NameLength: *mut SQLSMALLINT, #[opt] DataType: *mut SQLSMALLINT, #[opt] ColumnSize: *mut SQLUINTEGER, #[opt] DecimalDigits: *mut SQLSMALLINT, #[opt] Nullable: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLDisconnect(ConnectionHandle: SQLHDBC) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLEndTran(HandleType: SQLSMALLINT, Handle: SQLHANDLE, CompletionType: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLError(EnvironmentHandle: SQLHENV, ConnectionHandle: SQLHDBC, StatementHandle: SQLHSTMT, #[len_const(6)] Sqlstate: *mut SQLCHAR, #[opt] NativeError: *mut SQLINTEGER, #[len_param(6)] #[opt] MessageText: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] TextLength: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLExecDirect(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] #[opt] StatementText: *mut SQLCHAR, TextLength: SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLExecute(StatementHandle: SQLHSTMT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLFetch(StatementHandle: SQLHSTMT) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLFetchScroll(StatementHandle: SQLHSTMT, FetchOrientation: SQLSMALLINT, FetchOffset: SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLFetchScroll(StatementHandle: SQLHSTMT, FetchOrientation: SQLSMALLINT, FetchOffset: SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLFreeConnect(ConnectionHandle: SQLHDBC) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLFreeEnv(EnvironmentHandle: SQLHENV) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLFreeHandle(HandleType: SQLSMALLINT, Handle: SQLHANDLE) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLFreeStmt(StatementHandle: SQLHSTMT, Option: SQLUSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetConnectAttr(ConnectionHandle: SQLHDBC, Attribute: SQLINTEGER, #[out] #[opt] Value: SQLPOINTER, BufferLength: SQLINTEGER, #[opt] StringLengthPtr: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetConnectOption(ConnectionHandle: SQLHDBC, Option: SQLUSMALLINT, Value: SQLPOINTER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetCursorName(StatementHandle: SQLHSTMT, #[len_param(2)] #[opt] CursorName: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] NameLengthPtr: *mut SQLSMALLINT) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLGetData(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, TargetType: SQLSMALLINT, #[out] #[opt] TargetValue: SQLPOINTER, BufferLength: SQLLEN, #[opt] StrLen_or_IndPtr: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLGetData(StatementHandle: SQLHSTMT, ColumnNumber: SQLUSMALLINT, TargetType: SQLSMALLINT, #[out] #[opt] TargetValue: SQLPOINTER, BufferLength: SQLINTEGER, #[opt] StrLen_or_IndPtr: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetDescField(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, FieldIdentifier: SQLSMALLINT, #[out] #[opt] Value: SQLPOINTER, BufferLength: SQLINTEGER, #[opt] StringLength: *mut SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLGetDescRec(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, #[len_param(3)] #[opt] Name: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] StringLengthPtr: *mut SQLSMALLINT, #[opt] TypePtr: *mut SQLSMALLINT, #[opt] SubTypePtr: *mut SQLSMALLINT, #[opt] LengthPtr: *mut SQLLEN, #[opt] PrecisionPtr: *mut SQLSMALLINT, #[opt] ScalePtr: *mut SQLSMALLINT, #[opt] NullablePtr: *mut SQLSMALLINT) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLGetDescRec(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, #[len_param(3)] #[opt] Name: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] StringLengthPtr: *mut SQLSMALLINT, #[opt] TypePtr: *mut SQLSMALLINT, #[opt] SubTypePtr: *mut SQLSMALLINT, #[opt] LengthPtr: *mut SQLINTEGER, #[opt] PrecisionPtr: *mut SQLSMALLINT, #[opt] ScalePtr: *mut SQLSMALLINT, #[opt] NullablePtr: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetDiagField(HandleType: SQLSMALLINT, Handle: SQLHANDLE, RecNumber: SQLSMALLINT, DiagIdentifier: SQLSMALLINT, #[out] #[opt] DiagInfo: SQLPOINTER, BufferLength: SQLSMALLINT, #[opt] StringLength: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetDiagRec(HandleType: SQLSMALLINT, Handle: SQLHANDLE, RecNumber: SQLSMALLINT, #[len_const(6)] #[opt] Sqlstate: *mut SQLCHAR, NativeError: *mut SQLINTEGER, #[len_param(6)] #[opt] MessageText: *mut SQLCHAR, BufferLength: SQLSMALLINT, #[opt] TextLength: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetEnvAttr(EnvironmentHandle: SQLHENV, Attribute: SQLINTEGER, #[out] Value: SQLPOINTER, BufferLength: SQLINTEGER, #[opt] StringLength: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetFunctions(ConnectionHandle: SQLHDBC, FunctionId: SQLUSMALLINT, #[opt] Supported: *mut SQLUSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetInfo(ConnectionHandle: SQLHDBC, InfoType: SQLUSMALLINT, #[size_param(3)] #[out] #[opt] InfoValue: SQLPOINTER, BufferLength: SQLSMALLINT, #[opt] StringLengthPtr: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetStmtAttr(StatementHandle: SQLHSTMT, Attribute: SQLINTEGER, #[out] #[opt] Value: SQLPOINTER, BufferLength: SQLINTEGER, #[opt] StringLength: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetStmtOption(StatementHandle: SQLHSTMT, Option: SQLUSMALLINT, Value: SQLPOINTER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLGetTypeInfo(StatementHandle: SQLHSTMT, DataType: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLNumResultCols(StatementHandle: SQLHSTMT, ColumnCount: *mut SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLParamData(StatementHandle: SQLHSTMT, #[opt] Value: *mut SQLPOINTER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLPrepare(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] StatementText: *mut SQLCHAR, TextLength: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLPutData(StatementHandle: SQLHSTMT, Data: SQLPOINTER, StrLen_or_Ind: SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLPutData(StatementHandle: SQLHSTMT, Data: SQLPOINTER, StrLen_or_Ind: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLRowCount(StatementHandle: SQLHSTMT, RowCount: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLRowCount(StatementHandle: SQLHSTMT, RowCount: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSetConnectAttr(ConnectionHandle: SQLHDBC, Attribute: SQLINTEGER, #[size_param(3)] #[opt] Value: SQLPOINTER, StringLength: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetConnectOption(ConnectionHandle: SQLHDBC, Option: SQLUSMALLINT, Value: SQLULEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetConnectOption(ConnectionHandle: SQLHDBC, Option: SQLUSMALLINT, Value: SQLUINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSetCursorName(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] CursorName: *mut SQLCHAR, NameLength: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSetDescField(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, FieldIdentifier: SQLSMALLINT, Value: SQLPOINTER, BufferLength: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetDescRec(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, Type: SQLSMALLINT, SubType: SQLSMALLINT, Length: SQLLEN, Precision: SQLSMALLINT, Scale: SQLSMALLINT, #[size_param(4)] #[in] #[out] #[opt] Data: SQLPOINTER, #[in] #[out] #[opt] StringLength: *mut SQLLEN, #[in] #[out] #[opt] Indicator: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetDescRec(DescriptorHandle: SQLHDESC, RecNumber: SQLSMALLINT, Type: SQLSMALLINT, SubType: SQLSMALLINT, Length: SQLINTEGER, Precision: SQLSMALLINT, Scale: SQLSMALLINT, #[size_param(4)] #[in] #[out] #[opt] Data: SQLPOINTER, #[in] #[out] #[opt] StringLength: *mut SQLINTEGER, #[in] #[out] #[opt] Indicator: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSetEnvAttr(EnvironmentHandle: SQLHENV, Attribute: SQLINTEGER, #[size_param(3)] #[opt] Value: SQLPOINTER, StringLength: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetParam(StatementHandle: SQLHSTMT, ParameterNumber: SQLUSMALLINT, ValueType: SQLSMALLINT, ParameterType: SQLSMALLINT, LengthPrecision: SQLULEN, ParameterScale: SQLSMALLINT, ParameterValue: SQLPOINTER, #[in] #[out] StrLen_or_Ind: *mut SQLLEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetParam(StatementHandle: SQLHSTMT, ParameterNumber: SQLUSMALLINT, ValueType: SQLSMALLINT, ParameterType: SQLSMALLINT, LengthPrecision: SQLUINTEGER, ParameterScale: SQLSMALLINT, ParameterValue: SQLPOINTER, #[in] #[out] StrLen_or_Ind: *mut SQLINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSetStmtAttr(StatementHandle: SQLHSTMT, Attribute: SQLINTEGER, Value: SQLPOINTER, StringLength: SQLINTEGER) -> SQLRETURN;
+        #[arch(X64 | Arm64)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetStmtOption(StatementHandle: SQLHSTMT, Option: SQLUSMALLINT, Value: SQLULEN) -> SQLRETURN;
+        #[arch(X86)]
+        #[library("ODBC32.dll")]
+        extern fn SQLSetStmtOption(StatementHandle: SQLHSTMT, Option: SQLUSMALLINT, Value: SQLUINTEGER) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLSpecialColumns(StatementHandle: SQLHSTMT, IdentifierType: SQLUSMALLINT, #[len_param(3)] #[in] #[opt] CatalogName: *mut SQLCHAR, NameLength1: SQLSMALLINT, #[len_param(5)] #[in] #[opt] SchemaName: *mut SQLCHAR, NameLength2: SQLSMALLINT, #[len_param(7)] #[in] #[opt] TableName: *mut SQLCHAR, NameLength3: SQLSMALLINT, Scope: SQLUSMALLINT, Nullable: SQLUSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLStatistics(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] #[opt] CatalogName: *mut SQLCHAR, NameLength1: SQLSMALLINT, #[len_param(4)] #[in] #[opt] SchemaName: *mut SQLCHAR, NameLength2: SQLSMALLINT, #[len_param(6)] #[in] #[opt] TableName: *mut SQLCHAR, NameLength3: SQLSMALLINT, Unique: SQLUSMALLINT, Reserved: SQLUSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLTables(StatementHandle: SQLHSTMT, #[len_param(2)] #[in] #[opt] CatalogName: *mut SQLCHAR, NameLength1: SQLSMALLINT, #[len_param(4)] #[in] #[opt] SchemaName: *mut SQLCHAR, NameLength2: SQLSMALLINT, #[len_param(6)] #[in] #[opt] TableName: *mut SQLCHAR, NameLength3: SQLSMALLINT, #[len_param(8)] #[in] #[opt] TableType: *mut SQLCHAR, NameLength4: SQLSMALLINT) -> SQLRETURN;
+        #[library("ODBC32.dll")]
+        extern fn SQLTransact(EnvironmentHandle: SQLHENV, ConnectionHandle: SQLHDBC, CompletionType: SQLUSMALLINT) -> SQLRETURN;
+        const SQL_ACCESSIBLE_PROCEDURES: i32 = 20;
+        const SQL_ACCESSIBLE_TABLES: i32 = 19;
+        const SQL_ALL_TYPES: i32 = 0;
+        const SQL_ALTER_TABLE: i32 = 86;
+        const SQL_AM_CONNECTION: i32 = 1;
+        const SQL_AM_NONE: i32 = 0;
+        const SQL_AM_STATEMENT: i32 = 2;
+        const SQL_APD_TYPE: i32 = -100;
+        const SQL_API_SQLALLOCCONNECT: i32 = 1;
+        const SQL_API_SQLALLOCENV: i32 = 2;
+        const SQL_API_SQLALLOCHANDLE: i32 = 1001;
+        const SQL_API_SQLALLOCSTMT: i32 = 3;
+        const SQL_API_SQLBINDCOL: i32 = 4;
+        const SQL_API_SQLBINDPARAM: i32 = 1002;
+        const SQL_API_SQLCANCEL: i32 = 5;
+        const SQL_API_SQLCANCELHANDLE: i32 = 1550;
+        const SQL_API_SQLCLOSECURSOR: i32 = 1003;
+        const SQL_API_SQLCOLATTRIBUTE: i32 = 6;
+        const SQL_API_SQLCOLUMNS: i32 = 40;
+        const SQL_API_SQLCOMPLETEASYNC: i32 = 1551;
+        const SQL_API_SQLCONNECT: i32 = 7;
+        const SQL_API_SQLCOPYDESC: i32 = 1004;
+        const SQL_API_SQLDATASOURCES: i32 = 57;
+        const SQL_API_SQLDESCRIBECOL: i32 = 8;
+        const SQL_API_SQLDISCONNECT: i32 = 9;
+        const SQL_API_SQLENDTRAN: i32 = 1005;
+        const SQL_API_SQLERROR: i32 = 10;
+        const SQL_API_SQLEXECDIRECT: i32 = 11;
+        const SQL_API_SQLEXECUTE: i32 = 12;
+        const SQL_API_SQLFETCH: i32 = 13;
+        const SQL_API_SQLFETCHSCROLL: i32 = 1021;
+        const SQL_API_SQLFREECONNECT: i32 = 14;
+        const SQL_API_SQLFREEENV: i32 = 15;
+        const SQL_API_SQLFREEHANDLE: i32 = 1006;
+        const SQL_API_SQLFREESTMT: i32 = 16;
+        const SQL_API_SQLGETCONNECTATTR: i32 = 1007;
+        const SQL_API_SQLGETCONNECTOPTION: i32 = 42;
+        const SQL_API_SQLGETCURSORNAME: i32 = 17;
+        const SQL_API_SQLGETDATA: i32 = 43;
+        const SQL_API_SQLGETDESCFIELD: i32 = 1008;
+        const SQL_API_SQLGETDESCREC: i32 = 1009;
+        const SQL_API_SQLGETDIAGFIELD: i32 = 1010;
+        const SQL_API_SQLGETDIAGREC: i32 = 1011;
+        const SQL_API_SQLGETENVATTR: i32 = 1012;
+        const SQL_API_SQLGETFUNCTIONS: i32 = 44;
+        const SQL_API_SQLGETINFO: i32 = 45;
+        const SQL_API_SQLGETSTMTATTR: i32 = 1014;
+        const SQL_API_SQLGETSTMTOPTION: i32 = 46;
+        const SQL_API_SQLGETTYPEINFO: i32 = 47;
+        const SQL_API_SQLNUMRESULTCOLS: i32 = 18;
+        const SQL_API_SQLPARAMDATA: i32 = 48;
+        const SQL_API_SQLPREPARE: i32 = 19;
+        const SQL_API_SQLPUTDATA: i32 = 49;
+        const SQL_API_SQLROWCOUNT: i32 = 20;
+        const SQL_API_SQLSETCONNECTATTR: i32 = 1016;
+        const SQL_API_SQLSETCONNECTOPTION: i32 = 50;
+        const SQL_API_SQLSETCURSORNAME: i32 = 21;
+        const SQL_API_SQLSETDESCFIELD: i32 = 1017;
+        const SQL_API_SQLSETDESCREC: i32 = 1018;
+        const SQL_API_SQLSETENVATTR: i32 = 1019;
+        const SQL_API_SQLSETPARAM: i32 = 22;
+        const SQL_API_SQLSETSTMTATTR: i32 = 1020;
+        const SQL_API_SQLSETSTMTOPTION: i32 = 51;
+        const SQL_API_SQLSPECIALCOLUMNS: i32 = 52;
+        const SQL_API_SQLSTATISTICS: i32 = 53;
+        const SQL_API_SQLTABLES: i32 = 54;
+        const SQL_API_SQLTRANSACT: i32 = 23;
+        const SQL_ARD_TYPE: i32 = -99;
+        const SQL_ATTR_APP_PARAM_DESC: i32 = 10011;
+        const SQL_ATTR_APP_ROW_DESC: i32 = 10010;
+        const SQL_ATTR_AUTO_IPD: i32 = 10001;
+        const SQL_ATTR_CURSOR_SCROLLABLE: i32 = -1;
+        const SQL_ATTR_CURSOR_SENSITIVITY: i32 = -2;
+        const SQL_ATTR_IMP_PARAM_DESC: i32 = 10013;
+        const SQL_ATTR_IMP_ROW_DESC: i32 = 10012;
+        const SQL_ATTR_METADATA_ID: i32 = 10014;
+        const SQL_ATTR_OUTPUT_NTS: i32 = 10001;
+        const SQL_AT_ADD_COLUMN: i32 = 1;
+        const SQL_AT_ADD_CONSTRAINT: i32 = 8;
+        const SQL_AT_DROP_COLUMN: i32 = 2;
+        const SQL_CATALOG_NAME: i32 = 10003;
+        const SQL_CB_CLOSE: i32 = 1;
+        const SQL_CB_DELETE: i32 = 0;
+        const SQL_CB_PRESERVE: i32 = 2;
+        const SQL_CHAR: i32 = 1;
+        const SQL_CLOSE: i32 = 0;
+        const SQL_CODE_DATE: i32 = 1;
+        const SQL_CODE_TIME: i32 = 2;
+        const SQL_CODE_TIMESTAMP: i32 = 3;
+        const SQL_COLLATION_SEQ: i32 = 10004;
+        const SQL_COMMIT: i32 = 0;
+        const SQL_CURSOR_COMMIT_BEHAVIOR: i32 = 23;
+        const SQL_CURSOR_SENSITIVITY: i32 = 10001;
+        const SQL_DATA_AT_EXEC: i32 = -2;
+        const SQL_DATA_SOURCE_NAME: i32 = 2;
+        const SQL_DATA_SOURCE_READ_ONLY: i32 = 25;
+        const SQL_DATETIME: i32 = 9;
+        const SQL_DATE_LEN: i32 = 10;
+        const SQL_DBMS_NAME: i32 = 17;
+        const SQL_DBMS_VER: i32 = 18;
+        const SQL_DECIMAL: i32 = 3;
+        const SQL_DEFAULT: i32 = 99;
+        const SQL_DEFAULT_TXN_ISOLATION: i32 = 26;
+        const SQL_DESCRIBE_PARAMETER: i32 = 10002;
+        const SQL_DESC_ALLOC_AUTO: i32 = 1;
+        const SQL_DESC_ALLOC_TYPE: i32 = 1099;
+        const SQL_DESC_ALLOC_USER: i32 = 2;
+        const SQL_DESC_COUNT: i32 = 1001;
+        const SQL_DESC_DATA_PTR: i32 = 1010;
+        const SQL_DESC_DATETIME_INTERVAL_CODE: i32 = 1007;
+        const SQL_DESC_INDICATOR_PTR: i32 = 1009;
+        const SQL_DESC_LENGTH: i32 = 1003;
+        const SQL_DESC_NAME: i32 = 1011;
+        const SQL_DESC_NULLABLE: i32 = 1008;
+        const SQL_DESC_OCTET_LENGTH: i32 = 1013;
+        const SQL_DESC_OCTET_LENGTH_PTR: i32 = 1004;
+        const SQL_DESC_PRECISION: i32 = 1005;
+        const SQL_DESC_SCALE: i32 = 1006;
+        const SQL_DESC_TYPE: i32 = 1002;
+        const SQL_DESC_UNNAMED: i32 = 1012;
+        const SQL_DIAG_ALTER_DOMAIN: i32 = 3;
+        const SQL_DIAG_ALTER_TABLE: i32 = 4;
+        const SQL_DIAG_CALL: i32 = 7;
+        const SQL_DIAG_CLASS_ORIGIN: i32 = 8;
+        const SQL_DIAG_CONNECTION_NAME: i32 = 10;
+        const SQL_DIAG_CREATE_ASSERTION: i32 = 6;
+        const SQL_DIAG_CREATE_CHARACTER_SET: i32 = 8;
+        const SQL_DIAG_CREATE_COLLATION: i32 = 10;
+        const SQL_DIAG_CREATE_DOMAIN: i32 = 23;
+        const SQL_DIAG_CREATE_INDEX: i32 = -1;
+        const SQL_DIAG_CREATE_SCHEMA: i32 = 64;
+        const SQL_DIAG_CREATE_TABLE: i32 = 77;
+        const SQL_DIAG_CREATE_TRANSLATION: i32 = 79;
+        const SQL_DIAG_CREATE_VIEW: i32 = 84;
+        const SQL_DIAG_DELETE_WHERE: i32 = 19;
+        const SQL_DIAG_DROP_ASSERTION: i32 = 24;
+        const SQL_DIAG_DROP_CHARACTER_SET: i32 = 25;
+        const SQL_DIAG_DROP_COLLATION: i32 = 26;
+        const SQL_DIAG_DROP_DOMAIN: i32 = 27;
+        const SQL_DIAG_DROP_INDEX: i32 = -2;
+        const SQL_DIAG_DROP_SCHEMA: i32 = 31;
+        const SQL_DIAG_DROP_TABLE: i32 = 32;
+        const SQL_DIAG_DROP_TRANSLATION: i32 = 33;
+        const SQL_DIAG_DROP_VIEW: i32 = 36;
+        const SQL_DIAG_DYNAMIC_DELETE_CURSOR: i32 = 38;
+        const SQL_DIAG_DYNAMIC_FUNCTION: i32 = 7;
+        const SQL_DIAG_DYNAMIC_FUNCTION_CODE: i32 = 12;
+        const SQL_DIAG_DYNAMIC_UPDATE_CURSOR: i32 = 81;
+        const SQL_DIAG_GRANT: i32 = 48;
+        const SQL_DIAG_INSERT: i32 = 50;
+        const SQL_DIAG_MESSAGE_TEXT: i32 = 6;
+        const SQL_DIAG_NATIVE: i32 = 5;
+        const SQL_DIAG_NUMBER: i32 = 2;
+        const SQL_DIAG_RETURNCODE: i32 = 1;
+        const SQL_DIAG_REVOKE: i32 = 59;
+        const SQL_DIAG_ROW_COUNT: i32 = 3;
+        const SQL_DIAG_SELECT_CURSOR: i32 = 85;
+        const SQL_DIAG_SERVER_NAME: i32 = 11;
+        const SQL_DIAG_SQLSTATE: i32 = 4;
+        const SQL_DIAG_SUBCLASS_ORIGIN: i32 = 9;
+        const SQL_DIAG_UNKNOWN_STATEMENT: i32 = 0;
+        const SQL_DIAG_UPDATE_WHERE: i32 = 82;
+        const SQL_DOUBLE: i32 = 8;
+        const SQL_DROP: i32 = 1;
+        const SQL_ERROR: i32 = -1;
+        const SQL_FALSE: i32 = 0;
+        const SQL_FD_FETCH_ABSOLUTE: i32 = 16;
+        const SQL_FD_FETCH_FIRST: i32 = 2;
+        const SQL_FD_FETCH_LAST: i32 = 4;
+        const SQL_FD_FETCH_NEXT: i32 = 1;
+        const SQL_FD_FETCH_PRIOR: i32 = 8;
+        const SQL_FD_FETCH_RELATIVE: i32 = 32;
+        const SQL_FETCH_ABSOLUTE: i32 = 5;
+        const SQL_FETCH_DIRECTION: i32 = 8;
+        const SQL_FETCH_FIRST: i32 = 2;
+        const SQL_FETCH_LAST: i32 = 3;
+        const SQL_FETCH_NEXT: i32 = 1;
+        const SQL_FETCH_PRIOR: i32 = 4;
+        const SQL_FETCH_RELATIVE: i32 = 6;
+        const SQL_FLOAT: i32 = 6;
+        const SQL_GD_ANY_COLUMN: i32 = 1;
+        const SQL_GD_ANY_ORDER: i32 = 2;
+        const SQL_GETDATA_EXTENSIONS: i32 = 81;
+        const SQL_HANDLE_DBC: i32 = 2;
+        const SQL_HANDLE_DESC: i32 = 4;
+        const SQL_HANDLE_ENV: i32 = 1;
+        const SQL_HANDLE_STMT: i32 = 3;
+        const SQL_IC_LOWER: i32 = 2;
+        const SQL_IC_MIXED: i32 = 4;
+        const SQL_IC_SENSITIVE: i32 = 3;
+        const SQL_IC_UPPER: i32 = 1;
+        const SQL_IDENTIFIER_CASE: i32 = 28;
+        const SQL_IDENTIFIER_QUOTE_CHAR: i32 = 29;
+        const SQL_INDEX_ALL: i32 = 1;
+        const SQL_INDEX_CLUSTERED: i32 = 1;
+        const SQL_INDEX_HASHED: i32 = 2;
+        const SQL_INDEX_OTHER: i32 = 3;
+        const SQL_INDEX_UNIQUE: i32 = 0;
+        const SQL_INSENSITIVE: i32 = 1;
+        const SQL_INTEGER: i32 = 4;
+        const SQL_INTEGRITY: i32 = 73;
+        const SQL_INVALID_HANDLE: i32 = -2;
+        const SQL_MAXIMUM_CATALOG_NAME_LENGTH: i32 = 34;
+        const SQL_MAXIMUM_COLUMNS_IN_GROUP_BY: i32 = 97;
+        const SQL_MAXIMUM_COLUMNS_IN_INDEX: i32 = 98;
+        const SQL_MAXIMUM_COLUMNS_IN_ORDER_BY: i32 = 99;
+        const SQL_MAXIMUM_COLUMNS_IN_SELECT: i32 = 100;
+        const SQL_MAXIMUM_COLUMN_NAME_LENGTH: i32 = 30;
+        const SQL_MAXIMUM_CONCURRENT_ACTIVITIES: i32 = 1;
+        const SQL_MAXIMUM_CURSOR_NAME_LENGTH: i32 = 31;
+        const SQL_MAXIMUM_DRIVER_CONNECTIONS: i32 = 0;
+        const SQL_MAXIMUM_IDENTIFIER_LENGTH: i32 = 10005;
+        const SQL_MAXIMUM_INDEX_SIZE: i32 = 102;
+        const SQL_MAXIMUM_ROW_SIZE: i32 = 104;
+        const SQL_MAXIMUM_SCHEMA_NAME_LENGTH: i32 = 32;
+        const SQL_MAXIMUM_STATEMENT_LENGTH: i32 = 105;
+        const SQL_MAXIMUM_TABLES_IN_SELECT: i32 = 106;
+        const SQL_MAXIMUM_USER_NAME_LENGTH: i32 = 107;
+        const SQL_MAX_CATALOG_NAME_LEN: i32 = 34;
+        const SQL_MAX_COLUMNS_IN_GROUP_BY: i32 = 97;
+        const SQL_MAX_COLUMNS_IN_INDEX: i32 = 98;
+        const SQL_MAX_COLUMNS_IN_ORDER_BY: i32 = 99;
+        const SQL_MAX_COLUMNS_IN_SELECT: i32 = 100;
+        const SQL_MAX_COLUMNS_IN_TABLE: i32 = 101;
+        const SQL_MAX_COLUMN_NAME_LEN: i32 = 30;
+        const SQL_MAX_CONCURRENT_ACTIVITIES: i32 = 1;
+        const SQL_MAX_CURSOR_NAME_LEN: i32 = 31;
+        const SQL_MAX_DRIVER_CONNECTIONS: i32 = 0;
+        const SQL_MAX_IDENTIFIER_LEN: i32 = 10005;
+        const SQL_MAX_INDEX_SIZE: i32 = 102;
+        const SQL_MAX_MESSAGE_LENGTH: i32 = 512;
+        const SQL_MAX_ROW_SIZE: i32 = 104;
+        const SQL_MAX_SCHEMA_NAME_LEN: i32 = 32;
+        const SQL_MAX_STATEMENT_LEN: i32 = 105;
+        const SQL_MAX_TABLES_IN_SELECT: i32 = 106;
+        const SQL_MAX_TABLE_NAME_LEN: i32 = 35;
+        const SQL_MAX_USER_NAME_LEN: i32 = 107;
+        const SQL_NAMED: i32 = 0;
+        const SQL_NC_HIGH: i32 = 0;
+        const SQL_NC_LOW: i32 = 1;
+        const SQL_NEED_DATA: i32 = 99;
+        const SQL_NONSCROLLABLE: i32 = 0;
+        const SQL_NO_DATA: i32 = 100;
+        const SQL_NO_NULLS: i32 = 0;
+        const SQL_NTS: i32 = -3;
+        const SQL_NTSL: i32 = -3;
+        const SQL_NULLABLE: i32 = 1;
+        const SQL_NULLABLE_UNKNOWN: i32 = 2;
+        const SQL_NULL_COLLATION: i32 = 85;
+        const SQL_NULL_DATA: i32 = -1;
+        const SQL_NULL_HANDLE: i32 = 0;
+        const SQL_NULL_HDBC: i32 = 0;
+        const SQL_NULL_HDESC: i32 = 0;
+        const SQL_NULL_HENV: i32 = 0;
+        const SQL_NULL_HSTMT: i32 = 0;
+        const SQL_NUMERIC: i32 = 2;
+        const SQL_OJ_ALL_COMPARISON_OPS: i32 = 64;
+        const SQL_OJ_CAPABILITIES: i32 = 115;
+        const SQL_OJ_FULL: i32 = 4;
+        const SQL_OJ_INNER: i32 = 32;
+        const SQL_OJ_LEFT: i32 = 1;
+        const SQL_OJ_NESTED: i32 = 8;
+        const SQL_OJ_NOT_ORDERED: i32 = 16;
+        const SQL_OJ_RIGHT: i32 = 2;
+        const SQL_ORDER_BY_COLUMNS_IN_SELECT: i32 = 90;
+        const SQL_OUTER_JOIN_CAPABILITIES: i32 = 115;
+        const SQL_PARAM_DATA_AVAILABLE: i32 = 101;
+        const SQL_PC_NON_PSEUDO: i32 = 1;
+        const SQL_PC_PSEUDO: i32 = 2;
+        const SQL_PC_UNKNOWN: i32 = 0;
+        const SQL_PRED_BASIC: i32 = 2;
+        const SQL_PRED_CHAR: i32 = 1;
+        const SQL_PRED_NONE: i32 = 0;
+        const SQL_REAL: i32 = 7;
+        const SQL_RESET_PARAMS: i32 = 3;
+        const SQL_ROLLBACK: i32 = 1;
+        const SQL_ROW_IDENTIFIER: i32 = 1;
+        const SQL_SCCO_LOCK: i32 = 2;
+        const SQL_SCCO_OPT_ROWVER: i32 = 4;
+        const SQL_SCCO_OPT_VALUES: i32 = 8;
+        const SQL_SCCO_READ_ONLY: i32 = 1;
+        const SQL_SCOPE_CURROW: i32 = 0;
+        const SQL_SCOPE_SESSION: i32 = 2;
+        const SQL_SCOPE_TRANSACTION: i32 = 1;
+        const SQL_SCROLLABLE: i32 = 1;
+        const SQL_SCROLL_CONCURRENCY: i32 = 43;
+        const SQL_SEARCH_PATTERN_ESCAPE: i32 = 14;
+        const SQL_SENSITIVE: i32 = 2;
+        const SQL_SERVER_NAME: i32 = 13;
+        const SQL_SMALLINT: i32 = 5;
+        const SQL_SPECIAL_CHARACTERS: i32 = 94;
+        const SQL_STILL_EXECUTING: i32 = 2;
+        const SQL_SUCCESS: i32 = 0;
+        const SQL_SUCCESS_WITH_INFO: i32 = 1;
+        const SQL_TC_ALL: i32 = 2;
+        const SQL_TC_DDL_COMMIT: i32 = 3;
+        const SQL_TC_DDL_IGNORE: i32 = 4;
+        const SQL_TC_DML: i32 = 1;
+        const SQL_TC_NONE: i32 = 0;
+        const SQL_TIMESTAMP_LEN: i32 = 19;
+        const SQL_TIME_LEN: i32 = 8;
+        const SQL_TRANSACTION_CAPABLE: i32 = 46;
+        const SQL_TRANSACTION_ISOLATION_OPTION: i32 = 72;
+        const SQL_TRANSACTION_READ_COMMITTED: i32 = 2;
+        const SQL_TRANSACTION_READ_UNCOMMITTED: i32 = 1;
+        const SQL_TRANSACTION_REPEATABLE_READ: i32 = 4;
+        const SQL_TRANSACTION_SERIALIZABLE: i32 = 8;
+        const SQL_TRUE: i32 = 1;
+        const SQL_TXN_CAPABLE: i32 = 46;
+        const SQL_TXN_ISOLATION_OPTION: i32 = 72;
+        const SQL_TXN_READ_COMMITTED: i32 = 2;
+        const SQL_TXN_READ_UNCOMMITTED: i32 = 1;
+        const SQL_TXN_REPEATABLE_READ: i32 = 4;
+        const SQL_TXN_SERIALIZABLE: i32 = 8;
+        const SQL_TYPE_DATE: i32 = 91;
+        const SQL_TYPE_TIME: i32 = 92;
+        const SQL_TYPE_TIMESTAMP: i32 = 93;
+        const SQL_UNBIND: i32 = 2;
+        const SQL_UNKNOWN_TYPE: i32 = 0;
+        const SQL_UNNAMED: i32 = 1;
+        const SQL_UNSPECIFIED: i32 = 0;
+        const SQL_USER_NAME: i32 = 47;
+        const SQL_VARCHAR: i32 = 12;
+        const SQL_XOPEN_CLI_YEAR: i32 = 10000;
+    }
+}

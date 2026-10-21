@@ -116,6 +116,13 @@ A strongly-typed async client for the Mihomo/Clash External Controller (REST + W
 - WebSocket endpoints return owned `WebSocketStream<T>` values (a breaking replacement for raw sockets). `StreamExt::next()` yields decoded text/binary JSON samples; control frames stay internal, decode errors affect one sample, and dropping the stream releases its transport. Reconnection and instance fencing belong to the application.
 - Connection metadata and traffic totals retain absent fields as `Option`; open response enums and ordered extension maps preserve fields from compatible controllers. Request enums remain strict.
 
+### nyanpasu-serde (`crates/nyanpasu-serde`)
+
+Direct map and scalar enum decoding derived from Serde attributes, with
+flattened known groups, ordered unknown fields, and untagged scalar dispatch. The companion
+`nyanpasu-serde-derive` crate generates the decoders. See the
+[library guide](crates/nyanpasu-serde/README.md) for supported shapes and limitations.
+
 ### nyanpasu-utils (`crates/nyanpasu-utils`)
 
 Shared utility library for Nyanpasu apps, feature-gated by module:

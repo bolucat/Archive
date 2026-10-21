@@ -147,6 +147,45 @@ async fn websocket_controls_binary_decode_errors_and_close_are_typed() {
 }
 
 #[tokio::test]
+async fn websocket_rejects_invalid_upgrade_headers() {
+    use axum::http::{StatusCode, header};
+
+    // A 101 response alone is not a successful WebSocket handshake.
+    for headers in [
+        vec![],
+        vec![
+            (header::CONNECTION, "upgrade"),
+            (header::UPGRADE, "websocket"),
+            (header::SEC_WEBSOCKET_ACCEPT, "invalid-accept"),
+        ],
+    ] {
+        let app = Router::new().route(
+            "/traffic",
+            get(move || {
+                let headers = headers.clone();
+                async move {
+                    let mut response = StatusCode::SWITCHING_PROTOCOLS.into_response();
+                    for (name, value) in headers {
+                        response.headers_mut().insert(name, value.parse().unwrap());
+                    }
+                    response
+                }
+            }),
+        );
+        let (address, server) = spawn_server(app).await;
+        let client = Client::new_http(address).unwrap();
+        assert!(matches!(
+            client.traffic_ws().await,
+            Err(clash_api::Error::WebSocket {
+                operation: "traffic_ws",
+                ..
+            })
+        ));
+        server.abort();
+    }
+}
+
+#[tokio::test]
 async fn dropping_a_subscription_releases_its_idle_socket() {
     let (closed, received) = tokio::sync::oneshot::channel();
     let closed = std::sync::Arc::new(tokio::sync::Mutex::new(Some(closed)));

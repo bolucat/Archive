@@ -1,0 +1,57 @@
+name: slim_errors
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+  push:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+    branches:
+      - master
+
+env:
+  RUSTFLAGS: --cfg windows_slim_errors
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  slim_errors:
+    name: ${{ matrix.name }}
+    strategy:
+      matrix:
+        include:
+          - name: x64
+            target: x86_64-pc-windows-msvc
+          - name: i686
+            target: i686-pc-windows-msvc
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        
+      - name: Update toolchain
+        run: rustup update --no-self-update stable && rustup default stable-x86_64-pc-windows-msvc
+        
+      - name: Add toolchain target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Fix environment
+        uses: ./.github/actions/fix-environment
+        with:
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Test
+        run: cargo test -p test_result --target ${{ matrix.target }}

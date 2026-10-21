@@ -64,7 +64,7 @@ impl fmt::Display for Bytes {
     specta::Type,
 )]
 #[serde(transparent)]
-pub struct BytesPerSecond(#[serde(deserialize_with = "crate::stream::deserialize_number")] i64);
+pub struct BytesPerSecond(#[serde(deserialize_with = "nyanpasu_serde::number_or_string")] i64);
 
 impl BytesPerSecond {
     pub const fn new(value: i64) -> Self {

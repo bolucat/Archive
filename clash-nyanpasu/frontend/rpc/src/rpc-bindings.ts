@@ -261,7 +261,8 @@ export function createRpcClient(
       filters: TrafficFilter[],
       before: {
         closed_at: number
-        id: string
+        incarnation: number
+        seq: number
       } | null,
       limit: number,
     ) =>
@@ -782,10 +783,22 @@ export type BuildInfo = {
 
 /**  Built-in post-processing steps applied to the selected config. */
 export type BuiltinStepKind =
-  | 'guard_overrides'
-  | 'whitelist_field_filter'
+  /**  Drops the top-level keys the field filter does not allow. */
+  | 'field_filter'
+  /**
+   *  Brings back the keys left to the profiles that the field filter
+   *  dropped.
+   */
+  | 'keep_unmanaged'
+  /**
+   *  Writes the keys Nyanpasu forces and removes the ones it owns but has
+   *  turned off.
+   */
+  | 'managed_settings'
+  /**  Fills in the keys Nyanpasu defaults where the config lacks them. */
+  | 'defaults'
   | 'include_all_expansion'
-  | 'finalizing'
+  /**  The config the core reports running; inspection appends it. */
   | 'core_controller'
 
 export type Bytes = {
@@ -814,6 +827,8 @@ export type ClashConfig = {
   overrides: ClashGuardOverrides
   /**  clash tun mode */
   enable_tun_mode: boolean
+  /**  The `tun` keys Nyanpasu forces while TUN mode is on. */
+  tun: TunOverrides
   /**  web ui list */
   web_ui_list: string[]
   /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
@@ -845,6 +860,7 @@ export type ClashConfigPatch =
 export type ClashConfigPatch_Deserialize = {
   overrides?: ClashGuardOverrides | null
   enable_tun_mode?: boolean | null
+  tun?: TunOverridesPatch_Deserialize
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
   expand_include_all?: boolean | null
@@ -861,6 +877,7 @@ export type ClashConfigPatch_Deserialize = {
 export type ClashConfigPatch_Serialize = {
   overrides?: ClashGuardOverrides | null
   enable_tun_mode?: boolean | null
+  tun: TunOverridesPatch_Serialize
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
   expand_include_all?: boolean | null
@@ -1094,7 +1111,8 @@ export type ClosedConnection = {
 /**  Exclusive position for newest-first paging. */
 export type ClosedCursor = {
   closed_at: number
-  id: string
+  incarnation: number
+  seq: number
 }
 
 export type ClosedPage = {
@@ -3879,7 +3897,10 @@ export type QueryLogs = {
 
 export type Ranking = {
   dimension: Dimension
-  /**  Distinct values of the dimension among the filtered rows. */
+  /**
+   *  Distinct values of the dimension among the rows the ranking counts: those matching every
+   *  filter except one on this dimension.
+   */
   distinct: number
   /**  Heaviest first. */
   groups: UsageGroup[]
@@ -4693,6 +4714,29 @@ export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
  *  Platform-dependent default: `Webview` on Windows, `Native` elsewhere.
  */
 export type TrayMenuMode = 'native' | 'webview'
+
+/**
+ *  The `tun` keys Nyanpasu may force while TUN mode is on. The TUN switch and
+ *  the stack stay separate settings.
+ */
+export type TunOverrides = {
+  /**
+   *  Managed `true` by default. Unmanaged leaves a profile's value, such
+   *  as `global`, and adds none when the profiles have none.
+   */
+  'auto-route': ManageableField<boolean>
+}
+
+export type TunOverridesPatch =
+  TunOverridesPatch_Serialize | TunOverridesPatch_Deserialize
+
+export type TunOverridesPatch_Deserialize = {
+  'auto-route'?: ManageableField<boolean> | null
+}
+
+export type TunOverridesPatch_Serialize = {
+  'auto-route'?: ManageableField<boolean> | null
+}
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 

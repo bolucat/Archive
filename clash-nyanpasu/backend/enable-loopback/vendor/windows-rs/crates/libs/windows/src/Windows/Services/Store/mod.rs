@@ -1,0 +1,2735 @@
+windows_core::imp::define_interface!(IStoreAcquireLicenseResult, IStoreAcquireLicenseResult_Vtbl, 0xfbd7946d_f040_4cb3_9a39_29bcecdbe22d);
+impl windows_core::RuntimeType for IStoreAcquireLicenseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreAcquireLicenseResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreAcquireLicenseResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StorePackageLicense: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreAppLicense, IStoreAppLicense_Vtbl, 0xf389f9de_73c0_45ce_9bab_b2fe3e5eafd3);
+impl windows_core::RuntimeType for IStoreAppLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreAppLicense");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreAppLicense_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SkuStoreId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsActive: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsTrial: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ExpirationDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AddOnLicenses: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub TrialTimeRemaining: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub IsTrialOwnedByThisUser: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub TrialUniqueId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreAppLicense2, IStoreAppLicense2_Vtbl, 0xb4666e91_4443_40b3_993f_28904435bdc6);
+impl windows_core::RuntimeType for IStoreAppLicense2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreAppLicense2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreAppLicense2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsDiscLicense: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreAvailability, IStoreAvailability_Vtbl, 0xfa060325_0ffd_4493_ad43_f1f9918f69fa);
+impl windows_core::RuntimeType for IStoreAvailability {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreAvailability");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreAvailability_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StoreId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub EndDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub Price: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseWithPurchasePropertiesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreCanAcquireLicenseResult, IStoreCanAcquireLicenseResult_Vtbl, 0x3a693db3_0088_482f_86d5_bd46522663ad);
+impl windows_core::RuntimeType for IStoreCanAcquireLicenseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreCanAcquireLicenseResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreCanAcquireLicenseResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+    pub LicensableSku: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreCanLicenseStatus) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreCollectionData, IStoreCollectionData_Vtbl, 0x8aa4c3b3_5bb3_441a_2ab4_4dab73d5ce67);
+impl windows_core::RuntimeType for IStoreCollectionData {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreCollectionData");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreCollectionData_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsTrial: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub CampaignId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DeveloperOfferId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AcquiredDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub StartDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub EndDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub TrialTimeRemaining: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreConsumableResult, IStoreConsumableResult_Vtbl, 0xea5dab72_6a00_4052_be5b_bfdab4433352);
+impl windows_core::RuntimeType for IStoreConsumableResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreConsumableResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreConsumableResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreConsumableStatus) -> windows_core::HRESULT,
+    pub TrackingId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::GUID) -> windows_core::HRESULT,
+    pub BalanceRemaining: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreContext, IStoreContext_Vtbl, 0xac98b6be_f4fd_4912_babd_5035e5e8bcab);
+impl windows_core::RuntimeType for IStoreContext {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContext");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContext_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "System")]
+    pub User: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "System"))]
+    User: usize,
+    pub OfflineLicensesChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveOfflineLicensesChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub GetCustomerPurchaseIdAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetCustomerCollectionsIdAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAppLicenseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetStoreProductForCurrentAppAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetStoreProductsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAssociatedStoreProductsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAssociatedStoreProductsWithPagingAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetUserCollectionAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetUserCollectionWithPagingAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ReportConsumableFulfillmentAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, u32, windows_core::GUID, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetConsumableBalanceRemainingAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "ApplicationModel")]
+    pub AcquireStoreLicenseForOptionalPackageAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    AcquireStoreLicenseForOptionalPackageAsync: usize,
+    pub RequestPurchaseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseWithPurchasePropertiesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAppAndOptionalStorePackageUpdatesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestDownloadStorePackageUpdatesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestDownloadAndInstallStorePackageUpdatesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestDownloadAndInstallStorePackagesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreContext2, IStoreContext2_Vtbl, 0x18bc54da_7bd9_452c_9116_3bbd06ffc63a);
+impl windows_core::RuntimeType for IStoreContext2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContext2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContext2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "ApplicationModel")]
+    pub FindStoreProductForPackageAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    FindStoreProductForPackageAsync: usize,
+}
+windows_core::imp::define_interface!(IStoreContext3, IStoreContext3_Vtbl, 0xe26226ca_1a01_4730_85a6_ecc896e4ae38);
+impl windows_core::RuntimeType for IStoreContext3 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContext3");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContext3_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub CanSilentlyDownloadStorePackageUpdates: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub TrySilentDownloadStorePackageUpdatesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub TrySilentDownloadAndInstallStorePackageUpdatesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "ApplicationModel")]
+    pub CanAcquireStoreLicenseForOptionalPackageAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    CanAcquireStoreLicenseForOptionalPackageAsync: usize,
+    pub CanAcquireStoreLicenseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetStoreProductsWithOptionsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAssociatedStoreQueueItemsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetStoreQueueItemsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestDownloadAndInstallStorePackagesWithInstallOptionsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DownloadAndInstallStorePackagesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "ApplicationModel")]
+    pub RequestUninstallStorePackageAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    RequestUninstallStorePackageAsync: usize,
+    pub RequestUninstallStorePackageByStoreIdAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "ApplicationModel")]
+    pub UninstallStorePackageAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    UninstallStorePackageAsync: usize,
+    pub UninstallStorePackageByStoreIdAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreContext4, IStoreContext4_Vtbl, 0xaf9c6f69_bea1_4bf4_8e74_ae03e206c6b0);
+impl windows_core::RuntimeType for IStoreContext4 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContext4");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContext4_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub RequestRateAndReviewAppAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetInstallOrderForAssociatedStoreQueueItemsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreContext5, IStoreContext5_Vtbl, 0x6de6c52b_c43a_5953_b39a_71643c57d96e);
+impl windows_core::RuntimeType for IStoreContext5 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContext5");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContext5_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetUserPurchaseHistoryAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetAssociatedStoreProductsByInAppOfferTokenAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseByInAppOfferTokenAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreContextStatics, IStoreContextStatics_Vtbl, 0x9c06ee5f_15c0_4e72_9330_d6191cebd19c);
+impl windows_core::RuntimeType for IStoreContextStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreContextStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreContextStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetDefault: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "System")]
+    pub GetForUser: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "System"))]
+    GetForUser: usize,
+}
+windows_core::imp::define_interface!(IStoreImage, IStoreImage_Vtbl, 0x081fd248_adb4_4b64_a993_784789926ed5);
+impl windows_core::RuntimeType for IStoreImage {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreImage");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreImage_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Uri: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ImagePurposeTag: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Width: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub Height: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub Caption: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreLicense, IStoreLicense_Vtbl, 0x26dc9579_4c4f_4f30_bc89_649f60e36055);
+impl windows_core::RuntimeType for IStoreLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreLicense");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreLicense_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SkuStoreId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsActive: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ExpirationDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub InAppOfferToken: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePackageInstallOptions, IStorePackageInstallOptions_Vtbl, 0x1d3d630c_0ccd_44dd_8c59_80810a729973);
+impl windows_core::RuntimeType for IStorePackageInstallOptions {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePackageInstallOptions");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePackageInstallOptions_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub AllowForcedAppRestart: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SetAllowForcedAppRestart: unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePackageLicense, IStorePackageLicense_Vtbl, 0x0c465714_14e1_4973_bd14_f77724271e99);
+impl windows_core::RuntimeType for IStorePackageLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePackageLicense");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePackageLicense_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub LicenseLost: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveLicenseLost: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    #[cfg(feature = "ApplicationModel")]
+    pub Package: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    Package: usize,
+    pub IsValid: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ReleaseLicense: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePackageUpdate, IStorePackageUpdate_Vtbl, 0x140fa150_3cbf_4a35_b91f_48271c31b072);
+impl windows_core::RuntimeType for IStorePackageUpdate {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePackageUpdate");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePackageUpdate_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "ApplicationModel")]
+    pub Package: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "ApplicationModel"))]
+    Package: usize,
+    pub Mandatory: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePackageUpdateResult, IStorePackageUpdateResult_Vtbl, 0xe79142ed_61f9_4893_b4fe_cf191603af7b);
+impl windows_core::RuntimeType for IStorePackageUpdateResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePackageUpdateResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePackageUpdateResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub OverallState: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StorePackageUpdateState) -> windows_core::HRESULT,
+    pub StorePackageUpdateStatuses: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePackageUpdateResult2, IStorePackageUpdateResult2_Vtbl, 0x071d012e_bc62_4f2e_87ea_99d801aeaf98);
+impl windows_core::RuntimeType for IStorePackageUpdateResult2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePackageUpdateResult2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePackageUpdateResult2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StoreQueueItems: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePrice, IStorePrice_Vtbl, 0x55ba94c4_15f1_407c_8f06_006380f4df0b);
+impl windows_core::RuntimeType for IStorePrice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePrice");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePrice_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub FormattedBasePrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub FormattedPrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsOnSale: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SaleEndDate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+    pub CurrencyCode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub FormattedRecurrencePrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePrice2, IStorePrice2_Vtbl, 0xf711573c_40e6_5641_b063_f1df42b2b12a);
+impl windows_core::RuntimeType for IStorePrice2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePrice2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePrice2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub UnformattedBasePrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub UnformattedPrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub UnformattedRecurrencePrice: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreProduct, IStoreProduct_Vtbl, 0x320e2c52_d760_450a_a42b_67d1e901ac90);
+impl windows_core::RuntimeType for IStoreProduct {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreProduct");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreProduct_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StoreId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Language: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Title: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Description: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ProductKind: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub HasDigitalDownload: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub Keywords: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Images: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Videos: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Skus: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsInUserCollection: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub Price: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub LinkUri: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetIsAnySkuInstalledAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseWithPurchasePropertiesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub InAppOfferToken: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreProductOptions, IStoreProductOptions_Vtbl, 0x5b34a0f9_a113_4811_8326_16199c927f31);
+impl windows_core::RuntimeType for IStoreProductOptions {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreProductOptions");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreProductOptions_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ActionFilters: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreProductPagedQueryResult, IStoreProductPagedQueryResult_Vtbl, 0xc92718c5_4dd5_4869_a462_ecc6872e43c5);
+impl windows_core::RuntimeType for IStoreProductPagedQueryResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreProductPagedQueryResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreProductPagedQueryResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Products: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub HasMoreResults: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+    pub GetNextAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreProductQueryResult, IStoreProductQueryResult_Vtbl, 0xd805e6c5_d456_4ff6_8049_9076d5165f73);
+impl windows_core::RuntimeType for IStoreProductQueryResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreProductQueryResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreProductQueryResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Products: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreProductResult, IStoreProductResult_Vtbl, 0xb7674f73_3c87_4ee1_8201_f428359bd3af);
+impl windows_core::RuntimeType for IStoreProductResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreProductResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreProductResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Product: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePurchaseProperties, IStorePurchaseProperties_Vtbl, 0x836278f3_ff87_4364_a5b4_fd2153ebe43b);
+impl windows_core::RuntimeType for IStorePurchaseProperties {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePurchaseProperties");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePurchaseProperties_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Name: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePurchasePropertiesFactory, IStorePurchasePropertiesFactory_Vtbl, 0xa768f59e_fefd_489f_9a17_22a593e68b9d);
+impl windows_core::RuntimeType for IStorePurchasePropertiesFactory {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePurchasePropertiesFactory");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePurchasePropertiesFactory_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Create: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStorePurchaseResult, IStorePurchaseResult_Vtbl, 0xadd28552_f96a_463d_a7bb_c20b4fca6952);
+impl windows_core::RuntimeType for IStorePurchaseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStorePurchaseResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStorePurchaseResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StorePurchaseStatus) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreQueueItem, IStoreQueueItem_Vtbl, 0x56d5c32b_f830_4293_9188_cad2dcde7357);
+impl windows_core::RuntimeType for IStoreQueueItem {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreQueueItem");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreQueueItem_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ProductId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub PackageFamilyName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub InstallKind: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreQueueItemKind) -> windows_core::HRESULT,
+    pub GetCurrentStatus: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Completed: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveCompleted: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub StatusChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveStatusChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreQueueItem2, IStoreQueueItem2_Vtbl, 0x69491ca8_1ad4_447c_ad8c_a95035f64d82);
+impl windows_core::RuntimeType for IStoreQueueItem2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreQueueItem2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreQueueItem2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub CancelInstallAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub PauseInstallAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ResumeInstallAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreQueueItemCompletedEventArgs, IStoreQueueItemCompletedEventArgs_Vtbl, 0x1247df6c_b44a_439b_bb07_1d3003d005c2);
+impl windows_core::RuntimeType for IStoreQueueItemCompletedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreQueueItemCompletedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreQueueItemCompletedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreQueueItemStatus, IStoreQueueItemStatus_Vtbl, 0x9bd6796f_9cc3_4ec3_b2ef_7be433b30174);
+impl windows_core::RuntimeType for IStoreQueueItemStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreQueueItemStatus");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreQueueItemStatus_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub PackageInstallState: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreQueueItemState) -> windows_core::HRESULT,
+    pub PackageInstallExtendedState: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreQueueItemExtendedState) -> windows_core::HRESULT,
+    pub UpdateStatus: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::mem::MaybeUninit<StorePackageUpdateStatus>) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreRateAndReviewResult, IStoreRateAndReviewResult_Vtbl, 0x9d209d56_a6b5_4121_9b61_ee6d0fbdbdbb);
+impl windows_core::RuntimeType for IStoreRateAndReviewResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreRateAndReviewResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreRateAndReviewResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub WasUpdated: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreRateAndReviewStatus) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreRequestHelperStatics, IStoreRequestHelperStatics_Vtbl, 0x6ce5e5f9_a0c9_4b2c_96a6_a171c630038d);
+impl windows_core::RuntimeType for IStoreRequestHelperStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreRequestHelperStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreRequestHelperStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SendRequestAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, u32, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreSendRequestResult, IStoreSendRequestResult_Vtbl, 0xc73abe60_8272_4502_8a69_6e75153a4299);
+impl windows_core::RuntimeType for IStoreSendRequestResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreSendRequestResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreSendRequestResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Response: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreSendRequestResult2, IStoreSendRequestResult2_Vtbl, 0x2901296f_c0b0_49d0_8e8d_aa940af9c10b);
+impl windows_core::RuntimeType for IStoreSendRequestResult2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreSendRequestResult2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreSendRequestResult2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Web_Http")]
+    pub HttpStatusCode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::super::Web::Http::HttpStatusCode) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Web_Http"))]
+    HttpStatusCode: usize,
+}
+windows_core::imp::define_interface!(IStoreSku, IStoreSku_Vtbl, 0x397e6f55_4440_4f03_863c_91f3fec83d79);
+impl windows_core::RuntimeType for IStoreSku {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreSku");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreSku_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StoreId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Language: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Title: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Description: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsTrial: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub CustomDeveloperData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Images: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Videos: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Availabilities: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Price: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ExtendedJsonData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsInUserCollection: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub BundledSkus: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub CollectionData: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetIsInstalledAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub RequestPurchaseWithPurchasePropertiesAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsSubscription: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SubscriptionInfo: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreSubscriptionInfo, IStoreSubscriptionInfo_Vtbl, 0x4189776a_0559_43ac_a9c6_3ab0011fb8eb);
+impl windows_core::RuntimeType for IStoreSubscriptionInfo {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreSubscriptionInfo");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreSubscriptionInfo_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub BillingPeriod: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub BillingPeriodUnit: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreDurationUnit) -> windows_core::HRESULT,
+    pub HasTrialPeriod: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub TrialPeriod: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub TrialPeriodUnit: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreDurationUnit) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreUninstallStorePackageResult, IStoreUninstallStorePackageResult_Vtbl, 0x9fca39fd_126f_4cda_b801_1346b8d0a260);
+impl windows_core::RuntimeType for IStoreUninstallStorePackageResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreUninstallStorePackageResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreUninstallStorePackageResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ExtendedError: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::HRESULT) -> windows_core::HRESULT,
+    pub Status: unsafe extern "system" fn(*mut core::ffi::c_void, *mut StoreUninstallStorePackageStatus) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IStoreVideo, IStoreVideo_Vtbl, 0xf26cb184_6f5e_4dc2_886c_3c63083c2f94);
+impl windows_core::RuntimeType for IStoreVideo {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.IStoreVideo");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IStoreVideo_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Uri: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub VideoPurposeTag: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Width: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub Height: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub Caption: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub PreviewImage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreAcquireLicenseResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreAcquireLicenseResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreAcquireLicenseResult {
+    pub fn StorePackageLicense(&self) -> windows_core::Result<StorePackageLicense> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StorePackageLicense)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreAcquireLicenseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreAcquireLicenseResult>();
+}
+unsafe impl windows_core::Interface for StoreAcquireLicenseResult {
+    type Vtable = <IStoreAcquireLicenseResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreAcquireLicenseResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreAcquireLicenseResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreAcquireLicenseResult";
+}
+unsafe impl Send for StoreAcquireLicenseResult {}
+unsafe impl Sync for StoreAcquireLicenseResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreAppLicense(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreAppLicense, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreAppLicense {
+    pub fn SkuStoreId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SkuStoreId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsActive(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsActive)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsTrial(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsTrial)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExpirationDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExpirationDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AddOnLicenses(&self) -> windows_core::Result<windows_collections::IMapView<windows_core::HSTRING, StoreLicense>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AddOnLicenses)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn TrialTimeRemaining(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrialTimeRemaining)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsTrialOwnedByThisUser(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsTrialOwnedByThisUser)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrialUniqueId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrialUniqueId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsDiscLicense(&self) -> windows_core::Result<bool> {
+        let this = &windows_core::Interface::cast::<IStoreAppLicense2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IsDiscLicense)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreAppLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreAppLicense>();
+}
+unsafe impl windows_core::Interface for StoreAppLicense {
+    type Vtable = <IStoreAppLicense as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreAppLicense as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreAppLicense {
+    const NAME: &'static str = "Windows.Services.Store.StoreAppLicense";
+}
+unsafe impl Send for StoreAppLicense {}
+unsafe impl Sync for StoreAppLicense {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreAvailability(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreAvailability, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreAvailability {
+    pub fn StoreId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StoreId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn EndDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).EndDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Price(&self) -> windows_core::Result<StorePrice> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Price)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn RequestPurchaseAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseWithPurchasePropertiesAsync<P0>(&self, storepurchaseproperties: P0) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>>
+    where
+        P0: windows_core::Param<StorePurchaseProperties>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseWithPurchasePropertiesAsync)(windows_core::Interface::as_raw(self), storepurchaseproperties.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreAvailability {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreAvailability>();
+}
+unsafe impl windows_core::Interface for StoreAvailability {
+    type Vtable = <IStoreAvailability as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreAvailability as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreAvailability {
+    const NAME: &'static str = "Windows.Services.Store.StoreAvailability";
+}
+unsafe impl Send for StoreAvailability {}
+unsafe impl Sync for StoreAvailability {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreCanAcquireLicenseResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreCanAcquireLicenseResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreCanAcquireLicenseResult {
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn LicensableSku(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).LicensableSku)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Status(&self) -> windows_core::Result<StoreCanLicenseStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreCanAcquireLicenseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreCanAcquireLicenseResult>();
+}
+unsafe impl windows_core::Interface for StoreCanAcquireLicenseResult {
+    type Vtable = <IStoreCanAcquireLicenseResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreCanAcquireLicenseResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreCanAcquireLicenseResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreCanAcquireLicenseResult";
+}
+unsafe impl Send for StoreCanAcquireLicenseResult {}
+unsafe impl Sync for StoreCanAcquireLicenseResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreCanLicenseStatus(pub i32);
+impl StoreCanLicenseStatus {
+    pub const NotLicensableToUser: Self = Self(0);
+    pub const Licensable: Self = Self(1);
+    pub const LicenseActionNotApplicableToProduct: Self = Self(2);
+    pub const NetworkError: Self = Self(3);
+    pub const ServerError: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for StoreCanLicenseStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreCanLicenseStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreCanLicenseStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreCanLicenseStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreCollectionData(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreCollectionData, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreCollectionData {
+    pub fn IsTrial(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsTrial)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn CampaignId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CampaignId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn DeveloperOfferId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DeveloperOfferId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn AcquiredDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AcquiredDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn StartDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StartDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn EndDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).EndDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrialTimeRemaining(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrialTimeRemaining)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreCollectionData {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreCollectionData>();
+}
+unsafe impl windows_core::Interface for StoreCollectionData {
+    type Vtable = <IStoreCollectionData as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreCollectionData as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreCollectionData {
+    const NAME: &'static str = "Windows.Services.Store.StoreCollectionData";
+}
+unsafe impl Send for StoreCollectionData {}
+unsafe impl Sync for StoreCollectionData {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreConsumableResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreConsumableResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreConsumableResult {
+    pub fn Status(&self) -> windows_core::Result<StoreConsumableStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrackingId(&self) -> windows_core::Result<windows_core::GUID> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrackingId)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn BalanceRemaining(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BalanceRemaining)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreConsumableResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreConsumableResult>();
+}
+unsafe impl windows_core::Interface for StoreConsumableResult {
+    type Vtable = <IStoreConsumableResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreConsumableResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreConsumableResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreConsumableResult";
+}
+unsafe impl Send for StoreConsumableResult {}
+unsafe impl Sync for StoreConsumableResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreConsumableStatus(pub i32);
+impl StoreConsumableStatus {
+    pub const Succeeded: Self = Self(0);
+    pub const InsufficentQuantity: Self = Self(1);
+    pub const NetworkError: Self = Self(2);
+    pub const ServerError: Self = Self(3);
+}
+impl windows_core::imp::TypeKind for StoreConsumableStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreConsumableStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreConsumableStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreConsumableStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreContext(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreContext, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreContext {
+    #[cfg(feature = "System")]
+    pub fn User(&self) -> windows_core::Result<super::super::System::User> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).User)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn OfflineLicensesChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).OfflineLicensesChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveOfflineLicensesChanged))
+        }
+    }
+    pub fn GetCustomerPurchaseIdAsync(&self, serviceticket: &windows_core::HSTRING, publisheruserid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetCustomerPurchaseIdAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(serviceticket), core::mem::transmute_copy(publisheruserid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetCustomerCollectionsIdAsync(&self, serviceticket: &windows_core::HSTRING, publisheruserid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetCustomerCollectionsIdAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(serviceticket), core::mem::transmute_copy(publisheruserid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAppLicenseAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StoreAppLicense>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetAppLicenseAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetStoreProductForCurrentAppAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetStoreProductForCurrentAppAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetStoreProductsAsync<P0, P1>(&self, productkinds: P0, storeids: P1) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+        P1: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetStoreProductsAsync)(windows_core::Interface::as_raw(self), productkinds.param().abi(), storeids.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAssociatedStoreProductsAsync<P0>(&self, productkinds: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetAssociatedStoreProductsAsync)(windows_core::Interface::as_raw(self), productkinds.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAssociatedStoreProductsWithPagingAsync<P0>(&self, productkinds: P0, maxitemstoretrieveperpage: u32) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductPagedQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetAssociatedStoreProductsWithPagingAsync)(windows_core::Interface::as_raw(self), productkinds.param().abi(), maxitemstoretrieveperpage, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetUserCollectionAsync<P0>(&self, productkinds: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetUserCollectionAsync)(windows_core::Interface::as_raw(self), productkinds.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetUserCollectionWithPagingAsync<P0>(&self, productkinds: P0, maxitemstoretrieveperpage: u32) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductPagedQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetUserCollectionWithPagingAsync)(windows_core::Interface::as_raw(self), productkinds.param().abi(), maxitemstoretrieveperpage, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ReportConsumableFulfillmentAsync(&self, productstoreid: &windows_core::HSTRING, quantity: u32, trackingid: windows_core::GUID) -> windows_core::Result<windows_future::IAsyncOperation<StoreConsumableResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ReportConsumableFulfillmentAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(productstoreid), quantity, trackingid, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetConsumableBalanceRemainingAsync(&self, productstoreid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StoreConsumableResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetConsumableBalanceRemainingAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(productstoreid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn AcquireStoreLicenseForOptionalPackageAsync<P0>(&self, optionalpackage: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreAcquireLicenseResult>>
+    where
+        P0: windows_core::Param<super::super::ApplicationModel::Package>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AcquireStoreLicenseForOptionalPackageAsync)(windows_core::Interface::as_raw(self), optionalpackage.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseAsync(&self, storeid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(storeid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseWithPurchasePropertiesAsync<P1>(&self, storeid: &windows_core::HSTRING, storepurchaseproperties: P1) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>>
+    where
+        P1: windows_core::Param<StorePurchaseProperties>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseWithPurchasePropertiesAsync)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(storeid), storepurchaseproperties.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAppAndOptionalStorePackageUpdatesAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<windows_collections::IVectorView<StorePackageUpdate>>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetAppAndOptionalStorePackageUpdatesAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestDownloadStorePackageUpdatesAsync<P0>(&self, storepackageupdates: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<StorePackageUpdate>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestDownloadStorePackageUpdatesAsync)(windows_core::Interface::as_raw(self), storepackageupdates.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestDownloadAndInstallStorePackageUpdatesAsync<P0>(&self, storepackageupdates: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<StorePackageUpdate>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestDownloadAndInstallStorePackageUpdatesAsync)(windows_core::Interface::as_raw(self), storepackageupdates.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestDownloadAndInstallStorePackagesAsync<P0>(&self, storeids: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestDownloadAndInstallStorePackagesAsync)(windows_core::Interface::as_raw(self), storeids.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn FindStoreProductForPackageAsync<P0, P1>(&self, productkinds: P0, package: P1) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+        P1: windows_core::Param<super::super::ApplicationModel::Package>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).FindStoreProductForPackageAsync)(windows_core::Interface::as_raw(this), productkinds.param().abi(), package.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn CanSilentlyDownloadStorePackageUpdates(&self) -> windows_core::Result<bool> {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CanSilentlyDownloadStorePackageUpdates)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrySilentDownloadStorePackageUpdatesAsync<P0>(&self, storepackageupdates: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<StorePackageUpdate>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TrySilentDownloadStorePackageUpdatesAsync)(windows_core::Interface::as_raw(this), storepackageupdates.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn TrySilentDownloadAndInstallStorePackageUpdatesAsync<P0>(&self, storepackageupdates: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<StorePackageUpdate>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TrySilentDownloadAndInstallStorePackageUpdatesAsync)(windows_core::Interface::as_raw(this), storepackageupdates.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn CanAcquireStoreLicenseForOptionalPackageAsync<P0>(&self, optionalpackage: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreCanAcquireLicenseResult>>
+    where
+        P0: windows_core::Param<super::super::ApplicationModel::Package>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CanAcquireStoreLicenseForOptionalPackageAsync)(windows_core::Interface::as_raw(this), optionalpackage.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn CanAcquireStoreLicenseAsync(&self, productstoreid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StoreCanAcquireLicenseResult>> {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CanAcquireStoreLicenseAsync)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(productstoreid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetStoreProductsWithOptionsAsync<P0, P1, P2>(&self, productkinds: P0, storeids: P1, storeproductoptions: P2) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+        P1: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+        P2: windows_core::Param<StoreProductOptions>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetStoreProductsWithOptionsAsync)(windows_core::Interface::as_raw(this), productkinds.param().abi(), storeids.param().abi(), storeproductoptions.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAssociatedStoreQueueItemsAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<windows_collections::IVectorView<StoreQueueItem>>> {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetAssociatedStoreQueueItemsAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetStoreQueueItemsAsync<P0>(&self, storeids: P0) -> windows_core::Result<windows_future::IAsyncOperation<windows_collections::IVectorView<StoreQueueItem>>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetStoreQueueItemsAsync)(windows_core::Interface::as_raw(this), storeids.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestDownloadAndInstallStorePackagesWithInstallOptionsAsync<P0, P1>(&self, storeids: P0, storepackageinstalloptions: P1) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+        P1: windows_core::Param<StorePackageInstallOptions>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestDownloadAndInstallStorePackagesWithInstallOptionsAsync)(windows_core::Interface::as_raw(this), storeids.param().abi(), storepackageinstalloptions.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn DownloadAndInstallStorePackagesAsync<P0>(&self, storeids: P0) -> windows_core::Result<windows_future::IAsyncOperationWithProgress<StorePackageUpdateResult, StorePackageUpdateStatus>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).DownloadAndInstallStorePackagesAsync)(windows_core::Interface::as_raw(this), storeids.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn RequestUninstallStorePackageAsync<P0>(&self, package: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreUninstallStorePackageResult>>
+    where
+        P0: windows_core::Param<super::super::ApplicationModel::Package>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestUninstallStorePackageAsync)(windows_core::Interface::as_raw(this), package.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestUninstallStorePackageByStoreIdAsync(&self, storeid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StoreUninstallStorePackageResult>> {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestUninstallStorePackageByStoreIdAsync)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(storeid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn UninstallStorePackageAsync<P0>(&self, package: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreUninstallStorePackageResult>>
+    where
+        P0: windows_core::Param<super::super::ApplicationModel::Package>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).UninstallStorePackageAsync)(windows_core::Interface::as_raw(this), package.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn UninstallStorePackageByStoreIdAsync(&self, storeid: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StoreUninstallStorePackageResult>> {
+        let this = &windows_core::Interface::cast::<IStoreContext3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).UninstallStorePackageByStoreIdAsync)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(storeid), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestRateAndReviewAppAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StoreRateAndReviewResult>> {
+        let this = &windows_core::Interface::cast::<IStoreContext4>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestRateAndReviewAppAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SetInstallOrderForAssociatedStoreQueueItemsAsync<P0>(&self, items: P0) -> windows_core::Result<windows_future::IAsyncOperation<windows_collections::IVectorView<StoreQueueItem>>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<StoreQueueItem>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext4>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).SetInstallOrderForAssociatedStoreQueueItemsAsync)(windows_core::Interface::as_raw(this), items.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetUserPurchaseHistoryAsync<P0>(&self, productkinds: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext5>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetUserPurchaseHistoryAsync)(windows_core::Interface::as_raw(this), productkinds.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAssociatedStoreProductsByInAppOfferTokenAsync<P0>(&self, inappoffertokens: P0) -> windows_core::Result<windows_future::IAsyncOperation<StoreProductQueryResult>>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<windows_core::HSTRING>>,
+    {
+        let this = &windows_core::Interface::cast::<IStoreContext5>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetAssociatedStoreProductsByInAppOfferTokenAsync)(windows_core::Interface::as_raw(this), inappoffertokens.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseByInAppOfferTokenAsync(&self, inappoffertoken: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>> {
+        let this = &windows_core::Interface::cast::<IStoreContext5>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestPurchaseByInAppOfferTokenAsync)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(inappoffertoken), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetDefault() -> windows_core::Result<Self> {
+        Self::IStoreContextStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetDefault)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    #[cfg(feature = "System")]
+    pub fn GetForUser<P0>(user: P0) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::super::System::User>,
+    {
+        Self::IStoreContextStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetForUser)(windows_core::Interface::as_raw(this), user.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IStoreContextStatics<R, F: FnOnce(&IStoreContextStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StoreContext, IStoreContextStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for StoreContext {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreContext>();
+}
+unsafe impl windows_core::Interface for StoreContext {
+    type Vtable = <IStoreContext as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreContext as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreContext {
+    const NAME: &'static str = "Windows.Services.Store.StoreContext";
+}
+unsafe impl Send for StoreContext {}
+unsafe impl Sync for StoreContext {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreDurationUnit(pub i32);
+impl StoreDurationUnit {
+    pub const Minute: Self = Self(0);
+    pub const Hour: Self = Self(1);
+    pub const Day: Self = Self(2);
+    pub const Week: Self = Self(3);
+    pub const Month: Self = Self(4);
+    pub const Year: Self = Self(5);
+}
+impl windows_core::imp::TypeKind for StoreDurationUnit {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreDurationUnit {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreDurationUnit;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreDurationUnit");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreImage(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreImage, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreImage {
+    pub fn Uri(&self) -> windows_core::Result<super::super::Foundation::Uri> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Uri)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ImagePurposeTag(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ImagePurposeTag)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Width(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Width)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Height(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Height)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Caption(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Caption)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreImage {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreImage>();
+}
+unsafe impl windows_core::Interface for StoreImage {
+    type Vtable = <IStoreImage as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreImage as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreImage {
+    const NAME: &'static str = "Windows.Services.Store.StoreImage";
+}
+unsafe impl Send for StoreImage {}
+unsafe impl Sync for StoreImage {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreLicense(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreLicense, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreLicense {
+    pub fn SkuStoreId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SkuStoreId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsActive(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsActive)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExpirationDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExpirationDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn InAppOfferToken(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).InAppOfferToken)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreLicense>();
+}
+unsafe impl windows_core::Interface for StoreLicense {
+    type Vtable = <IStoreLicense as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreLicense as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreLicense {
+    const NAME: &'static str = "Windows.Services.Store.StoreLicense";
+}
+unsafe impl Send for StoreLicense {}
+unsafe impl Sync for StoreLicense {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePackageInstallOptions(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePackageInstallOptions, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePackageInstallOptions {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StorePackageInstallOptions, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn AllowForcedAppRestart(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AllowForcedAppRestart)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetAllowForcedAppRestart(&self, value: bool) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetAllowForcedAppRestart)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+}
+impl windows_core::RuntimeType for StorePackageInstallOptions {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePackageInstallOptions>();
+}
+unsafe impl windows_core::Interface for StorePackageInstallOptions {
+    type Vtable = <IStorePackageInstallOptions as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePackageInstallOptions as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePackageInstallOptions {
+    const NAME: &'static str = "Windows.Services.Store.StorePackageInstallOptions";
+}
+unsafe impl Send for StorePackageInstallOptions {}
+unsafe impl Sync for StorePackageInstallOptions {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePackageLicense(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePackageLicense, windows_core::IUnknown, windows_core::IInspectable);
+windows_core::imp::required_hierarchy!(StorePackageLicense, super::super::Foundation::IClosable);
+impl StorePackageLicense {
+    pub fn Close(&self) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<super::super::Foundation::IClosable>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).Close)(windows_core::Interface::as_raw(this)).ok() }
+    }
+    pub fn LicenseLost<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).LicenseLost)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveLicenseLost))
+        }
+    }
+    #[cfg(feature = "ApplicationModel")]
+    pub fn Package(&self) -> windows_core::Result<super::super::ApplicationModel::Package> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Package)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn IsValid(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsValid)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ReleaseLicense(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).ReleaseLicense)(windows_core::Interface::as_raw(self)).ok() }
+    }
+}
+impl windows_core::RuntimeType for StorePackageLicense {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePackageLicense>();
+}
+unsafe impl windows_core::Interface for StorePackageLicense {
+    type Vtable = <IStorePackageLicense as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePackageLicense as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePackageLicense {
+    const NAME: &'static str = "Windows.Services.Store.StorePackageLicense";
+}
+unsafe impl Send for StorePackageLicense {}
+unsafe impl Sync for StorePackageLicense {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePackageUpdate(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePackageUpdate, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePackageUpdate {
+    #[cfg(feature = "ApplicationModel")]
+    pub fn Package(&self) -> windows_core::Result<super::super::ApplicationModel::Package> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Package)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Mandatory(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Mandatory)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StorePackageUpdate {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePackageUpdate>();
+}
+unsafe impl windows_core::Interface for StorePackageUpdate {
+    type Vtable = <IStorePackageUpdate as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePackageUpdate as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePackageUpdate {
+    const NAME: &'static str = "Windows.Services.Store.StorePackageUpdate";
+}
+unsafe impl Send for StorePackageUpdate {}
+unsafe impl Sync for StorePackageUpdate {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePackageUpdateResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePackageUpdateResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePackageUpdateResult {
+    pub fn OverallState(&self) -> windows_core::Result<StorePackageUpdateState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).OverallState)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn StorePackageUpdateStatuses(&self) -> windows_core::Result<windows_collections::IVectorView<StorePackageUpdateStatus>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StorePackageUpdateStatuses)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn StoreQueueItems(&self) -> windows_core::Result<windows_collections::IVectorView<StoreQueueItem>> {
+        let this = &windows_core::Interface::cast::<IStorePackageUpdateResult2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).StoreQueueItems)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StorePackageUpdateResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePackageUpdateResult>();
+}
+unsafe impl windows_core::Interface for StorePackageUpdateResult {
+    type Vtable = <IStorePackageUpdateResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePackageUpdateResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePackageUpdateResult {
+    const NAME: &'static str = "Windows.Services.Store.StorePackageUpdateResult";
+}
+unsafe impl Send for StorePackageUpdateResult {}
+unsafe impl Sync for StorePackageUpdateResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StorePackageUpdateState(pub i32);
+impl StorePackageUpdateState {
+    pub const Pending: Self = Self(0);
+    pub const Downloading: Self = Self(1);
+    pub const Deploying: Self = Self(2);
+    pub const Completed: Self = Self(3);
+    pub const Canceled: Self = Self(4);
+    pub const OtherError: Self = Self(5);
+    pub const ErrorLowBattery: Self = Self(6);
+    pub const ErrorWiFiRecommended: Self = Self(7);
+    pub const ErrorWiFiRequired: Self = Self(8);
+}
+impl windows_core::imp::TypeKind for StorePackageUpdateState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StorePackageUpdateState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StorePackageUpdateState;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StorePackageUpdateState");
+}
+#[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StorePackageUpdateStatus {
+    pub PackageFamilyName: windows_core::HSTRING,
+    pub PackageDownloadSizeInBytes: u64,
+    pub PackageBytesDownloaded: u64,
+    pub PackageDownloadProgress: f64,
+    pub TotalDownloadProgress: f64,
+    pub PackageUpdateState: StorePackageUpdateState,
+}
+impl windows_core::imp::TypeKind for StorePackageUpdateStatus {
+    type TypeKind = windows_core::imp::CloneType;
+}
+impl windows_core::RuntimeType for StorePackageUpdateStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"struct(Windows.Services.Store.StorePackageUpdateStatus;string;u8;u8;f8;f8;enum(Windows.Services.Store.StorePackageUpdateState;i4))");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StorePackageUpdateStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePrice(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePrice, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePrice {
+    pub fn FormattedBasePrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).FormattedBasePrice)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn FormattedPrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).FormattedPrice)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsOnSale(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsOnSale)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SaleEndDate(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SaleEndDate)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn CurrencyCode(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CurrencyCode)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn FormattedRecurrencePrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).FormattedRecurrencePrice)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn UnformattedBasePrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        let this = &windows_core::Interface::cast::<IStorePrice2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).UnformattedBasePrice)(windows_core::Interface::as_raw(this), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn UnformattedPrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        let this = &windows_core::Interface::cast::<IStorePrice2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).UnformattedPrice)(windows_core::Interface::as_raw(this), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn UnformattedRecurrencePrice(&self) -> windows_core::Result<windows_core::HSTRING> {
+        let this = &windows_core::Interface::cast::<IStorePrice2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).UnformattedRecurrencePrice)(windows_core::Interface::as_raw(this), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StorePrice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePrice>();
+}
+unsafe impl windows_core::Interface for StorePrice {
+    type Vtable = <IStorePrice as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePrice as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePrice {
+    const NAME: &'static str = "Windows.Services.Store.StorePrice";
+}
+unsafe impl Send for StorePrice {}
+unsafe impl Sync for StorePrice {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreProduct(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreProduct, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreProduct {
+    pub fn StoreId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StoreId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Language(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Language)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Title(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Title)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Description(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Description)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ProductKind(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ProductKind)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn HasDigitalDownload(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).HasDigitalDownload)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Keywords(&self) -> windows_core::Result<windows_collections::IVectorView<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Keywords)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Images(&self) -> windows_core::Result<windows_collections::IVectorView<StoreImage>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Images)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Videos(&self) -> windows_core::Result<windows_collections::IVectorView<StoreVideo>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Videos)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Skus(&self) -> windows_core::Result<windows_collections::IVectorView<StoreSku>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Skus)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn IsInUserCollection(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsInUserCollection)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Price(&self) -> windows_core::Result<StorePrice> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Price)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn LinkUri(&self) -> windows_core::Result<super::super::Foundation::Uri> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).LinkUri)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetIsAnySkuInstalledAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<bool>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetIsAnySkuInstalledAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseWithPurchasePropertiesAsync<P0>(&self, storepurchaseproperties: P0) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>>
+    where
+        P0: windows_core::Param<StorePurchaseProperties>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseWithPurchasePropertiesAsync)(windows_core::Interface::as_raw(self), storepurchaseproperties.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn InAppOfferToken(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).InAppOfferToken)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreProduct {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreProduct>();
+}
+unsafe impl windows_core::Interface for StoreProduct {
+    type Vtable = <IStoreProduct as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreProduct as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreProduct {
+    const NAME: &'static str = "Windows.Services.Store.StoreProduct";
+}
+unsafe impl Send for StoreProduct {}
+unsafe impl Sync for StoreProduct {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreProductOptions(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreProductOptions, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreProductOptions {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StoreProductOptions, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn ActionFilters(&self) -> windows_core::Result<windows_collections::IVector<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ActionFilters)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreProductOptions {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreProductOptions>();
+}
+unsafe impl windows_core::Interface for StoreProductOptions {
+    type Vtable = <IStoreProductOptions as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreProductOptions as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreProductOptions {
+    const NAME: &'static str = "Windows.Services.Store.StoreProductOptions";
+}
+unsafe impl Send for StoreProductOptions {}
+unsafe impl Sync for StoreProductOptions {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreProductPagedQueryResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreProductPagedQueryResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreProductPagedQueryResult {
+    pub fn Products(&self) -> windows_core::Result<windows_collections::IMapView<windows_core::HSTRING, StoreProduct>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Products)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn HasMoreResults(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).HasMoreResults)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn GetNextAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<Self>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetNextAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreProductPagedQueryResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreProductPagedQueryResult>();
+}
+unsafe impl windows_core::Interface for StoreProductPagedQueryResult {
+    type Vtable = <IStoreProductPagedQueryResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreProductPagedQueryResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreProductPagedQueryResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreProductPagedQueryResult";
+}
+unsafe impl Send for StoreProductPagedQueryResult {}
+unsafe impl Sync for StoreProductPagedQueryResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreProductQueryResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreProductQueryResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreProductQueryResult {
+    pub fn Products(&self) -> windows_core::Result<windows_collections::IMapView<windows_core::HSTRING, StoreProduct>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Products)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreProductQueryResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreProductQueryResult>();
+}
+unsafe impl windows_core::Interface for StoreProductQueryResult {
+    type Vtable = <IStoreProductQueryResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreProductQueryResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreProductQueryResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreProductQueryResult";
+}
+unsafe impl Send for StoreProductQueryResult {}
+unsafe impl Sync for StoreProductQueryResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreProductResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreProductResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreProductResult {
+    pub fn Product(&self) -> windows_core::Result<StoreProduct> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Product)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreProductResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreProductResult>();
+}
+unsafe impl windows_core::Interface for StoreProductResult {
+    type Vtable = <IStoreProductResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreProductResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreProductResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreProductResult";
+}
+unsafe impl Send for StoreProductResult {}
+unsafe impl Sync for StoreProductResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePurchaseProperties(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePurchaseProperties, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePurchaseProperties {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StorePurchaseProperties, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn Name(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Name)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetName(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetName)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetExtendedJsonData(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetExtendedJsonData)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn Create(name: &windows_core::HSTRING) -> windows_core::Result<Self> {
+        Self::IStorePurchasePropertiesFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Create)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(name), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IStorePurchasePropertiesFactory<R, F: FnOnce(&IStorePurchasePropertiesFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StorePurchaseProperties, IStorePurchasePropertiesFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for StorePurchaseProperties {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePurchaseProperties>();
+}
+unsafe impl windows_core::Interface for StorePurchaseProperties {
+    type Vtable = <IStorePurchaseProperties as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePurchaseProperties as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePurchaseProperties {
+    const NAME: &'static str = "Windows.Services.Store.StorePurchaseProperties";
+}
+unsafe impl Send for StorePurchaseProperties {}
+unsafe impl Sync for StorePurchaseProperties {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorePurchaseResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StorePurchaseResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StorePurchaseResult {
+    pub fn Status(&self) -> windows_core::Result<StorePurchaseStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StorePurchaseResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStorePurchaseResult>();
+}
+unsafe impl windows_core::Interface for StorePurchaseResult {
+    type Vtable = <IStorePurchaseResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStorePurchaseResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StorePurchaseResult {
+    const NAME: &'static str = "Windows.Services.Store.StorePurchaseResult";
+}
+unsafe impl Send for StorePurchaseResult {}
+unsafe impl Sync for StorePurchaseResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StorePurchaseStatus(pub i32);
+impl StorePurchaseStatus {
+    pub const Succeeded: Self = Self(0);
+    pub const AlreadyPurchased: Self = Self(1);
+    pub const NotPurchased: Self = Self(2);
+    pub const NetworkError: Self = Self(3);
+    pub const ServerError: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for StorePurchaseStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StorePurchaseStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StorePurchaseStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StorePurchaseStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreQueueItem(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreQueueItem, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreQueueItem {
+    pub fn ProductId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ProductId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn PackageFamilyName(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PackageFamilyName)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn InstallKind(&self) -> windows_core::Result<StoreQueueItemKind> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).InstallKind)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn GetCurrentStatus(&self) -> windows_core::Result<StoreQueueItemStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetCurrentStatus)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Completed<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<StoreQueueItemCompletedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, StoreQueueItemCompletedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).Completed)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveCompleted))
+        }
+    }
+    pub fn StatusChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).StatusChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveStatusChanged))
+        }
+    }
+    pub fn CancelInstallAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        let this = &windows_core::Interface::cast::<IStoreQueueItem2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CancelInstallAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn PauseInstallAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        let this = &windows_core::Interface::cast::<IStoreQueueItem2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).PauseInstallAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ResumeInstallAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        let this = &windows_core::Interface::cast::<IStoreQueueItem2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).ResumeInstallAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreQueueItem {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreQueueItem>();
+}
+unsafe impl windows_core::Interface for StoreQueueItem {
+    type Vtable = <IStoreQueueItem as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreQueueItem as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreQueueItem {
+    const NAME: &'static str = "Windows.Services.Store.StoreQueueItem";
+}
+unsafe impl Send for StoreQueueItem {}
+unsafe impl Sync for StoreQueueItem {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreQueueItemCompletedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreQueueItemCompletedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreQueueItemCompletedEventArgs {
+    pub fn Status(&self) -> windows_core::Result<StoreQueueItemStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreQueueItemCompletedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreQueueItemCompletedEventArgs>();
+}
+unsafe impl windows_core::Interface for StoreQueueItemCompletedEventArgs {
+    type Vtable = <IStoreQueueItemCompletedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreQueueItemCompletedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreQueueItemCompletedEventArgs {
+    const NAME: &'static str = "Windows.Services.Store.StoreQueueItemCompletedEventArgs";
+}
+unsafe impl Send for StoreQueueItemCompletedEventArgs {}
+unsafe impl Sync for StoreQueueItemCompletedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreQueueItemExtendedState(pub i32);
+impl StoreQueueItemExtendedState {
+    pub const ActivePending: Self = Self(0);
+    pub const ActiveStarting: Self = Self(1);
+    pub const ActiveAcquiringLicense: Self = Self(2);
+    pub const ActiveDownloading: Self = Self(3);
+    pub const ActiveRestoringData: Self = Self(4);
+    pub const ActiveInstalling: Self = Self(5);
+    pub const Completed: Self = Self(6);
+    pub const Canceled: Self = Self(7);
+    pub const Paused: Self = Self(8);
+    pub const Error: Self = Self(9);
+    pub const PausedPackagesInUse: Self = Self(10);
+    pub const PausedLowBattery: Self = Self(11);
+    pub const PausedWiFiRecommended: Self = Self(12);
+    pub const PausedWiFiRequired: Self = Self(13);
+    pub const PausedReadyToInstall: Self = Self(14);
+}
+impl windows_core::imp::TypeKind for StoreQueueItemExtendedState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreQueueItemExtendedState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreQueueItemExtendedState;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreQueueItemExtendedState");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreQueueItemKind(pub i32);
+impl StoreQueueItemKind {
+    pub const Install: Self = Self(0);
+    pub const Update: Self = Self(1);
+    pub const Repair: Self = Self(2);
+}
+impl windows_core::imp::TypeKind for StoreQueueItemKind {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreQueueItemKind {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreQueueItemKind;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreQueueItemKind");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreQueueItemState(pub i32);
+impl StoreQueueItemState {
+    pub const Active: Self = Self(0);
+    pub const Completed: Self = Self(1);
+    pub const Canceled: Self = Self(2);
+    pub const Error: Self = Self(3);
+    pub const Paused: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for StoreQueueItemState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreQueueItemState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreQueueItemState;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreQueueItemState");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreQueueItemStatus(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreQueueItemStatus, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreQueueItemStatus {
+    pub fn PackageInstallState(&self) -> windows_core::Result<StoreQueueItemState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PackageInstallState)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn PackageInstallExtendedState(&self) -> windows_core::Result<StoreQueueItemExtendedState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PackageInstallExtendedState)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn UpdateStatus(&self) -> windows_core::Result<StorePackageUpdateStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).UpdateStatus)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreQueueItemStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreQueueItemStatus>();
+}
+unsafe impl windows_core::Interface for StoreQueueItemStatus {
+    type Vtable = <IStoreQueueItemStatus as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreQueueItemStatus as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreQueueItemStatus {
+    const NAME: &'static str = "Windows.Services.Store.StoreQueueItemStatus";
+}
+unsafe impl Send for StoreQueueItemStatus {}
+unsafe impl Sync for StoreQueueItemStatus {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreRateAndReviewResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreRateAndReviewResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreRateAndReviewResult {
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn WasUpdated(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).WasUpdated)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Status(&self) -> windows_core::Result<StoreRateAndReviewStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreRateAndReviewResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreRateAndReviewResult>();
+}
+unsafe impl windows_core::Interface for StoreRateAndReviewResult {
+    type Vtable = <IStoreRateAndReviewResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreRateAndReviewResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreRateAndReviewResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreRateAndReviewResult";
+}
+unsafe impl Send for StoreRateAndReviewResult {}
+unsafe impl Sync for StoreRateAndReviewResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreRateAndReviewStatus(pub i32);
+impl StoreRateAndReviewStatus {
+    pub const Succeeded: Self = Self(0);
+    pub const CanceledByUser: Self = Self(1);
+    pub const NetworkError: Self = Self(2);
+    pub const Error: Self = Self(3);
+}
+impl windows_core::imp::TypeKind for StoreRateAndReviewStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreRateAndReviewStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreRateAndReviewStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreRateAndReviewStatus");
+}
+pub struct StoreRequestHelper;
+impl StoreRequestHelper {
+    pub fn SendRequestAsync<P0>(context: P0, requestkind: u32, parametersasjson: &windows_core::HSTRING) -> windows_core::Result<windows_future::IAsyncOperation<StoreSendRequestResult>>
+    where
+        P0: windows_core::Param<StoreContext>,
+    {
+        Self::IStoreRequestHelperStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).SendRequestAsync)(windows_core::Interface::as_raw(this), context.param().abi(), requestkind, core::mem::transmute_copy(parametersasjson), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IStoreRequestHelperStatics<R, F: FnOnce(&IStoreRequestHelperStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<StoreRequestHelper, IStoreRequestHelperStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeName for StoreRequestHelper {
+    const NAME: &'static str = "Windows.Services.Store.StoreRequestHelper";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreSendRequestResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreSendRequestResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreSendRequestResult {
+    pub fn Response(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Response)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    #[cfg(feature = "Web_Http")]
+    pub fn HttpStatusCode(&self) -> windows_core::Result<super::super::Web::Http::HttpStatusCode> {
+        let this = &windows_core::Interface::cast::<IStoreSendRequestResult2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).HttpStatusCode)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreSendRequestResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreSendRequestResult>();
+}
+unsafe impl windows_core::Interface for StoreSendRequestResult {
+    type Vtable = <IStoreSendRequestResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreSendRequestResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreSendRequestResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreSendRequestResult";
+}
+unsafe impl Send for StoreSendRequestResult {}
+unsafe impl Sync for StoreSendRequestResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreSku(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreSku, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreSku {
+    pub fn StoreId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StoreId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Language(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Language)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Title(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Title)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Description(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Description)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsTrial(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsTrial)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn CustomDeveloperData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CustomDeveloperData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Images(&self) -> windows_core::Result<windows_collections::IVectorView<StoreImage>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Images)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Videos(&self) -> windows_core::Result<windows_collections::IVectorView<StoreVideo>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Videos)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Availabilities(&self) -> windows_core::Result<windows_collections::IVectorView<StoreAvailability>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Availabilities)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Price(&self) -> windows_core::Result<StorePrice> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Price)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ExtendedJsonData(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedJsonData)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn IsInUserCollection(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsInUserCollection)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn BundledSkus(&self) -> windows_core::Result<windows_collections::IVectorView<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BundledSkus)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn CollectionData(&self) -> windows_core::Result<StoreCollectionData> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CollectionData)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetIsInstalledAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<bool>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetIsInstalledAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn RequestPurchaseWithPurchasePropertiesAsync<P0>(&self, storepurchaseproperties: P0) -> windows_core::Result<windows_future::IAsyncOperation<StorePurchaseResult>>
+    where
+        P0: windows_core::Param<StorePurchaseProperties>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RequestPurchaseWithPurchasePropertiesAsync)(windows_core::Interface::as_raw(self), storepurchaseproperties.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn IsSubscription(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsSubscription)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SubscriptionInfo(&self) -> windows_core::Result<StoreSubscriptionInfo> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SubscriptionInfo)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreSku {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreSku>();
+}
+unsafe impl windows_core::Interface for StoreSku {
+    type Vtable = <IStoreSku as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreSku as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreSku {
+    const NAME: &'static str = "Windows.Services.Store.StoreSku";
+}
+unsafe impl Send for StoreSku {}
+unsafe impl Sync for StoreSku {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreSubscriptionInfo(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreSubscriptionInfo, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreSubscriptionInfo {
+    pub fn BillingPeriod(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BillingPeriod)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn BillingPeriodUnit(&self) -> windows_core::Result<StoreDurationUnit> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BillingPeriodUnit)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn HasTrialPeriod(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).HasTrialPeriod)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrialPeriod(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrialPeriod)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn TrialPeriodUnit(&self) -> windows_core::Result<StoreDurationUnit> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrialPeriodUnit)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreSubscriptionInfo {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreSubscriptionInfo>();
+}
+unsafe impl windows_core::Interface for StoreSubscriptionInfo {
+    type Vtable = <IStoreSubscriptionInfo as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreSubscriptionInfo as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreSubscriptionInfo {
+    const NAME: &'static str = "Windows.Services.Store.StoreSubscriptionInfo";
+}
+unsafe impl Send for StoreSubscriptionInfo {}
+unsafe impl Sync for StoreSubscriptionInfo {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreUninstallStorePackageResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreUninstallStorePackageResult, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreUninstallStorePackageResult {
+    pub fn ExtendedError(&self) -> windows_core::Result<windows_core::HRESULT> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ExtendedError)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Status(&self) -> windows_core::Result<StoreUninstallStorePackageStatus> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Status)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreUninstallStorePackageResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreUninstallStorePackageResult>();
+}
+unsafe impl windows_core::Interface for StoreUninstallStorePackageResult {
+    type Vtable = <IStoreUninstallStorePackageResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreUninstallStorePackageResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreUninstallStorePackageResult {
+    const NAME: &'static str = "Windows.Services.Store.StoreUninstallStorePackageResult";
+}
+unsafe impl Send for StoreUninstallStorePackageResult {}
+unsafe impl Sync for StoreUninstallStorePackageResult {}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreUninstallStorePackageStatus(pub i32);
+impl StoreUninstallStorePackageStatus {
+    pub const Succeeded: Self = Self(0);
+    pub const CanceledByUser: Self = Self(1);
+    pub const NetworkError: Self = Self(2);
+    pub const UninstallNotApplicable: Self = Self(3);
+    pub const Error: Self = Self(4);
+}
+impl windows_core::imp::TypeKind for StoreUninstallStorePackageStatus {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for StoreUninstallStorePackageStatus {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Services.Store.StoreUninstallStorePackageStatus;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Services.Store.StoreUninstallStorePackageStatus");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoreVideo(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(StoreVideo, windows_core::IUnknown, windows_core::IInspectable);
+impl StoreVideo {
+    pub fn Uri(&self) -> windows_core::Result<super::super::Foundation::Uri> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Uri)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn VideoPurposeTag(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).VideoPurposeTag)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Width(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Width)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Height(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Height)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Caption(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Caption)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn PreviewImage(&self) -> windows_core::Result<StoreImage> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PreviewImage)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for StoreVideo {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IStoreVideo>();
+}
+unsafe impl windows_core::Interface for StoreVideo {
+    type Vtable = <IStoreVideo as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IStoreVideo as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for StoreVideo {
+    const NAME: &'static str = "Windows.Services.Store.StoreVideo";
+}
+unsafe impl Send for StoreVideo {}
+unsafe impl Sync for StoreVideo {}

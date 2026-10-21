@@ -1,0 +1,119 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[arch(X86 | X64)]
+        type CMC_EXCEPTION = MCA_EXCEPTION;
+        #[arch(X86 | X64)]
+        type CPE_EXCEPTION = MCA_EXCEPTION;
+        #[arch(X64)]
+        type ERROR_SEVERITY = u8;
+        #[repr(i32)]
+        #[arch(X64)]
+        enum ERROR_SEVERITY_VALUE {
+            ErrorRecoverable = 0,
+            ErrorFatal = 1,
+            ErrorCorrected = 2,
+            ErrorOthers = 3,
+        }
+        #[arch(Arm64)]
+        struct MCA_EXCEPTION {
+            Dummy: u32,
+        }
+        #[arch(X86 | X64)]
+        struct MCA_EXCEPTION {
+            VersionNumber: u32,
+            ExceptionType: MCA_EXCEPTION_TYPE,
+            TimeStamp: LARGE_INTEGER,
+            ProcessorNumber: u32,
+            Reserved1: u32,
+            u: union {
+                Mca: struct {
+                    BankNumber: u8,
+                    Reserved2: [u8; 7],
+                    Status: MCI_STATS,
+                    Address: MCI_ADDR,
+                    Misc: u64,
+                },
+                Mce: struct {
+                    Address: u64,
+                    Type: u64,
+                },
+            },
+            ExtCnt: u32,
+            Reserved3: u32,
+            ExtReg: [u64; 24],
+        }
+        #[repr(i32)]
+        enum MCA_EXCEPTION_TYPE {
+            HAL_MCE_RECORD = 0,
+            HAL_MCA_RECORD = 1,
+        }
+        #[arch(X86 | X64)]
+        const MCA_EXCEPTION_V1_SIZE: i32 = 56;
+        #[arch(X64)]
+        const MCA_EXCEPTION_V2_SIZE: u64 = 256;
+        #[arch(X86)]
+        const MCA_EXCEPTION_V2_SIZE: u32 = 256;
+        #[arch(X86 | X64)]
+        const MCA_EXTREG_V2MAX: i32 = 24;
+        #[arch(X86 | X64)]
+        union MCI_ADDR {
+            Anonymous: struct {
+                Address: u32,
+                Reserved: u32,
+            },
+            QuadPart: u64,
+        }
+        #[arch(X64)]
+        union MCI_STATS {
+            MciStatus: struct {
+                McaErrorCode: u16,
+                ModelErrorCode: u16,
+                _bitfield: u32 {
+                    OtherInformation: 25,
+                    ContextCorrupt: 1,
+                    AddressValid: 1,
+                    MiscValid: 1,
+                    ErrorEnabled: 1,
+                    UncorrectedError: 1,
+                    StatusOverFlow: 1,
+                    Valid: 1,
+                },
+            },
+            QuadPart: u64,
+        }
+        #[arch(X86)]
+        union MCI_STATS {
+            MciStats: struct {
+                McaCod: u16,
+                MsCod: u16,
+                _bitfield: u32 {
+                    OtherInfo: 25,
+                    Damage: 1,
+                    AddressValid: 1,
+                    MiscValid: 1,
+                    Enabled: 1,
+                    UnCorrected: 1,
+                    OverFlow: 1,
+                    Valid: 1,
+                },
+            },
+            QuadPart: u64,
+        }
+        #[arch(Arm64)]
+        type PCMC_EXCEPTION = *mut void;
+        #[arch(X86 | X64)]
+        type PCMC_EXCEPTION = *mut MCA_EXCEPTION;
+        #[arch(Arm64)]
+        type PCPE_EXCEPTION = *mut void;
+        #[arch(X86 | X64)]
+        type PCPE_EXCEPTION = *mut MCA_EXCEPTION;
+        #[arch(X64)]
+        type PERROR_SEVERITY = *mut u8;
+        type PMCA_EXCEPTION = *mut MCA_EXCEPTION;
+        #[arch(X86 | X64)]
+        type PMCI_ADDR = *mut MCI_ADDR;
+        #[arch(X86 | X64)]
+        type PMCI_STATS = *mut MCI_STATS;
+    }
+}

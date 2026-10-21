@@ -9,13 +9,13 @@ use crate::{Client, HttpStream, Result, retry::RequestMetadata};
 pub struct Memory {
     #[serde(
         rename = "inuse",
-        deserialize_with = "crate::stream::deserialize_number"
+        deserialize_with = "nyanpasu_serde::number_or_string"
     )]
     pub in_use: u64,
     #[serde(
         default,
         rename = "oslimit",
-        deserialize_with = "crate::stream::deserialize_number"
+        deserialize_with = "nyanpasu_serde::number_or_string"
     )]
     pub os_limit: u64,
 }

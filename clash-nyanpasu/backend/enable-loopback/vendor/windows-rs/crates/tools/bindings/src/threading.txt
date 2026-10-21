@@ -1,0 +1,16 @@
+--out crates/libs/threading/src/bindings.rs
+--flat --sys
+
+
+--filter
+    CreateThreadpool
+    SetThreadpoolThreadMaximum
+    SetThreadpoolThreadMinimum
+    TrySubmitThreadpoolCallback
+    CloseThreadpool
+    CreateThreadpoolCleanupGroup
+    CloseThreadpoolCleanupGroup
+    CloseThreadpoolCleanupGroupMembers
+    TP_CALLBACK_PRIORITY_NORMAL
+    GetCurrentThreadId
+    Sleep

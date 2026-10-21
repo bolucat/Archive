@@ -1,0 +1,33 @@
+[package]
+name = "test_interface"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "combaseapi",
+    "d3d10",
+    "d3d12",
+    "d3dcommon",
+    "mmeapi",
+    "objbase",
+    "objidl",
+    "ocidl",
+    "sdkddkver",
+    "urlmon",
+    "winerror",
+    "xaudio2",
+]
+
+[dependencies.windows-core]
+workspace = true
+
+[lints]
+workspace = true

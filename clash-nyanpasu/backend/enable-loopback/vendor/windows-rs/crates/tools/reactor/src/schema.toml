@@ -1,0 +1,1974 @@
+[[attached_properties]]
+name = "CanvasLeft"
+owner = "Microsoft.UI.Xaml.Controls.Canvas"
+native = "Left"
+
+[[attached_properties]]
+name = "CanvasTop"
+owner = "Microsoft.UI.Xaml.Controls.Canvas"
+native = "Top"
+
+[[attached_properties]]
+name = "GridRow"
+owner = "Microsoft.UI.Xaml.Controls.Grid"
+native = "Row"
+validation = "non_negative"
+
+[[attached_properties]]
+name = "GridColumn"
+owner = "Microsoft.UI.Xaml.Controls.Grid"
+native = "Column"
+validation = "non_negative"
+
+[[attached_properties]]
+name = "GridRowSpan"
+owner = "Microsoft.UI.Xaml.Controls.Grid"
+native = "RowSpan"
+validation = "positive"
+
+[[attached_properties]]
+name = "GridColumnSpan"
+owner = "Microsoft.UI.Xaml.Controls.Grid"
+native = "ColumnSpan"
+validation = "positive"
+
+[[attached_properties]]
+name = "RelativeAlignLeft"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignLeftWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "RelativeAlignTop"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignTopWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "RelativeAlignRight"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignRightWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "RelativeAlignBottom"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignBottomWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "RelativeAlignHorizontalCenter"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignHorizontalCenterWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "RelativeAlignVerticalCenter"
+owner = "Microsoft.UI.Xaml.Controls.RelativePanel"
+native = "AlignVerticalCenterWithPanel"
+flag = true
+
+[[attached_properties]]
+name = "AutomationName"
+owner = "Microsoft.UI.Xaml.Automation.AutomationProperties"
+native = "Name"
+default = ""
+
+[[attached_properties]]
+name = "AutomationId"
+owner = "Microsoft.UI.Xaml.Automation.AutomationProperties"
+native = "AutomationId"
+default = ""
+
+[[attached_properties]]
+name = "AutomationHeadingLevel"
+owner = "Microsoft.UI.Xaml.Automation.AutomationProperties"
+native = "HeadingLevel"
+
+[[visual_properties]]
+name = "Width"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "Cursor"
+owner = "Microsoft.UI.Xaml.UIElement"
+adapter = "pointer_cursor"
+
+[[visual_properties]]
+name = "Height"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "MinWidth"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "MaxWidth"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "MinHeight"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "MaxHeight"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "Margin"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "HorizontalAlignment"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "VerticalAlignment"
+owner = "Microsoft.UI.Xaml.FrameworkElement"
+
+[[visual_properties]]
+name = "Opacity"
+owner = "Microsoft.UI.Xaml.UIElement"
+
+[[visual_properties]]
+name = "Transitions"
+owner = "Microsoft.UI.Xaml.UIElement"
+adapter = "theme_transitions"
+
+[[objects]]
+name = "TextBlock"
+
+[[objects.properties]]
+name = "Text"
+default = ""
+
+[[objects.properties]]
+name = "FontSize"
+default = "14.0"
+validation = "finite_positive"
+
+[[objects.properties]]
+name = "FontWeight"
+value = "FontWeight"
+
+[[objects.properties]]
+name = "Foreground"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "Padding"
+default = "default"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "TextWrapping"
+
+[[objects.properties]]
+name = "IsTextSelectionEnabled"
+
+[[objects.properties]]
+name = "TextTrimming"
+
+[[objects.properties]]
+name = "MaxLines"
+validation = "non_negative"
+
+[[objects.properties]]
+name = "TextAlignment"
+
+[[objects]]
+name = "TextBox"
+enabled = true
+focus = true
+handwritten = true
+
+[[objects.properties]]
+name = "Text"
+controlled = "TextChanged"
+feedback = "exact"
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "AcceptsReturn"
+
+[[objects.properties]]
+name = "IsReadOnly"
+
+[[objects.properties]]
+name = "TextAlignment"
+
+[[objects.properties]]
+name = "TextWrapping"
+
+[[objects.properties]]
+name = "Background"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "BorderBrush"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "BorderThickness"
+validation = "finite_non_negative"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "TextChanged"
+observes = "Text"
+
+[[objects]]
+name = "Button"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "Background"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "HorizontalContentAlignment"
+
+[[objects.properties]]
+name = "VerticalContentAlignment"
+
+[[objects.properties]]
+name = "Resources"
+adapter = "resource_overrides"
+
+[[objects.properties]]
+name = "Style"
+adapter = "resource_style"
+
+[[objects.properties]]
+name = "KeyboardAccelerators"
+adapter = "key_accelerators"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "CheckBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "IsChecked"
+value = "OptionalBool"
+controlled = "IsCheckedChanged"
+feedback = "exact"
+default = "false"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+value = "Unit"
+observes = "IsChecked"
+
+[[objects.events]]
+name = "IsCheckedChanged"
+property_changed = true
+observes = "IsChecked"
+
+[[objects]]
+name = "Border"
+focus = true
+
+[[objects.properties]]
+name = "Background"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "BorderBrush"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "BorderThickness"
+default = "default"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "CornerRadius"
+default = "default"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "Padding"
+default = "default"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "IsTabStop"
+
+[[objects.properties]]
+name = "AllowFocusOnInteraction"
+
+[[objects.properties]]
+name = "OpacityTransition"
+adapter = "implicit_opacity_transition"
+
+[[objects.properties]]
+name = "Scale"
+adapter = "implicit_scale"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "ScaleTransition"
+adapter = "implicit_scale_transition"
+
+[[objects.properties]]
+name = "Translation"
+adapter = "implicit_translation"
+validation = "finite"
+
+[[objects.properties]]
+name = "TranslationTransition"
+adapter = "implicit_translation_transition"
+
+[[objects.properties]]
+name = "CapturePointerOnPress"
+adapter = "pointer_capture"
+
+[[objects.properties]]
+name = "FocusOnPointerRelease"
+adapter = "pointer_focus"
+
+[[objects.properties]]
+name = "DropPolicy"
+native = "AllowDrop"
+adapter = "drop_policy"
+
+[[objects.relations]]
+name = "Content"
+native = "Child"
+
+[[objects.events]]
+name = "PointerPressed"
+adapter = "pointer"
+active_properties = ["capture_pointer_on_press"]
+
+[[objects.events]]
+name = "PointerMoved"
+adapter = "pointer"
+
+[[objects.events]]
+name = "PointerEntered"
+adapter = "pointer"
+
+[[objects.events]]
+name = "PointerExited"
+adapter = "pointer"
+
+[[objects.events]]
+name = "PointerReleased"
+adapter = "pointer"
+active_properties = ["capture_pointer_on_press", "focus_on_pointer_release"]
+
+[[objects.events]]
+name = "PointerCaptureLost"
+
+[[objects.events]]
+name = "PointerCanceled"
+
+[[objects.events]]
+name = "PreviewKeyDown"
+adapter = "key"
+routed = true
+
+[[objects.events]]
+name = "KeyUp"
+adapter = "key"
+routed = true
+
+[[objects.events]]
+name = "CharacterReceived"
+adapter = "character"
+routed = true
+
+[[objects.events]]
+name = "GotFocus"
+adapter = "focus"
+
+[[objects.events]]
+name = "LostFocus"
+adapter = "focus"
+
+[[objects.events]]
+name = "DragEnter"
+adapter = "drag_kind"
+active_properties = ["drop_policy"]
+
+[[objects.events]]
+name = "DragOver"
+adapter = "drag_kind"
+active_properties = ["drop_policy"]
+
+[[objects.events]]
+name = "DragLeave"
+
+[[objects.events]]
+name = "Drop"
+adapter = "dropped_data"
+active_properties = ["drop_policy"]
+
+[[objects]]
+name = "Grid"
+reference = true
+
+[[objects.properties]]
+name = "GridRows"
+native = "RowDefinitions"
+adapter = "grid_rows"
+
+[[objects.properties]]
+name = "GridColumns"
+native = "ColumnDefinitions"
+adapter = "grid_columns"
+
+[[objects.properties]]
+name = "RowSpacing"
+
+[[objects.properties]]
+name = "ColumnSpacing"
+
+[[objects.properties]]
+name = "Background"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "KeyboardAccelerators"
+adapter = "key_accelerators"
+
+[[objects.relations]]
+name = "Children"
+identity = "Keyed"
+
+[[objects]]
+name = "StackPanel"
+
+[[objects.properties]]
+name = "Spacing"
+default = "0.0"
+
+[[objects.properties]]
+name = "Orientation"
+default = "Vertical"
+
+[[objects.relations]]
+name = "Children"
+identity = "Keyed"
+
+[[objects]]
+name = "Canvas"
+
+[[objects.relations]]
+name = "Children"
+
+[[objects]]
+name = "ScrollViewer"
+
+[[objects.properties]]
+name = "HorizontalScrollBarVisibility"
+
+[[objects.properties]]
+name = "VerticalScrollBarVisibility"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "Viewbox"
+
+[[objects.properties]]
+name = "Stretch"
+
+[[objects.relations]]
+name = "Content"
+native = "Child"
+
+[[objects]]
+name = "TitleBar"
+window_title_bar = true
+
+[[objects.properties]]
+name = "Title"
+default = ""
+
+[[objects.properties]]
+name = "Subtitle"
+default = ""
+
+[[objects.properties]]
+name = "IsBackButtonVisible"
+
+[[objects.properties]]
+name = "IsBackButtonEnabled"
+
+[[objects.properties]]
+name = "IsPaneToggleButtonVisible"
+
+[[objects.properties]]
+name = "IconSource"
+method = "icon"
+adapter = "icon_source"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.relations]]
+name = "LeftHeader"
+
+[[objects.relations]]
+name = "RightHeader"
+
+[[objects.events]]
+name = "BackRequested"
+
+[[objects.events]]
+name = "PaneToggleRequested"
+
+[[objects]]
+name = "Slider"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "Minimum"
+coerces = "ValueChanged"
+feedback = "normalized"
+default = "0.0"
+
+[[objects.properties]]
+name = "Maximum"
+coerces = "ValueChanged"
+feedback = "normalized"
+default = "100.0"
+
+[[objects.properties]]
+name = "Value"
+controlled = "ValueChanged"
+feedback = "normalized"
+default = "0.0"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "Orientation"
+
+[[objects.properties]]
+name = "StepFrequency"
+validation = "finite_positive"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "ValueChanged"
+observes = "Value"
+payload = "NewValue"
+
+[[objects]]
+name = "TreeView"
+enabled = true
+handwritten = true
+
+[[objects.properties]]
+name = "SelectionMode"
+
+[[objects.events]]
+name = "ItemInvoked"
+adapter = "item_tag"
+
+[[objects.relations]]
+name = "Roots"
+child = "Structural"
+cardinality = "Many"
+identity = "Keyed"
+realization = "Structural"
+method = "nodes"
+item = "TreeNode"
+
+[[objects]]
+name = "TreeNode"
+category = "Structural"
+handwritten = true
+key = true
+
+[[objects.properties]]
+name = "Text"
+value = "String"
+required = true
+
+[[objects.properties]]
+name = "Expanded"
+value = "Bool"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.relations]]
+name = "Children"
+child = "Structural"
+cardinality = "Many"
+identity = "Keyed"
+realization = "Structural"
+item = "TreeNode"
+
+[[objects]]
+name = "ListView"
+enabled = true
+reference = true
+handwritten = true
+
+[[objects.properties]]
+name = "ItemContainerStyle"
+adapter = "item_container"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "SelectionMode"
+
+[[objects.properties]]
+name = "CanDragItems"
+
+[[objects.properties]]
+name = "CanReorderItems"
+
+[[objects.properties]]
+name = "AllowDrop"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "deferred_exact"
+
+[[objects.relations]]
+name = "Items"
+child = "Data"
+cardinality = "Many"
+identity = "Keyed"
+realization = "Container"
+item = "DataItem"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects.events]]
+name = "DragItemsCompleted"
+field = "on_reordered"
+adapter = "string_list"
+
+[[objects]]
+name = "DataItem"
+category = "Data"
+handwritten = true
+key = true
+
+[[objects.properties]]
+name = "Text"
+value = "String"
+required = true
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "HyperlinkButton"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "NavigateUri"
+adapter = "uri"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "RepeatButton"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "Delay"
+
+[[objects.properties]]
+name = "Interval"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "BreadcrumbBar"
+
+[[objects.properties]]
+name = "ItemsSource"
+adapter = "inspectable_string_list"
+
+[[objects.events]]
+name = "ItemClicked"
+payload = "Item"
+payload_adapter = "inspectable_string"
+
+[[objects]]
+name = "VariableSizedWrapGrid"
+
+[[objects.properties]]
+name = "Orientation"
+
+[[objects.properties]]
+name = "ItemWidth"
+validation = "finite_positive"
+
+[[objects.properties]]
+name = "ItemHeight"
+validation = "finite_positive"
+
+[[objects.relations]]
+name = "Children"
+identity = "Keyed"
+
+[[objects]]
+name = "AutoSuggestBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "ItemsSource"
+adapter = "inspectable_string_list"
+
+[[objects.properties]]
+name = "Text"
+controlled = "TextChanged"
+feedback = "exact"
+
+[[objects.properties]]
+name = "QueryIcon"
+adapter = "icon_element"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "TextChanged"
+observes = "Text"
+
+[[objects.events]]
+name = "SuggestionChosen"
+payload = "SelectedItem"
+payload_adapter = "inspectable_string"
+
+[[objects]]
+name = "PasswordBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "PasswordRevealMode"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "Password"
+controlled = "PasswordChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "PasswordChanged"
+observes = "Password"
+
+[[objects]]
+name = "NumberBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "Minimum"
+coerces = "ValueChanged"
+feedback = "normalized"
+
+[[objects.properties]]
+name = "Maximum"
+coerces = "ValueChanged"
+feedback = "normalized"
+
+[[objects.properties]]
+name = "Value"
+adapter = "number_box_value"
+controlled = "ValueChanged"
+feedback = "normalized"
+
+[[objects.properties]]
+name = "SmallChange"
+validation = "finite"
+
+[[objects.properties]]
+name = "SpinButtonPlacementMode"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "ValueChanged"
+observes = "Value"
+payload = "NewValue"
+payload_adapter = "number_box_value"
+
+[[objects]]
+name = "NavigationView"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "PaneDisplayMode"
+
+[[objects.properties]]
+name = "IsPaneToggleButtonVisible"
+
+[[objects.properties]]
+name = "IsBackButtonVisible"
+
+[[objects.properties]]
+name = "IsBackEnabled"
+
+[[objects.properties]]
+name = "IsPaneVisible"
+
+[[objects.properties]]
+name = "IsSettingsVisible"
+
+[[objects.properties]]
+name = "AlwaysShowHeader"
+
+[[objects.properties]]
+name = "PaneTitle"
+
+[[objects.properties]]
+name = "OpenPaneLength"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "IsPaneOpen"
+controlled = "IsPaneOpenChanged"
+feedback = "exact"
+clear_feedback = true
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.relations]]
+name = "PaneCustomContent"
+
+[[objects.relations]]
+name = "PaneHeader"
+
+[[objects.relations]]
+name = "PaneFooter"
+
+[[objects.relations]]
+name = "MenuItems"
+identity = "Keyed"
+
+[[objects.relations]]
+name = "FooterMenuItems"
+identity = "Keyed"
+
+[[objects.events]]
+name = "IsPaneOpenChanged"
+property_changed = true
+observes = "IsPaneOpen"
+
+[[objects.events]]
+name = "SelectionChanged"
+field = "on_selected_tag_changed"
+
+[[objects.events]]
+name = "DisplayModeChanged"
+payload = "DisplayMode"
+payload_adapter = "navigation_display_mode"
+
+[objects.selection]
+relations = ["MenuItems", "FooterMenuItems"]
+item = "NavigationViewItem"
+selected_property = "IsSelected"
+selected_item_property = "SelectedItem"
+event = "SelectionChanged"
+event_item_source = "EventArgs"
+event_args = "NavigationViewSelectionChangedEventArgs"
+payload_property = "Tag"
+
+[[objects]]
+name = "NavigationViewItem"
+
+[[objects.properties]]
+name = "IsSelected"
+
+[[objects.properties]]
+name = "SelectsOnInvoked"
+
+[[objects.properties]]
+name = "IsExpanded"
+
+[[objects.properties]]
+name = "Tag"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.properties]]
+name = "Icon"
+adapter = "icon_element"
+
+[[objects.relations]]
+name = "MenuItems"
+identity = "Keyed"
+
+[[objects]]
+name = "SplitView"
+
+[[objects.properties]]
+name = "OpenPaneLength"
+
+[[objects.properties]]
+name = "CompactPaneLength"
+
+[[objects.properties]]
+name = "DisplayMode"
+
+[[objects.properties]]
+name = "IsPaneOpen"
+controlled = "PaneClosed"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Pane"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "PaneClosed"
+observes = "IsPaneOpen"
+
+[[objects]]
+name = "ProgressBar"
+enabled = true
+
+[[objects.properties]]
+name = "Minimum"
+
+[[objects.properties]]
+name = "Maximum"
+
+[[objects.properties]]
+name = "Value"
+
+[[objects.properties]]
+name = "IsIndeterminate"
+
+[[objects.properties]]
+name = "ShowError"
+
+[[objects.properties]]
+name = "ShowPaused"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects]]
+name = "ToggleSwitch"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "IsOn"
+controlled = "Toggled"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.relations]]
+name = "OnContent"
+
+[[objects.relations]]
+name = "OffContent"
+
+[[objects.events]]
+name = "Toggled"
+observes = "IsOn"
+
+[[objects]]
+name = "ToggleButton"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "IsChecked"
+value = "OptionalBool"
+controlled = "IsCheckedChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "IsCheckedChanged"
+property_changed = true
+observes = "IsChecked"
+
+[[objects]]
+name = "RadioButton"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "GroupName"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "IsChecked"
+value = "OptionalBool"
+controlled = "Checked"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Checked"
+observes = "IsChecked"
+
+[[objects]]
+name = "RadioButtons"
+
+[[objects.properties]]
+name = "MaxColumns"
+
+[[objects.properties]]
+name = "ItemsSource"
+adapter = "inspectable_string_list"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "normalized"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects]]
+name = "ItemsRepeater"
+virtual_items = true
+
+[[objects.relations]]
+name = "Items"
+cardinality = "Many"
+identity = "Keyed"
+realization = "Container"
+
+[[objects]]
+name = "InfoBadge"
+
+[[objects.properties]]
+name = "Value"
+
+[[objects]]
+name = "InfoBar"
+
+[[objects.properties]]
+name = "Title"
+
+[[objects.properties]]
+name = "Message"
+
+[[objects.properties]]
+name = "Severity"
+
+[[objects.properties]]
+name = "IsOpen"
+
+[[objects.properties]]
+name = "IsClosable"
+
+[[objects.events]]
+name = "Closed"
+
+[[objects]]
+name = "PersonPicture"
+
+[[objects.properties]]
+name = "DisplayName"
+
+[[objects.properties]]
+name = "Initials"
+
+[[objects]]
+name = "ScrollView"
+
+[[objects.properties]]
+name = "HorizontalScrollBarVisibility"
+
+[[objects.properties]]
+name = "VerticalScrollBarVisibility"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "Image"
+reference = true
+
+[[objects.properties]]
+name = "Source"
+adapter = "image_uri"
+
+[[objects.properties]]
+name = "Stretch"
+
+[[objects.events]]
+name = "ImageOpened"
+field = "on_opened"
+
+[[objects.events]]
+name = "ImageFailed"
+field = "on_failed"
+
+[[objects]]
+name = "ProgressRing"
+enabled = true
+
+[[objects.properties]]
+name = "Minimum"
+
+[[objects.properties]]
+name = "Maximum"
+
+[[objects.properties]]
+name = "Value"
+
+[[objects.properties]]
+name = "IsIndeterminate"
+
+[[objects.properties]]
+name = "IsActive"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects]]
+name = "ListBox"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Items"
+identity = "Keyed"
+
+[[objects.events]]
+name = "SelectionChanged"
+field = "on_selected_tag_changed"
+
+[objects.selection]
+relations = ["Items"]
+item = "ListBoxItem"
+selected_property = "IsSelected"
+selected_item_property = "SelectedItem"
+event = "SelectionChanged"
+event_item_source = "Owner"
+payload_property = "Tag"
+
+[[objects]]
+name = "Rectangle"
+
+[[objects.properties]]
+name = "Fill"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "Stroke"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "StrokeThickness"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "RadiusX"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "RadiusY"
+validation = "finite_non_negative"
+
+[[objects]]
+name = "Ellipse"
+
+[[objects.properties]]
+name = "Fill"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "Stroke"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "StrokeThickness"
+validation = "finite_non_negative"
+
+[[objects]]
+name = "Line"
+
+[[objects.properties]]
+name = "Stroke"
+adapter = "theme_brush"
+
+[[objects.properties]]
+name = "StrokeThickness"
+validation = "finite_non_negative"
+
+[[objects.properties]]
+name = "X1"
+validation = "finite"
+
+[[objects.properties]]
+name = "Y1"
+validation = "finite"
+
+[[objects.properties]]
+name = "X2"
+validation = "finite"
+
+[[objects.properties]]
+name = "Y2"
+validation = "finite"
+
+[[objects]]
+name = "SymbolIcon"
+
+[[objects.properties]]
+name = "Symbol"
+
+[[objects]]
+name = "ImageIcon"
+
+[[objects.properties]]
+name = "Source"
+adapter = "image_uri"
+
+[[objects]]
+name = "FontIcon"
+
+[[objects.properties]]
+name = "Glyph"
+
+[[objects.properties]]
+name = "FontSize"
+validation = "finite_positive"
+
+[[objects.properties]]
+name = "Foreground"
+adapter = "theme_brush"
+
+[[objects]]
+name = "BitmapIcon"
+
+[[objects.properties]]
+name = "ShowAsMonochrome"
+
+[[objects.properties]]
+name = "UriSource"
+adapter = "uri"
+
+[[objects]]
+name = "PathIcon"
+
+[[objects.properties]]
+name = "Data"
+adapter = "path_data"
+
+[[objects]]
+name = "ListBoxItem"
+
+[[objects.properties]]
+name = "IsSelected"
+
+[[objects.properties]]
+name = "Tag"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "RatingControl"
+focus = true
+
+[[objects.properties]]
+name = "Caption"
+
+[[objects.properties]]
+name = "IsReadOnly"
+
+[[objects.properties]]
+name = "MaxRating"
+coerces = "ValueChanged"
+feedback = "normalized"
+
+[[objects.properties]]
+name = "Value"
+adapter = "rating_value"
+controlled = "ValueChanged"
+feedback = "normalized"
+
+[[objects.events]]
+name = "ValueChanged"
+observes = "Value"
+
+[[objects]]
+name = "Expander"
+
+[[objects.properties]]
+name = "IsExpanded"
+controlled = "IsExpandedChanged"
+feedback = "exact"
+
+[[objects.properties]]
+name = "HorizontalContentAlignment"
+
+[[objects.properties]]
+name = "Resources"
+adapter = "resource_overrides"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "IsExpandedChanged"
+property_changed = true
+observes = "IsExpanded"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "ComboBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "IsEditable"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "ItemsSource"
+adapter = "inspectable_string_list"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects]]
+name = "Pivot"
+
+[[objects.properties]]
+name = "Title"
+adapter = "inspectable_string"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Items"
+allowed_objects = ["PivotItem"]
+item = "PivotItem"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects]]
+name = "PivotItem"
+
+[[objects.properties]]
+name = "Header"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "FlipView"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Items"
+identity = "Keyed"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects]]
+name = "SelectorBar"
+
+[[objects.relations]]
+name = "Items"
+identity = "Keyed"
+
+[[objects.events]]
+name = "SelectionChanged"
+field = "on_selected_text_changed"
+
+[objects.selection]
+relations = ["Items"]
+item = "SelectorBarItem"
+selected_property = "IsSelected"
+selected_item_property = "SelectedItem"
+event = "SelectionChanged"
+event_item_source = "Owner"
+payload_property = "Text"
+
+[[objects]]
+name = "SelectorBarItem"
+
+[[objects.properties]]
+name = "Text"
+
+[[objects.properties]]
+name = "IsSelected"
+
+[[objects.properties]]
+name = "Icon"
+adapter = "icon_element"
+
+[[objects]]
+name = "TabView"
+
+[[objects.properties]]
+name = "CanReorderTabs"
+
+[[objects.properties]]
+name = "IsAddTabButtonVisible"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "TabItems"
+identity = "Keyed"
+
+[[objects.events]]
+name = "AddTabButtonClick"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects.events]]
+name = "TabCloseRequested"
+field = "on_close_requested"
+payload = "Tab"
+payload_adapter = "item_tag"
+
+[[objects.events]]
+name = "TabItemsChanged"
+field = "on_reordered"
+adapter = "string_list"
+
+[[objects]]
+name = "TabViewItem"
+
+[[objects.properties]]
+name = "IsClosable"
+
+[[objects.properties]]
+name = "Header"
+adapter = "inspectable_string"
+
+[[objects.properties]]
+name = "Tag"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "TeachingTip"
+
+[[objects.properties]]
+name = "Title"
+
+[[objects.properties]]
+name = "Subtitle"
+
+[[objects.properties]]
+name = "IsOpen"
+
+[[objects.properties]]
+name = "IsLightDismissEnabled"
+
+[[objects.properties]]
+name = "PreferredPlacement"
+
+[[objects.properties]]
+name = "ActionButtonContent"
+adapter = "inspectable_string"
+
+[[objects.properties]]
+name = "CloseButtonContent"
+adapter = "inspectable_string"
+
+[[objects.events]]
+name = "Closed"
+
+[[objects.events]]
+name = "ActionButtonClick"
+
+[[objects]]
+name = "DropDownButton"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "CommandBar"
+
+[[objects.relations]]
+name = "PrimaryCommands"
+identity = "Keyed"
+
+[[objects.relations]]
+name = "SecondaryCommands"
+identity = "Keyed"
+
+[[objects]]
+name = "AppBarButton"
+enabled = true
+
+[[objects.properties]]
+name = "Label"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "Icon"
+adapter = "icon_element"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "AppBarSeparator"
+
+[[objects]]
+name = "MenuBar"
+
+[[objects.relations]]
+name = "Items"
+
+[[objects]]
+name = "MenuBarItem"
+
+[[objects.properties]]
+name = "Title"
+
+[[objects]]
+name = "SplitButton"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects.events]]
+name = "Click"
+
+[[objects]]
+name = "ColorPicker"
+enabled = true
+
+[[objects.properties]]
+name = "Color"
+adapter = "native_color"
+controlled = "ColorChanged"
+feedback = "exact"
+
+[[objects.properties]]
+name = "IsAlphaEnabled"
+
+[[objects.properties]]
+name = "IsHexInputVisible"
+
+[[objects.properties]]
+name = "IsColorSliderVisible"
+
+[[objects.properties]]
+name = "IsColorChannelTextInputVisible"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.events]]
+name = "ColorChanged"
+observes = "Color"
+payload = "NewColor"
+payload_adapter = "native_color"
+
+[[objects]]
+name = "DatePicker"
+enabled = true
+
+[[objects.properties]]
+name = "DayVisible"
+
+[[objects.properties]]
+name = "MonthVisible"
+
+[[objects.properties]]
+name = "YearVisible"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "SelectedDateChanged"
+field = "on_date_changed"
+payload = "NewDate"
+payload_adapter = "optional_datetime"
+
+[[objects]]
+name = "TimePicker"
+enabled = true
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.properties]]
+name = "MinuteIncrement"
+validation = "zero_to_fifty_nine"
+
+[[objects.properties]]
+name = "ClockIdentifier"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "SelectedTimeChanged"
+field = "on_time_changed"
+payload = "NewTime"
+payload_adapter = "optional_timespan"
+
+[[objects]]
+name = "CalendarDatePicker"
+enabled = true
+
+[[objects.properties]]
+name = "MinDate"
+adapter = "datetime"
+
+[[objects.properties]]
+name = "MaxDate"
+adapter = "datetime"
+
+[[objects.properties]]
+name = "Date"
+adapter = "optional_datetime"
+controlled = "DateChanged"
+feedback = "normalized"
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "IsTodayHighlighted"
+
+[[objects.properties]]
+name = "IsCalendarOpen"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects.events]]
+name = "DateChanged"
+observes = "Date"
+payload = "NewDate"
+payload_adapter = "optional_datetime"
+
+[[objects]]
+name = "ToolTip"
+tooltip_attachment = true
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "ContentDialog"
+content_dialog_attachment = true
+
+[[objects.events]]
+name = "Closed"
+payload = "Result"
+payload_adapter = "content_dialog_result"
+
+[[objects.properties]]
+name = "PrimaryButtonText"
+
+[[objects.properties]]
+name = "SecondaryButtonText"
+
+[[objects.properties]]
+name = "CloseButtonText"
+
+[[objects.properties]]
+name = "IsPrimaryButtonEnabled"
+
+[[objects.properties]]
+name = "IsSecondaryButtonEnabled"
+
+[[objects.properties]]
+name = "Title"
+adapter = "inspectable_string"
+
+[[objects.properties]]
+name = "DefaultButton"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "CalendarView"
+enabled = true
+
+[[objects.properties]]
+name = "IsTodayHighlighted"
+
+[[objects.properties]]
+name = "IsGroupLabelVisible"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.events]]
+name = "SelectedDatesChanged"
+
+[[objects]]
+name = "ListViewItem"
+enabled = true
+
+[[objects.properties]]
+name = "Tag"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "GridView"
+enabled = true
+
+[[objects.properties]]
+name = "CanDragItems"
+
+[[objects.properties]]
+name = "CanReorderItems"
+
+[[objects.properties]]
+name = "AllowDrop"
+
+[[objects.properties]]
+name = "SelectedIndex"
+adapter = "selection_index"
+controlled = "SelectionChanged"
+feedback = "exact"
+
+[[objects.relations]]
+name = "Items"
+identity = "Keyed"
+
+[[objects.events]]
+name = "SelectionChanged"
+observes = "SelectedIndex"
+
+[[objects.events]]
+name = "DragItemsCompleted"
+field = "on_reordered"
+adapter = "string_list"
+
+[[objects]]
+name = "GridViewItem"
+enabled = true
+
+[[objects.properties]]
+name = "Tag"
+adapter = "inspectable_string"
+
+[[objects.relations]]
+name = "Content"
+
+[[objects]]
+name = "RelativePanel"
+
+[[objects.relations]]
+name = "Children"
+
+[[objects]]
+name = "RichEditBox"
+enabled = true
+focus = true
+
+[[objects.properties]]
+name = "Document"
+adapter = "rich_edit_text"
+controlled = "TextChanged"
+feedback = "deferred_exact"
+
+[[objects.events]]
+name = "TextChanged"
+observes = "Document"
+
+[[objects.properties]]
+name = "PlaceholderText"
+
+[[objects.properties]]
+name = "IsReadOnly"
+
+[[objects.properties]]
+name = "IsEnabled"
+
+[[objects.relations]]
+name = "Header"
+
+[[objects]]
+name = "RichTextBlock"
+
+[[objects.properties]]
+name = "Blocks"
+method = "paragraphs"
+adapter = "rich_text_blocks"
+
+[[objects.properties]]
+name = "IsTextSelectionEnabled"
+
+[[objects.properties]]
+name = "TextWrapping"
+
+[[objects.properties]]
+name = "FontSize"
+validation = "finite_positive"
+
+[[objects]]
+name = "WebView2"
+reference = true
+
+[[objects]]
+name = "SwapChainPanel"
+reference = true

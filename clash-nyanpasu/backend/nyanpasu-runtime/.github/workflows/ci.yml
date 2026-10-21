@@ -54,6 +54,12 @@ jobs:
         run: |
           cargo test -p nyanpasu-jobs --all-features --locked
           cargo test -p nyanpasu-jobs --no-default-features --locked
+      - name: Direct map derives and connection decoding
+        run: |
+          cargo test -p nyanpasu-serde-derive --locked
+          cargo test -p nyanpasu-serde --all-features --locked
+          cargo test -p nyanpasu-serde --no-default-features --locked
+          cargo test -p clash-api --test connections_decode --locked
       - name: Run linters
         uses: wearerequired/lint-action@master
         with:

@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
 import { useCrossNavigate } from '@/components/router/use-cross-navigate'
@@ -7,29 +8,38 @@ import {
   useMatchRoute,
   useNavigate,
 } from '@tanstack/react-router'
-import { trafficSearchSchema } from './_modules/search'
-import { TRAFFIC_PAGES } from './_modules/traffic-context'
+import { trafficSearchSchema, type TrafficSearch } from './_modules/search'
+import { RANKINGS, TRAFFIC_PAGES } from './_modules/traffic-context'
 import TrafficLayout from './_modules/traffic-layout'
 
 export const Route = createFileRoute('/(main)/main/topology')({
   component: RouteComponent,
   validateSearch: trafficSearchSchema,
   beforeLoad: ({ location, search }) => {
-    // Existing shared map/flow URLs open their new child route.
+    // Existing shared URLs choose a child route through their view.
+    const { view } = search
     if (
-      location.pathname.replace(/\/$/, '') === '/main/topology' &&
-      search.view &&
-      search.view !== 'overview'
+      location.pathname.replace(/\/$/, '') !== '/main/topology' ||
+      !view ||
+      view === 'overview'
     ) {
-      const page = TRAFFIC_PAGES.find((page) => page.view === search.view)!
-      throw redirect({
-        from: '/main/topology',
-        to: page.to,
-        search: { ...search, view: undefined },
-        state: keepReturn,
-        replace: true,
-      })
+      return
     }
+    const ranking = RANKINGS.find(({ dimension }) => dimension === view)
+    throw redirect({
+      from: '/main/topology',
+      ...(ranking
+        ? {
+            to: '/main/topology/$dimension',
+            params: { dimension: ranking.dimension },
+          }
+        : {
+            to: view === 'flow' ? '/main/topology/flow' : '/main/topology/map',
+          }),
+      search: { ...search, view: undefined },
+      state: keepReturn,
+      replace: true,
+    })
   },
 })
 
@@ -39,29 +49,48 @@ function RouteComponent() {
   const matchRoute = useMatchRoute()
   const crossNavigate = useCrossNavigate()
   const page =
-    TRAFFIC_PAGES.find(({ to }) =>
-      matchRoute({ to, fuzzy: false, includeSearch: false }),
+    TRAFFIC_PAGES.find((item) =>
+      matchRoute({
+        to: item.to,
+        params: 'params' in item ? item.params : undefined,
+        fuzzy: false,
+        includeSearch: false,
+      }),
     ) ?? TRAFFIC_PAGES[0]
   const { scope, range, filters } = search
+
+  // Stable, so switching between the pages leaves the page context alone.
+  const handleSearchChange = useCallback(
+    (update: Partial<TrafficSearch>) =>
+      navigate({
+        // The current child page, whichever it is.
+        to: '.',
+        search: (previous: TrafficSearch) => ({
+          ...previous,
+          ...update,
+          view: undefined,
+        }),
+        state: keepReturn,
+      }),
+    [navigate],
+  )
+  const handleViewConnections = useCallback(
+    () =>
+      crossNavigate({
+        from: 'traffic',
+        to: { to: '/main/connections', search: { scope, range, filters } },
+      }),
+    [crossNavigate, scope, range, filters],
+  )
+  const toolbarStart = useMemo(() => <ReturnButton />, [])
 
   return (
     <TrafficLayout
       view={page.view}
       search={search}
-      onSearchChange={(update) =>
-        navigate({
-          to: page.to,
-          search: (previous) => ({ ...previous, ...update, view: undefined }),
-          state: keepReturn,
-        })
-      }
-      onViewConnections={() =>
-        crossNavigate({
-          from: 'traffic',
-          to: { to: '/main/connections', search: { scope, range, filters } },
-        })
-      }
-      toolbarStart={<ReturnButton />}
+      onSearchChange={handleSearchChange}
+      onViewConnections={handleViewConnections}
+      toolbarStart={toolbarStart}
     />
   )
 }

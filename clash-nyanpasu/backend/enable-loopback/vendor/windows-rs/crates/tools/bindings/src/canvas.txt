@@ -1,0 +1,104 @@
+--out crates/libs/canvas/src/bindings.rs
+--flat --minimal --dead-code
+
+--filter
+    D2DERR_RECREATE_TARGET
+    E_INVALIDARG
+    E_FAIL
+    GENERIC_READ
+    CLSID_D2D1Shadow
+    D2D1_ALPHA_MODE_PREMULTIPLIED
+    D2D1_ALPHA_MODE_IGNORE
+    D2D1_BEZIER_SEGMENT
+    D2D1_FIGURE_BEGIN_FILLED
+    D2D1_FIGURE_BEGIN_HOLLOW
+    D2D1_FIGURE_END_CLOSED
+    D2D1_FIGURE_END_OPEN
+    D2D1_GRADIENT_STOP
+    ID2D1SimplifiedGeometrySink::{BeginFigure, EndFigure, Close}
+    D2D1_BITMAP_OPTIONS_CANNOT_DRAW
+    D2D1_BITMAP_OPTIONS_CPU_READ
+    D2D1_BITMAP_OPTIONS_TARGET
+    D2D1_BITMAP_PROPERTIES1
+    D2D1_CAP_STYLE_FLAT
+    D2D1_CAP_STYLE_ROUND
+    D2D1_CAP_STYLE_SQUARE
+    D2D1_CAP_STYLE_TRIANGLE
+    D2D1_DASH_STYLE_DASH
+    D2D1_DASH_STYLE_DASH_DOT
+    D2D1_DASH_STYLE_DOT
+    D2D1_DASH_STYLE_SOLID
+    D2D1_DEVICE_CONTEXT_OPTIONS_NONE
+    D2D1_DRAW_TEXT_OPTIONS_NONE
+    D2D1_ELLIPSE
+    D2D1_EXTEND_MODE_CLAMP
+    D2D1_FACTORY_TYPE_SINGLE_THREADED
+    D2D1_GAMMA_2_2
+    D2D1_INTERPOLATION_MODE_LINEAR
+    D2D1_LINE_JOIN_BEVEL
+    D2D1_LINE_JOIN_MITER
+    D2D1_LINE_JOIN_ROUND
+    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES
+    D2D1_MAP_OPTIONS_READ
+    D2D1_MAPPED_RECT
+    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES
+    D2D1_ROUNDED_RECT
+    D2D1CreateFactory
+    ID2D1Bitmap::{GetSize, CopyFromBitmap}
+    ID2D1Bitmap1::{Map, Unmap}
+    ID2D1Device::CreateDeviceContext
+    ID2D1DeviceContext::{CreateBitmap, CreateBitmapFromDxgiSurface, CreateBitmapFromWicBitmap, CreateEffect, SetTarget, GetTarget, DrawBitmap, DrawImage}
+    ID2D1Effect::{SetInput, GetOutput}
+    ID2D1Factory1::{CreateDevice, CreateStrokeStyle}
+    ID2D1Factory1::CreatePathGeometry
+    ID2D1Geometry::{GetBounds, FillContainsPoint, StrokeContainsPoint}
+    ID2D1GeometrySink::{AddLine, AddBezier}
+    ID2D1PathGeometry::Open
+    ID2D1RenderTarget::{BeginDraw, EndDraw, Clear, DrawEllipse, FillEllipse, DrawLine, DrawRectangle, FillRectangle, DrawRoundedRectangle, FillRoundedRectangle, DrawText, DrawTextLayout, DrawGeometry, FillGeometry, CreateSolidColorBrush, CreateGradientStopCollection, CreateLinearGradientBrush, CreateRadialGradientBrush, GetTransform, SetTransform, SetDpi, GetDpi, GetPixelSize}
+    ID2D1SolidColorBrush::SetColor
+    D3D_DRIVER_TYPE_HARDWARE
+    D3D_DRIVER_TYPE_WARP
+    D3D_FEATURE_LEVEL_11_0
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT
+    D3D11_SDK_VERSION
+    D3D11CreateDevice
+    DWRITE_FACTORY_TYPE_SHARED
+    DWRITE_FONT_STRETCH_NORMAL
+    DWRITE_FONT_STYLE_NORMAL
+    DWRITE_PARAGRAPH_ALIGNMENT_CENTER
+    DWRITE_PARAGRAPH_ALIGNMENT_FAR
+    DWRITE_PARAGRAPH_ALIGNMENT_NEAR
+    DWRITE_TEXT_ALIGNMENT_CENTER
+    DWRITE_TEXT_ALIGNMENT_LEADING
+    DWRITE_TEXT_ALIGNMENT_TRAILING
+    DWRITE_WORD_WRAPPING_WRAP
+    DWRITE_WORD_WRAPPING_NO_WRAP
+    DWRITE_TEXT_METRICS
+    DWRITE_HIT_TEST_METRICS
+    DWriteCreateFactory
+    IDWriteFactory::{CreateTextFormat, CreateTextLayout}
+    IDWriteTextFormat::{SetTextAlignment, SetParagraphAlignment, SetWordWrapping}
+    IDWriteTextLayout::{GetMetrics, HitTestPoint, HitTestTextPosition, GetMaxWidth, GetMaxHeight, SetMaxWidth, SetMaxHeight}
+    DXGI_ALPHA_MODE_PREMULTIPLIED
+    DXGI_FORMAT_B8G8R8A8_UNORM
+    DXGI_FORMAT_UNKNOWN
+    DXGI_ERROR_DEVICE_HUNG
+    DXGI_ERROR_DEVICE_REMOVED
+    DXGI_ERROR_DEVICE_RESET
+    DXGI_ERROR_DRIVER_INTERNAL_ERROR
+    DXGI_SWAP_CHAIN_DESC1
+    DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL
+    DXGI_USAGE_RENDER_TARGET_OUTPUT
+    IDXGIDevice::GetAdapter
+    IDXGIFactory2::{CreateSwapChainForComposition, CreateSwapChainForHwnd}
+    IDXGIObject::GetParent
+    IDXGISwapChain::{Present, GetBuffer, ResizeBuffers}
+    IDXGISwapChain2::SetMatrixTransform
+    CLSID_WICImagingFactory
+    GUID_WICPixelFormat32bppPBGRA
+    IWICBitmapDecoder::GetFrame
+    IWICFormatConverter::Initialize
+    IWICImagingFactory::{CreateDecoderFromFilename, CreateFormatConverter}
+    WICBitmapDitherTypeNone
+    WICBitmapPaletteTypeMedianCut
+    WICDecodeMetadataCacheOnDemand

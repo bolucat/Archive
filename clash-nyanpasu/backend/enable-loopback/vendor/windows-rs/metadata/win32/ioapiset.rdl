@@ -1,0 +1,25 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[library("KERNEL32.dll")]
+        extern fn CancelIo(hFile: HANDLE) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn CancelIoEx(hFile: HANDLE, #[opt] lpOverlapped: LPOVERLAPPED) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn CancelSynchronousIo(hThread: HANDLE) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn CreateIoCompletionPort(FileHandle: HANDLE, #[opt] ExistingCompletionPort: HANDLE, CompletionKey: usize, NumberOfConcurrentThreads: u32) -> HANDLE;
+        #[library("KERNEL32.dll")]
+        extern fn DeviceIoControl(hDevice: HANDLE, dwIoControlCode: u32, #[size_param(3)] #[in] #[opt] lpInBuffer: *mut void, nInBufferSize: u32, #[size_param(5)] #[opt] lpOutBuffer: *mut void, nOutBufferSize: u32, #[out] #[opt] lpBytesReturned: LPDWORD, #[in] #[out] #[opt] lpOverlapped: LPOVERLAPPED) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn GetOverlappedResult(hFile: HANDLE, lpOverlapped: LPOVERLAPPED, #[out] lpNumberOfBytesTransferred: LPDWORD, bWait: BOOL) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn GetOverlappedResultEx(hFile: HANDLE, lpOverlapped: LPOVERLAPPED, #[out] lpNumberOfBytesTransferred: LPDWORD, dwMilliseconds: u32, bAlertable: BOOL) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn GetQueuedCompletionStatus(CompletionPort: HANDLE, #[out] lpNumberOfBytesTransferred: LPDWORD, #[out] lpCompletionKey: PULONG_PTR, lpOverlapped: *mut LPOVERLAPPED, dwMilliseconds: u32) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn GetQueuedCompletionStatusEx(CompletionPort: HANDLE, #[len_param(2)] #[out] lpCompletionPortEntries: LPOVERLAPPED_ENTRY, ulCount: u32, #[out] ulNumEntriesRemoved: PULONG, dwMilliseconds: u32, fAlertable: BOOL) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn PostQueuedCompletionStatus(CompletionPort: HANDLE, dwNumberOfBytesTransferred: u32, dwCompletionKey: usize, #[opt] lpOverlapped: LPOVERLAPPED) -> BOOL;
+    }
+}

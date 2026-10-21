@@ -1,0 +1,28 @@
+fn main() -> windows::core::Result<()> {
+    use windows::Win32::*;
+    use windows_window::{Window, run};
+
+    let _window = Window::new("Window Messages")
+        .on_message(|hwnd, message, wparam, lparam| match message as i32 {
+            WM_PAINT => {
+                println!("WM_PAINT");
+                unsafe { _ = ValidateRect(Some(hwnd as HWND), None) };
+                Some(0)
+            }
+            WM_LBUTTONDOWN => {
+                let x = (lparam & 0xffff) as i16;
+                let y = ((lparam >> 16) & 0xffff) as i16;
+                println!("WM_LBUTTONDOWN at ({x}, {y})");
+                Some(0)
+            }
+            WM_KEYDOWN => {
+                println!("WM_KEYDOWN, virtual key {}", wparam as u32);
+                Some(0)
+            }
+            _ => None,
+        })
+        .create()?;
+
+    run();
+    Ok(())
+}

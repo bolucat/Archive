@@ -1,0 +1,5 @@
+[submodule "vendor/windows-rs"]
+	path = vendor/windows-rs
+	url = https://github.com/libnyanpasu/windows-rs.git
+	branch = nyanpasu
+	shallow = true

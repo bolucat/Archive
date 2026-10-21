@@ -1,0 +1,15 @@
+windows_link::link!("kernel32.dll" "system" fn CloseHandle(hobject : HANDLE) -> BOOL);
+windows_link::link!("kernel32.dll" "system" fn CreateEventW(lpeventattributes : LPSECURITY_ATTRIBUTES, bmanualreset : BOOL, binitialstate : BOOL, lpname : PCWSTR) -> HANDLE);
+windows_link::link!("kernel32.dll" "system" fn SetEvent(hevent : HANDLE) -> BOOL);
+windows_link::link!("kernel32.dll" "system" fn WaitForSingleObject(hhandle : HANDLE, dwmilliseconds : u32) -> u32);
+pub type BOOL = i32;
+pub type HANDLE = *mut core::ffi::c_void;
+pub type LPSECURITY_ATTRIBUTES = *mut SECURITY_ATTRIBUTES;
+pub type PCWSTR = *const u16;
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct SECURITY_ATTRIBUTES {
+    pub nLength: u32,
+    pub lpSecurityDescriptor: *mut core::ffi::c_void,
+    pub bInheritHandle: BOOL,
+}

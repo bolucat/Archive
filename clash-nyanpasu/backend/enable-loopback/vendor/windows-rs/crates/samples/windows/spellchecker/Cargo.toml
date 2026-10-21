@@ -1,0 +1,18 @@
+[package]
+name = "windows-spellchecker"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "combaseapi",
+    "objbase",
+    "objidlbase",
+    "spellcheck",
+]
+
+[lints]
+workspace = true

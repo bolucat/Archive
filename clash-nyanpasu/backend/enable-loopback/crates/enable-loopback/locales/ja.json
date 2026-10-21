@@ -1,0 +1,103 @@
+{
+  "window": {
+    "title": "AppContainer ループバック除外ツール",
+    "explanation": "セキュリティと信頼性のため、Windows は UWP アプリからこのコンピューターへのネットワーク通信を制限しています。このツールでデバッグ用に制限を解除できます。",
+    "learn_more": "詳細情報",
+    "start_failed": "ウィンドウを開けませんでした。\n%{detail}"
+  },
+  "search": {
+    "placeholder": "アプリを検索",
+    "results": "%{count} 件が見つかりました",
+    "empty": "検索に一致するアプリはありません。"
+  },
+  "toolbar": {
+    "counter": "除外済み %{exempt} / %{total}",
+    "refresh": "更新",
+    "exempt_all": "すべて除外",
+    "exempt_none": "除外をすべて解除",
+    "exempt_results": "結果をすべて除外",
+    "exempt_none_results": "結果の除外を解除",
+    "save": "変更を保存"
+  },
+  "status": {
+    "ready": "準備完了",
+    "dirty": "「変更を保存」をクリックして適用してください。",
+    "exempt_all": "すべての AppContainer を除外する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_none": "すべての AppContainer の除外を解除する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_results": "検索結果をすべて除外する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_none_results": "検索結果の除外をすべて解除する予定です。「変更を保存」をクリックして適用してください。",
+    "orphan_removal": "保存すると %{count} 件の孤立したレコードが削除されます。",
+    "saved": "ループバック除外設定を更新しました。",
+    "not_saved_admin": "保存されていません。管理者権限が必要です。",
+    "not_saved": "保存されていません。",
+    "refreshing": "AppContainer 情報を更新しています…",
+    "refreshed": "%{time} に AppContainer 情報を更新しました。",
+    "load_failed": "AppContainer 情報を取得できませんでした [%{code}]",
+    "failed": "失敗：%{detail}"
+  },
+  "runtime": {
+    "title": "Windows App Runtime が必要です",
+    "missing": "このツールには %{architecture} 用の Windows App Runtime %{version} 以降が必要です。",
+    "install_from_store": "Microsoft Store からインストール",
+    "download_installer": "インストーラーをダウンロード",
+    "open_download_page": "ダウンロードページを開く",
+    "cancel": "キャンセル",
+    "installing": "Microsoft Store から Windows App Runtime をインストールしています。このウィンドウを閉じても、インストールはバックグラウンドで続行されます。",
+    "close": "閉じる",
+    "store_failed": "Microsoft Store で Windows App Runtime をインストールできませんでした: %{detail}",
+    "store_incomplete": "Microsoft Store の処理は完了しましたが、Windows App Runtime %{version} 以降はまだインストールされていません。"
+  },
+  "cli": {
+    "syntax": "構文：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：すべての AppContainer を除外。\n-none：除外リストを空にする。\n-allow NAME：名前に NAME を含む AppContainer を追加。\n-deny NAME：一致する除外を解除。* ですべて解除。\n大文字と小文字は区別しません。先頭の - または / は省略可能です。\nNAME には空白を含められます。* はすべてに一致します。\n言語：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：自動更新しない。-registry：レジストリから直接読み取る。",
+    "missing_name": "名前の一部を指定してください。* はすべてに一致します。",
+    "missing_language": "--lang の後に言語コードを指定してください。"
+  },
+  "placeholder": {
+    "display_name": "(表示名なし)",
+    "description": "(説明なし)",
+    "package": "(パッケージ名なし)",
+    "name": "(AC 名なし)",
+    "sid": "(AC SID なし)",
+    "users": "(ユーザー SID なし)",
+    "binaries": "(なし)"
+  },
+  "instance": {
+    "already_running": "このツールは既に実行中ですが、そのウィンドウに切り替えられません。",
+    "start_failed": "このツールは既に実行中のようです。\n%{detail}"
+  },
+  "column": {
+    "display_name": "表示名",
+    "description": "説明",
+    "package": "パッケージ",
+    "name": "AC 名",
+    "sid": "AC SID",
+    "users": "ユーザー",
+    "binaries": "実行ファイル",
+    "exempt": "ループバック除外：%{name}"
+  },
+  "dialog": {
+    "refresh_title": "変更を破棄しますか？",
+    "refresh_body": "変更が保存されていません。それでも更新しますか？",
+    "cancel": "キャンセル",
+    "ok": "OK",
+    "warning": "警告",
+    "fallback": "NetIsoEnumAppContainers で一覧を取得できません。\nエラーコード：%{code}\n\n代わりにレジストリを読み取ります。一部の情報は利用できません。",
+    "orphan_title": "孤立した除外設定が見つかりました",
+    "orphan_body": "以下の SID のループバック除外設定がありますが、対応する AppContainer が見つかりません。",
+    "keep_prompting": "このセッションでは他の孤立した設定についても通知する",
+    "error_title": "操作に失敗しました",
+    "firewall_title": "Windows ファイアウォールが無効です",
+    "firewall_body": "Windows ファイアウォールサービスが実行されていないようです。他社製のセキュリティソフトが無効化または置き換えた可能性があります。そのソフトでループバック通信を許可するか、Windows ファイアウォールを有効にしてください。\n\n%{detail}",
+    "load_failed": "このシステムの AppContainer 一覧を取得できません。\n\n%{detail}",
+    "admin_title": "変更は保存されませんでした",
+    "admin_body": "AppContainer の構成を変更するには、このツールを管理者として実行してください。",
+    "save_title": "設定の保存に失敗しました",
+    "close_title": "保存せずに終了しますか？",
+    "close_body": "変更が保存されていません。それでも終了しますか？",
+    "exit": "終了"
+  },
+  "menu": {
+    "copy_rows": "選択した行をコピー",
+    "copy_column": "選択した列をコピー"
+  }
+}

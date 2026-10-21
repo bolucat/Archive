@@ -1,0 +1,10 @@
+--out crates/libs/version/src/bindings.rs
+--flat --sys
+
+--filter
+    RtlGetVersion
+    OSVERSIONINFOEXW
+    VER_NT_WORKSTATION
+    RegGetValueA
+    HKEY_LOCAL_MACHINE
+    RRF_RT_REG_DWORD

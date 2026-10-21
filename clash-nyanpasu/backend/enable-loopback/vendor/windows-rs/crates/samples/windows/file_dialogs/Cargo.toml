@@ -1,0 +1,20 @@
+[package]
+name = "windows-file-dialogs"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+windows-core = { workspace = true }
+
+[dependencies.windows]
+workspace = true
+features = [
+    "combaseapi",
+    "shobjidl_core",
+    "shtypes",
+    "windef",
+]
+
+[lints]
+workspace = true

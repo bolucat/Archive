@@ -2,7 +2,10 @@ use serde_json::json;
 
 use super::support::*;
 use crate::{
-    clash::config::tun_stack::TunStack,
+    clash::config::{
+        overrides::{ManageableField, TunOverrides},
+        tun_stack::TunStack,
+    },
     profile::{Profiles, ScriptRuntime},
     runtime::{
         executor::{
@@ -35,6 +38,7 @@ pub fn base_inputs<'a>(
         whitelist_enabled: true,
         tun: TunParams {
             enable: false,
+            overrides: TunOverrides::default(),
             flavor: TunFlavor::Standard {
                 stack: TunStack::Gvisor,
             },
@@ -51,7 +55,8 @@ fn overrides() -> crate::clash::config::overrides::ClashGuardOverrides {
 
 #[test]
 fn selected_file_config_records_canonical_mainline() {
-    // §7.1：root → scoped → global → whitelist → guard → builtin-transform → finalizing
+    // §7.1：root → scoped → global → field filter → keep unmanaged → managed
+    // settings → defaults → builtin-transform → include-all
     let profiles = profiles_with(
         Some("sub-a"),
         &["global-fix"],
@@ -104,36 +109,44 @@ fn selected_file_config_records_canonical_mainline() {
     assert!(matches!(
         tags[3],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::WhitelistFieldFilter,
+            step: BuiltinStepKind::FieldFilter,
             ..
         }
     ));
     assert!(matches!(
         tags[4],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::GuardOverrides,
+            step: BuiltinStepKind::KeepUnmanaged,
             ..
         }
     ));
     assert!(matches!(
         tags[5],
-        OperatorTag::BuiltinTransform { step_index: 0, .. }
+        OperatorTag::BuiltinStep {
+            step: BuiltinStepKind::ManagedSettings,
+            ..
+        }
     ));
     assert!(matches!(
         tags[6],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::IncludeAllExpansion,
+            step: BuiltinStepKind::Defaults,
             ..
         }
     ));
     assert!(matches!(
         tags[7],
+        OperatorTag::BuiltinTransform { step_index: 0, .. }
+    ));
+    assert!(matches!(
+        tags[8],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::Finalizing,
+            step: BuiltinStepKind::IncludeAllExpansion,
             ..
         }
     ));
-    assert_eq!(artifact.graph.nodes.len(), 8);
+    assert_eq!(artifact.graph.nodes.len(), 9);
+    assert_eq!(artifact.final_node, 8);
 
     // 语义断言：scoped + global 追加都生效，guard 覆盖 mode。
     let config = artifact.final_config.to_json();
@@ -281,7 +294,7 @@ fn bare_target_reuses_shared_tail_with_none_selected() {
         tags[2],
         OperatorTag::BuiltinStep {
             selected_profile_id: None,
-            step: BuiltinStepKind::WhitelistFieldFilter
+            step: BuiltinStepKind::FieldFilter
         }
     ));
 
@@ -416,6 +429,48 @@ fn unfiltered_profile_cannot_open_managed_proxy_ports() {
     assert_eq!(configured["socks-port"], json!(7893));
 }
 
+/// An unmanaged `auto-route` keeps the profile's value even where the field
+/// filter drops the rest of `tun`, while the TUN switch stays forced.
+#[test]
+fn unmanaged_auto_route_survives_field_filtering_while_tun_enable_stays_forced() {
+    for valid_fields in [vec![], vec!["tun"]] {
+        let profiles = profiles_with(
+            Some("sub-a"),
+            &[],
+            &valid_fields,
+            vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+        );
+        let content = MapContentSource::from_pairs(&[(
+            "sub-a.yaml",
+            "tun: { enable: false, auto-route: global, mtu: 1400 }\n",
+        )]);
+        let ov = overrides();
+        let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+        inputs.tun.overrides.auto_route = ManageableField::Unmanaged;
+        for whitelist_enabled in [false, true] {
+            inputs.whitelist_enabled = whitelist_enabled;
+            for enabled in [false, true] {
+                inputs.tun.enable = enabled;
+                let config = execute(&inputs, &content, &FakeScriptRunner::default())
+                    .unwrap()
+                    .final_config
+                    .to_json();
+                if !whitelist_enabled || valid_fields.contains(&"tun") {
+                    assert_eq!(config["tun"]["auto-route"], json!("global"));
+                    assert_eq!(config["tun"]["mtu"], json!(1400));
+                    assert_eq!(config["tun"]["enable"], json!(enabled));
+                } else if enabled {
+                    assert_eq!(config["tun"]["auto-route"], json!("global"));
+                    assert!(config["tun"].get("mtu").is_none());
+                    assert_eq!(config["tun"]["enable"], json!(true));
+                } else {
+                    assert!(config.get("tun").is_none());
+                }
+            }
+        }
+    }
+}
+
 /// #5609: a global Merge owns `tcp-concurrent` and `unified-delay` once they
 /// are unmanaged; it sets one and leaves the other out.
 #[test]
@@ -444,4 +499,143 @@ fn global_merge_owns_unmanaged_guard_fields() {
     assert_eq!(config["tcp-concurrent"], json!(false));
     assert!(config.get("unified-delay").is_none());
     assert_eq!(config["mode"], json!("rule"));
+}
+
+/// With the field filter off, no filter step is recorded.
+#[test]
+fn the_field_filter_step_is_left_out_while_the_filter_is_off() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &[],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[("sub-a.yaml", "proxies: []\n")]);
+    let ov = overrides();
+    let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+    inputs.whitelist_enabled = false;
+    inputs.expand_include_all = false;
+
+    let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+    let steps: Vec<_> = artifact
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.tag {
+            OperatorTag::BuiltinStep { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        steps,
+        [BuiltinStepKind::ManagedSettings, BuiltinStepKind::Defaults]
+    );
+    assert_eq!(artifact.final_node as usize, artifact.graph.nodes.len() - 1);
+}
+
+/// The filter, managed settings and defaults steps record the patches they
+/// made instead of diffing. Replaying the graph must still rebuild the config
+/// the pipeline produced, key order included, whatever the settings.
+#[test]
+fn recorded_patches_replay_into_the_built_config() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &["dns"],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[(
+        "sub-a.yaml",
+        "port: 7890\nmode: global\ntun: { enable: true, stack: system, auto-route: false }\n\
+         custom-unknown: 1\ndns: { enable: false, nameserver: [1.1.1.1] }\nproxies: []\n\
+         profile: { store-selected: false }\nrules: []\n",
+    )]);
+    let ov = overrides();
+    for whitelist_enabled in [false, true] {
+        for tun in [false, true] {
+            for port in [None, Some(7892)] {
+                let mut inputs =
+                    base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+                inputs.whitelist_enabled = whitelist_enabled;
+                inputs.tun.enable = tun;
+                inputs.tun.windows_fake_ip_filter = tun;
+                inputs.guard.ports.port = port;
+
+                let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+                let case = format!("filter {whitelist_enabled}, tun {tun}, port {port:?}");
+                assert_eq!(
+                    serde_json::to_string(&artifact.graph.restore(artifact.final_node).unwrap())
+                        .unwrap(),
+                    serde_json::to_string(&artifact.final_config.to_json()).unwrap(),
+                    "{case}"
+                );
+                crate::runtime::snapshot::assert_restore_matches_materialize(&artifact.graph);
+            }
+        }
+    }
+}
+
+/// #5791: a field left to the profiles keeps their value even where the
+/// field filter does not allow its key, so one setting is enough. The keep
+/// step records just that key.
+#[test]
+fn unmanaged_fields_keep_the_profile_value_the_filter_drops() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &[],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[(
+        "sub-a.yaml",
+        "unified-delay: false\ntcp-concurrent: false\ncustom-unknown: 1\nproxies: []\n",
+    )]);
+    let unmanaged = super::builtin::unmanaged_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("sub-a")),
+        &unmanaged,
+        &[],
+    );
+
+    let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+    let config = artifact.final_config.to_json();
+    assert_eq!(config["unified-delay"], json!(false));
+    assert_eq!(config["tcp-concurrent"], json!(false));
+    assert!(config.get("custom-unknown").is_none());
+    let kept = artifact
+        .graph
+        .nodes
+        .iter()
+        .find(|node| {
+            matches!(
+                node.tag,
+                OperatorTag::BuiltinStep {
+                    step: BuiltinStepKind::KeepUnmanaged,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    let mut fields: Vec<_> = kept.changed_fields.iter().flatten().cloned().collect();
+    fields.sort();
+    assert_eq!(fields, ["tcp-concurrent", "unified-delay"]);
+
+    // Managed, the same keys are forced instead.
+    let managed = overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("sub-a")),
+        &managed,
+        &[],
+    );
+    let config = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap()
+        .final_config
+        .to_json();
+    assert_eq!(config["unified-delay"], json!(true));
+    assert_eq!(config["tcp-concurrent"], json!(true));
 }

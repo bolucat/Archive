@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+          targets: ${{ matrix.target }}
+      - name: Check the tag matches the crate version
+        shell: bash
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "enable-loopback") | .version')
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME does not match crate version $version"; exit 1; }
+      - run: cargo build --release --locked --target ${{ matrix.target }} -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
+      - name: Name the asset and its checksum
+        shell: bash
+        run: |
+          asset="enableLoopback-${{ matrix.target }}.exe"
+          cp "target/${{ matrix.target }}/release/enableLoopback.exe" "$asset"
+          # Git Bash on Windows prints "<hash> *<file>"; write the text-mode form the app verifies.
+          printf '%s  %s\n' "$(sha256sum "$asset" | cut -d ' ' -f 1)" "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            enableLoopback-${{ matrix.target }}.exe
+            enableLoopback-${{ matrix.target }}.exe.sha256

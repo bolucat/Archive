@@ -1,0 +1,19 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[library("KERNEL32.dll")]
+        extern fn Beep(dwFreq: u32, dwDuration: u32) -> BOOL;
+        #[library("KERNEL32.dll")]
+        extern fn DecodePointer(#[in] #[opt] Ptr: *mut void) -> *mut void;
+        #[library("KernelBase.dll")]
+        extern fn DecodeRemotePointer(ProcessHandle: HANDLE, #[in] #[opt] Ptr: *mut void, DecodedPtr: *mut *mut void) -> HRESULT;
+        #[library("KERNEL32.dll")]
+        extern fn DecodeSystemPointer(#[in] #[opt] Ptr: *mut void) -> *mut void;
+        #[library("KERNEL32.dll")]
+        extern fn EncodePointer(#[in] #[opt] Ptr: *mut void) -> *mut void;
+        #[library("KernelBase.dll")]
+        extern fn EncodeRemotePointer(ProcessHandle: HANDLE, #[in] #[opt] Ptr: *mut void, EncodedPtr: *mut *mut void) -> HRESULT;
+        #[library("KERNEL32.dll")]
+        extern fn EncodeSystemPointer(#[in] #[opt] Ptr: *mut void) -> *mut void;
+    }
+}

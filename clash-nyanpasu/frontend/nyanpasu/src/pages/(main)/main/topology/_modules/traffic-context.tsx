@@ -17,36 +17,32 @@ import type {
 } from '@nyanpasu/rpc/types'
 import type { TrafficSearch } from './search'
 
+// By how often a dimension answers "what uses the traffic" on a desktop.
 export const RANKINGS = [
   {
-    dimension: 'source',
-    to: '/main/topology/source',
-    icon: DevicesRounded,
-    title: m.traffic_rank_source,
-  },
-  {
-    dimension: 'inbound',
-    to: '/main/topology/inbound',
-    icon: LoginRounded,
-    title: m.traffic_rank_inbound,
+    dimension: 'process',
+    icon: AppsRounded,
+    title: m.traffic_rank_process,
   },
   {
     dimension: 'target',
-    to: '/main/topology/target',
     icon: DnsRounded,
     title: m.traffic_rank_target,
   },
   {
     dimension: 'exit',
-    to: '/main/topology/exit',
     icon: CallSplitRounded,
     title: m.traffic_rank_exit,
   },
   {
-    dimension: 'process',
-    to: '/main/topology/process',
-    icon: AppsRounded,
-    title: m.traffic_rank_process,
+    dimension: 'source',
+    icon: DevicesRounded,
+    title: m.traffic_rank_source,
+  },
+  {
+    dimension: 'inbound',
+    icon: LoginRounded,
+    title: m.traffic_rank_inbound,
   },
 ] as const
 
@@ -73,13 +69,17 @@ export const TRAFFIC_PAGES = [
     title: m.traffic_overview,
   },
   ...ANALYSIS_VIEWS,
-  ...RANKINGS.map(({ dimension, to, icon }) => ({
+  // Each dimension's full listing has its own entry.
+  ...RANKINGS.map(({ dimension, icon }) => ({
     view: dimension,
-    to,
+    to: '/main/topology/$dimension' as const,
+    params: { dimension },
     icon,
     title: () => dimensionName(dimension),
   })),
 ] as const
+
+export type RankingDimension = (typeof RANKINGS)[number]['dimension']
 
 export type TrafficView = (typeof TRAFFIC_PAGES)[number]['view']
 

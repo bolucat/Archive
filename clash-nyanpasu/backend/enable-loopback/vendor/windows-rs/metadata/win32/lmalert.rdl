@@ -1,0 +1,68 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        struct ADMIN_OTHER_INFO {
+            alrtad_errcode: u32,
+            alrtad_numstrings: u32,
+        }
+        #[encoding("utf-16")]
+        const ALERTER_MAILSLOT: String = "\\\\.\\MAILSLOT\\Alerter";
+        #[encoding("utf-16")]
+        const ALERT_ADMIN_EVENT: String = "ADMIN";
+        #[encoding("utf-16")]
+        const ALERT_ERRORLOG_EVENT: String = "ERRORLOG";
+        #[encoding("utf-16")]
+        const ALERT_MESSAGE_EVENT: String = "MESSAGE";
+        #[encoding("utf-16")]
+        const ALERT_PRINT_EVENT: String = "PRINTING";
+        #[encoding("utf-16")]
+        const ALERT_USER_EVENT: String = "USER";
+        struct ERRLOG_OTHER_INFO {
+            alrter_errcode: u32,
+            alrter_offset: u32,
+        }
+        type LPADMIN_OTHER_INFO = *mut ADMIN_OTHER_INFO;
+        type LPERRLOG_OTHER_INFO = *mut ERRLOG_OTHER_INFO;
+        type LPPRINT_OTHER_INFO = *mut PRINT_OTHER_INFO;
+        type LPSTD_ALERT = *mut STD_ALERT;
+        type LPUSER_OTHER_INFO = *mut USER_OTHER_INFO;
+        #[library("NETAPI32.dll")]
+        extern fn NetAlertRaise(AlertType: PCWSTR, #[in] Buffer: *mut void, BufferSize: u32) -> u32;
+        #[library("NETAPI32.dll")]
+        extern fn NetAlertRaiseEx(AlertType: PCWSTR, #[in] VariableInfo: *mut void, VariableInfoSize: u32, ServiceName: PCWSTR) -> u32;
+        type PADMIN_OTHER_INFO = *mut ADMIN_OTHER_INFO;
+        type PERRLOG_OTHER_INFO = *mut ERRLOG_OTHER_INFO;
+        type PPRINT_OTHER_INFO = *mut PRINT_OTHER_INFO;
+        struct PRINT_OTHER_INFO {
+            alrtpr_jobid: u32,
+            alrtpr_status: u32,
+            alrtpr_submitted: u32,
+            alrtpr_size: u32,
+        }
+        const PRJOB_COMPLETE: i32 = 4;
+        const PRJOB_DELETED: i32 = 32768;
+        const PRJOB_DESTNOPAPER: i32 = 256;
+        const PRJOB_DESTOFFLINE: i32 = 32;
+        const PRJOB_DESTPAUSED: i32 = 64;
+        const PRJOB_DEVSTATUS: i32 = 508;
+        const PRJOB_ERROR: i32 = 16;
+        const PRJOB_INTERV: i32 = 8;
+        const PRJOB_NOTIFY: i32 = 128;
+        const PRJOB_QSTATUS: i32 = 3;
+        const PRJOB_QS_PAUSED: i32 = 1;
+        const PRJOB_QS_PRINTING: i32 = 3;
+        const PRJOB_QS_QUEUED: i32 = 0;
+        const PRJOB_QS_SPOOLING: i32 = 2;
+        type PSTD_ALERT = *mut STD_ALERT;
+        type PUSER_OTHER_INFO = *mut USER_OTHER_INFO;
+        struct STD_ALERT {
+            alrt_timestamp: u32,
+            alrt_eventname: [u16; 17],
+            alrt_servicename: [u16; 81],
+        }
+        struct USER_OTHER_INFO {
+            alrtus_errcode: u32,
+            alrtus_numstrings: u32,
+        }
+    }
+}

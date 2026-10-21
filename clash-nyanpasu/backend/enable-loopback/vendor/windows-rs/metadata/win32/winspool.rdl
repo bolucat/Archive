@@ -1,0 +1,1748 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        type ADDJOB_INFO_1 = ADDJOB_INFO_1A;
+        struct ADDJOB_INFO_1A {
+            Path: PSTR,
+            JobId: u32,
+        }
+        struct ADDJOB_INFO_1W {
+            Path: PWSTR,
+            JobId: u32,
+        }
+        const APD_COPY_ALL_FILES: i32 = 4;
+        const APD_COPY_FROM_DIRECTORY: i32 = 16;
+        const APD_COPY_NEW_FILES: i32 = 8;
+        const APD_STRICT_DOWNGRADE: i32 = 2;
+        const APD_STRICT_UPGRADE: i32 = 1;
+        #[library("WINSPOOL.DRV")]
+        extern fn AbortPrinter(hPrinter: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddFormA(hPrinter: HANDLE, Level: u32, pForm: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddFormW(hPrinter: HANDLE, Level: u32, pForm: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddJobA(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pData: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddJobW(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pData: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddMonitorA(#[opt] pName: PCSTR, Level: u32, #[opt] pMonitors: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddMonitorW(#[opt] pName: PCWSTR, Level: u32, #[opt] pMonitors: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPortA(#[opt] pName: PCSTR, hWnd: HWND, pMonitorName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPortW(#[opt] pName: PCWSTR, hWnd: HWND, pMonitorName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrintProcessorA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pPathName: PCSTR, pPrintProcessorName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrintProcessorW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pPathName: PCWSTR, pPrintProcessorName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrintProvidorA(#[opt] pName: PCSTR, Level: u32, pProvidorInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrintProvidorW(#[opt] pName: PCWSTR, Level: u32, pProvidorInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterA(#[opt] pName: PCSTR, Level: u32, pPrinter: LPBYTE) -> HANDLE;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterConnection2A(#[opt] hWnd: HWND, pszName: PCSTR, dwLevel: u32, #[in] pConnectionInfo: *mut void) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterConnection2W(#[opt] hWnd: HWND, pszName: PCWSTR, dwLevel: u32, #[in] pConnectionInfo: *mut void) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterConnectionA(pName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterConnectionW(pName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterDriverA(#[opt] pName: PCSTR, Level: u32, pDriverInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterDriverExA(#[opt] pName: PCSTR, Level: u32, lpbDriverInfo: PBYTE, dwFileCopyFlags: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterDriverExW(#[opt] pName: PCWSTR, Level: u32, lpbDriverInfo: PBYTE, dwFileCopyFlags: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterDriverW(#[opt] pName: PCWSTR, Level: u32, pDriverInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn AddPrinterW(#[opt] pName: PCWSTR, Level: u32, pPrinter: LPBYTE) -> HANDLE;
+        #[library("WINSPOOL.DRV")]
+        extern fn AdvancedDocumentPropertiesA(hWnd: HWND, hPrinter: HANDLE, pDeviceName: PCSTR, #[in] #[out] #[opt] pDevModeOutput: PDEVMODEA, #[opt] pDevModeInput: PDEVMODEA) -> i32;
+        #[library("WINSPOOL.DRV")]
+        extern fn AdvancedDocumentPropertiesW(hWnd: HWND, hPrinter: HANDLE, pDeviceName: PCWSTR, #[in] #[out] #[opt] pDevModeOutput: PDEVMODEW, #[opt] pDevModeInput: PDEVMODEW) -> i32;
+        const BIDI_ACCESS_ADMINISTRATOR: i32 = 1;
+        const BIDI_ACCESS_USER: i32 = 2;
+        #[encoding("utf-16")]
+        const BIDI_ACTION_ENUM_SCHEMA: String = "EnumSchema";
+        #[encoding("utf-16")]
+        const BIDI_ACTION_GET: String = "Get";
+        #[encoding("utf-16")]
+        const BIDI_ACTION_GET_ALL: String = "GetAll";
+        #[encoding("utf-16")]
+        const BIDI_ACTION_GET_WITH_ARGUMENT: String = "GetWithArgument";
+        #[encoding("utf-16")]
+        const BIDI_ACTION_SET: String = "Set";
+        struct BIDI_DATA {
+            dwBidiType: u32,
+            u: union {
+                bData: BOOL,
+                iData: i32,
+                sData: PWSTR,
+                fData: f32,
+                biData: BINARY_CONTAINER,
+            },
+        }
+        struct BIDI_REQUEST_CONTAINER {
+            Version: u32,
+            Flags: u32,
+            Count: u32,
+            aData: [BIDI_REQUEST_DATA; 1],
+        }
+        struct BIDI_REQUEST_DATA {
+            dwReqNumber: u32,
+            pSchema: PWSTR,
+            data: BIDI_DATA,
+        }
+        struct BIDI_RESPONSE_CONTAINER {
+            Version: u32,
+            Flags: u32,
+            Count: u32,
+            aData: [BIDI_RESPONSE_DATA; 1],
+        }
+        struct BIDI_RESPONSE_DATA {
+            dwResult: u32,
+            dwReqNumber: u32,
+            pSchema: PWSTR,
+            data: BIDI_DATA,
+        }
+        #[repr(i32)]
+        enum BIDI_TYPE {
+            BIDI_NULL = 0,
+            BIDI_INT = 1,
+            BIDI_FLOAT = 2,
+            BIDI_BOOL = 3,
+            BIDI_STRING = 4,
+            BIDI_TEXT = 5,
+            BIDI_ENUM = 6,
+            BIDI_BLOB = 7,
+        }
+        struct BINARY_CONTAINER {
+            cbBuf: u32,
+            pData: LPBYTE,
+        }
+        type CORE_PRINTER_DRIVER = CORE_PRINTER_DRIVERA;
+        struct CORE_PRINTER_DRIVERA {
+            CoreDriverGUID: GUID,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            szPackageID: [i8; 260],
+        }
+        struct CORE_PRINTER_DRIVERW {
+            CoreDriverGUID: GUID,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            szPackageID: [u16; 260],
+        }
+        #[library("WINSPOOL.DRV")]
+        extern fn ClosePrinter(hPrinter: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn CloseSpoolFileHandle(hPrinter: HANDLE, hSpoolFile: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn CommitSpoolData(hPrinter: HANDLE, hSpoolFile: HANDLE, cbCommit: u32) -> HANDLE;
+        #[library("WINSPOOL.DRV")]
+        extern fn ConfigurePortA(#[opt] pName: PCSTR, hWnd: HWND, pPortName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn ConfigurePortW(#[opt] pName: PCWSTR, hWnd: HWND, pPortName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn ConnectToPrinterDlg(hwnd: HWND, Flags: u32) -> HANDLE;
+        #[library("WINSPOOL.DRV")]
+        extern fn CorePrinterDriverInstalledA(#[opt] pszServer: PCSTR, #[opt] pszEnvironment: PCSTR, CoreDriverGUID: GUID, ftDriverDate: FILETIME, dwlDriverVersion: DWORDLONG, pbDriverInstalled: *mut BOOL) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn CorePrinterDriverInstalledW(#[opt] pszServer: PCWSTR, #[opt] pszEnvironment: PCWSTR, CoreDriverGUID: GUID, ftDriverDate: FILETIME, dwlDriverVersion: DWORDLONG, pbDriverInstalled: *mut BOOL) -> HRESULT;
+        type DATATYPES_INFO_1 = DATATYPES_INFO_1A;
+        struct DATATYPES_INFO_1A {
+            pName: PSTR,
+        }
+        struct DATATYPES_INFO_1W {
+            pName: PWSTR,
+        }
+        const DEF_PRIORITY: i32 = 1;
+        const DI_CHANNEL: i32 = 1;
+        const DI_MEMORYMAP_WRITE: i32 = 1;
+        const DI_READ_SPOOL_JOB: i32 = 3;
+        type DOC_INFO_1 = DOC_INFO_1A;
+        struct DOC_INFO_1A {
+            pDocName: PSTR,
+            pOutputFile: PSTR,
+            pDatatype: PSTR,
+        }
+        struct DOC_INFO_1W {
+            pDocName: PWSTR,
+            pOutputFile: PWSTR,
+            pDatatype: PWSTR,
+        }
+        type DOC_INFO_2 = DOC_INFO_2A;
+        struct DOC_INFO_2A {
+            pDocName: PSTR,
+            pOutputFile: PSTR,
+            pDatatype: PSTR,
+            dwMode: u32,
+            JobId: u32,
+        }
+        struct DOC_INFO_2W {
+            pDocName: PWSTR,
+            pOutputFile: PWSTR,
+            pDatatype: PWSTR,
+            dwMode: u32,
+            JobId: u32,
+        }
+        type DOC_INFO_3 = DOC_INFO_3A;
+        struct DOC_INFO_3A {
+            pDocName: PSTR,
+            pOutputFile: PSTR,
+            pDatatype: PSTR,
+            dwFlags: u32,
+        }
+        struct DOC_INFO_3W {
+            pDocName: PWSTR,
+            pOutputFile: PWSTR,
+            pDatatype: PWSTR,
+            dwFlags: u32,
+        }
+        const DPD_DELETE_ALL_FILES: i32 = 4;
+        const DPD_DELETE_SPECIFIC_VERSION: i32 = 2;
+        const DPD_DELETE_UNUSED_FILES: i32 = 1;
+        type DRIVER_INFO_1 = DRIVER_INFO_1A;
+        struct DRIVER_INFO_1A {
+            pName: PSTR,
+        }
+        struct DRIVER_INFO_1W {
+            pName: PWSTR,
+        }
+        type DRIVER_INFO_2 = DRIVER_INFO_2A;
+        struct DRIVER_INFO_2A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+        }
+        struct DRIVER_INFO_2W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+        }
+        type DRIVER_INFO_3 = DRIVER_INFO_3A;
+        struct DRIVER_INFO_3A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+            pHelpFile: PSTR,
+            pDependentFiles: PSTR,
+            pMonitorName: PSTR,
+            pDefaultDataType: PSTR,
+        }
+        struct DRIVER_INFO_3W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+            pHelpFile: PWSTR,
+            pDependentFiles: PWSTR,
+            pMonitorName: PWSTR,
+            pDefaultDataType: PWSTR,
+        }
+        type DRIVER_INFO_4 = DRIVER_INFO_4A;
+        struct DRIVER_INFO_4A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+            pHelpFile: PSTR,
+            pDependentFiles: PSTR,
+            pMonitorName: PSTR,
+            pDefaultDataType: PSTR,
+            pszzPreviousNames: PSTR,
+        }
+        struct DRIVER_INFO_4W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+            pHelpFile: PWSTR,
+            pDependentFiles: PWSTR,
+            pMonitorName: PWSTR,
+            pDefaultDataType: PWSTR,
+            pszzPreviousNames: PWSTR,
+        }
+        type DRIVER_INFO_5 = DRIVER_INFO_5A;
+        struct DRIVER_INFO_5A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+            dwDriverAttributes: u32,
+            dwConfigVersion: u32,
+            dwDriverVersion: u32,
+        }
+        struct DRIVER_INFO_5W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+            dwDriverAttributes: u32,
+            dwConfigVersion: u32,
+            dwDriverVersion: u32,
+        }
+        type DRIVER_INFO_6 = DRIVER_INFO_6A;
+        struct DRIVER_INFO_6A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+            pHelpFile: PSTR,
+            pDependentFiles: PSTR,
+            pMonitorName: PSTR,
+            pDefaultDataType: PSTR,
+            pszzPreviousNames: PSTR,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            pszMfgName: PSTR,
+            pszOEMUrl: PSTR,
+            pszHardwareID: PSTR,
+            pszProvider: PSTR,
+        }
+        struct DRIVER_INFO_6W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+            pHelpFile: PWSTR,
+            pDependentFiles: PWSTR,
+            pMonitorName: PWSTR,
+            pDefaultDataType: PWSTR,
+            pszzPreviousNames: PWSTR,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            pszMfgName: PWSTR,
+            pszOEMUrl: PWSTR,
+            pszHardwareID: PWSTR,
+            pszProvider: PWSTR,
+        }
+        type DRIVER_INFO_8 = DRIVER_INFO_8A;
+        struct DRIVER_INFO_8A {
+            cVersion: u32,
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDriverPath: PSTR,
+            pDataFile: PSTR,
+            pConfigFile: PSTR,
+            pHelpFile: PSTR,
+            pDependentFiles: PSTR,
+            pMonitorName: PSTR,
+            pDefaultDataType: PSTR,
+            pszzPreviousNames: PSTR,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            pszMfgName: PSTR,
+            pszOEMUrl: PSTR,
+            pszHardwareID: PSTR,
+            pszProvider: PSTR,
+            pszPrintProcessor: PSTR,
+            pszVendorSetup: PSTR,
+            pszzColorProfiles: PSTR,
+            pszInfPath: PSTR,
+            dwPrinterDriverAttributes: u32,
+            pszzCoreDriverDependencies: PSTR,
+            ftMinInboxDriverVerDate: FILETIME,
+            dwlMinInboxDriverVerVersion: DWORDLONG,
+        }
+        struct DRIVER_INFO_8W {
+            cVersion: u32,
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDriverPath: PWSTR,
+            pDataFile: PWSTR,
+            pConfigFile: PWSTR,
+            pHelpFile: PWSTR,
+            pDependentFiles: PWSTR,
+            pMonitorName: PWSTR,
+            pDefaultDataType: PWSTR,
+            pszzPreviousNames: PWSTR,
+            ftDriverDate: FILETIME,
+            dwlDriverVersion: DWORDLONG,
+            pszMfgName: PWSTR,
+            pszOEMUrl: PWSTR,
+            pszHardwareID: PWSTR,
+            pszProvider: PWSTR,
+            pszPrintProcessor: PWSTR,
+            pszVendorSetup: PWSTR,
+            pszzColorProfiles: PWSTR,
+            pszInfPath: PWSTR,
+            dwPrinterDriverAttributes: u32,
+            pszzCoreDriverDependencies: PWSTR,
+            ftMinInboxDriverVerDate: FILETIME,
+            dwlMinInboxDriverVerVersion: DWORDLONG,
+        }
+        const DRIVER_KERNELMODE: i32 = 1;
+        const DRIVER_USERMODE: i32 = 2;
+        const DSPRINT_PENDING: u32 = 2147483648;
+        const DSPRINT_PUBLISH: i32 = 1;
+        const DSPRINT_REPUBLISH: i32 = 8;
+        const DSPRINT_UNPUBLISH: i32 = 4;
+        const DSPRINT_UPDATE: i32 = 2;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeleteFormA(hPrinter: HANDLE, pFormName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeleteFormW(hPrinter: HANDLE, pFormName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeleteJobNamedProperty(hPrinter: HANDLE, JobId: u32, pszName: PCWSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeleteMonitorA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pMonitorName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeleteMonitorW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pMonitorName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePortA(#[opt] pName: PCSTR, hWnd: HWND, pPortName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePortW(#[opt] pName: PCWSTR, hWnd: HWND, pPortName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrintProcessorA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pPrintProcessorName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrintProcessorW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pPrintProcessorName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrintProvidorA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pPrintProvidorName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrintProvidorW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pPrintProvidorName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinter(#[in] #[out] hPrinter: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterConnectionA(pName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterConnectionW(pName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDataA(hPrinter: HANDLE, pValueName: PCSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDataExA(hPrinter: HANDLE, pKeyName: PCSTR, pValueName: PCSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDataExW(hPrinter: HANDLE, pKeyName: PCWSTR, pValueName: PCWSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDataW(hPrinter: HANDLE, pValueName: PCWSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pDriverName: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverExA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, pDriverName: PCSTR, dwDeleteFlag: u32, dwVersionFlag: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverExW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pDriverName: PCWSTR, dwDeleteFlag: u32, dwVersionFlag: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverPackageA(#[opt] pszServer: PCSTR, pszInfPath: PCSTR, #[opt] pszEnvironment: PCSTR) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverPackageW(#[opt] pszServer: PCWSTR, pszInfPath: PCWSTR, #[opt] pszEnvironment: PCWSTR) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterDriverW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, pDriverName: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterKeyA(hPrinter: HANDLE, pKeyName: PCSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DeletePrinterKeyW(hPrinter: HANDLE, pKeyName: PCWSTR) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DocumentPropertiesA(#[opt] hWnd: HWND, hPrinter: HANDLE, pDeviceName: PCSTR, #[out] #[opt] pDevModeOutput: PDEVMODEA, #[opt] pDevModeInput: PDEVMODEA, fMode: u32) -> i32;
+        #[library("WINSPOOL.DRV")]
+        extern fn DocumentPropertiesW(#[opt] hWnd: HWND, hPrinter: HANDLE, pDeviceName: PCWSTR, #[out] #[opt] pDevModeOutput: PDEVMODEW, #[opt] pDevModeInput: PDEVMODEW, fMode: u32) -> i32;
+        #[repr(i32)]
+        enum EPrintPropertyType {
+            kPropertyTypeString = 1,
+            kPropertyTypeInt32 = 2,
+            kPropertyTypeInt64 = 3,
+            kPropertyTypeByte = 4,
+            kPropertyTypeTime = 5,
+            kPropertyTypeDevMode = 6,
+            kPropertyTypeSD = 7,
+            kPropertyTypeNotificationReply = 8,
+            kPropertyTypeNotificationOptions = 9,
+            kPropertyTypeBuffer = 10,
+        }
+        #[repr(i32)]
+        enum EPrintXPSJobOperation {
+            kJobProduction = 1,
+            kJobConsumption = 2,
+        }
+        #[repr(i32)]
+        enum EPrintXPSJobProgress {
+            kAddingDocumentSequence = 0,
+            kDocumentSequenceAdded = 1,
+            kAddingFixedDocument = 2,
+            kFixedDocumentAdded = 3,
+            kAddingFixedPage = 4,
+            kFixedPageAdded = 5,
+            kResourceAdded = 6,
+            kFontAdded = 7,
+            kImageAdded = 8,
+            kXpsDocumentCommitted = 9,
+        }
+        const ERROR_BIDI_DEVICE_CONFIG_UNCHANGED: i32 = 13014;
+        const ERROR_BIDI_DEVICE_OFFLINE: i32 = 13004;
+        const ERROR_BIDI_ERROR_BASE: i32 = 13000;
+        const ERROR_BIDI_GET_ARGUMENT_NOT_SUPPORTED: i32 = 13012;
+        const ERROR_BIDI_GET_MISSING_ARGUMENT: i32 = 13013;
+        const ERROR_BIDI_GET_REQUIRES_ARGUMENT: i32 = 13011;
+        const ERROR_BIDI_NOT_SUPPORTED: i32 = 50;
+        const ERROR_BIDI_NO_BIDI_SCHEMA_EXTENSIONS: i32 = 13016;
+        const ERROR_BIDI_NO_LOCALIZED_RESOURCES: i32 = 13015;
+        const ERROR_BIDI_SCHEMA_NOT_SUPPORTED: i32 = 13005;
+        const ERROR_BIDI_SCHEMA_READ_ONLY: i32 = 13002;
+        const ERROR_BIDI_SCHEMA_WRITE_ONLY: i32 = 13010;
+        const ERROR_BIDI_SERVER_OFFLINE: i32 = 13003;
+        const ERROR_BIDI_SET_DIFFERENT_TYPE: i32 = 13006;
+        const ERROR_BIDI_SET_INVALID_SCHEMAPATH: i32 = 13008;
+        const ERROR_BIDI_SET_MULTIPLE_SCHEMAPATH: i32 = 13007;
+        const ERROR_BIDI_SET_UNKNOWN_FAILURE: i32 = 13009;
+        const ERROR_BIDI_STATUS_OK: i32 = 0;
+        const ERROR_BIDI_STATUS_WARNING: i32 = 13001;
+        const ERROR_BIDI_UNSUPPORTED_CLIENT_LANGUAGE: i32 = 13017;
+        const ERROR_BIDI_UNSUPPORTED_RESOURCE_FORMAT: i32 = 13018;
+        #[library("WINSPOOL.DRV")]
+        extern fn EndDocPrinter(hPrinter: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EndPagePrinter(hPrinter: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumFormsA(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pForm: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumFormsW(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pForm: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumJobNamedProperties(hPrinter: HANDLE, JobId: u32, pcProperties: *mut u32, ppProperties: *mut *mut PrintNamedProperty) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumJobsA(hPrinter: HANDLE, FirstJob: u32, NoJobs: u32, Level: u32, #[size_param(5)] #[out] #[opt] pJob: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumJobsW(hPrinter: HANDLE, FirstJob: u32, NoJobs: u32, Level: u32, #[size_param(5)] #[out] #[opt] pJob: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumMonitorsA(#[opt] pName: PCSTR, Level: u32, #[size_param(3)] #[out] #[opt] pMonitor: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumMonitorsW(#[opt] pName: PCWSTR, Level: u32, #[size_param(3)] #[out] #[opt] pMonitor: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPortsA(#[opt] pName: PCSTR, Level: u32, #[size_param(3)] #[out] #[opt] pPort: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPortsW(#[opt] pName: PCWSTR, Level: u32, #[size_param(3)] #[out] #[opt] pPort: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintProcessorDatatypesA(#[opt] pName: PCSTR, pPrintProcessorName: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDatatypes: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintProcessorDatatypesW(#[opt] pName: PCWSTR, pPrintProcessorName: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDatatypes: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintProcessorsA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrintProcessorInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintProcessorsW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrintProcessorInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDataA(hPrinter: HANDLE, dwIndex: u32, #[size_param(3)] #[out] pValueName: PSTR, cbValueName: u32, #[out] pcbValueName: LPDWORD, #[out] #[opt] pType: LPDWORD, #[len_param(7)] #[out] #[opt] pData: LPBYTE, cbData: u32, #[out] #[opt] pcbData: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDataExA(hPrinter: HANDLE, pKeyName: PCSTR, #[size_param(3)] #[out] #[opt] pEnumValues: LPBYTE, cbEnumValues: u32, #[out] pcbEnumValues: LPDWORD, #[out] pnEnumValues: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDataExW(hPrinter: HANDLE, pKeyName: PCWSTR, #[size_param(3)] #[out] #[opt] pEnumValues: LPBYTE, cbEnumValues: u32, #[out] pcbEnumValues: LPDWORD, #[out] pnEnumValues: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDataW(hPrinter: HANDLE, dwIndex: u32, #[size_param(3)] #[out] pValueName: PWSTR, cbValueName: u32, #[out] pcbValueName: LPDWORD, #[out] #[opt] pType: LPDWORD, #[len_param(7)] #[out] #[opt] pData: LPBYTE, cbData: u32, #[out] #[opt] pcbData: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDriversA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterDriversW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterKeyA(hPrinter: HANDLE, pKeyName: PCSTR, #[size_param(3)] #[out] #[opt] pSubkey: PSTR, cbSubkey: u32, #[out] pcbSubkey: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrinterKeyW(hPrinter: HANDLE, pKeyName: PCWSTR, #[size_param(3)] #[out] #[opt] pSubkey: PWSTR, cbSubkey: u32, #[out] pcbSubkey: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintersA(Flags: u32, #[opt] Name: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrinterEnum: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn EnumPrintersW(Flags: u32, #[opt] Name: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrinterEnum: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD, #[out] pcReturned: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern "C" fn ExtDeviceMode(#[opt] hWnd: HWND, #[opt] hInst: HANDLE, #[in] #[out] #[opt] pDevModeOutput: LPDEVMODEA, #[opt] pDeviceName: PCSTR, #[opt] pPort: PCSTR, #[opt] pDevModeInput: LPDEVMODEA, #[opt] pProfile: PCSTR, fMode: u32) -> i32;
+        const FORM_BUILTIN: i32 = 1;
+        type FORM_INFO_1 = FORM_INFO_1A;
+        struct FORM_INFO_1A {
+            Flags: u32,
+            pName: PSTR,
+            Size: SIZEL,
+            ImageableArea: RECTL,
+        }
+        struct FORM_INFO_1W {
+            Flags: u32,
+            pName: PWSTR,
+            Size: SIZEL,
+            ImageableArea: RECTL,
+        }
+        type FORM_INFO_2 = FORM_INFO_2A;
+        struct FORM_INFO_2A {
+            Flags: u32,
+            pName: PCSTR,
+            Size: SIZEL,
+            ImageableArea: RECTL,
+            pKeyword: PCSTR,
+            StringType: u32,
+            pMuiDll: PCSTR,
+            dwResourceId: u32,
+            pDisplayName: PCSTR,
+            wLangId: LANGID,
+        }
+        struct FORM_INFO_2W {
+            Flags: u32,
+            pName: PCWSTR,
+            Size: SIZEL,
+            ImageableArea: RECTL,
+            pKeyword: PCSTR,
+            StringType: u32,
+            pMuiDll: PCWSTR,
+            dwResourceId: u32,
+            pDisplayName: PCWSTR,
+            wLangId: LANGID,
+        }
+        const FORM_PRINTER: i32 = 2;
+        const FORM_USER: i32 = 0;
+        #[library("WINSPOOL.DRV")]
+        extern fn FindClosePrinterChangeNotification(hChange: HANDLE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn FindFirstPrinterChangeNotification(hPrinter: HANDLE, fdwFilter: u32, fdwOptions: u32, #[in] #[opt] pPrinterNotifyOptions: *mut void) -> HANDLE;
+        #[library("WINSPOOL.DRV")]
+        extern fn FindNextPrinterChangeNotification(hChange: HANDLE, #[out] #[opt] pdwChange: PDWORD, #[in] #[opt] pvReserved: *mut void, #[opt] ppPrinterNotifyInfo: *mut *mut void) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn FlushPrinter(hPrinter: HANDLE, #[size_param(2)] #[in] #[opt] pBuf: *mut void, cbBuf: u32, #[out] pcWritten: LPDWORD, cSleep: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn FreePrintNamedPropertyArray(cProperties: u32, #[in] #[out] #[opt] ppProperties: *mut *mut PrintNamedProperty);
+        #[library("WINSPOOL.DRV")]
+        extern fn FreePrintPropertyValue(#[in] #[out] pValue: *mut PrintPropertyValue);
+        #[library("WINSPOOL.DRV")]
+        extern fn FreePrinterNotifyInfo(pPrinterNotifyInfo: PPRINTER_NOTIFY_INFO) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetCorePrinterDriversA(#[opt] pszServer: PCSTR, #[opt] pszEnvironment: PCSTR, pszzCoreDriverDependencies: PCSTR, cCorePrinterDrivers: u32, #[len_param(3)] #[out] pCorePrinterDrivers: PCORE_PRINTER_DRIVERA) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetCorePrinterDriversW(#[opt] pszServer: PCWSTR, #[opt] pszEnvironment: PCWSTR, pszzCoreDriverDependencies: PCWSTR, cCorePrinterDrivers: u32, #[len_param(3)] #[out] pCorePrinterDrivers: PCORE_PRINTER_DRIVERW) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetDefaultPrinterA(#[len_param(1)] #[out] #[opt] pszBuffer: PSTR, #[in] #[out] pcchBuffer: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetDefaultPrinterW(#[len_param(1)] #[out] #[opt] pszBuffer: PWSTR, #[in] #[out] pcchBuffer: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetFormA(hPrinter: HANDLE, pFormName: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pForm: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetFormW(hPrinter: HANDLE, pFormName: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pForm: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetJobA(hPrinter: HANDLE, JobId: u32, Level: u32, #[size_param(4)] #[out] #[opt] pJob: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetJobNamedPropertyValue(hPrinter: HANDLE, JobId: u32, pszName: PCWSTR, pValue: *mut PrintPropertyValue) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetJobW(hPrinter: HANDLE, JobId: u32, Level: u32, #[size_param(4)] #[out] #[opt] pJob: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrintExecutionData(pData: *mut PRINT_EXECUTION_DATA) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrintOutputInfo(hWnd: HWND, pszPrinter: PCWSTR, phFile: *mut HANDLE, ppszOutputFile: *mut PWSTR) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrintProcessorDirectoryA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrintProcessorInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrintProcessorDirectoryW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pPrintProcessorInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterA(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pPrinter: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDataA(hPrinter: HANDLE, pValueName: PCSTR, #[out] #[opt] pType: LPDWORD, #[size_param(4)] #[out] #[opt] pData: LPBYTE, nSize: u32, #[out] pcbNeeded: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDataExA(hPrinter: HANDLE, pKeyName: PCSTR, pValueName: PCSTR, #[out] #[opt] pType: LPDWORD, #[size_param(5)] #[out] #[opt] pData: LPBYTE, nSize: u32, #[out] pcbNeeded: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDataExW(hPrinter: HANDLE, pKeyName: PCWSTR, pValueName: PCWSTR, #[out] #[opt] pType: LPDWORD, #[size_param(5)] #[out] #[opt] pData: LPBYTE, nSize: u32, #[out] pcbNeeded: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDataW(hPrinter: HANDLE, pValueName: PCWSTR, #[out] #[opt] pType: LPDWORD, #[size_param(4)] #[out] #[opt] pData: LPBYTE, nSize: u32, #[out] pcbNeeded: LPDWORD) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriver2A(#[opt] hWnd: HWND, hPrinter: HANDLE, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(5)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriver2W(#[opt] hWnd: HWND, hPrinter: HANDLE, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(5)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverA(hPrinter: HANDLE, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverDirectoryA(#[opt] pName: PCSTR, #[opt] pEnvironment: PCSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverDirectory: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverDirectoryW(#[opt] pName: PCWSTR, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverDirectory: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverPackagePathA(#[opt] pszServer: PCSTR, #[opt] pszEnvironment: PCSTR, #[opt] pszLanguage: PCSTR, pszPackageID: PCSTR, #[len_param(5)] #[in] #[out] #[opt] pszDriverPackageCab: PSTR, #[opt] cchDriverPackageCab: u32, #[out] pcchRequiredSize: LPDWORD) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverPackagePathW(#[opt] pszServer: PCWSTR, #[opt] pszEnvironment: PCWSTR, #[opt] pszLanguage: PCWSTR, pszPackageID: PCWSTR, #[len_param(5)] #[in] #[out] #[opt] pszDriverPackageCab: PWSTR, #[opt] cchDriverPackageCab: u32, #[out] pcchRequiredSize: LPDWORD) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterDriverW(hPrinter: HANDLE, #[opt] pEnvironment: PCWSTR, Level: u32, #[size_param(4)] #[out] #[opt] pDriverInfo: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetPrinterW(hPrinter: HANDLE, Level: u32, #[size_param(3)] #[out] #[opt] pPrinter: LPBYTE, cbBuf: u32, #[out] pcbNeeded: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn GetSpoolFileHandle(hPrinter: HANDLE) -> HANDLE;
+        const IPDFP_COPY_ALL_FILES: i32 = 1;
+        #[library("WINSPOOL.DRV")]
+        extern fn InstallPrinterDriverFromPackageA(#[opt] pszServer: PCSTR, #[opt] pszInfPath: PCSTR, pszDriverName: PCSTR, #[opt] pszEnvironment: PCSTR, dwFlags: u32) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn InstallPrinterDriverFromPackageW(#[opt] pszServer: PCWSTR, #[opt] pszInfPath: PCWSTR, pszDriverName: PCWSTR, #[opt] pszEnvironment: PCWSTR, dwFlags: u32) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn IsValidDevmodeA(#[opt] pDevmode: PDEVMODEA, DevmodeSize: usize) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn IsValidDevmodeW(#[opt] pDevmode: PDEVMODEW, DevmodeSize: usize) -> BOOL;
+        const JOB_ACCESS_ADMINISTER: i32 = 16;
+        const JOB_ACCESS_READ: i32 = 32;
+        const JOB_ALL_ACCESS: i32 = 983088;
+        const JOB_CONTROL_CANCEL: i32 = 3;
+        const JOB_CONTROL_DELETE: i32 = 5;
+        const JOB_CONTROL_LAST_PAGE_EJECTED: i32 = 7;
+        const JOB_CONTROL_PAUSE: i32 = 1;
+        const JOB_CONTROL_PENDING_ON_DEVICE: i32 = 11;
+        const JOB_CONTROL_RELEASE: i32 = 9;
+        const JOB_CONTROL_RESTART: i32 = 4;
+        const JOB_CONTROL_RESUME: i32 = 2;
+        const JOB_CONTROL_RETAIN: i32 = 8;
+        const JOB_CONTROL_SEND_TOAST: i32 = 10;
+        const JOB_CONTROL_SENT_TO_PRINTER: i32 = 6;
+        const JOB_EXECUTE: i32 = 131088;
+        type JOB_INFO_1 = JOB_INFO_1A;
+        struct JOB_INFO_1A {
+            JobId: u32,
+            pPrinterName: PSTR,
+            pMachineName: PSTR,
+            pUserName: PSTR,
+            pDocument: PSTR,
+            pDatatype: PSTR,
+            pStatus: PSTR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            TotalPages: u32,
+            PagesPrinted: u32,
+            Submitted: SYSTEMTIME,
+        }
+        struct JOB_INFO_1W {
+            JobId: u32,
+            pPrinterName: PWSTR,
+            pMachineName: PWSTR,
+            pUserName: PWSTR,
+            pDocument: PWSTR,
+            pDatatype: PWSTR,
+            pStatus: PWSTR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            TotalPages: u32,
+            PagesPrinted: u32,
+            Submitted: SYSTEMTIME,
+        }
+        type JOB_INFO_2 = JOB_INFO_2A;
+        struct JOB_INFO_2A {
+            JobId: u32,
+            pPrinterName: PSTR,
+            pMachineName: PSTR,
+            pUserName: PSTR,
+            pDocument: PSTR,
+            pNotifyName: PSTR,
+            pDatatype: PSTR,
+            pPrintProcessor: PSTR,
+            pParameters: PSTR,
+            pDriverName: PSTR,
+            pDevMode: LPDEVMODEA,
+            pStatus: PSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            TotalPages: u32,
+            Size: u32,
+            Submitted: SYSTEMTIME,
+            Time: u32,
+            PagesPrinted: u32,
+        }
+        struct JOB_INFO_2W {
+            JobId: u32,
+            pPrinterName: PWSTR,
+            pMachineName: PWSTR,
+            pUserName: PWSTR,
+            pDocument: PWSTR,
+            pNotifyName: PWSTR,
+            pDatatype: PWSTR,
+            pPrintProcessor: PWSTR,
+            pParameters: PWSTR,
+            pDriverName: PWSTR,
+            pDevMode: LPDEVMODEW,
+            pStatus: PWSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            TotalPages: u32,
+            Size: u32,
+            Submitted: SYSTEMTIME,
+            Time: u32,
+            PagesPrinted: u32,
+        }
+        struct JOB_INFO_3 {
+            JobId: u32,
+            NextJobId: u32,
+            Reserved: u32,
+        }
+        type JOB_INFO_4 = JOB_INFO_4A;
+        struct JOB_INFO_4A {
+            JobId: u32,
+            pPrinterName: PSTR,
+            pMachineName: PSTR,
+            pUserName: PSTR,
+            pDocument: PSTR,
+            pNotifyName: PSTR,
+            pDatatype: PSTR,
+            pPrintProcessor: PSTR,
+            pParameters: PSTR,
+            pDriverName: PSTR,
+            pDevMode: LPDEVMODEA,
+            pStatus: PSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            TotalPages: u32,
+            Size: u32,
+            Submitted: SYSTEMTIME,
+            Time: u32,
+            PagesPrinted: u32,
+            SizeHigh: i32,
+        }
+        struct JOB_INFO_4W {
+            JobId: u32,
+            pPrinterName: PWSTR,
+            pMachineName: PWSTR,
+            pUserName: PWSTR,
+            pDocument: PWSTR,
+            pNotifyName: PWSTR,
+            pDatatype: PWSTR,
+            pPrintProcessor: PWSTR,
+            pParameters: PWSTR,
+            pDriverName: PWSTR,
+            pDevMode: LPDEVMODEW,
+            pStatus: PWSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Status: u32,
+            Priority: u32,
+            Position: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            TotalPages: u32,
+            Size: u32,
+            Submitted: SYSTEMTIME,
+            Time: u32,
+            PagesPrinted: u32,
+            SizeHigh: i32,
+        }
+        const JOB_NOTIFY_FIELD_BYTES_PRINTED: i32 = 23;
+        const JOB_NOTIFY_FIELD_DATATYPE: i32 = 5;
+        const JOB_NOTIFY_FIELD_DEVMODE: i32 = 9;
+        const JOB_NOTIFY_FIELD_DOCUMENT: i32 = 13;
+        const JOB_NOTIFY_FIELD_DRIVER_NAME: i32 = 8;
+        const JOB_NOTIFY_FIELD_MACHINE_NAME: i32 = 1;
+        const JOB_NOTIFY_FIELD_NOTIFY_NAME: i32 = 4;
+        const JOB_NOTIFY_FIELD_PAGES_PRINTED: i32 = 21;
+        const JOB_NOTIFY_FIELD_PARAMETERS: i32 = 7;
+        const JOB_NOTIFY_FIELD_PORT_NAME: i32 = 2;
+        const JOB_NOTIFY_FIELD_POSITION: i32 = 15;
+        const JOB_NOTIFY_FIELD_PRINTER_NAME: i32 = 0;
+        const JOB_NOTIFY_FIELD_PRINT_PROCESSOR: i32 = 6;
+        const JOB_NOTIFY_FIELD_PRIORITY: i32 = 14;
+        const JOB_NOTIFY_FIELD_REMOTE_JOB_ID: i32 = 24;
+        const JOB_NOTIFY_FIELD_SECURITY_DESCRIPTOR: i32 = 12;
+        const JOB_NOTIFY_FIELD_START_TIME: i32 = 17;
+        const JOB_NOTIFY_FIELD_STATUS: i32 = 10;
+        const JOB_NOTIFY_FIELD_STATUS_STRING: i32 = 11;
+        const JOB_NOTIFY_FIELD_SUBMITTED: i32 = 16;
+        const JOB_NOTIFY_FIELD_TIME: i32 = 19;
+        const JOB_NOTIFY_FIELD_TOTAL_BYTES: i32 = 22;
+        const JOB_NOTIFY_FIELD_TOTAL_PAGES: i32 = 20;
+        const JOB_NOTIFY_FIELD_UNTIL_TIME: i32 = 18;
+        const JOB_NOTIFY_FIELD_USER_NAME: i32 = 3;
+        const JOB_NOTIFY_TYPE: i32 = 1;
+        const JOB_POSITION_UNSPECIFIED: i32 = 0;
+        const JOB_READ: i32 = 131104;
+        const JOB_STATUS_BLOCKED_DEVQ: i32 = 512;
+        const JOB_STATUS_COMPLETE: i32 = 4096;
+        const JOB_STATUS_DELETED: i32 = 256;
+        const JOB_STATUS_DELETING: i32 = 4;
+        const JOB_STATUS_ERROR: i32 = 2;
+        const JOB_STATUS_OFFLINE: i32 = 32;
+        const JOB_STATUS_PAPEROUT: i32 = 64;
+        const JOB_STATUS_PAUSED: i32 = 1;
+        const JOB_STATUS_PRINTED: i32 = 128;
+        const JOB_STATUS_PRINTING: i32 = 16;
+        const JOB_STATUS_RENDERING_LOCALLY: i32 = 16384;
+        const JOB_STATUS_RESTART: i32 = 2048;
+        const JOB_STATUS_RETAINED: i32 = 8192;
+        const JOB_STATUS_SPOOLING: i32 = 8;
+        const JOB_STATUS_USER_INTERVENTION: i32 = 1024;
+        const JOB_WRITE: i32 = 131088;
+        type LPADDJOB_INFO_1 = LPADDJOB_INFO_1A;
+        type LPADDJOB_INFO_1A = *mut ADDJOB_INFO_1A;
+        type LPADDJOB_INFO_1W = *mut ADDJOB_INFO_1W;
+        type LPBIDI_DATA = *mut BIDI_DATA;
+        type LPBIDI_REQUEST_CONTAINER = *mut BIDI_REQUEST_CONTAINER;
+        type LPBIDI_REQUEST_DATA = *mut BIDI_REQUEST_DATA;
+        type LPBIDI_RESPONSE_CONTAINER = *mut BIDI_RESPONSE_CONTAINER;
+        type LPBIDI_RESPONSE_DATA = *mut BIDI_RESPONSE_DATA;
+        type LPDATATYPES_INFO_1 = LPDATATYPES_INFO_1A;
+        type LPDATATYPES_INFO_1A = *mut DATATYPES_INFO_1A;
+        type LPDATATYPES_INFO_1W = *mut DATATYPES_INFO_1W;
+        type LPDOC_INFO_1 = LPDOC_INFO_1A;
+        type LPDOC_INFO_1A = *mut DOC_INFO_1A;
+        type LPDOC_INFO_1W = *mut DOC_INFO_1W;
+        type LPDOC_INFO_2 = LPDOC_INFO_2A;
+        type LPDOC_INFO_2A = *mut DOC_INFO_2A;
+        type LPDOC_INFO_2W = *mut DOC_INFO_2W;
+        type LPDOC_INFO_3 = LPDOC_INFO_3A;
+        type LPDOC_INFO_3A = *mut DOC_INFO_3A;
+        type LPDOC_INFO_3W = *mut DOC_INFO_3W;
+        type LPDRIVER_INFO_1 = LPDRIVER_INFO_1A;
+        type LPDRIVER_INFO_1A = *mut DRIVER_INFO_1A;
+        type LPDRIVER_INFO_1W = *mut DRIVER_INFO_1W;
+        type LPDRIVER_INFO_2 = LPDRIVER_INFO_2A;
+        type LPDRIVER_INFO_2A = *mut DRIVER_INFO_2A;
+        type LPDRIVER_INFO_2W = *mut DRIVER_INFO_2W;
+        type LPDRIVER_INFO_3 = LPDRIVER_INFO_3A;
+        type LPDRIVER_INFO_3A = *mut DRIVER_INFO_3A;
+        type LPDRIVER_INFO_3W = *mut DRIVER_INFO_3W;
+        type LPDRIVER_INFO_4 = LPDRIVER_INFO_4A;
+        type LPDRIVER_INFO_4A = *mut DRIVER_INFO_4A;
+        type LPDRIVER_INFO_4W = *mut DRIVER_INFO_4W;
+        type LPDRIVER_INFO_5 = LPDRIVER_INFO_5A;
+        type LPDRIVER_INFO_5A = *mut DRIVER_INFO_5A;
+        type LPDRIVER_INFO_5W = *mut DRIVER_INFO_5W;
+        type LPDRIVER_INFO_6 = LPDRIVER_INFO_6A;
+        type LPDRIVER_INFO_6A = *mut DRIVER_INFO_6A;
+        type LPDRIVER_INFO_6W = *mut DRIVER_INFO_6W;
+        type LPDRIVER_INFO_8 = LPDRIVER_INFO_8A;
+        type LPDRIVER_INFO_8A = *mut DRIVER_INFO_8A;
+        type LPDRIVER_INFO_8W = *mut DRIVER_INFO_8W;
+        type LPFORM_INFO_1 = LPFORM_INFO_1A;
+        type LPFORM_INFO_1A = *mut FORM_INFO_1A;
+        type LPFORM_INFO_1W = *mut FORM_INFO_1W;
+        type LPFORM_INFO_2 = LPFORM_INFO_2A;
+        type LPFORM_INFO_2A = *mut FORM_INFO_2A;
+        type LPFORM_INFO_2W = *mut FORM_INFO_2W;
+        type LPJOB_INFO_1 = LPJOB_INFO_1A;
+        type LPJOB_INFO_1A = *mut JOB_INFO_1A;
+        type LPJOB_INFO_1W = *mut JOB_INFO_1W;
+        type LPJOB_INFO_2 = LPJOB_INFO_2A;
+        type LPJOB_INFO_2A = *mut JOB_INFO_2A;
+        type LPJOB_INFO_2W = *mut JOB_INFO_2W;
+        type LPJOB_INFO_3 = *mut JOB_INFO_3;
+        type LPJOB_INFO_4 = LPJOB_INFO_4A;
+        type LPJOB_INFO_4A = *mut JOB_INFO_4A;
+        type LPJOB_INFO_4W = *mut JOB_INFO_4W;
+        type LPMONITOR_INFO_1 = LPMONITOR_INFO_1A;
+        type LPMONITOR_INFO_1A = *mut MONITOR_INFO_1A;
+        type LPMONITOR_INFO_1W = *mut MONITOR_INFO_1W;
+        type LPMONITOR_INFO_2 = LPMONITOR_INFO_2A;
+        type LPMONITOR_INFO_2A = *mut MONITOR_INFO_2A;
+        type LPMONITOR_INFO_2W = *mut MONITOR_INFO_2W;
+        type LPPORT_INFO_1 = LPPORT_INFO_1A;
+        type LPPORT_INFO_1A = *mut PORT_INFO_1A;
+        type LPPORT_INFO_1W = *mut PORT_INFO_1W;
+        type LPPORT_INFO_2 = LPPORT_INFO_2A;
+        type LPPORT_INFO_2A = *mut PORT_INFO_2A;
+        type LPPORT_INFO_2W = *mut PORT_INFO_2W;
+        type LPPORT_INFO_3 = LPPORT_INFO_3A;
+        type LPPORT_INFO_3A = *mut PORT_INFO_3A;
+        type LPPORT_INFO_3W = *mut PORT_INFO_3W;
+        type LPPRINTER_DEFAULTS = LPPRINTER_DEFAULTSA;
+        type LPPRINTER_DEFAULTSA = *mut PRINTER_DEFAULTSA;
+        type LPPRINTER_DEFAULTSW = *mut PRINTER_DEFAULTSW;
+        type LPPRINTER_ENUM_VALUES = LPPRINTER_ENUM_VALUESA;
+        type LPPRINTER_ENUM_VALUESA = *mut PRINTER_ENUM_VALUESA;
+        type LPPRINTER_ENUM_VALUESW = *mut PRINTER_ENUM_VALUESW;
+        type LPPRINTER_INFO_1 = LPPRINTER_INFO_1A;
+        type LPPRINTER_INFO_1A = *mut PRINTER_INFO_1A;
+        type LPPRINTER_INFO_1W = *mut PRINTER_INFO_1W;
+        type LPPRINTER_INFO_2 = LPPRINTER_INFO_2A;
+        type LPPRINTER_INFO_2A = *mut PRINTER_INFO_2A;
+        type LPPRINTER_INFO_2W = *mut PRINTER_INFO_2W;
+        type LPPRINTER_INFO_3 = *mut PRINTER_INFO_3;
+        type LPPRINTER_INFO_4 = LPPRINTER_INFO_4A;
+        type LPPRINTER_INFO_4A = *mut PRINTER_INFO_4A;
+        type LPPRINTER_INFO_4W = *mut PRINTER_INFO_4W;
+        type LPPRINTER_INFO_5 = LPPRINTER_INFO_5A;
+        type LPPRINTER_INFO_5A = *mut PRINTER_INFO_5A;
+        type LPPRINTER_INFO_5W = *mut PRINTER_INFO_5W;
+        type LPPRINTER_INFO_6 = *mut PRINTER_INFO_6;
+        type LPPRINTER_INFO_7 = LPPRINTER_INFO_7A;
+        type LPPRINTER_INFO_7A = *mut PRINTER_INFO_7A;
+        type LPPRINTER_INFO_7W = *mut PRINTER_INFO_7W;
+        type LPPRINTER_INFO_8 = LPPRINTER_INFO_8A;
+        type LPPRINTER_INFO_8A = *mut PRINTER_INFO_8A;
+        type LPPRINTER_INFO_8W = *mut PRINTER_INFO_8W;
+        type LPPRINTER_INFO_9 = LPPRINTER_INFO_9A;
+        type LPPRINTER_INFO_9A = *mut PRINTER_INFO_9A;
+        type LPPRINTER_INFO_9W = *mut PRINTER_INFO_9W;
+        type LPPRINTER_NOTIFY_INFO = *mut PRINTER_NOTIFY_INFO;
+        type LPPRINTER_NOTIFY_INFO_DATA = *mut PRINTER_NOTIFY_INFO_DATA;
+        type LPPRINTER_NOTIFY_OPTIONS = *mut PRINTER_NOTIFY_OPTIONS;
+        type LPPRINTER_NOTIFY_OPTIONS_TYPE = *mut PRINTER_NOTIFY_OPTIONS_TYPE;
+        type LPPRINTER_OPTIONS = LPPRINTER_OPTIONSA;
+        type LPPRINTER_OPTIONSA = *mut PRINTER_OPTIONSA;
+        type LPPRINTER_OPTIONSW = *mut PRINTER_OPTIONSW;
+        type LPPRINTPROCESSOR_INFO_1 = LPPRINTPROCESSOR_INFO_1A;
+        type LPPRINTPROCESSOR_INFO_1A = *mut PRINTPROCESSOR_INFO_1A;
+        type LPPRINTPROCESSOR_INFO_1W = *mut PRINTPROCESSOR_INFO_1W;
+        type LPPROVIDOR_INFO_1 = LPPROVIDOR_INFO_1A;
+        type LPPROVIDOR_INFO_1A = *mut PROVIDOR_INFO_1A;
+        type LPPROVIDOR_INFO_1W = *mut PROVIDOR_INFO_1W;
+        type LPPROVIDOR_INFO_2 = LPPROVIDOR_INFO_2A;
+        type LPPROVIDOR_INFO_2A = *mut PROVIDOR_INFO_2A;
+        type LPPROVIDOR_INFO_2W = *mut PROVIDOR_INFO_2W;
+        const MAX_FORM_KEYWORD_LENGTH: i32 = 64;
+        const MAX_PRIORITY: i32 = 99;
+        const MIN_PRIORITY: i32 = 1;
+        type MONITOR_INFO_1 = MONITOR_INFO_1A;
+        struct MONITOR_INFO_1A {
+            pName: PSTR,
+        }
+        struct MONITOR_INFO_1W {
+            pName: PWSTR,
+        }
+        type MONITOR_INFO_2 = MONITOR_INFO_2A;
+        struct MONITOR_INFO_2A {
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDLLName: PSTR,
+        }
+        struct MONITOR_INFO_2W {
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDLLName: PWSTR,
+        }
+        #[encoding("utf-16")]
+        const MS_PRINT_JOB_OUTPUT_FILE: String = "MsPrintJobOutputFile";
+        const NORMAL_PRINT: i32 = 0;
+        const NO_PRIORITY: i32 = 0;
+        #[library("WINSPOOL.DRV")]
+        extern fn OpenPrinter2A(#[opt] pPrinterName: PCSTR, #[out] phPrinter: LPHANDLE, #[opt] pDefault: PPRINTER_DEFAULTSA, #[opt] pOptions: PPRINTER_OPTIONSA) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn OpenPrinter2W(#[opt] pPrinterName: PCWSTR, #[out] phPrinter: LPHANDLE, #[opt] pDefault: PPRINTER_DEFAULTSW, #[opt] pOptions: PPRINTER_OPTIONSW) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn OpenPrinterA(#[opt] pPrinterName: PCSTR, #[out] phPrinter: LPHANDLE, #[opt] pDefault: LPPRINTER_DEFAULTSA) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn OpenPrinterW(#[opt] pPrinterName: PCWSTR, #[out] phPrinter: LPHANDLE, #[opt] pDefault: LPPRINTER_DEFAULTSW) -> BOOL;
+        type PADDJOB_INFO_1 = PADDJOB_INFO_1A;
+        type PADDJOB_INFO_1A = *mut ADDJOB_INFO_1A;
+        type PADDJOB_INFO_1W = *mut ADDJOB_INFO_1W;
+        type PBIDI_DATA = *mut BIDI_DATA;
+        type PBIDI_REQUEST_CONTAINER = *mut BIDI_REQUEST_CONTAINER;
+        type PBIDI_REQUEST_DATA = *mut BIDI_REQUEST_DATA;
+        type PBIDI_RESPONSE_CONTAINER = *mut BIDI_RESPONSE_CONTAINER;
+        type PBIDI_RESPONSE_DATA = *mut BIDI_RESPONSE_DATA;
+        type PBINARY_CONTAINER = *mut BINARY_CONTAINER;
+        type PCORE_PRINTER_DRIVER = PCORE_PRINTER_DRIVERA;
+        type PCORE_PRINTER_DRIVERA = *mut CORE_PRINTER_DRIVERA;
+        type PCORE_PRINTER_DRIVERW = *mut CORE_PRINTER_DRIVERW;
+        type PDATATYPES_INFO_1 = PDATATYPES_INFO_1A;
+        type PDATATYPES_INFO_1A = *mut DATATYPES_INFO_1A;
+        type PDATATYPES_INFO_1W = *mut DATATYPES_INFO_1W;
+        type PDOC_INFO_1 = PDOC_INFO_1A;
+        type PDOC_INFO_1A = *mut DOC_INFO_1A;
+        type PDOC_INFO_1W = *mut DOC_INFO_1W;
+        type PDOC_INFO_2 = PDOC_INFO_2A;
+        type PDOC_INFO_2A = *mut DOC_INFO_2A;
+        type PDOC_INFO_2W = *mut DOC_INFO_2W;
+        type PDOC_INFO_3 = PDOC_INFO_3A;
+        type PDOC_INFO_3A = *mut DOC_INFO_3A;
+        type PDOC_INFO_3W = *mut DOC_INFO_3W;
+        type PDRIVER_INFO_1 = PDRIVER_INFO_1A;
+        type PDRIVER_INFO_1A = *mut DRIVER_INFO_1A;
+        type PDRIVER_INFO_1W = *mut DRIVER_INFO_1W;
+        type PDRIVER_INFO_2 = PDRIVER_INFO_2A;
+        type PDRIVER_INFO_2A = *mut DRIVER_INFO_2A;
+        type PDRIVER_INFO_2W = *mut DRIVER_INFO_2W;
+        type PDRIVER_INFO_3 = PDRIVER_INFO_3A;
+        type PDRIVER_INFO_3A = *mut DRIVER_INFO_3A;
+        type PDRIVER_INFO_3W = *mut DRIVER_INFO_3W;
+        type PDRIVER_INFO_4 = PDRIVER_INFO_4A;
+        type PDRIVER_INFO_4A = *mut DRIVER_INFO_4A;
+        type PDRIVER_INFO_4W = *mut DRIVER_INFO_4W;
+        type PDRIVER_INFO_5 = PDRIVER_INFO_5A;
+        type PDRIVER_INFO_5A = *mut DRIVER_INFO_5A;
+        type PDRIVER_INFO_5W = *mut DRIVER_INFO_5W;
+        type PDRIVER_INFO_6 = PDRIVER_INFO_6A;
+        type PDRIVER_INFO_6A = *mut DRIVER_INFO_6A;
+        type PDRIVER_INFO_6W = *mut DRIVER_INFO_6W;
+        type PDRIVER_INFO_8 = PDRIVER_INFO_8A;
+        type PDRIVER_INFO_8A = *mut DRIVER_INFO_8A;
+        type PDRIVER_INFO_8W = *mut DRIVER_INFO_8W;
+        type PFORM_INFO_1 = PFORM_INFO_1A;
+        type PFORM_INFO_1A = *mut FORM_INFO_1A;
+        type PFORM_INFO_1W = *mut FORM_INFO_1W;
+        type PFORM_INFO_2 = PFORM_INFO_2A;
+        type PFORM_INFO_2A = *mut FORM_INFO_2A;
+        type PFORM_INFO_2W = *mut FORM_INFO_2W;
+        type PJOB_INFO_1 = PJOB_INFO_1A;
+        type PJOB_INFO_1A = *mut JOB_INFO_1A;
+        type PJOB_INFO_1W = *mut JOB_INFO_1W;
+        type PJOB_INFO_2 = PJOB_INFO_2A;
+        type PJOB_INFO_2A = *mut JOB_INFO_2A;
+        type PJOB_INFO_2W = *mut JOB_INFO_2W;
+        type PJOB_INFO_3 = *mut JOB_INFO_3;
+        type PJOB_INFO_4 = PJOB_INFO_4A;
+        type PJOB_INFO_4A = *mut JOB_INFO_4A;
+        type PJOB_INFO_4W = *mut JOB_INFO_4W;
+        type PMONITOR_INFO_1 = PMONITOR_INFO_1A;
+        type PMONITOR_INFO_1A = *mut MONITOR_INFO_1A;
+        type PMONITOR_INFO_1W = *mut MONITOR_INFO_1W;
+        type PMONITOR_INFO_2 = PMONITOR_INFO_2A;
+        type PMONITOR_INFO_2A = *mut MONITOR_INFO_2A;
+        type PMONITOR_INFO_2W = *mut MONITOR_INFO_2W;
+        type PORT_INFO_1 = PORT_INFO_1A;
+        struct PORT_INFO_1A {
+            pName: PSTR,
+        }
+        struct PORT_INFO_1W {
+            pName: PWSTR,
+        }
+        type PORT_INFO_2 = PORT_INFO_2A;
+        struct PORT_INFO_2A {
+            pPortName: PSTR,
+            pMonitorName: PSTR,
+            pDescription: PSTR,
+            fPortType: u32,
+            Reserved: u32,
+        }
+        struct PORT_INFO_2W {
+            pPortName: PWSTR,
+            pMonitorName: PWSTR,
+            pDescription: PWSTR,
+            fPortType: u32,
+            Reserved: u32,
+        }
+        type PORT_INFO_3 = PORT_INFO_3A;
+        struct PORT_INFO_3A {
+            dwStatus: u32,
+            pszStatus: PSTR,
+            dwSeverity: u32,
+        }
+        struct PORT_INFO_3W {
+            dwStatus: u32,
+            pszStatus: PWSTR,
+            dwSeverity: u32,
+        }
+        const PORT_STATUS_DOOR_OPEN: i32 = 7;
+        const PORT_STATUS_NO_TONER: i32 = 6;
+        const PORT_STATUS_OFFLINE: i32 = 1;
+        const PORT_STATUS_OUTPUT_BIN_FULL: i32 = 4;
+        const PORT_STATUS_OUT_OF_MEMORY: i32 = 9;
+        const PORT_STATUS_PAPER_JAM: i32 = 2;
+        const PORT_STATUS_PAPER_OUT: i32 = 3;
+        const PORT_STATUS_PAPER_PROBLEM: i32 = 5;
+        const PORT_STATUS_POWER_SAVE: i32 = 12;
+        const PORT_STATUS_TONER_LOW: i32 = 10;
+        const PORT_STATUS_TYPE_ERROR: i32 = 1;
+        const PORT_STATUS_TYPE_INFO: i32 = 3;
+        const PORT_STATUS_TYPE_WARNING: i32 = 2;
+        const PORT_STATUS_USER_INTERVENTION: i32 = 8;
+        const PORT_STATUS_WARMING_UP: i32 = 11;
+        const PORT_TYPE_NET_ATTACHED: i32 = 8;
+        const PORT_TYPE_READ: i32 = 2;
+        const PORT_TYPE_REDIRECTED: i32 = 4;
+        const PORT_TYPE_WRITE: i32 = 1;
+        const PPCAPS_BOOKLET_EDGE: i32 = 1;
+        const PPCAPS_BORDER_PRINT: i32 = 1;
+        const PPCAPS_DONT_SEND_EXTRA_PAGES_FOR_DUPLEX: i32 = 2;
+        const PPCAPS_DOWN_THEN_LEFT: i32 = 8;
+        const PPCAPS_DOWN_THEN_RIGHT: i32 = 2;
+        const PPCAPS_LEFT_THEN_DOWN: i32 = 4;
+        const PPCAPS_REVERSE_PAGES_FOR_REVERSE_DUPLEX: i32 = 1;
+        const PPCAPS_RIGHT_THEN_DOWN: i32 = 1;
+        const PPCAPS_SQUARE_SCALING: i32 = 1;
+        type PPORT_INFO_1 = PPORT_INFO_1A;
+        type PPORT_INFO_1A = *mut PORT_INFO_1A;
+        type PPORT_INFO_1W = *mut PORT_INFO_1W;
+        type PPORT_INFO_2 = PPORT_INFO_2A;
+        type PPORT_INFO_2A = *mut PORT_INFO_2A;
+        type PPORT_INFO_2W = *mut PORT_INFO_2W;
+        type PPORT_INFO_3 = PPORT_INFO_3A;
+        type PPORT_INFO_3A = *mut PORT_INFO_3A;
+        type PPORT_INFO_3W = *mut PORT_INFO_3W;
+        type PPRINTER_CONNECTION_INFO_1 = PPRINTER_CONNECTION_INFO_1A;
+        type PPRINTER_CONNECTION_INFO_1A = *mut PRINTER_CONNECTION_INFO_1A;
+        type PPRINTER_CONNECTION_INFO_1W = *mut PRINTER_CONNECTION_INFO_1W;
+        type PPRINTER_DEFAULTS = PPRINTER_DEFAULTSA;
+        type PPRINTER_DEFAULTSA = *mut PRINTER_DEFAULTSA;
+        type PPRINTER_DEFAULTSW = *mut PRINTER_DEFAULTSW;
+        type PPRINTER_ENUM_VALUES = PPRINTER_ENUM_VALUESA;
+        type PPRINTER_ENUM_VALUESA = *mut PRINTER_ENUM_VALUESA;
+        type PPRINTER_ENUM_VALUESW = *mut PRINTER_ENUM_VALUESW;
+        type PPRINTER_INFO_1 = PPRINTER_INFO_1A;
+        type PPRINTER_INFO_1A = *mut PRINTER_INFO_1A;
+        type PPRINTER_INFO_1W = *mut PRINTER_INFO_1W;
+        type PPRINTER_INFO_2 = PPRINTER_INFO_2A;
+        type PPRINTER_INFO_2A = *mut PRINTER_INFO_2A;
+        type PPRINTER_INFO_2W = *mut PRINTER_INFO_2W;
+        type PPRINTER_INFO_3 = *mut PRINTER_INFO_3;
+        type PPRINTER_INFO_4 = PPRINTER_INFO_4A;
+        type PPRINTER_INFO_4A = *mut PRINTER_INFO_4A;
+        type PPRINTER_INFO_4W = *mut PRINTER_INFO_4W;
+        type PPRINTER_INFO_5 = PPRINTER_INFO_5A;
+        type PPRINTER_INFO_5A = *mut PRINTER_INFO_5A;
+        type PPRINTER_INFO_5W = *mut PRINTER_INFO_5W;
+        type PPRINTER_INFO_6 = *mut PRINTER_INFO_6;
+        type PPRINTER_INFO_7 = PPRINTER_INFO_7A;
+        type PPRINTER_INFO_7A = *mut PRINTER_INFO_7A;
+        type PPRINTER_INFO_7W = *mut PRINTER_INFO_7W;
+        type PPRINTER_INFO_8 = PPRINTER_INFO_8A;
+        type PPRINTER_INFO_8A = *mut PRINTER_INFO_8A;
+        type PPRINTER_INFO_8W = *mut PRINTER_INFO_8W;
+        type PPRINTER_INFO_9 = PPRINTER_INFO_9A;
+        type PPRINTER_INFO_9A = *mut PRINTER_INFO_9A;
+        type PPRINTER_INFO_9W = *mut PRINTER_INFO_9W;
+        type PPRINTER_NOTIFY_INFO = *mut PRINTER_NOTIFY_INFO;
+        type PPRINTER_NOTIFY_INFO_DATA = *mut PRINTER_NOTIFY_INFO_DATA;
+        type PPRINTER_NOTIFY_OPTIONS = *mut PRINTER_NOTIFY_OPTIONS;
+        type PPRINTER_NOTIFY_OPTIONS_TYPE = *mut PRINTER_NOTIFY_OPTIONS_TYPE;
+        type PPRINTER_OPTIONS = PPRINTER_OPTIONSA;
+        type PPRINTER_OPTIONSA = *mut PRINTER_OPTIONSA;
+        type PPRINTER_OPTIONSW = *mut PRINTER_OPTIONSW;
+        type PPRINTPROCESSOR_CAPS_1 = *mut PRINTPROCESSOR_CAPS_1;
+        type PPRINTPROCESSOR_CAPS_2 = *mut PRINTPROCESSOR_CAPS_2;
+        type PPRINTPROCESSOR_INFO_1 = PPRINTPROCESSOR_INFO_1A;
+        type PPRINTPROCESSOR_INFO_1A = *mut PRINTPROCESSOR_INFO_1A;
+        type PPRINTPROCESSOR_INFO_1W = *mut PRINTPROCESSOR_INFO_1W;
+        type PPROVIDOR_INFO_1 = PPROVIDOR_INFO_1A;
+        type PPROVIDOR_INFO_1A = *mut PROVIDOR_INFO_1A;
+        type PPROVIDOR_INFO_1W = *mut PROVIDOR_INFO_1W;
+        type PPROVIDOR_INFO_2 = PPROVIDOR_INFO_2A;
+        type PPROVIDOR_INFO_2A = *mut PROVIDOR_INFO_2A;
+        type PPROVIDOR_INFO_2W = *mut PROVIDOR_INFO_2W;
+        const PRINTER_ACCESS_ADMINISTER: i32 = 4;
+        const PRINTER_ACCESS_MANAGE_LIMITED: i32 = 64;
+        const PRINTER_ACCESS_USE: i32 = 8;
+        const PRINTER_ALL_ACCESS: i32 = 983052;
+        const PRINTER_ATTRIBUTE_DEFAULT: i32 = 4;
+        const PRINTER_ATTRIBUTE_DIRECT: i32 = 2;
+        const PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST: i32 = 512;
+        const PRINTER_ATTRIBUTE_ENABLE_BIDI: i32 = 2048;
+        const PRINTER_ATTRIBUTE_ENABLE_DEVQ: i32 = 128;
+        const PRINTER_ATTRIBUTE_ENTERPRISE_CLOUD: i32 = 8388608;
+        const PRINTER_ATTRIBUTE_FAX: i32 = 16384;
+        const PRINTER_ATTRIBUTE_FRIENDLY_NAME: i32 = 1048576;
+        const PRINTER_ATTRIBUTE_HIDDEN: i32 = 32;
+        const PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS: i32 = 256;
+        const PRINTER_ATTRIBUTE_LOCAL: i32 = 64;
+        const PRINTER_ATTRIBUTE_MACHINE: i32 = 524288;
+        const PRINTER_ATTRIBUTE_NETWORK: i32 = 16;
+        const PRINTER_ATTRIBUTE_PER_USER: i32 = 4194304;
+        const PRINTER_ATTRIBUTE_PUBLISHED: i32 = 8192;
+        const PRINTER_ATTRIBUTE_PUSHED_MACHINE: i32 = 262144;
+        const PRINTER_ATTRIBUTE_PUSHED_USER: i32 = 131072;
+        const PRINTER_ATTRIBUTE_QUEUED: i32 = 1;
+        const PRINTER_ATTRIBUTE_RAW_ONLY: i32 = 4096;
+        const PRINTER_ATTRIBUTE_SHARED: i32 = 8;
+        const PRINTER_ATTRIBUTE_TS: i32 = 32768;
+        const PRINTER_ATTRIBUTE_TS_GENERIC_DRIVER: i32 = 2097152;
+        const PRINTER_ATTRIBUTE_WORK_OFFLINE: i32 = 1024;
+        const PRINTER_CHANGE_ADD_FORM: i32 = 65536;
+        const PRINTER_CHANGE_ADD_JOB: i32 = 256;
+        const PRINTER_CHANGE_ADD_PORT: i32 = 1048576;
+        const PRINTER_CHANGE_ADD_PRINTER: i32 = 1;
+        const PRINTER_CHANGE_ADD_PRINTER_DRIVER: i32 = 268435456;
+        const PRINTER_CHANGE_ADD_PRINT_PROCESSOR: i32 = 16777216;
+        const PRINTER_CHANGE_ALL: i32 = 2138570751;
+        const PRINTER_CHANGE_CONFIGURE_PORT: i32 = 2097152;
+        const PRINTER_CHANGE_DELETE_FORM: i32 = 262144;
+        const PRINTER_CHANGE_DELETE_JOB: i32 = 1024;
+        const PRINTER_CHANGE_DELETE_PORT: i32 = 4194304;
+        const PRINTER_CHANGE_DELETE_PRINTER: i32 = 4;
+        const PRINTER_CHANGE_DELETE_PRINTER_DRIVER: i32 = 1073741824;
+        const PRINTER_CHANGE_DELETE_PRINT_PROCESSOR: i32 = 67108864;
+        const PRINTER_CHANGE_FAILED_CONNECTION_PRINTER: i32 = 8;
+        const PRINTER_CHANGE_FORM: i32 = 458752;
+        const PRINTER_CHANGE_JOB: i32 = 65280;
+        const PRINTER_CHANGE_PORT: i32 = 7340032;
+        const PRINTER_CHANGE_PRINTER: i32 = 255;
+        const PRINTER_CHANGE_PRINTER_DRIVER: i32 = 1879048192;
+        const PRINTER_CHANGE_PRINT_PROCESSOR: i32 = 117440512;
+        const PRINTER_CHANGE_SERVER: i32 = 134217728;
+        const PRINTER_CHANGE_SET_FORM: i32 = 131072;
+        const PRINTER_CHANGE_SET_JOB: i32 = 512;
+        const PRINTER_CHANGE_SET_PRINTER: i32 = 2;
+        const PRINTER_CHANGE_SET_PRINTER_DRIVER: i32 = 536870912;
+        const PRINTER_CHANGE_TIMEOUT: u32 = 2147483648;
+        const PRINTER_CHANGE_WRITE_JOB: i32 = 2048;
+        type PRINTER_CONNECTION_INFO_1 = PRINTER_CONNECTION_INFO_1A;
+        struct PRINTER_CONNECTION_INFO_1A {
+            dwFlags: u32,
+            pszDriverName: PSTR,
+        }
+        struct PRINTER_CONNECTION_INFO_1W {
+            dwFlags: u32,
+            pszDriverName: PWSTR,
+        }
+        const PRINTER_CONNECTION_MISMATCH: i32 = 32;
+        const PRINTER_CONNECTION_NO_UI: i32 = 64;
+        const PRINTER_CONTROL_PAUSE: i32 = 1;
+        const PRINTER_CONTROL_PURGE: i32 = 3;
+        const PRINTER_CONTROL_RESUME: i32 = 2;
+        const PRINTER_CONTROL_SET_STATUS: i32 = 4;
+        type PRINTER_DEFAULTS = PRINTER_DEFAULTSA;
+        struct PRINTER_DEFAULTSA {
+            pDatatype: PSTR,
+            pDevMode: LPDEVMODEA,
+            DesiredAccess: ACCESS_MASK,
+        }
+        struct PRINTER_DEFAULTSW {
+            pDatatype: PWSTR,
+            pDevMode: LPDEVMODEW,
+            DesiredAccess: ACCESS_MASK,
+        }
+        const PRINTER_DRIVER_CATEGORY_3D: i32 = 4096;
+        const PRINTER_DRIVER_CATEGORY_CLOUD: i32 = 8192;
+        const PRINTER_DRIVER_CATEGORY_FAX: i32 = 64;
+        const PRINTER_DRIVER_CATEGORY_FILE: i32 = 128;
+        const PRINTER_DRIVER_CATEGORY_SERVICE: i32 = 512;
+        const PRINTER_DRIVER_CATEGORY_VIRTUAL: i32 = 256;
+        const PRINTER_DRIVER_CLASS: i32 = 8;
+        const PRINTER_DRIVER_DERIVED: i32 = 16;
+        const PRINTER_DRIVER_NOT_SHAREABLE: i32 = 32;
+        const PRINTER_DRIVER_PACKAGE_AWARE: i32 = 1;
+        const PRINTER_DRIVER_SANDBOX_DISABLED: i32 = 2048;
+        const PRINTER_DRIVER_SANDBOX_ENABLED: i32 = 4;
+        const PRINTER_DRIVER_SOFT_RESET_REQUIRED: i32 = 1024;
+        const PRINTER_DRIVER_XPS: i32 = 2;
+        const PRINTER_ENUM_CATEGORY_3D: i32 = 67108864;
+        const PRINTER_ENUM_CATEGORY_ALL: i32 = 33554432;
+        const PRINTER_ENUM_CONNECTIONS: i32 = 4;
+        const PRINTER_ENUM_CONTAINER: i32 = 32768;
+        const PRINTER_ENUM_DEFAULT: i32 = 1;
+        const PRINTER_ENUM_EXPAND: i32 = 16384;
+        const PRINTER_ENUM_FAVORITE: i32 = 4;
+        const PRINTER_ENUM_HIDE: i32 = 16777216;
+        const PRINTER_ENUM_ICON1: i32 = 65536;
+        const PRINTER_ENUM_ICON2: i32 = 131072;
+        const PRINTER_ENUM_ICON3: i32 = 262144;
+        const PRINTER_ENUM_ICON4: i32 = 524288;
+        const PRINTER_ENUM_ICON5: i32 = 1048576;
+        const PRINTER_ENUM_ICON6: i32 = 2097152;
+        const PRINTER_ENUM_ICON7: i32 = 4194304;
+        const PRINTER_ENUM_ICON8: i32 = 8388608;
+        const PRINTER_ENUM_ICONMASK: i32 = 16711680;
+        const PRINTER_ENUM_LOCAL: i32 = 2;
+        const PRINTER_ENUM_NAME: i32 = 8;
+        const PRINTER_ENUM_NETWORK: i32 = 64;
+        const PRINTER_ENUM_REMOTE: i32 = 16;
+        const PRINTER_ENUM_SHARED: i32 = 32;
+        type PRINTER_ENUM_VALUES = PRINTER_ENUM_VALUESA;
+        struct PRINTER_ENUM_VALUESA {
+            pValueName: PSTR,
+            cbValueName: u32,
+            dwType: u32,
+            pData: LPBYTE,
+            cbData: u32,
+        }
+        struct PRINTER_ENUM_VALUESW {
+            pValueName: PWSTR,
+            cbValueName: u32,
+            dwType: u32,
+            pData: LPBYTE,
+            cbData: u32,
+        }
+        const PRINTER_ERROR_INFORMATION: u32 = 2147483648;
+        const PRINTER_ERROR_JAM: i32 = 2;
+        const PRINTER_ERROR_OUTOFPAPER: i32 = 1;
+        const PRINTER_ERROR_OUTOFTONER: i32 = 4;
+        const PRINTER_ERROR_SEVERE: i32 = 536870912;
+        const PRINTER_ERROR_WARNING: i32 = 1073741824;
+        const PRINTER_EXECUTE: i32 = 131080;
+        type PRINTER_INFO_1 = PRINTER_INFO_1A;
+        struct PRINTER_INFO_1A {
+            Flags: u32,
+            pDescription: PSTR,
+            pName: PSTR,
+            pComment: PSTR,
+        }
+        struct PRINTER_INFO_1W {
+            Flags: u32,
+            pDescription: PWSTR,
+            pName: PWSTR,
+            pComment: PWSTR,
+        }
+        type PRINTER_INFO_2 = PRINTER_INFO_2A;
+        struct PRINTER_INFO_2A {
+            pServerName: PSTR,
+            pPrinterName: PSTR,
+            pShareName: PSTR,
+            pPortName: PSTR,
+            pDriverName: PSTR,
+            pComment: PSTR,
+            pLocation: PSTR,
+            pDevMode: LPDEVMODEA,
+            pSepFile: PSTR,
+            pPrintProcessor: PSTR,
+            pDatatype: PSTR,
+            pParameters: PSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Attributes: u32,
+            Priority: u32,
+            DefaultPriority: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            Status: u32,
+            cJobs: u32,
+            AveragePPM: u32,
+        }
+        struct PRINTER_INFO_2W {
+            pServerName: PWSTR,
+            pPrinterName: PWSTR,
+            pShareName: PWSTR,
+            pPortName: PWSTR,
+            pDriverName: PWSTR,
+            pComment: PWSTR,
+            pLocation: PWSTR,
+            pDevMode: LPDEVMODEW,
+            pSepFile: PWSTR,
+            pPrintProcessor: PWSTR,
+            pDatatype: PWSTR,
+            pParameters: PWSTR,
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+            Attributes: u32,
+            Priority: u32,
+            DefaultPriority: u32,
+            StartTime: u32,
+            UntilTime: u32,
+            Status: u32,
+            cJobs: u32,
+            AveragePPM: u32,
+        }
+        struct PRINTER_INFO_3 {
+            pSecurityDescriptor: PSECURITY_DESCRIPTOR,
+        }
+        type PRINTER_INFO_4 = PRINTER_INFO_4A;
+        struct PRINTER_INFO_4A {
+            pPrinterName: PSTR,
+            pServerName: PSTR,
+            Attributes: u32,
+        }
+        struct PRINTER_INFO_4W {
+            pPrinterName: PWSTR,
+            pServerName: PWSTR,
+            Attributes: u32,
+        }
+        type PRINTER_INFO_5 = PRINTER_INFO_5A;
+        struct PRINTER_INFO_5A {
+            pPrinterName: PSTR,
+            pPortName: PSTR,
+            Attributes: u32,
+            DeviceNotSelectedTimeout: u32,
+            TransmissionRetryTimeout: u32,
+        }
+        struct PRINTER_INFO_5W {
+            pPrinterName: PWSTR,
+            pPortName: PWSTR,
+            Attributes: u32,
+            DeviceNotSelectedTimeout: u32,
+            TransmissionRetryTimeout: u32,
+        }
+        struct PRINTER_INFO_6 {
+            dwStatus: u32,
+        }
+        type PRINTER_INFO_7 = PRINTER_INFO_7A;
+        struct PRINTER_INFO_7A {
+            pszObjectGUID: PSTR,
+            dwAction: u32,
+        }
+        struct PRINTER_INFO_7W {
+            pszObjectGUID: PWSTR,
+            dwAction: u32,
+        }
+        type PRINTER_INFO_8 = PRINTER_INFO_8A;
+        struct PRINTER_INFO_8A {
+            pDevMode: LPDEVMODEA,
+        }
+        struct PRINTER_INFO_8W {
+            pDevMode: LPDEVMODEW,
+        }
+        type PRINTER_INFO_9 = PRINTER_INFO_9A;
+        struct PRINTER_INFO_9A {
+            pDevMode: LPDEVMODEA,
+        }
+        struct PRINTER_INFO_9W {
+            pDevMode: LPDEVMODEW,
+        }
+        const PRINTER_NOTIFY_CATEGORY_3D: i32 = 8192;
+        const PRINTER_NOTIFY_CATEGORY_ALL: i32 = 4096;
+        const PRINTER_NOTIFY_FIELD_ATTRIBUTES: i32 = 13;
+        const PRINTER_NOTIFY_FIELD_AVERAGE_PPM: i32 = 21;
+        const PRINTER_NOTIFY_FIELD_BRANCH_OFFICE_PRINTING: i32 = 28;
+        const PRINTER_NOTIFY_FIELD_BYTES_PRINTED: i32 = 25;
+        const PRINTER_NOTIFY_FIELD_CJOBS: i32 = 20;
+        const PRINTER_NOTIFY_FIELD_COMMENT: i32 = 5;
+        const PRINTER_NOTIFY_FIELD_DATATYPE: i32 = 11;
+        const PRINTER_NOTIFY_FIELD_DEFAULT_PRIORITY: i32 = 15;
+        const PRINTER_NOTIFY_FIELD_DEVMODE: i32 = 7;
+        const PRINTER_NOTIFY_FIELD_DRIVER_NAME: i32 = 4;
+        const PRINTER_NOTIFY_FIELD_FRIENDLY_NAME: i32 = 27;
+        const PRINTER_NOTIFY_FIELD_LOCATION: i32 = 6;
+        const PRINTER_NOTIFY_FIELD_OBJECT_GUID: i32 = 26;
+        const PRINTER_NOTIFY_FIELD_PAGES_PRINTED: i32 = 23;
+        const PRINTER_NOTIFY_FIELD_PARAMETERS: i32 = 10;
+        const PRINTER_NOTIFY_FIELD_PORT_NAME: i32 = 3;
+        const PRINTER_NOTIFY_FIELD_PRINTER_NAME: i32 = 1;
+        const PRINTER_NOTIFY_FIELD_PRINT_PROCESSOR: i32 = 9;
+        const PRINTER_NOTIFY_FIELD_PRIORITY: i32 = 14;
+        const PRINTER_NOTIFY_FIELD_SECURITY_DESCRIPTOR: i32 = 12;
+        const PRINTER_NOTIFY_FIELD_SEPFILE: i32 = 8;
+        const PRINTER_NOTIFY_FIELD_SERVER_NAME: i32 = 0;
+        const PRINTER_NOTIFY_FIELD_SHARE_NAME: i32 = 2;
+        const PRINTER_NOTIFY_FIELD_START_TIME: i32 = 16;
+        const PRINTER_NOTIFY_FIELD_STATUS: i32 = 18;
+        const PRINTER_NOTIFY_FIELD_STATUS_STRING: i32 = 19;
+        const PRINTER_NOTIFY_FIELD_TOTAL_BYTES: i32 = 24;
+        const PRINTER_NOTIFY_FIELD_TOTAL_PAGES: i32 = 22;
+        const PRINTER_NOTIFY_FIELD_UNTIL_TIME: i32 = 17;
+        struct PRINTER_NOTIFY_INFO {
+            Version: u32,
+            Flags: u32,
+            Count: u32,
+            aData: [PRINTER_NOTIFY_INFO_DATA; 1],
+        }
+        struct PRINTER_NOTIFY_INFO_DATA {
+            Type: u16,
+            Field: u16,
+            Reserved: u32,
+            Id: u32,
+            NotifyData: union {
+                adwData: [u32; 2],
+                Data: struct {
+                    cbBuf: u32,
+                    pBuf: *mut void,
+                },
+            },
+        }
+        const PRINTER_NOTIFY_INFO_DISCARDED: i32 = 1;
+        struct PRINTER_NOTIFY_OPTIONS {
+            Version: u32,
+            Flags: u32,
+            Count: u32,
+            pTypes: PPRINTER_NOTIFY_OPTIONS_TYPE,
+        }
+        const PRINTER_NOTIFY_OPTIONS_REFRESH: i32 = 1;
+        struct PRINTER_NOTIFY_OPTIONS_TYPE {
+            Type: u16,
+            Reserved0: u16,
+            Reserved1: u32,
+            Reserved2: u32,
+            Count: u32,
+            pFields: PWORD,
+        }
+        const PRINTER_NOTIFY_TYPE: i32 = 0;
+        type PRINTER_OPTIONS = PRINTER_OPTIONSA;
+        struct PRINTER_OPTIONSA {
+            cbSize: u32,
+            dwFlags: u32,
+        }
+        struct PRINTER_OPTIONSW {
+            cbSize: u32,
+            dwFlags: u32,
+        }
+        #[repr(i32)]
+        enum PRINTER_OPTION_FLAGS {
+            PRINTER_OPTION_NO_CACHE = 1,
+            PRINTER_OPTION_CACHE = 2,
+            PRINTER_OPTION_CLIENT_CHANGE = 4,
+            PRINTER_OPTION_NO_CLIENT_DATA = 8,
+        }
+        const PRINTER_READ: i32 = 131080;
+        const PRINTER_STATUS_BUSY: i32 = 512;
+        const PRINTER_STATUS_DOOR_OPEN: i32 = 4194304;
+        const PRINTER_STATUS_DRIVER_UPDATE_NEEDED: i32 = 67108864;
+        const PRINTER_STATUS_ERROR: i32 = 2;
+        const PRINTER_STATUS_INITIALIZING: i32 = 32768;
+        const PRINTER_STATUS_IO_ACTIVE: i32 = 256;
+        const PRINTER_STATUS_MANUAL_FEED: i32 = 32;
+        const PRINTER_STATUS_NOT_AVAILABLE: i32 = 4096;
+        const PRINTER_STATUS_NO_TONER: i32 = 262144;
+        const PRINTER_STATUS_OFFLINE: i32 = 128;
+        const PRINTER_STATUS_OUTPUT_BIN_FULL: i32 = 2048;
+        const PRINTER_STATUS_OUT_OF_MEMORY: i32 = 2097152;
+        const PRINTER_STATUS_PAGE_PUNT: i32 = 524288;
+        const PRINTER_STATUS_PAPER_JAM: i32 = 8;
+        const PRINTER_STATUS_PAPER_OUT: i32 = 16;
+        const PRINTER_STATUS_PAPER_PROBLEM: i32 = 64;
+        const PRINTER_STATUS_PAUSED: i32 = 1;
+        const PRINTER_STATUS_PENDING_DELETION: i32 = 4;
+        const PRINTER_STATUS_POWER_SAVE: i32 = 16777216;
+        const PRINTER_STATUS_PRINTING: i32 = 1024;
+        const PRINTER_STATUS_PROCESSING: i32 = 16384;
+        const PRINTER_STATUS_SERVER_OFFLINE: i32 = 33554432;
+        const PRINTER_STATUS_SERVER_UNKNOWN: i32 = 8388608;
+        const PRINTER_STATUS_TONER_LOW: i32 = 131072;
+        const PRINTER_STATUS_USER_INTERVENTION: i32 = 1048576;
+        const PRINTER_STATUS_WAITING: i32 = 8192;
+        const PRINTER_STATUS_WARMING_UP: i32 = 65536;
+        const PRINTER_WRITE: i32 = 131080;
+        struct PRINTPROCESSOR_CAPS_1 {
+            dwLevel: u32,
+            dwNupOptions: u32,
+            dwPageOrderFlags: u32,
+            dwNumberOfCopies: u32,
+        }
+        struct PRINTPROCESSOR_CAPS_2 {
+            dwLevel: u32,
+            dwNupOptions: u32,
+            dwPageOrderFlags: u32,
+            dwNumberOfCopies: u32,
+            dwDuplexHandlingCaps: u32,
+            dwNupDirectionCaps: u32,
+            dwNupBorderCaps: u32,
+            dwBookletHandlingCaps: u32,
+            dwScalingCaps: u32,
+        }
+        type PRINTPROCESSOR_INFO_1 = PRINTPROCESSOR_INFO_1A;
+        struct PRINTPROCESSOR_INFO_1A {
+            pName: PSTR,
+        }
+        struct PRINTPROCESSOR_INFO_1W {
+            pName: PWSTR,
+        }
+        #[repr(i32)]
+        enum PRINT_EXECUTION_CONTEXT {
+            PRINT_EXECUTION_CONTEXT_APPLICATION = 0,
+            PRINT_EXECUTION_CONTEXT_SPOOLER_SERVICE = 1,
+            PRINT_EXECUTION_CONTEXT_SPOOLER_ISOLATION_HOST = 2,
+            PRINT_EXECUTION_CONTEXT_FILTER_PIPELINE = 3,
+            PRINT_EXECUTION_CONTEXT_WOW64 = 4,
+        }
+        struct PRINT_EXECUTION_DATA {
+            context: PRINT_EXECUTION_CONTEXT,
+            clientAppPID: u32,
+        }
+        type PROVIDOR_INFO_1 = PROVIDOR_INFO_1A;
+        struct PROVIDOR_INFO_1A {
+            pName: PSTR,
+            pEnvironment: PSTR,
+            pDLLName: PSTR,
+        }
+        struct PROVIDOR_INFO_1W {
+            pName: PWSTR,
+            pEnvironment: PWSTR,
+            pDLLName: PWSTR,
+        }
+        type PROVIDOR_INFO_2 = PROVIDOR_INFO_2A;
+        struct PROVIDOR_INFO_2A {
+            pOrder: PSTR,
+        }
+        struct PROVIDOR_INFO_2W {
+            pOrder: PWSTR,
+        }
+        struct PrintNamedProperty {
+            propertyName: *mut u16,
+            propertyValue: PrintPropertyValue,
+        }
+        struct PrintPropertiesCollection {
+            numberOfProperties: u32,
+            propertiesCollection: *mut PrintNamedProperty,
+        }
+        struct PrintPropertyValue {
+            ePropertyType: EPrintPropertyType,
+            value: union {
+                propertyByte: u8,
+                propertyString: PWSTR,
+                propertyInt32: i32,
+                propertyInt64: i64,
+                propertyBlob: struct {
+                    cbBuf: u32,
+                    pBuf: *mut void,
+                },
+            },
+        }
+        #[library("WINSPOOL.DRV")]
+        extern fn PrinterMessageBoxA(hPrinter: HANDLE, Error: u32, hWnd: HWND, pText: PCSTR, pCaption: PCSTR, dwType: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn PrinterMessageBoxW(hPrinter: HANDLE, Error: u32, hWnd: HWND, pText: PCWSTR, pCaption: PCWSTR, dwType: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn PrinterProperties(hWnd: HWND, hPrinter: HANDLE) -> BOOL;
+        const REVERSE_PRINT: i32 = 1;
+        #[library("WINSPOOL.DRV")]
+        extern fn ReadPrinter(hPrinter: HANDLE, #[size_param(2)] pBuf: *mut void, cbBuf: u32, #[out] pNoBytesRead: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn ReportJobProcessingProgress(printerHandle: HANDLE, jobId: u32, jobOperation: EPrintXPSJobOperation, jobProgress: EPrintXPSJobProgress) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn ResetPrinterA(hPrinter: HANDLE, #[opt] pDefault: LPPRINTER_DEFAULTSA) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn ResetPrinterW(hPrinter: HANDLE, #[opt] pDefault: LPPRINTER_DEFAULTSW) -> BOOL;
+        const SERVER_ACCESS_ADMINISTER: i32 = 1;
+        const SERVER_ACCESS_ENUMERATE: i32 = 2;
+        const SERVER_ALL_ACCESS: i32 = 983043;
+        const SERVER_EXECUTE: i32 = 131074;
+        const SERVER_NOTIFY_FIELD_PRINT_DRIVER_ISOLATION_GROUP: i32 = 0;
+        const SERVER_NOTIFY_TYPE: i32 = 2;
+        const SERVER_READ: i32 = 131074;
+        const SERVER_WRITE: i32 = 131075;
+        const SPLREG_PRINT_DRIVER_ISOLATION_GROUPS_SEPARATOR: u16 = 92;
+        const SPOOL_FILE_PERSISTENT: i32 = 1;
+        const SPOOL_FILE_TEMPORARY: i32 = 2;
+        const STRING_LANGPAIR: i32 = 4;
+        const STRING_MUIDLL: i32 = 2;
+        const STRING_NONE: i32 = 1;
+        #[library("WINSPOOL.DRV")]
+        extern fn ScheduleJob(hPrinter: HANDLE, JobId: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetDefaultPrinterA(#[opt] pszPrinter: PCSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetDefaultPrinterW(#[opt] pszPrinter: PCWSTR) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetFormA(hPrinter: HANDLE, pFormName: PCSTR, Level: u32, pForm: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetFormW(hPrinter: HANDLE, pFormName: PCWSTR, Level: u32, pForm: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetJobA(hPrinter: HANDLE, JobId: u32, Level: u32, pJob: LPBYTE, Command: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetJobNamedProperty(hPrinter: HANDLE, JobId: u32, pProperty: *const PrintNamedProperty) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetJobW(hPrinter: HANDLE, JobId: u32, Level: u32, pJob: LPBYTE, Command: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPortA(#[opt] pName: PCSTR, pPortName: PCSTR, dwLevel: u32, pPortInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPortW(#[opt] pName: PCWSTR, pPortName: PCWSTR, dwLevel: u32, pPortInfo: LPBYTE) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterA(hPrinter: HANDLE, Level: u32, pPrinter: LPBYTE, Command: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterDataA(hPrinter: HANDLE, pValueName: PCSTR, Type: u32, #[size_param(4)] pData: LPBYTE, cbData: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterDataExA(hPrinter: HANDLE, pKeyName: PCSTR, pValueName: PCSTR, Type: u32, #[size_param(5)] pData: LPBYTE, cbData: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterDataExW(hPrinter: HANDLE, pKeyName: PCWSTR, pValueName: PCWSTR, Type: u32, #[size_param(5)] pData: LPBYTE, cbData: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterDataW(hPrinter: HANDLE, pValueName: PCWSTR, Type: u32, #[size_param(4)] pData: LPBYTE, cbData: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn SetPrinterW(hPrinter: HANDLE, Level: u32, pPrinter: LPBYTE, Command: u32) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn StartDocPrinterA(hPrinter: HANDLE, Level: u32, pDocInfo: LPBYTE) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn StartDocPrinterW(hPrinter: HANDLE, Level: u32, pDocInfo: LPBYTE) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn StartPagePrinter(hPrinter: HANDLE) -> BOOL;
+        const UPDP_CHECK_DRIVERSTORE: i32 = 4;
+        const UPDP_SILENT_UPLOAD: i32 = 1;
+        const UPDP_UPLOAD_ALWAYS: i32 = 2;
+        #[library("WINSPOOL.DRV")]
+        extern fn UploadPrinterDriverPackageA(#[opt] pszServer: PCSTR, pszInfPath: PCSTR, #[opt] pszEnvironment: PCSTR, dwFlags: u32, hwnd: HWND, #[len_param(6)] #[out] pszDestInfPath: PSTR, #[in] #[out] pcchDestInfPath: PULONG) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn UploadPrinterDriverPackageW(#[opt] pszServer: PCWSTR, pszInfPath: PCWSTR, #[opt] pszEnvironment: PCWSTR, dwFlags: u32, hwnd: HWND, #[len_param(6)] #[out] pszDestInfPath: PWSTR, #[in] #[out] pcchDestInfPath: PULONG) -> HRESULT;
+        #[library("WINSPOOL.DRV")]
+        extern fn WaitForPrinterChange(hPrinter: HANDLE, Flags: u32) -> u32;
+        #[library("WINSPOOL.DRV")]
+        extern fn WritePrinter(hPrinter: HANDLE, #[size_param(2)] #[in] pBuf: *mut void, cbBuf: u32, #[out] pcWritten: LPDWORD) -> BOOL;
+        #[library("WINSPOOL.DRV")]
+        extern fn XcvDataW(hXcv: HANDLE, pszDataName: PCWSTR, #[size_param(3)] #[opt] pInputData: PBYTE, cbInputData: u32, #[size_param(5)] #[out] #[opt] pOutputData: PBYTE, cbOutputData: u32, #[out] pcbOutputNeeded: PDWORD, #[out] #[opt] pdwStatus: PDWORD) -> BOOL;
+    }
+}

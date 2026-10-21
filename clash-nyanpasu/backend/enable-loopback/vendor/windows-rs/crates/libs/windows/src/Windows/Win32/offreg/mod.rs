@@ -1,0 +1,165 @@
+#[inline]
+pub unsafe fn ORCloseHive(handle: ORHKEY) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORCloseHive(handle : ORHKEY) -> u32);
+    unsafe { ORCloseHive(handle) }
+}
+#[inline]
+pub unsafe fn ORCloseKey(keyhandle: ORHKEY) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORCloseKey(keyhandle : ORHKEY) -> u32);
+    unsafe { ORCloseKey(keyhandle) }
+}
+#[inline]
+pub unsafe fn ORCreateHive(horkey: PORHKEY) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORCreateHive(horkey : PORHKEY) -> u32);
+    unsafe { ORCreateHive(horkey as _) }
+}
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+#[inline]
+pub unsafe fn ORCreateKey<P1, P2>(keyhandle: ORHKEY, lpsubkey: P1, lpclass: P2, dwoptions: Option<u32>, psecuritydescriptor: Option<super::PSECURITY_DESCRIPTOR>, phkresult: PORHKEY, pdwdisposition: Option<super::PDWORD>) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+    P2: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORCreateKey(keyhandle : ORHKEY, lpsubkey : windows_core::PCWSTR, lpclass : windows_core::PCWSTR, dwoptions : u32, psecuritydescriptor : super::PSECURITY_DESCRIPTOR, phkresult : PORHKEY, pdwdisposition : super::PDWORD) -> u32);
+    unsafe { ORCreateKey(keyhandle, lpsubkey.param().abi(), lpclass.param().abi(), dwoptions.unwrap_or(core::mem::zeroed()) as _, psecuritydescriptor.unwrap_or(core::mem::zeroed()) as _, phkresult as _, pdwdisposition.unwrap_or(core::mem::zeroed()) as _) }
+}
+#[inline]
+pub unsafe fn ORDeleteKey<P1>(handle: ORHKEY, lpsubkey: P1) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORDeleteKey(handle : ORHKEY, lpsubkey : windows_core::PCWSTR) -> u32);
+    unsafe { ORDeleteKey(handle, lpsubkey.param().abi()) }
+}
+#[inline]
+pub unsafe fn ORDeleteValue<P1>(handle: ORHKEY, lpvaluename: P1) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORDeleteValue(handle : ORHKEY, lpvaluename : windows_core::PCWSTR) -> u32);
+    unsafe { ORDeleteValue(handle, lpvaluename.param().abi()) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn OREnumKey(handle: ORHKEY, dwindex: u32, lpname: windows_core::PWSTR, lpcname: super::PDWORD, lpclass: Option<windows_core::PWSTR>, lpcclass: Option<super::PDWORD>, lpftlastwritetime: Option<super::PFILETIME>) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn OREnumKey(handle : ORHKEY, dwindex : u32, lpname : windows_core::PWSTR, lpcname : super::PDWORD, lpclass : windows_core::PWSTR, lpcclass : super::PDWORD, lpftlastwritetime : super::PFILETIME) -> u32);
+    unsafe { OREnumKey(handle, dwindex, lpname, lpcname as _, lpclass.unwrap_or(core::mem::zeroed()) as _, lpcclass.unwrap_or(core::mem::zeroed()) as _, lpftlastwritetime.unwrap_or(core::mem::zeroed()) as _) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn OREnumValue(handle: ORHKEY, dwindex: u32, lpvaluename: windows_core::PWSTR, lpcvaluename: super::PDWORD, lptype: Option<super::PDWORD>, lpdata: Option<super::PBYTE>, lpcbdata: Option<super::PDWORD>) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn OREnumValue(handle : ORHKEY, dwindex : u32, lpvaluename : windows_core::PWSTR, lpcvaluename : super::PDWORD, lptype : super::PDWORD, lpdata : super::PBYTE, lpcbdata : super::PDWORD) -> u32);
+    unsafe { OREnumValue(handle, dwindex, lpvaluename, lpcvaluename as _, lptype.unwrap_or(core::mem::zeroed()) as _, lpdata.unwrap_or(core::mem::zeroed()) as _, lpcbdata.unwrap_or(core::mem::zeroed()) as _) }
+}
+#[cfg(all(feature = "minwindef", feature = "winnt"))]
+#[inline]
+pub unsafe fn ORGetKeySecurity(handle: ORHKEY, securityinformation: super::SECURITY_INFORMATION, psecuritydescriptor: Option<super::PSECURITY_DESCRIPTOR>, lpcbsecuritydescriptor: super::PDWORD) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORGetKeySecurity(handle : ORHKEY, securityinformation : super::SECURITY_INFORMATION, psecuritydescriptor : super::PSECURITY_DESCRIPTOR, lpcbsecuritydescriptor : super::PDWORD) -> u32);
+    unsafe { ORGetKeySecurity(handle, securityinformation, psecuritydescriptor.unwrap_or(core::mem::zeroed()) as _, lpcbsecuritydescriptor as _) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn ORGetValue<P1, P2>(handle: ORHKEY, lpsubkey: P1, lpvalue: P2, pdwtype: Option<super::PDWORD>, pvdata: Option<*mut core::ffi::c_void>, pcbdata: Option<super::PDWORD>) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+    P2: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORGetValue(handle : ORHKEY, lpsubkey : windows_core::PCWSTR, lpvalue : windows_core::PCWSTR, pdwtype : super::PDWORD, pvdata : *mut core::ffi::c_void, pcbdata : super::PDWORD) -> u32);
+    unsafe { ORGetValue(handle, lpsubkey.param().abi(), lpvalue.param().abi(), pdwtype.unwrap_or(core::mem::zeroed()) as _, pvdata.unwrap_or(core::mem::zeroed()) as _, pcbdata.unwrap_or(core::mem::zeroed()) as _) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn ORGetVersion(pdwmajorversion: super::PDWORD, pdwminorversion: super::PDWORD) {
+    windows_core::link!("offreg.dll" "system" fn ORGetVersion(pdwmajorversion : super::PDWORD, pdwminorversion : super::PDWORD));
+    unsafe { ORGetVersion(pdwmajorversion as _, pdwminorversion as _) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn ORGetVirtualFlags(handle: ORHKEY, pdwflags: super::PDWORD) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORGetVirtualFlags(handle : ORHKEY, pdwflags : super::PDWORD) -> u32);
+    unsafe { ORGetVirtualFlags(handle, pdwflags as _) }
+}
+#[inline]
+pub unsafe fn ORMergeHives(hivehandles: &[ORHKEY], phkresult: PORHKEY) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORMergeHives(hivehandles : *const ORHKEY, hivecount : u32, phkresult : PORHKEY) -> u32);
+    unsafe { ORMergeHives(hivehandles.as_ptr(), hivehandles.len().try_into().unwrap(), phkresult as _) }
+}
+#[inline]
+pub unsafe fn OROpenHive<P0>(filepath: P0, horkey: PORHKEY) -> u32
+where
+    P0: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn OROpenHive(filepath : windows_core::PCWSTR, horkey : PORHKEY) -> u32);
+    unsafe { OROpenHive(filepath.param().abi(), horkey as _) }
+}
+#[cfg(feature = "winnt")]
+#[inline]
+pub unsafe fn OROpenHiveByHandle(filehandle: super::HANDLE, horkey: PORHKEY) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn OROpenHiveByHandle(filehandle : super::HANDLE, horkey : PORHKEY) -> u32);
+    unsafe { OROpenHiveByHandle(filehandle, horkey as _) }
+}
+#[inline]
+pub unsafe fn OROpenKey<P1>(handle: ORHKEY, lpsubkey: P1, phkresult: PORHKEY) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn OROpenKey(handle : ORHKEY, lpsubkey : windows_core::PCWSTR, phkresult : PORHKEY) -> u32);
+    unsafe { OROpenKey(handle, lpsubkey.param().abi(), phkresult as _) }
+}
+#[cfg(feature = "minwindef")]
+#[inline]
+pub unsafe fn ORQueryInfoKey(handle: ORHKEY, lpclass: Option<windows_core::PWSTR>, lpcclass: Option<super::PDWORD>, lpcsubkeys: Option<super::PDWORD>, lpcmaxsubkeylen: Option<super::PDWORD>, lpcmaxclasslen: Option<super::PDWORD>, lpcvalues: Option<super::PDWORD>, lpcmaxvaluenamelen: Option<super::PDWORD>, lpcmaxvaluelen: Option<super::PDWORD>, lpcbsecuritydescriptor: Option<super::PDWORD>, lpftlastwritetime: Option<super::PFILETIME>) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORQueryInfoKey(handle : ORHKEY, lpclass : windows_core::PWSTR, lpcclass : super::PDWORD, lpcsubkeys : super::PDWORD, lpcmaxsubkeylen : super::PDWORD, lpcmaxclasslen : super::PDWORD, lpcvalues : super::PDWORD, lpcmaxvaluenamelen : super::PDWORD, lpcmaxvaluelen : super::PDWORD, lpcbsecuritydescriptor : super::PDWORD, lpftlastwritetime : super::PFILETIME) -> u32);
+    unsafe {
+        ORQueryInfoKey(
+            handle,
+            lpclass.unwrap_or(core::mem::zeroed()) as _,
+            lpcclass.unwrap_or(core::mem::zeroed()) as _,
+            lpcsubkeys.unwrap_or(core::mem::zeroed()) as _,
+            lpcmaxsubkeylen.unwrap_or(core::mem::zeroed()) as _,
+            lpcmaxclasslen.unwrap_or(core::mem::zeroed()) as _,
+            lpcvalues.unwrap_or(core::mem::zeroed()) as _,
+            lpcmaxvaluenamelen.unwrap_or(core::mem::zeroed()) as _,
+            lpcmaxvaluelen.unwrap_or(core::mem::zeroed()) as _,
+            lpcbsecuritydescriptor.unwrap_or(core::mem::zeroed()) as _,
+            lpftlastwritetime.unwrap_or(core::mem::zeroed()) as _,
+        )
+    }
+}
+#[inline]
+pub unsafe fn ORRenameKey<P1>(handle: ORHKEY, lpnewname: P1) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORRenameKey(handle : ORHKEY, lpnewname : windows_core::PCWSTR) -> u32);
+    unsafe { ORRenameKey(handle, lpnewname.param().abi()) }
+}
+#[inline]
+pub unsafe fn ORSaveHive<P1>(horkey: ORHKEY, hivepath: P1, osmajorversion: u32, osminorversion: u32) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORSaveHive(horkey : ORHKEY, hivepath : windows_core::PCWSTR, osmajorversion : u32, osminorversion : u32) -> u32);
+    unsafe { ORSaveHive(horkey, hivepath.param().abi(), osmajorversion, osminorversion) }
+}
+#[cfg(feature = "winnt")]
+#[inline]
+pub unsafe fn ORSetKeySecurity(handle: ORHKEY, securityinformation: super::SECURITY_INFORMATION, psecuritydescriptor: super::PSECURITY_DESCRIPTOR) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORSetKeySecurity(handle : ORHKEY, securityinformation : super::SECURITY_INFORMATION, psecuritydescriptor : super::PSECURITY_DESCRIPTOR) -> u32);
+    unsafe { ORSetKeySecurity(handle, securityinformation, psecuritydescriptor) }
+}
+#[inline]
+pub unsafe fn ORSetValue<P1>(handle: ORHKEY, lpvaluename: P1, dwtype: u32, lpdata: Option<&[u8]>) -> u32
+where
+    P1: windows_core::Param<windows_core::PCWSTR>,
+{
+    windows_core::link!("offreg.dll" "system" fn ORSetValue(handle : ORHKEY, lpvaluename : windows_core::PCWSTR, dwtype : u32, lpdata : *const u8, cbdata : u32) -> u32);
+    unsafe { ORSetValue(handle, lpvaluename.param().abi(), dwtype, lpdata.map_or(core::ptr::null(), |slice| slice.as_ptr()), lpdata.map_or(0, |slice| slice.len().try_into().unwrap())) }
+}
+#[inline]
+pub unsafe fn ORSetVirtualFlags(handle: ORHKEY, dwflags: u32) -> u32 {
+    windows_core::link!("offreg.dll" "system" fn ORSetVirtualFlags(handle : ORHKEY, dwflags : u32) -> u32);
+    unsafe { ORSetVirtualFlags(handle, dwflags) }
+}
+pub type ORHKEY = *mut core::ffi::c_void;
+pub type PORHKEY = *mut ORHKEY;

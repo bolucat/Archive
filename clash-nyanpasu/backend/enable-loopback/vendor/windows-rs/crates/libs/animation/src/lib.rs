@@ -1,0 +1,17 @@
+#![doc = include_str!("../readme.md")]
+
+#[expect(non_snake_case, non_upper_case_globals, non_camel_case_types)]
+mod bindings;
+mod manager;
+mod storyboard;
+mod transition;
+mod variable;
+
+use bindings::*;
+use windows_core::{Interface, create_instance};
+
+pub use manager::Manager;
+pub use storyboard::{Keyframe, Storyboard};
+pub use transition::{Transition, TransitionLibrary};
+pub use variable::Variable;
+pub use windows_core::Result;

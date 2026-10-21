@@ -1,0 +1,44 @@
+--out crates/libs/registry/src/bindings.rs
+--flat --sys
+
+
+--filter
+    CloseHandle
+    CommitTransaction
+    CreateTransaction
+    ERROR_INVALID_DATA
+    ERROR_NO_MORE_ITEMS
+    GetProcessHeap
+    HeapAlloc
+    HeapFree
+    HKEY_CLASSES_ROOT
+    HKEY_CURRENT_CONFIG
+    HKEY_CURRENT_USER
+    HKEY_LOCAL_MACHINE
+    HKEY_USERS
+    INVALID_HANDLE_VALUE
+    KEY_READ
+    KEY_WOW64_32KEY
+    KEY_WOW64_64KEY
+    KEY_WRITE
+    REG_BINARY
+    REG_DWORD
+    REG_EXPAND_SZ
+    REG_MULTI_SZ
+    REG_OPTION_NON_VOLATILE
+    REG_OPTION_VOLATILE
+    REG_QWORD
+    REG_SZ
+    RegCloseKey
+    RegCreateKeyExW
+    RegCreateKeyTransactedW
+    RegDeleteTreeW
+    RegDeleteValueW
+    RegEnumKeyExW
+    RegEnumValueW
+    RegOpenKeyExW
+    RegOpenKeyTransactedW
+    RegQueryInfoKeyW
+    RegQueryValueExW
+    RegRenameKey
+    RegSetValueExW

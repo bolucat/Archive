@@ -1,4 +1,5 @@
 use super::*;
+use crate::tcp::tcp_client_handler_factory::create_test_selector;
 use etherparse::PacketBuilder;
 use futures::FutureExt;
 use smoltcp::wire::{IpAddress, IpProtocol, Ipv4Packet, TcpPacket};
@@ -55,7 +56,7 @@ async fn raw_fd_tcp_sniffs_http_and_replays_through_packet_ingress() {
     ))
     .unwrap();
     let selector = Arc::new(
-        create_tcp_client_proxy_selector(vec![rule], resolver.clone())
+        create_test_selector(vec![rule], resolver.clone())
             .unwrap()
             .with_sniff(true),
     );
@@ -64,6 +65,7 @@ async fn raw_fd_tcp_sniffs_http_and_replays_through_packet_ingress() {
         .close_fd_on_drop(false)
         .packet_information(false);
     let (shutdown, shutdown_rx) = oneshot::channel();
+    wire.send(&packet(100, None, false, &[])).await.unwrap();
     let server = tokio::spawn(run_tun_server(config, selector, resolver, shutdown_rx));
     let outcome = AssertUnwindSafe(timeout(Duration::from_secs(10), async {
         let payload = crate::sniff::tests::http_request();
@@ -77,7 +79,6 @@ async fn raw_fd_tcp_sniffs_http_and_replays_through_packet_ingress() {
             stream.shutdown().await.unwrap();
         };
         let client = async {
-            wire.send(&packet(100, None, false, &[])).await.unwrap();
             let mut buffer = [0; 2048];
             let length = wire.recv(&mut buffer).await.unwrap();
             let syn_ack = reply(&buffer[..length]);

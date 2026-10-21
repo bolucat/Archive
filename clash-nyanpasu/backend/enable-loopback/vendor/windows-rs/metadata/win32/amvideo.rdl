@@ -1,0 +1,159 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const AMDDS_ALL: i32 = 255;
+        const AMDDS_DCIPS: i32 = 1;
+        const AMDDS_DEFAULT: i32 = 255;
+        const AMDDS_NONE: i32 = 0;
+        const AMDDS_PRIMARY: i32 = 3;
+        const AMDDS_PS: i32 = 2;
+        const AMDDS_RGB: i32 = 84;
+        const AMDDS_RGBFLP: i32 = 64;
+        const AMDDS_RGBOFF: i32 = 16;
+        const AMDDS_RGBOVR: i32 = 4;
+        const AMDDS_YUV: i32 = 168;
+        const AMDDS_YUVFLP: i32 = 128;
+        const AMDDS_YUVOFF: i32 = 32;
+        const AMDDS_YUVOVR: i32 = 8;
+        struct AM_FRAMESTEP_STEP {
+            dwFramesToStep: u32,
+        }
+        #[repr(i32)]
+        enum AM_PROPERTY_FRAMESTEP {
+            AM_PROPERTY_FRAMESTEP_STEP = 1,
+            AM_PROPERTY_FRAMESTEP_CANCEL = 2,
+            AM_PROPERTY_FRAMESTEP_CANSTEP = 3,
+            AM_PROPERTY_FRAMESTEP_CANSTEPMULTIPLE = 4,
+        }
+        struct ANALOGVIDEOINFO {
+            rcSource: RECT,
+            rcTarget: RECT,
+            dwActiveWidth: u32,
+            dwActiveHeight: u32,
+            AvgTimePerFrame: REFERENCE_TIME,
+        }
+        #[no_guid]
+        interface IBaseVideoMixer: IUnknown {
+            fn SetLeadPin(&self, iPin: i32) -> HRESULT;
+            fn GetLeadPin(&self, piPin: *mut i32) -> HRESULT;
+            fn GetInputPinCount(&self, piPinCount: *mut i32) -> HRESULT;
+            fn IsUsingClock(&self, pbValue: *mut i32) -> HRESULT;
+            fn SetUsingClock(&self, bValue: i32) -> HRESULT;
+            fn GetClockPeriod(&self, pbValue: *mut i32) -> HRESULT;
+            fn SetClockPeriod(&self, bValue: i32) -> HRESULT;
+        }
+        #[no_guid]
+        interface IDirectDrawVideo: IUnknown {
+            fn GetSwitches(&self, pSwitches: *mut u32) -> HRESULT;
+            fn SetSwitches(&self, Switches: u32) -> HRESULT;
+            fn GetCaps(&self, pCaps: *mut DDCAPS) -> HRESULT;
+            fn GetEmulatedCaps(&self, pCaps: *mut DDCAPS) -> HRESULT;
+            fn GetSurfaceDesc(&self, #[in] #[out] pSurfaceDesc: *mut DDSURFACEDESC) -> HRESULT;
+            fn GetFourCCCodes(&self, pCount: *mut u32, pCodes: *mut u32) -> HRESULT;
+            fn SetDirectDraw(&self, pDirectDraw: IDirectDraw) -> HRESULT;
+            fn GetDirectDraw(&self, ppDirectDraw: *mut IDirectDraw) -> HRESULT;
+            fn GetSurfaceType(&self, pSurfaceType: *mut u32) -> HRESULT;
+            fn SetDefault(&self) -> HRESULT;
+            fn UseScanLine(&self, UseScanLine: i32) -> HRESULT;
+            fn CanUseScanLine(&self, UseScanLine: *mut i32) -> HRESULT;
+            fn UseOverlayStretch(&self, UseOverlayStretch: i32) -> HRESULT;
+            fn CanUseOverlayStretch(&self, UseOverlayStretch: *mut i32) -> HRESULT;
+            fn UseWhenFullScreen(&self, UseWhenFullScreen: i32) -> HRESULT;
+            fn WillUseFullScreen(&self, UseWhenFullScreen: *mut i32) -> HRESULT;
+        }
+        #[no_guid]
+        interface IFullScreenVideo: IUnknown {
+            fn CountModes(&self, pModes: *mut i32) -> HRESULT;
+            fn GetModeInfo(&self, Mode: i32, pWidth: *mut i32, pHeight: *mut i32, pDepth: *mut i32) -> HRESULT;
+            fn GetCurrentMode(&self, pMode: *mut i32) -> HRESULT;
+            fn IsModeAvailable(&self, Mode: i32) -> HRESULT;
+            fn IsModeEnabled(&self, Mode: i32) -> HRESULT;
+            fn SetEnabled(&self, Mode: i32, bEnabled: i32) -> HRESULT;
+            fn GetClipFactor(&self, pClipFactor: *mut i32) -> HRESULT;
+            fn SetClipFactor(&self, ClipFactor: i32) -> HRESULT;
+            fn SetMessageDrain(&self, hwnd: HWND) -> HRESULT;
+            fn GetMessageDrain(&self, hwnd: *mut HWND) -> HRESULT;
+            fn SetMonitor(&self, Monitor: i32) -> HRESULT;
+            fn GetMonitor(&self, Monitor: *mut i32) -> HRESULT;
+            fn HideOnDeactivate(&self, Hide: i32) -> HRESULT;
+            fn IsHideOnDeactivate(&self) -> HRESULT;
+            fn SetCaption(&self, strCaption: BSTR) -> HRESULT;
+            fn GetCaption(&self, pstrCaption: *mut BSTR) -> HRESULT;
+            fn SetDefault(&self) -> HRESULT;
+        }
+        #[no_guid]
+        interface IFullScreenVideoEx: IFullScreenVideo {
+            fn SetAcceleratorTable(&self, hwnd: HWND, hAccel: HACCEL) -> HRESULT;
+            fn GetAcceleratorTable(&self, phwnd: *mut HWND, phAccel: *mut HACCEL) -> HRESULT;
+            fn KeepPixelAspectRatio(&self, KeepAspect: i32) -> HRESULT;
+            fn IsKeepPixelAspectRatio(&self, pKeepAspect: *mut i32) -> HRESULT;
+        }
+        #[no_guid]
+        interface IQualProp: IUnknown {
+            fn get_FramesDroppedInRenderer(&self, pcFrames: *mut i32) -> HRESULT;
+            fn get_FramesDrawn(&self, pcFramesDrawn: *mut i32) -> HRESULT;
+            fn get_AvgFrameRate(&self, piAvgFrameRate: *mut i32) -> HRESULT;
+            fn get_Jitter(&self, iJitter: *mut i32) -> HRESULT;
+            fn get_AvgSyncOffset(&self, piAvg: *mut i32) -> HRESULT;
+            fn get_DevSyncOffset(&self, piDev: *mut i32) -> HRESULT;
+        }
+        const MAX_SIZE_MPEG1_SEQUENCE_INFO: i32 = 140;
+        struct MPEG1VIDEOINFO {
+            hdr: VIDEOINFOHEADER,
+            dwStartTimeCode: u32,
+            cbSequenceHeader: u32,
+            bSequenceHeader: [u8; 1],
+        }
+        #[arch(X64 | Arm64)]
+        const SIZE_EGA_PALETTE: u64 = 64;
+        #[arch(X86)]
+        const SIZE_EGA_PALETTE: u32 = 64;
+        #[arch(X64 | Arm64)]
+        const SIZE_MASKS: u64 = 12;
+        #[arch(X86)]
+        const SIZE_MASKS: u32 = 12;
+        #[arch(X64 | Arm64)]
+        const SIZE_PALETTE: u64 = 1024;
+        #[arch(X86)]
+        const SIZE_PALETTE: u32 = 1024;
+        const SIZE_PREHEADER: i32 = 48;
+        #[arch(X64 | Arm64)]
+        const SIZE_VIDEOHEADER: u64 = 88;
+        #[arch(X86)]
+        const SIZE_VIDEOHEADER: u32 = 88;
+        struct TRUECOLORINFO {
+            dwBitMasks: [u32; 3],
+            bmiColors: [RGBQUAD; 256],
+        }
+        struct VIDEOINFO {
+            rcSource: RECT,
+            rcTarget: RECT,
+            dwBitRate: u32,
+            dwBitErrorRate: u32,
+            AvgTimePerFrame: REFERENCE_TIME,
+            bmiHeader: BITMAPINFOHEADER,
+            Anonymous: union {
+                bmiColors: [RGBQUAD; 256],
+                dwBitMasks: [u32; 3],
+                TrueColorInfo: TRUECOLORINFO,
+            },
+        }
+        struct VIDEOINFOHEADER {
+            rcSource: RECT,
+            rcTarget: RECT,
+            dwBitRate: u32,
+            dwBitErrorRate: u32,
+            AvgTimePerFrame: REFERENCE_TIME,
+            bmiHeader: BITMAPINFOHEADER,
+        }
+        const iBLUE: i32 = 2;
+        const iEGA_COLORS: i32 = 16;
+        const iGREEN: i32 = 1;
+        const iMASK_COLORS: i32 = 3;
+        const iMAXBITS: i32 = 8;
+        const iPALETTE: i32 = 8;
+        const iPALETTE_COLORS: i32 = 256;
+        const iRED: i32 = 0;
+        const iTRUECOLOR: i32 = 16;
+    }
+}

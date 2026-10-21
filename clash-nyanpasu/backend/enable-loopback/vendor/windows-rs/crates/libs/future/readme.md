@@ -1,0 +1,31 @@
+## windows-future
+
+The [windows-future](https://crates.io/crates/windows-future) crate adapts WinRT asynchronous
+operations to Rust futures.
+
+* [Getting
+  started](https://github.com/microsoft/windows-rs/blob/master/docs/crates/windows-future.md)
+
+Start by adding the following to your Cargo.toml file:
+
+```toml
+[dependencies.windows-future]
+version = "0.100"
+```
+
+Use the Windows async types as needed:
+
+```rust,no_run
+use windows_future::*;
+
+// This result will be available immediately.
+let ready = IAsyncOperation::ready(Ok(123));
+assert_eq!(ready.join().unwrap(), 123);
+
+let ready = IAsyncOperation::spawn(|| {
+    // Some lengthy operation goes here...
+    Ok(456)
+});
+
+assert_eq!(ready.join().unwrap(), 456);
+```

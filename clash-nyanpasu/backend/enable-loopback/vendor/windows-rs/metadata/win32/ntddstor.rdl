@@ -1,0 +1,7 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const GUID_DEVICEDUMP_DRIVER_STORAGE_PORT: GUID = 0xda82441d_7142_4bc1_b844_0807c5a4b67f;
+        const GUID_DEVICEDUMP_STORAGE_DEVICE: GUID = 0xd8e2592f_1aab_4d56_a746_1f7585df40f4;
+    }
+}

@@ -2,12 +2,14 @@
 //! live connections; this module only filters, groups and ranks them.
 use std::{cmp::Ordering, collections::HashMap};
 
+use crate::key::Key;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     model::{
         Bytes, Dimension, Dimensions, Metric, Rate, TrafficError, TrafficFilter, TrafficQuery,
-        TrafficResult, TrafficScope, UsageCursor, group_key,
+        TrafficResult, TrafficScope, UsageCursor,
     },
     topology::{self, Topology},
 };
@@ -102,7 +104,8 @@ pub struct UsageGroup {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Ranking {
     pub dimension: Dimension,
-    /// Distinct values of the dimension among the filtered rows.
+    /// Distinct values of the dimension among the rows the ranking counts: those matching every
+    /// filter except one on this dimension.
     pub distinct: u64,
     /// Heaviest first.
     pub groups: Vec<UsageGroup>,
@@ -132,64 +135,287 @@ pub struct UsagePage {
 /// One dimension combination with its usage and, for live connections, its rate.
 pub type Row<'a> = (&'a Dimensions, Usage, Option<Rate>);
 
-/// The rows that satisfy every filter.
-pub fn filter_rows<'a>(
-    rows: impl IntoIterator<Item = Row<'a>>,
-    filters: &[TrafficFilter],
-) -> impl Iterator<Item = Row<'a>> {
-    rows.into_iter().filter(move |(dimensions, _, _)| {
-        filters
-            .iter()
-            .all(|f| group_key(dimensions, f.dimension) == f.value)
-    })
+/// Which filters a row fails.
+pub(crate) enum Miss {
+    None,
+    /// Only the filter at this index.
+    Only(usize),
+    Many,
 }
-
-pub fn report<'a>(
-    rows: impl IntoIterator<Item = Row<'a>>,
-    request: &ReportRequest,
-) -> TrafficReport {
-    let rows: Vec<Row<'a>> = filter_rows(rows, &request.query.filters).collect();
-    // Only live connections have a rate, and a closed-only view has none of them.
-    let rated = request.query.scope != TrafficScope::Closed;
-    let limit = request.ranking_limit.clamp(1, MAX_LIMIT);
-
-    TrafficReport {
-        total: sum(rows.iter().map(|(_, usage, _)| usage)),
-        current_rate: rated
-            .then(|| sum_rates(rows.iter().map(|(_, _, rate)| rate)))
-            .flatten(),
-        rankings: request
-            .rankings
-            .iter()
-            .map(|&dimension| {
-                let mut groups = ranked(&rows, dimension, rated, request.metric);
-                let distinct = groups.len() as u64;
-                let other = sum(groups
-                    .split_off(limit.min(groups.len()))
-                    .iter()
-                    .map(|g| &g.usage));
-                Ranking {
-                    dimension,
-                    distinct,
-                    groups,
-                    other,
+impl Miss {
+    pub fn of(d: &Dimensions, filters: &[TrafficFilter]) -> Self {
+        let mut miss = Miss::None;
+        for (i, f) in filters.iter().enumerate() {
+            if Key::of(d, f.dimension) != Key::Text(&f.value) {
+                if !matches!(miss, Miss::None) {
+                    return Miss::Many;
                 }
-            })
-            .collect(),
-        topology: request.topology.as_ref().map(|t| {
-            topology::project(
-                rows.iter()
-                    .map(|(dimensions, usage, _)| (*dimensions, *usage)),
-                &t.layers,
-                request.metric,
-                t.limit_per_layer,
-            )
-        }),
+                miss = Miss::Only(i);
+            }
+        }
+        miss
     }
 }
 
-/// The `limit` groups ranked by `metric` after `after`, or the top ones; the rest after the page
-/// is folded into `other`. `total` covers every group.
+pub fn filter_rows<'a, I>(
+    rows: I,
+    filters: &[TrafficFilter],
+) -> impl Iterator<Item = Row<'a>> + Clone
+where
+    I: IntoIterator<Item = Row<'a>>,
+    I::IntoIter: Clone,
+{
+    rows.into_iter()
+        .filter(move |(d, _, _)| crate::key::matches(d, filters))
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Aggregate {
+    pub usage: Usage,
+    pub rate: Option<Rate>,
+}
+impl Aggregate {
+    pub fn add(&mut self, usage: Usage, rate: Option<Rate>) {
+        self.usage = self.usage.saturating_add(usage);
+        if let Some(rate) = rate {
+            self.rate = Some(add_rate(self.rate, rate));
+        }
+    }
+    fn output(self, key: Key<'_>) -> UsageGroup {
+        UsageGroup {
+            key: key.owned(),
+            usage: self.usage,
+            current_rate: self.rate,
+        }
+    }
+}
+
+pub(crate) struct Groups<'a> {
+    pub values: HashMap<Key<'a>, Aggregate>,
+    pub overflow: Usage,
+    pub has_overflow: bool,
+}
+impl<'a> Groups<'a> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            values: HashMap::with_capacity(capacity),
+            overflow: Usage::default(),
+            has_overflow: false,
+        }
+    }
+    pub fn add(&mut self, key: Option<Key<'a>>, usage: Usage, rate: Option<Rate>) {
+        if let Some(key) = key {
+            self.values.entry(key).or_default().add(usage, rate);
+        } else {
+            self.has_overflow = true;
+            self.overflow = self.overflow.saturating_add(usage);
+        }
+    }
+    pub fn ordered(&self, metric: Metric) -> Vec<(Key<'a>, Aggregate)> {
+        let mut groups: Vec<_> = self.values.iter().map(|(k, v)| (*k, *v)).collect();
+        groups.sort_unstable_by(|(ak, a), (bk, b)| {
+            metric
+                .of(&b.usage)
+                .cmp(&metric.of(&a.usage))
+                .then_with(|| ak.cmp(bk))
+        });
+        groups
+    }
+    pub fn ranking(&self, dimension: Dimension, metric: Metric, limit: usize) -> Ranking {
+        let groups = self.ordered(metric);
+        let limit = limit.clamp(1, MAX_LIMIT).min(groups.len());
+        Ranking {
+            dimension,
+            distinct: groups.len() as u64,
+            groups: groups[..limit].iter().map(|(k, v)| v.output(*k)).collect(),
+            other: sum(groups[limit..].iter().map(|(_, v)| &v.usage)).saturating_add(self.overflow),
+        }
+    }
+    pub fn page(
+        &self,
+        total: Usage,
+        metric: Metric,
+        after: Option<&UsageCursor>,
+        limit: usize,
+    ) -> UsagePage {
+        let mut groups = self.ordered(metric);
+        groups.retain(|(key, value)| {
+            after.is_none_or(|c| {
+                rank(metric, (*key, &value.usage), (Key::Text(&c.key), &c.usage))
+                    == Ordering::Greater
+            })
+        });
+        let limit = limit.clamp(1, MAX_LIMIT).min(groups.len());
+        let next = (groups.len() > limit).then(|| UsageCursor {
+            key: groups[limit - 1].0.owned(),
+            usage: groups[limit - 1].1.usage,
+        });
+        UsagePage {
+            total,
+            groups: groups[..limit].iter().map(|(k, v)| v.output(*k)).collect(),
+            other: sum(groups[limit..].iter().map(|(_, v)| &v.usage)).saturating_add(self.overflow),
+            next,
+        }
+    }
+    pub fn by_keys(self, keys: &[String]) -> Vec<UsageGroup> {
+        let mut out = Vec::with_capacity(keys.len().min(self.values.len()));
+        for (i, key) in keys.iter().enumerate() {
+            if keys[..i].contains(key) {
+                continue;
+            }
+            if let Some(value) = self.values.get(&Key::Text(key)) {
+                out.push(value.output(Key::Text(key)));
+            }
+        }
+        out
+    }
+}
+
+/// One grouping of a report. A topology layer of Chain skips the empty chain. A ranking of a
+/// filtered dimension ignores that filter, the one at index `ignored`, so the filtered value
+/// keeps its alternatives beside it; the total and the topology honour every filter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Grouping {
+    pub dimension: Dimension,
+    pub skip_empty: bool,
+    pub ignored: Option<usize>,
+}
+
+/// Shared requests of one report.
+pub(crate) struct ReportPlan {
+    pub dimensions: Vec<Grouping>,
+    pub rankings: Vec<usize>,
+    pub layers: Vec<usize>,
+}
+impl ReportPlan {
+    pub fn new(request: &ReportRequest) -> Self {
+        let mut out = Self {
+            dimensions: Vec::with_capacity(request.rankings.len() + 5),
+            rankings: Vec::with_capacity(request.rankings.len()),
+            layers: Vec::with_capacity(5),
+        };
+        let filters = &request.query.filters;
+        for &d in &request.rankings {
+            let i = out.slot(Grouping {
+                dimension: d,
+                skip_empty: false,
+                ignored: filters.iter().position(|f| f.dimension == d),
+            });
+            out.rankings.push(i);
+        }
+        if let Some(t) = &request.topology {
+            for &d in &t.layers {
+                let i = out.slot(Grouping {
+                    dimension: d,
+                    skip_empty: d == Dimension::Chain,
+                    ignored: None,
+                });
+                out.layers.push(i);
+            }
+        }
+        out
+    }
+    fn slot(&mut self, grouping: Grouping) -> usize {
+        if let Some(i) = self.dimensions.iter().position(|g| *g == grouping) {
+            i
+        } else {
+            self.dimensions.push(grouping);
+            self.dimensions.len() - 1
+        }
+    }
+}
+
+pub(crate) struct ReportState<'a> {
+    pub total: Aggregate,
+    pub groups: Vec<Groups<'a>>,
+}
+impl<'a> ReportState<'a> {
+    pub fn new(capacities: impl Iterator<Item = usize>) -> Self {
+        Self {
+            total: Aggregate::default(),
+            groups: capacities.map(Groups::new).collect(),
+        }
+    }
+    /// Adds an unfiltered row: to the total and every grouping when it matches every filter, or
+    /// to the groupings that ignore the one filter it fails.
+    pub fn add(&mut self, row: Row<'a>, plan: &ReportPlan, filters: &[TrafficFilter], rated: bool) {
+        let (d, usage, rate) = row;
+        let miss = Miss::of(d, filters);
+        let ignored = match miss {
+            Miss::None => None,
+            Miss::Only(i) => Some(i),
+            Miss::Many => return,
+        };
+        let rate = rate.filter(|_| rated);
+        if ignored.is_none() {
+            self.total.add(usage, rate);
+        }
+        for (grouping, groups) in plan.dimensions.iter().zip(&mut self.groups) {
+            if ignored.is_some() && grouping.ignored != ignored {
+                continue;
+            }
+            let key = Key::of(d, grouping.dimension);
+            if !grouping.skip_empty || !key.is_empty() {
+                groups.add(Some(key), usage, rate);
+            }
+        }
+    }
+    pub fn finish(
+        self,
+        plan: &ReportPlan,
+        request: &ReportRequest,
+        topology: Option<Topology>,
+    ) -> TrafficReport {
+        TrafficReport {
+            total: self.total.usage,
+            current_rate: self.total.rate,
+            rankings: request
+                .rankings
+                .iter()
+                .zip(&plan.rankings)
+                .map(|(&d, &i)| self.groups[i].ranking(d, request.metric, request.ranking_limit))
+                .collect(),
+            topology,
+        }
+    }
+}
+
+pub fn report<'a, I>(rows: I, request: &ReportRequest) -> TrafficReport
+where
+    I: IntoIterator<Item = Row<'a>>,
+    I::IntoIter: Clone,
+{
+    let rows = rows.into_iter();
+    let filters = &request.query.filters;
+    let plan = ReportPlan::new(request);
+    let mut state = ReportState::new(
+        plan.dimensions
+            .iter()
+            .map(|_| rows.size_hint().1.unwrap_or(0)),
+    );
+    for row in rows.clone() {
+        state.add(
+            row,
+            &plan,
+            filters,
+            request.query.scope != TrafficScope::Closed,
+        );
+    }
+    let rows = filter_rows(rows, filters);
+    let topology = request.topology.as_ref().map(|t| {
+        let mut projection = topology::Projection::new(
+            plan.layers.iter().map(|&i| &state.groups[i]),
+            request.metric,
+            t.limit_per_layer,
+        );
+        for (d, u, _) in rows {
+            projection.session(d, u, &t.layers);
+        }
+        projection.finish()
+    });
+    state.finish(&plan, request, topology)
+}
+
 pub fn usage_page<'a>(
     rows: impl IntoIterator<Item = Row<'a>>,
     dimension: Dimension,
@@ -197,97 +423,37 @@ pub fn usage_page<'a>(
     after: Option<&UsageCursor>,
     limit: usize,
 ) -> UsagePage {
-    let mut groups = ranked(
-        &rows.into_iter().collect::<Vec<_>>(),
-        dimension,
-        true,
-        metric,
-    );
-    let total = sum(groups.iter().map(|g| &g.usage));
-    groups.retain(|g| {
-        after.is_none_or(|c| {
-            rank(metric, (&g.key, &g.usage), (&c.key, &c.usage)) == Ordering::Greater
-        })
-    });
-    let rest = groups.split_off(limit.clamp(1, MAX_LIMIT).min(groups.len()));
-    let next = if rest.is_empty() {
-        None
-    } else {
-        groups.last().map(|g| UsageCursor {
-            usage: g.usage,
-            key: g.key.clone(),
-        })
-    };
-    UsagePage {
-        total,
-        groups,
-        other: sum(rest.iter().map(|g| &g.usage)),
-        next,
+    let rows = rows.into_iter();
+    let mut groups = Groups::new(rows.size_hint().1.unwrap_or(0));
+    let mut total = Usage::default();
+    for (d, u, r) in rows {
+        total = total.saturating_add(u);
+        groups.add(Some(Key::of(d, dimension)), u, r);
     }
+    groups.page(total, metric, after, limit)
 }
 
-/// The groups of `keys`, in request order; keys without any row are left out.
 pub fn usage_by_keys<'a>(
     rows: impl IntoIterator<Item = Row<'a>>,
     dimension: Dimension,
     keys: &[String],
 ) -> Vec<UsageGroup> {
-    let mut groups: HashMap<String, UsageGroup> =
-        grouped(&rows.into_iter().collect::<Vec<_>>(), dimension, true)
-            .into_iter()
-            .map(|g| (g.key.clone(), g))
-            .collect();
-    // `remove` also drops repeated keys after their first occurrence.
-    keys.iter().filter_map(|key| groups.remove(key)).collect()
-}
-
-/// Every group of `dimension`, heaviest by `metric` first; equal amounts rank by key.
-fn ranked(rows: &[Row<'_>], dimension: Dimension, rated: bool, metric: Metric) -> Vec<UsageGroup> {
-    let mut groups = grouped(rows, dimension, rated);
-    groups.sort_by(|a, b| rank(metric, (&a.key, &a.usage), (&b.key, &b.usage)));
-    groups
-}
-
-/// Every group of `dimension`, in no particular order.
-fn grouped(rows: &[Row<'_>], dimension: Dimension, rated: bool) -> Vec<UsageGroup> {
-    let mut groups: HashMap<String, UsageGroup> = HashMap::new();
-    for (dimensions, usage, rate) in rows {
-        let group = groups
-            .entry(group_key(dimensions, dimension))
-            .or_insert_with_key(|key| UsageGroup {
-                key: key.clone(),
-                usage: Usage::default(),
-                current_rate: None,
-            });
-        group.usage = group.usage.saturating_add(*usage);
-        if let Some(rate) = rate.filter(|_| rated) {
-            group.current_rate = Some(add_rate(group.current_rate, rate));
-        }
+    let rows = rows.into_iter();
+    let mut groups = Groups::new(rows.size_hint().1.unwrap_or(0));
+    for (d, u, r) in rows {
+        groups.add(Some(Key::of(d, dimension)), u, r);
     }
-    groups.into_values().collect()
+    groups.by_keys(keys)
 }
 
-/// Heaviest by `metric` first; equal amounts rank by key.
-fn rank(metric: Metric, (a_key, a): (&str, &Usage), (b_key, b): (&str, &Usage)) -> Ordering {
-    metric
-        .of(b)
-        .cmp(&metric.of(a))
-        .then_with(|| a_key.cmp(b_key))
+fn rank(metric: Metric, (ak, a): (Key<'_>, &Usage), (bk, b): (Key<'_>, &Usage)) -> Ordering {
+    metric.of(b).cmp(&metric.of(a)).then_with(|| ak.cmp(&bk))
 }
-
 fn sum<'a>(usages: impl IntoIterator<Item = &'a Usage>) -> Usage {
     usages
         .into_iter()
-        .fold(Usage::default(), |sum, usage| sum.saturating_add(*usage))
+        .fold(Usage::default(), |sum, u| sum.saturating_add(*u))
 }
-
-fn sum_rates<'a>(rates: impl IntoIterator<Item = &'a Option<Rate>>) -> Option<Rate> {
-    rates
-        .into_iter()
-        .flatten()
-        .fold(None, |sum, rate| Some(add_rate(sum, *rate)))
-}
-
 fn add_rate(sum: Option<Rate>, rate: Rate) -> Rate {
     let sum = sum.unwrap_or_default();
     Rate {
@@ -375,7 +541,7 @@ mod tests {
             ])
         }
 
-        fn rows(&self) -> impl Iterator<Item = Row<'_>> {
+        fn rows(&self) -> impl Iterator<Item = Row<'_>> + Clone {
             self.0.iter().map(|(d, u, r)| (d, *u, *r))
         }
     }
@@ -400,6 +566,66 @@ mod tests {
         );
         assert_eq!(r.total, usage(10, 20, 1));
         assert_eq!(keys(&r.rankings[0].groups), ["curl"]);
+    }
+
+    #[test]
+    fn a_ranking_ignores_the_filter_on_its_own_dimension() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(&[(Dimension::Process, "firefox")], TrafficScope::All),
+                &[Dimension::Process, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(4, 8, 1));
+        let process = &r.rankings[0];
+        assert_eq!(keys(&process.groups), ["curl", "firefox", "wget"]);
+        assert_eq!(process.distinct, 3);
+        // The filtered value's group is the total.
+        assert_eq!(process.groups[1].usage, r.total);
+        assert_eq!(keys(&r.rankings[1].groups), ["a.com"]);
+    }
+
+    #[test]
+    fn a_ranking_keeps_the_filters_on_other_dimensions() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(
+                    &[(Dimension::Process, "curl"), (Dimension::Exit, "Node-B")],
+                    TrafficScope::All,
+                ),
+                &[Dimension::Process, Dimension::Exit, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(0, 0, 1));
+        // Node-B carries curl and wget; curl reaches Node-A and Node-B.
+        assert_eq!(keys(&r.rankings[0].groups), ["wget", "curl"]);
+        assert_eq!(keys(&r.rankings[1].groups), ["Node-A", "Node-B"]);
+        assert_eq!(keys(&r.rankings[2].groups), ["b.com"]);
+    }
+
+    #[test]
+    fn the_topology_honours_every_filter() {
+        let f = Fixture::new();
+        let mut req = request(
+            query(&[(Dimension::Process, "firefox")], TrafficScope::All),
+            &[Dimension::Process],
+            10,
+        );
+        req.topology = Some(TopologyRequest {
+            layers: vec![Dimension::Process, Dimension::Exit],
+            limit_per_layer: None,
+        });
+        let r = report(f.rows(), &req);
+        assert_eq!(r.rankings[0].distinct, 3);
+        let topology = r.topology.unwrap();
+        let keys: Vec<_> = topology.nodes.iter().map(|n| n.key.as_deref()).collect();
+        assert_eq!(keys, [Some("firefox"), Some("Node-A")]);
     }
 
     #[test]

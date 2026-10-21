@@ -1,0 +1,34 @@
+[package]
+name = "test_collections"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[target.'cfg(windows)'.dev-dependencies.windows]
+workspace = true
+features = [
+    "Foundation_Collections",
+    "Globalization",
+]
+
+[dependencies.windows-core]
+workspace = true
+features = ["proc-macros"]
+
+[dependencies.windows-strings]
+workspace = true
+
+[dependencies.windows-collections]
+workspace = true
+features = ["std"]
+
+[dev-dependencies.windows-reference]
+workspace = true
+features = ["std"]
+
+[lints]
+workspace = true

@@ -1031,6 +1031,20 @@ async fn wireguard_outer_chain_requires_udp_before_starting() {
 #[tokio::test]
 async fn wireguard_nested_outer_chain_and_reload() {
     use serde_json::{Value, json};
+    // Concurrent harness forks can retain even CLOEXEC sockets until exec completes.
+    if std::env::var_os("SHOES_WIREGUARD_NESTED_RELOAD_CHILD").is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "wireguard::tests::wireguard_nested_outer_chain_and_reload",
+                "--nocapture",
+            ])
+            .env("SHOES_WIREGUARD_NESTED_RELOAD_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
     tokio::time::timeout(Duration::from_secs(30), async {
         let carrier_port = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
         let inner_port = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -1090,6 +1104,13 @@ async fn wireguard_detoured_endpoint_keeps_encrypted_peers_separate() {
             "[{masks: '198.18.0.2/32', action: allow, override_address: '127.0.0.1:0'}]",
         )
         .unwrap();
+        for selection in other_server.inbound.as_mut().unwrap().rules.iter_mut() {
+            let crate::config::ConfigSelection::Config(rule) = selection else {
+                panic!("expected an inline rule")
+            };
+            rule.compile(&mut crate::rules::Compiler::default())
+                .unwrap();
+        }
         let client = &mut configs.wireguard_endpoints[CLIENT];
         client.peer_client_chain = Some(crate::config::ClientChain::default());
         client.peers[0].allowed_ips = vec!["127.0.0.1/32".into()];

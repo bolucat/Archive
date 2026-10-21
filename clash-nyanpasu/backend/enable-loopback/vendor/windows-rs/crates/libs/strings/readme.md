@@ -1,0 +1,34 @@
+## windows-strings
+
+The [windows-strings](https://crates.io/crates/windows-strings) crate provides Windows string types
+and literals.
+
+* [Getting
+  started](https://github.com/microsoft/windows-rs/blob/master/docs/crates/windows-strings.md)
+
+Start by adding the following to your Cargo.toml file:
+
+```toml
+[dependencies.windows-strings]
+version = "0.100"
+```
+
+Use the Windows string types as needed:
+
+```rust
+use windows_strings::*;
+
+const A: PCSTR = s!("ansi");
+const W: PCWSTR = w!("wide");
+
+fn main() {
+    let b = BSTR::from("bstr");
+    let h = HSTRING::from("hstring");
+
+    assert_eq!(b, "bstr");
+    assert_eq!(h, "hstring");
+
+    assert_eq!(unsafe { A.to_string().unwrap() }, "ansi");
+    assert_eq!(unsafe { W.to_string().unwrap() }, "wide");
+}
+```

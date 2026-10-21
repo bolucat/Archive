@@ -77,7 +77,9 @@ impl From<String> for RuleProviderName {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, nyanpasu_serde::DeserializeUntagged, serde::Serialize, specta::Type,
+)]
 pub enum RuleProviderBehavior {
     Domain,
     #[serde(rename = "IPCIDR")]
@@ -98,7 +100,9 @@ impl RuleProviderBehavior {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, nyanpasu_serde::DeserializeUntagged, serde::Serialize, specta::Type,
+)]
 pub enum RuleFormat {
     YamlRule,
     TextRule,

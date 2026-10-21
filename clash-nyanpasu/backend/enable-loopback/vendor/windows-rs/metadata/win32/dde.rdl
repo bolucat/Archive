@@ -1,0 +1,84 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        struct DDEACK {
+            _bitfield: u16 {
+                bAppReturnCode: 8,
+                reserved: 6,
+                fBusy: 1,
+                fAck: 1,
+            },
+        }
+        struct DDEADVISE {
+            _bitfield: u16 {
+                reserved: 14,
+                fDeferUpd: 1,
+                fAckReq: 1,
+            },
+            cfFormat: i16,
+        }
+        struct DDEDATA {
+            _bitfield: u16 {
+                unused: 12,
+                fResponse: 1,
+                fRelease: 1,
+                reserved: 1,
+                fAckReq: 1,
+            },
+            cfFormat: i16,
+            Value: [u8; 1],
+        }
+        struct DDELN {
+            _bitfield: u16 {
+                unused: 13,
+                fRelease: 1,
+                fDeferUpd: 1,
+                fAckReq: 1,
+            },
+            cfFormat: i16,
+        }
+        struct DDEPOKE {
+            _bitfield: u16 {
+                unused: 13,
+                fRelease: 1,
+                fReserved: 2,
+            },
+            cfFormat: i16,
+            Value: [u8; 1],
+        }
+        struct DDEUP {
+            _bitfield: u16 {
+                unused: 12,
+                fAck: 1,
+                fRelease: 1,
+                fReserved: 1,
+                fAckReq: 1,
+            },
+            cfFormat: i16,
+            rgb: [u8; 1],
+        }
+        #[library("USER32.dll")]
+        extern fn DdeSetQualityOfService(hwndClient: HWND, pqosNew: *const SECURITY_QUALITY_OF_SERVICE, pqosPrev: PSECURITY_QUALITY_OF_SERVICE) -> BOOL;
+        #[library("USER32.dll")]
+        extern fn FreeDDElParam(msg: u32, lParam: LPARAM) -> BOOL;
+        #[library("USER32.dll")]
+        extern fn ImpersonateDdeClientWindow(hWndClient: HWND, hWndServer: HWND) -> BOOL;
+        #[library("USER32.dll")]
+        extern fn PackDDElParam(msg: u32, uiLo: usize, uiHi: usize) -> LPARAM;
+        #[library("USER32.dll")]
+        extern fn ReuseDDElParam(lParam: LPARAM, msgIn: u32, msgOut: u32, uiLo: usize, uiHi: usize) -> LPARAM;
+        #[library("USER32.dll")]
+        extern fn UnpackDDElParam(msg: u32, lParam: LPARAM, #[out] puiLo: PUINT_PTR, #[out] puiHi: PUINT_PTR) -> BOOL;
+        const WM_DDE_ACK: i32 = 996;
+        const WM_DDE_ADVISE: i32 = 994;
+        const WM_DDE_DATA: i32 = 997;
+        const WM_DDE_EXECUTE: i32 = 1000;
+        const WM_DDE_FIRST: i32 = 992;
+        const WM_DDE_INITIATE: i32 = 992;
+        const WM_DDE_LAST: i32 = 1000;
+        const WM_DDE_POKE: i32 = 999;
+        const WM_DDE_REQUEST: i32 = 998;
+        const WM_DDE_TERMINATE: i32 = 993;
+        const WM_DDE_UNADVISE: i32 = 995;
+    }
+}

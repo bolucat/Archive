@@ -1,0 +1,38 @@
+use super::*;
+
+/// Coordinates variables, transitions, and storyboards.
+#[derive(Clone)]
+pub struct Manager(pub(crate) IUIAnimationManager2);
+
+impl Manager {
+    /// Creates a new animation manager.
+    pub fn new() -> Result<Self> {
+        Ok(Self(create_instance(&UIAnimationManager2)?))
+    }
+
+    /// Creates a new animation variable with the given initial value.
+    pub fn create_variable(&self, initial_value: f64) -> Result<Variable> {
+        unsafe { Ok(Variable(self.0.CreateAnimationVariable(initial_value)?)) }
+    }
+
+    /// Creates a new storyboard for sequencing transitions.
+    pub fn create_storyboard(&self) -> Result<Storyboard> {
+        unsafe { Ok(Storyboard(self.0.CreateStoryboard()?)) }
+    }
+
+    /// Advances the animation manager to the specified time in seconds.
+    pub fn update(&self, time: f64) -> Result<()> {
+        unsafe { self.0.Update(time, None) }.ok()?;
+        Ok(())
+    }
+
+    /// Schedules a transition on a variable, starting at the specified time in seconds.
+    pub fn schedule_transition(
+        &self,
+        variable: &Variable,
+        transition: &Transition,
+        time: f64,
+    ) -> Result<()> {
+        unsafe { self.0.ScheduleTransition(&variable.0, &transition.0, time) }.ok()
+    }
+}

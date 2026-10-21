@@ -1,0 +1,148 @@
+windows_core::imp::define_interface!(IWalletItemSystemStore, IWalletItemSystemStore_Vtbl, 0x522e2bff_96a2_4a17_8d19_fe1d9f837561);
+impl windows_core::RuntimeType for IWalletItemSystemStore {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Wallet.System.IWalletItemSystemStore");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IWalletItemSystemStore_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetItemsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DeleteAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "Storage_Streams")]
+    pub ImportItemAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    ImportItemAsync: usize,
+    pub GetAppStatusForItem: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut WalletItemAppAssociation) -> windows_core::HRESULT,
+    pub LaunchAppForItemAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IWalletItemSystemStore2, IWalletItemSystemStore2_Vtbl, 0xf98d3a4e_be00_4fdd_9734_6c113c1ac1cb);
+impl windows_core::RuntimeType for IWalletItemSystemStore2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Wallet.System.IWalletItemSystemStore2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IWalletItemSystemStore2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ItemsChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveItemsChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IWalletManagerSystemStatics, IWalletManagerSystemStatics_Vtbl, 0xbee8eb89_2634_4b9a_8b23_ee8903c91fe0);
+impl windows_core::RuntimeType for IWalletManagerSystemStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Wallet.System.IWalletManagerSystemStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IWalletManagerSystemStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub RequestStoreAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WalletItemAppAssociation(pub i32);
+impl WalletItemAppAssociation {
+    pub const None: Self = Self(0);
+    pub const AppInstalled: Self = Self(1);
+    pub const AppNotInstalled: Self = Self(2);
+}
+impl windows_core::imp::TypeKind for WalletItemAppAssociation {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for WalletItemAppAssociation {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.ApplicationModel.Wallet.System.WalletItemAppAssociation;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.ApplicationModel.Wallet.System.WalletItemAppAssociation");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WalletItemSystemStore(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(WalletItemSystemStore, windows_core::IUnknown, windows_core::IInspectable);
+impl WalletItemSystemStore {
+    pub fn GetItemsAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<windows_collections::IVectorView<super::WalletItem>>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetItemsAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn DeleteAsync<P0>(&self, item: P0) -> windows_core::Result<windows_future::IAsyncAction>
+    where
+        P0: windows_core::Param<super::WalletItem>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DeleteAsync)(windows_core::Interface::as_raw(self), item.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn ImportItemAsync<P0>(&self, stream: P0) -> windows_core::Result<windows_future::IAsyncOperation<super::WalletItem>>
+    where
+        P0: windows_core::Param<super::super::super::Storage::Streams::IRandomAccessStreamReference>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ImportItemAsync)(windows_core::Interface::as_raw(self), stream.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetAppStatusForItem<P0>(&self, item: P0) -> windows_core::Result<WalletItemAppAssociation>
+    where
+        P0: windows_core::Param<super::WalletItem>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetAppStatusForItem)(windows_core::Interface::as_raw(self), item.param().abi(), &mut result__).map(|| result__)
+        }
+    }
+    pub fn LaunchAppForItemAsync<P0>(&self, item: P0) -> windows_core::Result<windows_future::IAsyncOperation<bool>>
+    where
+        P0: windows_core::Param<super::WalletItem>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).LaunchAppForItemAsync)(windows_core::Interface::as_raw(self), item.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn ItemsChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let this = &windows_core::Interface::cast::<IWalletItemSystemStore2>(self)?;
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(this).ItemsChanged)(windows_core::Interface::as_raw(this), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(this.clone(), token__, windows_core::Interface::vtable(this).RemoveItemsChanged))
+        }
+    }
+}
+impl windows_core::RuntimeType for WalletItemSystemStore {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IWalletItemSystemStore>();
+}
+unsafe impl windows_core::Interface for WalletItemSystemStore {
+    type Vtable = <IWalletItemSystemStore as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IWalletItemSystemStore as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for WalletItemSystemStore {
+    const NAME: &'static str = "Windows.ApplicationModel.Wallet.System.WalletItemSystemStore";
+}
+unsafe impl Send for WalletItemSystemStore {}
+unsafe impl Sync for WalletItemSystemStore {}
+pub struct WalletManagerSystem;
+impl WalletManagerSystem {
+    pub fn RequestStoreAsync() -> windows_core::Result<windows_future::IAsyncOperation<WalletItemSystemStore>> {
+        Self::IWalletManagerSystemStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestStoreAsync)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IWalletManagerSystemStatics<R, F: FnOnce(&IWalletManagerSystemStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<WalletManagerSystem, IWalletManagerSystemStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeName for WalletManagerSystem {
+    const NAME: &'static str = "Windows.ApplicationModel.Wallet.System.WalletManagerSystem";
+}

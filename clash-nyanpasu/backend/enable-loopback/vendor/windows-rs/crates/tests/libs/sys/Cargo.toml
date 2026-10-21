@@ -1,0 +1,27 @@
+[package]
+name = "test_sys"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows-sys]
+workspace = true
+features = [
+    "bcrypt",
+    "handleapi",
+    "minwinbase",
+    "minwindef",
+    "ntstatus",
+    "synchapi",
+    "windef",
+    "winerror",
+    "winnt",
+    "winuser",
+]
+
+[lints]
+workspace = true

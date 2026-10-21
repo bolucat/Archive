@@ -1,0 +1,59 @@
+use crate::controls::*;
+use windows_reactor::*;
+
+pub struct RadioButtonPage {
+    selected: Option<usize>,
+}
+
+impl Component for RadioButtonPage {
+    type Message = Option<usize>;
+    type Input = ();
+
+    fn create(_: &(), _: &ComponentContext<Self>) -> Self {
+        Self { selected: Some(0) }
+    }
+
+    fn update(&mut self, selected: Option<usize>, _: &ComponentContext<Self>) {
+        self.selected = selected;
+    }
+
+    fn view(&self, _: &(), context: &mut ViewContext<Self>) -> View {
+        let options = ["Option A", "Option B", "Option C"];
+        let label = self
+            .selected
+            .and_then(|index| options.get(index))
+            .unwrap_or(&"?");
+        page_content(
+            "RadioButton",
+            "Select one option from a group.",
+            [
+                KeyedView::new(
+                    "basic",
+                    sample_card(
+                        "Basic RadioButtons",
+                        StackPanel::new().spacing(8.0).children((
+                            RadioButtons::new()
+                                .items_source(options)
+                                .selected_index(self.selected)
+                                .on_selection_changed(context.forward())
+                                .header("Pick one"),
+                            TextBlock::new()
+                                .text(format!("Selected: {label}"))
+                                .opacity(0.6),
+                        )),
+                    ),
+                ),
+                KeyedView::new(
+                    "sizes",
+                    sample_card(
+                        "RadioButtons with Header",
+                        RadioButtons::new()
+                            .items_source(["Small", "Medium", "Large", "Extra Large"])
+                            .selected_index(1)
+                            .header("T-shirt size"),
+                    ),
+                ),
+            ],
+        )
+    }
+}

@@ -1,0 +1,18 @@
+//! --filter Test.Leaf
+#[winrt]
+mod Test {
+    #[unsealed]
+    class Base {
+        IBase,
+    }
+    #[unsealed]
+    class Middle: Base {
+        IMiddle,
+    }
+    class Leaf: Middle {
+        ILeaf,
+    }
+    interface IBase {}
+    interface IMiddle {}
+    interface ILeaf {}
+}

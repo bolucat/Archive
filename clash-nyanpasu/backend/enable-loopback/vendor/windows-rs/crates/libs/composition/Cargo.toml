@@ -1,0 +1,32 @@
+[package]
+name = "windows-composition"
+version = "0.100.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Windows composition library"
+repository = "https://github.com/microsoft/windows-rs"
+categories = ["os::windows-apis"]
+readme = "readme.md"
+
+[features]
+default = ["system"]
+system = ["dep:windows-window"]
+reactor = []
+
+[dependencies]
+windows-core = { workspace = true }
+windows-collections = { workspace = true }
+windows-numerics = { workspace = true }
+windows-time = { workspace = true }
+
+[dependencies.windows-window]
+workspace = true
+optional = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = []

@@ -1,0 +1,495 @@
+use super::*;
+
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub struct Class {
+    pub def: TypeDef,
+}
+
+impl Class {
+    pub fn type_name(&self) -> TypeName {
+        self.def.type_name()
+    }
+
+    fn write_cfg(&self, config: &Config) -> (Cfg, TokenStream) {
+        write_full_cfg(self, config)
+    }
+
+    pub fn write(&self, config: &Config) -> TokenStream {
+        let required_interfaces = self.required_interfaces(config.reader);
+        let type_name = self.def.type_name();
+        let name = to_ident(type_name.name());
+        // Methods flattened onto the class live in `impl #name`, so references to the
+        // class (e.g. constructor return types) are emitted as `Self`.
+        let self_config = config.with_self_ty(type_name, &[]);
+        let (class_cfg, cfg) = self.write_cfg(config);
+        let runtime_name = format!("{type_name}");
+
+        let runtime_name = quote! {
+            #cfg
+            impl windows_core::RuntimeName for #name {
+                const NAME: &'static str = #runtime_name;
+            }
+        };
+
+        let mut methods = quote! {};
+        let mut iterable = None;
+
+        if config.bindgen.style.emit_class_methods() {
+            let mut method_names = MethodNames::new();
+
+            for interface in &required_interfaces {
+                let mut virtual_names = MethodNames::new();
+
+                for method in
+                    interface
+                        .get_methods(config)
+                        .iter()
+                        .filter_map(|method| match &method {
+                            MethodOrName::Method(method) => Some(method),
+                            _ => None,
+                        })
+                {
+                    let cfg = method.write_cfg(config, &class_cfg, false);
+                    let def = method.def;
+
+                    let method = method.write(
+                        &self_config,
+                        Some(interface),
+                        interface.kind,
+                        &mut method_names,
+                        &mut virtual_names,
+                        true,
+                    );
+
+                    if interface.type_name() == TypeName::IIterable
+                        && !matches!(
+                            interface.kind,
+                            InterfaceKind::Static | InterfaceKind::Composable
+                        )
+                        && def.name() == "First"
+                    {
+                        iterable = Some((interface, method_names.last_name(def)));
+                    }
+
+                    methods.combine(quote! {
+                        #cfg
+                        #method
+                    });
+                }
+            }
+        } else {
+            // In minimal mode, only flatten static/factory methods onto the class
+            // (needed for static caching). Instance methods live on their interfaces.
+            let mut method_names = MethodNames::new();
+
+            let needs_compose = config.should_compose(type_name);
+
+            for interface in required_interfaces
+                .iter()
+                .filter(|i| matches!(i.kind, InterfaceKind::Static | InterfaceKind::Composable))
+            {
+                let mut virtual_names = MethodNames::new();
+
+                for method in
+                    interface
+                        .get_methods(config)
+                        .iter()
+                        .filter_map(|method| match &method {
+                            MethodOrName::Method(method) => Some(method),
+                            _ => None,
+                        })
+                {
+                    let cfg = method.write_cfg(config, &class_cfg, false);
+
+                    let method = method.write(
+                        &self_config,
+                        Some(interface),
+                        interface.kind,
+                        &mut method_names,
+                        &mut virtual_names,
+                        needs_compose,
+                    );
+
+                    methods.combine(quote! {
+                        #cfg
+                        #method
+                    });
+                }
+            }
+        }
+
+        let result = config.write_core();
+
+        let vis = config.item_vis();
+
+        let has_default_ctor = self.has_default_constructor(config.reader)
+            && (!config.bindgen.style.is_minimal()
+                || config
+                    .filter
+                    .is_activatable(type_name.namespace(), type_name.name()));
+
+        let new = has_default_ctor.then(||
+            quote! {
+                #vis fn new() -> #result Result<Self> {
+                    Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+                }
+                fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> #result Result<R>>(
+                    callback: F,
+                ) -> #result Result<R> {
+                    static SHARED: windows_core::imp::FactoryCache<#name, windows_core::imp::IGenericFactory> =
+                        windows_core::imp::FactoryCache::new();
+                    SHARED.call(callback)
+                }
+            }
+        );
+
+        let factories: Vec<_> = required_interfaces.iter().filter_map(|interface| match interface.kind {
+            InterfaceKind::Static | InterfaceKind::Composable => {
+                let has_methods = if config.bindgen.style.is_minimal() || config.filter.uses_closure {
+                    interface
+                        .get_methods(config)
+                        .iter()
+                        .any(|m| matches!(m, MethodOrName::Method(_)))
+                } else {
+                    interface.def.methods().next().is_some()
+                };
+                if !has_methods {
+                    None
+                } else {
+                        let method_name = to_ident(trim_tick(interface.def.name()));
+                        let interface_type = interface.write_name(config);
+
+                        let cfg = if config.bindgen.layout.is_package() {
+                            class_cfg.difference(&interface.dependencies(config.reader), config).write(config, false)
+                        } else {
+                            quote! {}
+                        };
+
+                        Some(quote! {
+                            #cfg
+                            fn #method_name<R, F: FnOnce(&#interface_type) -> #result Result<R>>(
+                                callback: F,
+                            ) -> #result Result<R> {
+                                static SHARED: windows_core::imp::FactoryCache<#name, #interface_type> =
+                                    windows_core::imp::FactoryCache::new();
+                                SHARED.call(callback)
+                            }
+                        })
+                    }
+                }
+                _ => None,
+            }).collect();
+
+        if let Some(default_interface) = self.default_interface(config.reader) {
+            if default_interface.is_async() {
+                let default_interface = default_interface.write_name(config);
+
+                return quote! {
+                    #cfg
+                    pub type #name = #default_interface;
+                };
+            }
+
+            let is_exclusive = default_interface.is_exclusive();
+            let default_interface = default_interface.write_name(config);
+
+            let interface_hierarchy = if is_exclusive {
+                quote! { windows_core::imp::interface_hierarchy!(#name, windows_core::IUnknown, windows_core::IInspectable); }
+            } else {
+                quote! { windows_core::imp::interface_hierarchy!(#name, windows_core::IUnknown, windows_core::IInspectable, #default_interface); }
+            };
+
+            let required_hierarchy = {
+                let mut interfaces: Vec<_> = required_interfaces
+                    .iter()
+                    .filter(|ty| !ty.is_exclusive() && ty.kind != InterfaceKind::Default)
+                    .filter(|ty| {
+                        !config.filter.uses_closure || {
+                            let name = Type::Interface((*ty).clone()).type_name();
+                            config.types.contains_key(&name)
+                                && config.filter.includes_hierarchy(
+                                    self.def.namespace(),
+                                    self.def.name(),
+                                    ty,
+                                )
+                        }
+                    })
+                    .map(|ty| ty.write_name(config))
+                    .collect();
+
+                interfaces.extend(
+                    self.bases(config.reader)
+                        .iter()
+                        .filter(|ty| {
+                            if config.filter.uses_closure {
+                                let tn = Type::Class((*ty).clone()).type_name();
+                                config.types.contains_key(&tn)
+                            } else {
+                                true
+                            }
+                        })
+                        .map(|ty| ty.write_name(config)),
+                );
+
+                if interfaces.is_empty() {
+                    quote! {}
+                } else {
+                    quote! {
+                        #cfg
+                        windows_core::imp::required_hierarchy!(#name, #(#interfaces),*);
+                    }
+                }
+            };
+
+            let agile = self.def.is_agile().then(|| {
+                quote! {
+                    #cfg
+                    unsafe impl Send for #name {}
+                    #cfg
+                    unsafe impl Sync for #name {}
+                }
+            });
+
+            let into_iterator = if config.bindgen.style.emit_iterable_into_iterator() {
+                iterable.map(|(interface, first)| {
+                    let ty = interface.generics[0].write_name(config);
+
+                    quote! {
+                        #cfg
+                        impl IntoIterator for #name {
+                            type Item = #ty;
+                            type IntoIter = windows_collections::BufferedIterator<Self::Item>;
+
+                            fn into_iter(self) -> Self::IntoIter {
+                                IntoIterator::into_iter(&self)
+                            }
+                        }
+                        #cfg
+                        impl IntoIterator for &#name {
+                            type Item = #ty;
+                            type IntoIter = windows_collections::BufferedIterator<Self::Item>;
+
+                            fn into_iter(self) -> Self::IntoIter {
+                                windows_collections::BufferedIterator::new(self.#first().unwrap())
+                            }
+                        }
+
+                    }
+                })
+            } else {
+                None
+            };
+
+            let deref = if config.bindgen.style.is_minimal() {
+                quote! {
+                    #cfg
+                    impl core::ops::Deref for #name {
+                        type Target = #default_interface;
+                        fn deref(&self) -> &Self::Target {
+                            unsafe { core::mem::transmute(self) }
+                        }
+                    }
+                }
+            } else {
+                quote! {}
+            };
+
+            let impl_block = if new.is_none() && methods.is_empty() && factories.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    #cfg
+                    impl #name {
+                        #new
+                        #methods
+                        #(#factories)*
+                    }
+                }
+            };
+
+            quote! {
+                #cfg
+                #[repr(transparent)]
+                #[derive(Clone, Debug, Eq, PartialEq)]
+                pub struct #name(windows_core::IUnknown);
+                #cfg
+                #interface_hierarchy
+                #required_hierarchy
+                #impl_block
+                #cfg
+                impl windows_core::RuntimeType for #name {
+                    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, #default_interface>();
+                }
+                #cfg
+                unsafe impl windows_core::Interface for #name {
+                    type Vtable = <#default_interface as windows_core::Interface>::Vtable;
+                    const IID: windows_core::GUID = <#default_interface as windows_core::Interface>::IID;
+                }
+                #deref
+                #runtime_name
+                #agile
+                #into_iterator
+            }
+        } else {
+            let impl_block = if methods.is_empty() && factories.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    #cfg
+                    impl #name {
+                        #methods
+                        #(#factories)*
+                    }
+                }
+            };
+
+            quote! {
+                #cfg
+                pub struct #name;
+                #impl_block
+                #runtime_name
+            }
+        }
+    }
+
+    pub fn write_name(&self, config: &Config) -> TokenStream {
+        self.type_name().write(config, &[])
+    }
+
+    fn default_interface(&self, reader: &Reader) -> Option<Type> {
+        self.def
+            .interface_impls()
+            .find(|imp| imp.has_attribute("DefaultAttribute"))
+            .map(|imp| imp.ty(&[], reader))
+    }
+
+    pub fn runtime_signature(&self, reader: &Reader) -> String {
+        format!(
+            "rc({};{})",
+            self.type_name(),
+            self.default_interface(reader)
+                .unwrap()
+                .runtime_signature(reader)
+        )
+    }
+
+    fn bases(&self, reader: &Reader) -> Vec<Self> {
+        let mut bases = Vec::new();
+        let mut def = self.def;
+
+        loop {
+            let extends = def.extends().unwrap();
+
+            if extends == (TypeName::Object.0, TypeName::Object.1) {
+                break;
+            }
+
+            let Type::Class(base) = reader.unwrap_type_name(extends.namespace(), extends.name())
+            else {
+                panic!("type not found: {extends:?}");
+            };
+
+            def = base.def;
+            bases.push(base);
+        }
+
+        bases
+    }
+
+    pub fn required_interfaces(&self, reader: &Reader) -> Vec<Interface> {
+        fn walk(
+            def: TypeDef,
+            generics: &[Type],
+            is_base: bool,
+            set: &mut Vec<Interface>,
+            reader: &Reader,
+        ) {
+            for imp in def.interface_impls() {
+                let Type::Interface(mut interface) = imp.ty(generics, reader) else {
+                    panic!();
+                };
+
+                interface.kind = if !is_base && imp.has_attribute("DefaultAttribute") {
+                    InterfaceKind::Default
+                } else if is_base {
+                    InterfaceKind::Base
+                } else {
+                    InterfaceKind::None
+                };
+
+                if let Some(pos) = set
+                    .iter()
+                    .position(|existing| existing.def == interface.def)
+                {
+                    if interface.kind == InterfaceKind::Default {
+                        set[pos].kind = interface.kind;
+                    }
+                } else {
+                    walk(interface.def, &interface.generics, is_base, set, reader);
+                    set.push(interface);
+                }
+            }
+        }
+        let mut set = vec![];
+        walk(self.def, &[], false, &mut set, reader);
+
+        for base in self.bases(reader) {
+            walk(base.def, &[], true, &mut set, reader);
+        }
+
+        for attribute in self.def.attributes() {
+            let kind = match attribute.name() {
+                "StaticAttribute" | "ActivatableAttribute" => InterfaceKind::Static,
+                "ComposableAttribute" => InterfaceKind::Composable,
+                _ => continue,
+            };
+
+            for (_, arg) in attribute.value() {
+                if let Value::TypeName(tn) = arg
+                    && let Some(Type::Interface(mut interface)) = reader
+                        .with_full_name(tn.namespace.as_str(), tn.name.as_str())
+                        .next()
+                {
+                    interface.kind = kind;
+                    set.push(interface);
+                    break;
+                }
+            }
+        }
+
+        set.sort();
+        set.dedup();
+        set
+    }
+
+    fn has_default_constructor(&self, reader: &Reader) -> bool {
+        self.def
+            .attributes()
+            .filter(|attribute| attribute.name() == "ActivatableAttribute")
+            .any(|attribute| {
+                !attribute.value().iter().any(|(_, arg)| {
+                    if let Value::TypeName(tn) = arg {
+                        matches!(
+                            reader
+                                .with_full_name(tn.namespace.as_str(), tn.name.as_str())
+                                .next(),
+                            Some(Type::Interface(_))
+                        )
+                    } else {
+                        false
+                    }
+                })
+            })
+    }
+}
+
+impl Dependencies for Class {
+    fn combine(&self, dependencies: &mut TypeMap, reader: &Reader) {
+        for interface in self.required_interfaces(reader) {
+            Type::Interface(interface).combine(dependencies, reader);
+        }
+        for base in self.bases(reader) {
+            Type::Class(base).combine(dependencies, reader);
+        }
+    }
+}

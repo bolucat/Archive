@@ -1,0 +1,34 @@
+--out crates/libs/core/src/imp/bindings.rs
+--flat --minimal --dead-code
+
+--filter
+    AGILEREFERENCE_DEFAULT
+    CO_E_NOTINITIALIZED
+    CoCreateInstance
+    CoCreateFreeThreadedMarshaler
+    CLSCTX_INPROC_SERVER
+    CoIncrementMTAUsage
+    CoInitializeEx
+    CoTaskMemAlloc
+    CoTaskMemFree
+    CoUninitialize
+    COINIT_APARTMENTTHREADED
+    E_INVALIDARG
+    E_NOINTERFACE
+    E_POINTER
+    EncodePointer
+    FreeLibrary
+    GetProcAddress
+    IAgileObject
+    IAgileReference.Resolve
+    IWeakReference.Resolve
+    IWeakReferenceSource.GetWeakReference
+    JSCRIPT_E_CANTEXECUTE
+    LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+    LoadLibraryExA
+    REGDB_E_CLASSNOTREG
+    RoGetActivationFactory
+    RoGetAgileReference
+    RPC_E_DISCONNECTED
+    S_OK
+    UuidCreate

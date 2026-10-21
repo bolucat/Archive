@@ -1,0 +1,110 @@
+use std::io::Write;
+use windows_bindgen::builder;
+
+const FILTER: &str = "crates/tools/composition/src/composition.txt";
+const INTEROP_RDL: &str = "crates/tools/composition/src/interop.rdl";
+
+fn main() {
+    let time = std::time::Instant::now();
+    let interop = write_interop_winmd();
+
+    // System stack: Windows.UI.Composition lives in Windows.winmd; Windows.Win32.winmd
+    // supplies ICompositorDesktopInterop and the HWND/BOOL types used to host a visual
+    // tree in a plain window. Flat + minimal keeps the crate's own surface small and
+    // namespace-free (see docs/crates/windows-composition.md).
+    builder()
+        .input_default()
+        .output("crates/libs/composition/src/bindings.rs")
+        .minimal()
+        .dead_code()
+        .flat()
+        .filter_file(FILTER)
+        .write();
+
+    // Lifted stack: Microsoft.UI.Composition (Microsoft.UI.winmd) mirrors the system
+    // API, so the same wrapper source compiles against it. The filter is derived from
+    // the one above by dropping system-only regions and rewriting the namespace, so the
+    // system filter defines both stacks. Windows.winmd resolves
+    // the shared foundation types (Color, TimeSpan, IVector, numerics).
+    let lifted_filter = write_lifted_filter();
+    builder()
+        .inputs([
+            "crates/tools/reactor-metadata/winmd/Microsoft.UI.winmd",
+            "crates/tools/reactor-metadata/winmd/Microsoft.Graphics.winmd",
+            "crates/libs/default/Windows.winmd",
+            "crates/libs/default/Windows.Win32.winmd",
+            interop.to_str().unwrap(),
+        ])
+        .output("crates/libs/composition/src/bindings_lifted.rs")
+        .minimal()
+        .dead_code()
+        .flat()
+        .filter_file(lifted_filter)
+        .write();
+
+    println!(
+        "tool-composition: generated system + lifted bindings in {:.2}s",
+        time.elapsed().as_secs_f32()
+    );
+}
+
+/// Derives the lifted filter from `composition.txt` and writes it to a scratch
+/// file under `target/` (never committed), returning its path.
+fn write_lifted_filter() -> std::path::PathBuf {
+    let source = std::fs::read_to_string(FILTER).expect("read composition.txt");
+
+    let mut lifted = String::with_capacity(source.len());
+    let mut in_system_only = false;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed == "// region: system-only" {
+            in_system_only = true;
+            continue;
+        }
+        if trimmed == "// endregion" {
+            in_system_only = false;
+            continue;
+        }
+        if in_system_only {
+            continue;
+        }
+        lifted.push_str(
+            &line
+                .replace("Windows.UI.Composition.", "Microsoft.UI.Composition.")
+                .replace("Windows.Graphics.DirectX.", "Microsoft.Graphics.DirectX.")
+                .replace(
+                    "Windows.Win32.ICompositorInterop",
+                    "composition_extras.IMicrosoftCompositorInterop",
+                )
+                .replace(
+                    "Windows.Win32.ICompositionDrawingSurfaceInterop",
+                    "composition_extras.IMicrosoftCompositionDrawingSurfaceInterop",
+                )
+                .replace(
+                    "Windows.Win32.ICompositionGraphicsDeviceInterop",
+                    "composition_extras.IMicrosoftCompositionGraphicsDeviceInterop",
+                ),
+        );
+        lifted.push('\n');
+    }
+
+    let path = std::path::Path::new("target").join("tool_composition_lifted.txt");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create target dir");
+    }
+    let mut file = std::fs::File::create(&path).expect("create lifted filter");
+    file.write_all(lifted.as_bytes())
+        .expect("write lifted filter");
+    path
+}
+
+fn write_interop_winmd() -> std::path::PathBuf {
+    let path = std::path::Path::new("target").join("tool_composition_interop.winmd");
+    windows_rdl::Reader::new()
+        .input(INTEROP_RDL)
+        .reference_bytes(windows_default::WIN32)
+        .output(&path)
+        .write()
+        .unwrap();
+    path
+}

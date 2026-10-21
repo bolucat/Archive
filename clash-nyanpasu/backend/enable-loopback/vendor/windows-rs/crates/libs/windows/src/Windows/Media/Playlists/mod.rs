@@ -1,0 +1,122 @@
+windows_core::imp::define_interface!(IPlaylist, IPlaylist_Vtbl, 0x803736f5_cf44_4d97_83b3_7a089e9ab663);
+impl windows_core::RuntimeType for IPlaylist {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Playlists.IPlaylist");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPlaylist_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Storage_Streams")]
+    pub Files: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    Files: usize,
+    pub SaveAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "Storage_Streams")]
+    pub SaveAsAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, super::super::Storage::NameCollisionOption, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    SaveAsAsync: usize,
+    #[cfg(feature = "Storage_Streams")]
+    pub SaveAsWithFormatAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, super::super::Storage::NameCollisionOption, PlaylistFormat, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    SaveAsWithFormatAsync: usize,
+}
+windows_core::imp::define_interface!(IPlaylistStatics, IPlaylistStatics_Vtbl, 0xc5c331cd_81f9_4ff3_95b9_70b6ff046b68);
+impl windows_core::RuntimeType for IPlaylistStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Playlists.IPlaylistStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPlaylistStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Storage_Streams")]
+    pub LoadAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    LoadAsync: usize,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Playlist(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(Playlist, windows_core::IUnknown, windows_core::IInspectable);
+impl Playlist {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<Playlist, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn Files(&self) -> windows_core::Result<windows_collections::IVector<super::super::Storage::StorageFile>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Files)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SaveAsync(&self) -> windows_core::Result<windows_future::IAsyncAction> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SaveAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn SaveAsAsync<P0>(&self, savelocation: P0, desiredname: &windows_core::HSTRING, option: super::super::Storage::NameCollisionOption) -> windows_core::Result<windows_future::IAsyncOperation<super::super::Storage::StorageFile>>
+    where
+        P0: windows_core::Param<super::super::Storage::IStorageFolder>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SaveAsAsync)(windows_core::Interface::as_raw(self), savelocation.param().abi(), core::mem::transmute_copy(desiredname), option, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn SaveAsWithFormatAsync<P0>(&self, savelocation: P0, desiredname: &windows_core::HSTRING, option: super::super::Storage::NameCollisionOption, playlistformat: PlaylistFormat) -> windows_core::Result<windows_future::IAsyncOperation<super::super::Storage::StorageFile>>
+    where
+        P0: windows_core::Param<super::super::Storage::IStorageFolder>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SaveAsWithFormatAsync)(windows_core::Interface::as_raw(self), savelocation.param().abi(), core::mem::transmute_copy(desiredname), option, playlistformat, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn LoadAsync<P0>(file: P0) -> windows_core::Result<windows_future::IAsyncOperation<Self>>
+    where
+        P0: windows_core::Param<super::super::Storage::IStorageFile>,
+    {
+        Self::IPlaylistStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).LoadAsync)(windows_core::Interface::as_raw(this), file.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IPlaylistStatics<R, F: FnOnce(&IPlaylistStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<Playlist, IPlaylistStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for Playlist {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPlaylist>();
+}
+unsafe impl windows_core::Interface for Playlist {
+    type Vtable = <IPlaylist as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPlaylist as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for Playlist {
+    const NAME: &'static str = "Windows.Media.Playlists.Playlist";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PlaylistFormat(pub i32);
+impl PlaylistFormat {
+    pub const WindowsMedia: Self = Self(0);
+    pub const Zune: Self = Self(1);
+    pub const M3u: Self = Self(2);
+}
+impl windows_core::imp::TypeKind for PlaylistFormat {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for PlaylistFormat {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Media.Playlists.PlaylistFormat;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Playlists.PlaylistFormat");
+}

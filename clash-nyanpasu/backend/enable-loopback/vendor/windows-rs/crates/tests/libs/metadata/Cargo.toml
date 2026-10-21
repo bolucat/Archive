@@ -1,0 +1,15 @@
+[package]
+name = "test_metadata"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+windows-default = { workspace = true }
+windows-metadata = { workspace = true }
+
+[dev-dependencies]
+windows-rdl = { workspace = true }
+
+[lints]
+workspace = true

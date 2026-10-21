@@ -1,0 +1,777 @@
+fn is_implicit_transition(id: PropertyId) -> bool {
+    matches!(
+        id,
+        PropertyId::OpacityTransition
+            | PropertyId::ScaleTransition
+            | PropertyId::TranslationTransition
+    )
+}
+
+impl WinUiAdapter {
+    fn create(&mut self, object: ObjectId, kind: ObjectType) -> Result<(), WinUiError> {
+        if self.handles.contains_key(&object) {
+            return Err(WinUiError::DuplicateObject(object));
+        }
+        let handle = if let Some(handle) =
+            GeneratedHandle::create(kind, object, &self.event_queue)?
+        {
+            Handle::Generated(handle)
+        } else {
+            match kind {
+                ObjectType::TextBox => {
+                    let value = native::TextBox::new()?;
+                    let event = Rc::new(RefCell::new(NativeTextEvent::default()));
+                    let event_for_callback = Rc::clone(&event);
+                    let observed_text = Rc::new(RefCell::new(Rc::<str>::from("")));
+                    let observed_text_for_event = Rc::clone(&observed_text);
+                    let event_queue = Rc::clone(&self.event_queue);
+                    let source = value.clone();
+                    let text_changed = value.TextChanged(move |_, _| {
+                        let text = match source.Text() {
+                            Ok(text) => text,
+                            Err(error) => {
+                                report_error(error);
+                                return;
+                            }
+                        };
+                        Self::dispatch_text_changed(
+                            &event_for_callback,
+                            &observed_text_for_event,
+                            &event_queue,
+                            object,
+                            Rc::from(text),
+                        );
+                    })?;
+                    Handle::TextBox(NativeTextBox {
+                        value,
+                        event,
+                        observed_text,
+                        _text_changed: text_changed,
+                    })
+                }
+                ObjectType::TreeView => {
+                    let value = native::TreeView::new()?;
+                    let template = self.tree_template()?;
+                    value
+                        .cast::<native::ITreeView2>()?
+                        .SetItemTemplate(&template)?;
+                    let item_invoked = Rc::new(RefCell::new(NativeStringEvent::default()));
+                    let item_event = Rc::clone(&item_invoked);
+                    let item_queue = Rc::clone(&self.event_queue);
+                    let item_texts = Rc::clone(&self.tree_node_texts);
+                    let _item_invoked = value.ItemInvoked(move |_, args| {
+                        let args = args.unwrap();
+                        let value = args
+                            .InvokedItem()
+                            .map_err(Into::into)
+                            .and_then(|value| {
+                                value.cast::<native::ITreeViewNode>().map_err(Into::into)
+                            })
+                            .and_then(|value| com_identity(&value))
+                            .and_then(|identity| {
+                                item_texts
+                                    .borrow()
+                                    .get(&identity)
+                                    .cloned()
+                                    .ok_or(WinUiError::UnknownTreeNode(identity))
+                            });
+                        match value {
+                            Ok(value) => Self::dispatch(
+                                &item_event,
+                                &item_queue,
+                                object,
+                                EventId::ItemInvoked,
+                                None,
+                                value,
+                            ),
+                            Err(error) => report_error(error.into()),
+                        }
+                    })?;
+                    Handle::TreeView(NativeTreeView {
+                        value,
+                        item_invoked,
+                        _item_invoked,
+                    })
+                }
+                ObjectType::TreeNode => {
+                    let value = native::TreeViewNode::new()?;
+                    self.tree_node_texts
+                        .borrow_mut()
+                        .insert(com_identity(&value)?, Rc::from(""));
+                    Handle::TreeNode(NativeTreeNode {
+                        value,
+                        text: HSTRING::new(),
+                        content: None,
+                    })
+                }
+                ObjectType::ListView => {
+                    let value = native::ListView::new()?;
+                    value
+                        .cast::<native::IItemsControl>()?
+                        .SetItemTemplate(&self.list_template()?)?;
+                    let selection_changed =
+                        Rc::new(RefCell::new(NativeSelectionIndexEvent::default()));
+                    let selection_event = Rc::clone(&selection_changed);
+                    let selection_queue = Rc::clone(&self.event_queue);
+                    let selection_source = value.cast::<native::ISelector>()?;
+                    let selection_source_for_callback = selection_source.clone();
+                    let _selection_changed = selection_source.SelectionChanged(move |_, _| {
+                        let value = match selection_source_for_callback
+                            .SelectedIndex()
+                            .and_then(selection_index)
+                        {
+                            Ok(value) => value,
+                            Err(error) => {
+                                report_error(error);
+                                return;
+                            }
+                        };
+                        let observation = Observation::SetProperty {
+                            object,
+                            property: Property {
+                                id: PropertyId::SelectedIndex,
+                                value: PropertyValue::SelectionIndex(value),
+                            },
+                        };
+                        let dispatch = selection_queue.observe(
+                            object,
+                            EventId::SelectionChanged,
+                            observation.clone(),
+                        );
+                        if dispatch {
+                            Self::dispatch(
+                                &selection_event,
+                                &selection_queue,
+                                object,
+                                EventId::SelectionChanged,
+                                Some(observation),
+                                value,
+                            );
+                        }
+                    })?;
+                    let drag_items_completed =
+                        Rc::new(RefCell::new(NativeStringListEvent::default()));
+                    let drag_event = Rc::clone(&drag_items_completed);
+                    let drag_queue = Rc::clone(&self.event_queue);
+                    let drag_source = value.cast::<native::IItemsControl>()?;
+                    let _drag_items_completed = value
+                        .cast::<native::IListViewBase>()?
+                        .DragItemsCompleted(move |_, _| match Self::item_tags(&drag_source) {
+                            Ok(value) => Self::dispatch(
+                                &drag_event,
+                                &drag_queue,
+                                object,
+                                EventId::DragItemsCompleted,
+                                None,
+                                value,
+                            ),
+                            Err(error) => report_error(error.into()),
+                        })?;
+                    Handle::ListView(NativeListView {
+                        value,
+                        selection_changed,
+                        drag_items_completed,
+                        _selection_changed,
+                        _drag_items_completed,
+                    })
+                }
+                ObjectType::DataItem => {
+                    let values = BTreeMap::<HSTRING, Option<IInspectable>>::new();
+                    Handle::Data(values.into())
+                }
+                _ => unreachable!("generated object was not created"),
+            }
+        };
+        self.handles.insert(object, handle);
+        if kind == ObjectType::ContentDialog {
+            let Some(Handle::Generated(GeneratedHandle::ContentDialog(value))) =
+                self.handles.get(&object)
+            else {
+                unreachable!()
+            };
+            self.event_queue
+                .content_dialogs
+                .borrow_mut()
+                .create(object, value.value.clone());
+        }
+        Ok(())
+    }
+
+    fn set_transition_properties(
+        &self,
+        object: ObjectId,
+        set: &[Property],
+        clear: &[PropertyId],
+    ) -> Result<(), WinUiError> {
+        for (id, value) in clear
+            .iter()
+            .map(|id| (*id, None))
+            .chain(set.iter().map(|property| (property.id, Some(&property.value))))
+            .filter(|(id, _)| is_implicit_transition(*id))
+        {
+            let Some(Handle::Generated(handle)) = self.handles.get(&object) else {
+                return Err(WinUiError::InvalidObject(object));
+            };
+            handle
+                .set_property(id, value, None)
+                .ok_or(WinUiError::InvalidObject(object))??;
+        }
+        Ok(())
+    }
+
+    fn set_properties(
+        &mut self,
+        object: ObjectId,
+        set: &[Property],
+        clear: &[PropertyId],
+        initializing: bool,
+    ) -> Result<(), WinUiError> {
+        let kind = self.kind(object)?;
+        let sorted_clear = (kind == ObjectType::ListView).then(|| {
+            let mut clear = clear.to_vec();
+            clear.sort_by_key(|property| *property == PropertyId::SelectedIndex);
+            clear
+        });
+        let sorted_set = (kind == ObjectType::ListView).then(|| {
+            let mut set = set.to_vec();
+            set.sort_by_key(|property| property.id == PropertyId::SelectedIndex);
+            set
+        });
+        let clear = sorted_clear.as_deref().unwrap_or(clear);
+        let set = sorted_set.as_deref().unwrap_or(set);
+        let element = self.ui_element(object).ok();
+        if let Some(Handle::Generated(handle)) = self.handles.get_mut(&object) {
+            let context = EventContext {
+                event_queue: &self.event_queue,
+                pending_focus_states: &self.pending_focus_states,
+            };
+            for property in set {
+                handle.subscribe_property_events(object, property.id, context)?;
+            }
+        }
+        // Native setters choose their animation immediately. Apply the new transition policy
+        // before target changes, but establish initial values before installing transitions.
+        if !initializing {
+            self.set_transition_properties(object, set, clear)?;
+        }
+        if !clear.is_empty()
+            && let Some(subscription) = self.image_subscriptions.get(&object)
+            && clear.contains(&subscription.property)
+        {
+            self.release_image(object);
+        }
+        for property in clear.iter().copied().filter(|id| !is_implicit_transition(*id)) {
+            if property == PropertyId::Source
+                && let Some(Handle::Generated(GeneratedHandle::Image(control))) =
+                    self.handles.get(&object)
+            {
+                control.invalidate_source_events();
+                control.source.set(false);
+            }
+            let feedback = GeneratedHandle::feedback_expectation(kind, property, None);
+            if let Some((event, expectation)) = feedback.clone() {
+                self.event_queue
+                    .feedback
+                    .borrow_mut()
+                    .begin(object, event, expectation);
+            }
+            let selection_feedback = self.selection_feedback(object, property)?;
+            if let Some((owner, event)) = selection_feedback {
+                self.event_queue.feedback.borrow_mut().begin(
+                    owner,
+                    event,
+                    FeedbackExpectation::Suppressed,
+                );
+            }
+            let result = 'apply: {
+                match property {
+                    PropertyId::Resources => {
+                        break 'apply self
+                            .set_resource_overrides(object, &ResourceOverrides::default());
+                    }
+                    PropertyId::KeyboardAccelerators => {
+                        break 'apply self
+                            .set_key_accelerators(object, &KeyAccelerators::default());
+                    }
+                    PropertyId::Style if kind == ObjectType::Button => {
+                        break 'apply self.set_button_style(object, None);
+                    }
+                    _ => {}
+                }
+                if theme_style_info(kind).is_some_and(|(_, properties)| {
+                    properties
+                        .iter()
+                        .any(|(candidate, _)| *candidate == property)
+                }) {
+                    self.set_theme_brush(object, property, None)?;
+                }
+                if let Some(element) = &element
+                    && let Some(result) =
+                        GeneratedHandle::set_attached_property(element, property, None)
+                {
+                    break 'apply result;
+                }
+                if let Some(element) = &element
+                    && let Some(result) =
+                        GeneratedHandle::set_visual_property(element, property, None)
+                {
+                    break 'apply result;
+                }
+                if let Some(element) = &element
+                    && let Some(result) =
+                        GeneratedHandle::set_handwritten_property(kind, element, property, None)
+                {
+                    break 'apply result;
+                }
+                if let Some(Handle::Generated(handle)) = self.handles.get(&object)
+                    && let Some(result) = handle.set_property(property, None, None)
+                {
+                    break 'apply result;
+                }
+                if property == PropertyId::Text
+                    && matches!(self.handles.get(&object), Some(Handle::Data(_)))
+                {
+                    break 'apply self.set_data_text(object, "");
+                }
+                break 'apply match (self.handle(object)?, property) {
+                    (Handle::TextBox(value), PropertyId::Text) => {
+                        Self::set_text_box_text(value, "")
+                    }
+                    (Handle::TreeNode(value), PropertyId::Text) => {
+                        value.text = HSTRING::new();
+                        if value.content.is_none() {
+                            let content: IInspectable =
+                                windows_reference::IReference::from(value.text.clone()).into();
+                            value.value.SetContent(&content)?;
+                        }
+                        Ok(())
+                    }
+                    (Handle::TreeNode(value), PropertyId::Expanded) => {
+                        value.value.SetIsExpanded(false).map_err(Into::into)
+                    }
+                    (Handle::ListView(value), PropertyId::SelectedIndex) => value
+                        .value
+                        .cast::<native::ISelector>()?
+                        .SetSelectedIndex(-1)
+                        .map_err(Into::into),
+                    _ => Err(WinUiError::InvalidObject(object)),
+                };
+            };
+            let observation = feedback.and_then(|(event, _)| {
+                self.event_queue.feedback.borrow_mut().finish(object, event)
+            });
+            if let Some((owner, event)) = selection_feedback {
+                self.event_queue.feedback.borrow_mut().finish(owner, event);
+            }
+            result?;
+            if let Some(observation) = observation {
+                self.event_queue.queue(Some(observation), None);
+                Self::schedule_event_wake(&self.event_queue);
+            }
+        }
+        for property in set.iter().filter(|property| !is_implicit_transition(property.id)) {
+            let feedback =
+                GeneratedHandle::feedback_expectation(kind, property.id, Some(&property.value));
+            if let Some((event, expectation)) = feedback.clone() {
+                self.event_queue
+                    .feedback
+                    .borrow_mut()
+                    .begin(object, event, expectation);
+            }
+            let selection_feedback = self.selection_feedback(object, property.id)?;
+            if let Some((owner, event)) = selection_feedback {
+                self.event_queue.feedback.borrow_mut().begin(
+                    owner,
+                    event,
+                    FeedbackExpectation::Suppressed,
+                );
+            }
+            let result = 'apply: {
+                match (property.id, &property.value) {
+                    (PropertyId::Resources, PropertyValue::ResourceOverrides(value)) => {
+                        break 'apply self.set_resource_overrides(object, value);
+                    }
+                    (PropertyId::KeyboardAccelerators, PropertyValue::KeyAccelerators(value)) => {
+                        break 'apply self.set_key_accelerators(object, value);
+                    }
+                    (PropertyId::Style, PropertyValue::ButtonStyle(value))
+                        if kind == ObjectType::Button =>
+                    {
+                        break 'apply self.set_button_style(object, Some(*value));
+                    }
+                    (id, PropertyValue::Brush(Brush::Theme(value)))
+                        if theme_style_info(kind).is_some_and(|(_, properties)| {
+                            properties.iter().any(|(candidate, _)| *candidate == id)
+                        }) =>
+                    {
+                        if let Some(element) = &element
+                            && let Some(result) =
+                                GeneratedHandle::set_handwritten_property(kind, element, id, None)
+                        {
+                            result?;
+                        } else if let Some(Handle::Generated(handle)) = self.handles.get(&object)
+                            && let Some(result) = handle.set_property(id, None, None)
+                        {
+                            result?;
+                        } else {
+                            break 'apply Err(WinUiError::InvalidObject(object));
+                        }
+                        break 'apply self.set_theme_brush(object, id, Some(*value));
+                    }
+                    (id, PropertyValue::Brush(Brush::Solid(_)))
+                        if theme_style_info(kind).is_some_and(|(_, properties)| {
+                            properties.iter().any(|(candidate, _)| *candidate == id)
+                        }) =>
+                    {
+                        self.set_theme_brush(object, id, None)?;
+                    }
+                    _ => {}
+                }
+                if let Some(element) = &element
+                    && let Some(result) = GeneratedHandle::set_attached_property(
+                        element,
+                        property.id,
+                        Some(&property.value),
+                    )
+                {
+                    break 'apply result;
+                }
+                if let Some(element) = &element
+                    && let Some(result) = GeneratedHandle::set_visual_property(
+                        element,
+                        property.id,
+                        Some(&property.value),
+                    )
+                {
+                    break 'apply result;
+                }
+                if let Some(element) = &element
+                    && let Some(result) = GeneratedHandle::set_handwritten_property(
+                        kind,
+                        element,
+                        property.id,
+                        Some(&property.value),
+                    )
+                {
+                    break 'apply result;
+                }
+                if property.id == PropertyId::Source
+                    && let PropertyValue::ImageSource(source) = &property.value
+                {
+                    break 'apply self.set_image_source(object, source);
+                }
+                let image = if let PropertyValue::Icon(icon) = &property.value {
+                    self.shared_icon_image(icon)?
+                } else {
+                    None
+                };
+                if let Some(Handle::Generated(handle)) = self.handles.get(&object)
+                    && let Some(result) = handle.set_property(
+                        property.id,
+                        Some(&property.value),
+                        image.as_ref().map(|image| &image.value),
+                    )
+                {
+                    result?;
+                    if matches!(&property.value, PropertyValue::Icon(_)) {
+                        self.release_image(object);
+                        if let Some(image) = image {
+                            self.image_subscriptions.insert(
+                                object,
+                                ImageSubscription {
+                                    property: property.id,
+                                    image,
+                                    _callback: None,
+                                },
+                            );
+                        }
+                    }
+                    break 'apply Ok(());
+                }
+                if property.id == PropertyId::Text
+                    && matches!(self.handles.get(&object), Some(Handle::Data(_)))
+                    && let PropertyValue::String(text) = &property.value
+                {
+                    break 'apply self.set_data_text(object, text);
+                }
+                let tree_node_texts = Rc::clone(&self.tree_node_texts);
+                break 'apply match (self.handle(object)?, property.id, &property.value) {
+                    (Handle::TextBox(value), PropertyId::Text, PropertyValue::String(text)) => {
+                        Self::set_text_box_text(value, text)
+                    }
+                    (Handle::TreeNode(value), PropertyId::Text, PropertyValue::String(text)) => {
+                        value.text = HSTRING::from(text.as_ref());
+                        tree_node_texts
+                            .borrow_mut()
+                            .insert(com_identity(&value.value)?, Rc::clone(text));
+                        if value.content.is_none() {
+                            let content: IInspectable =
+                                windows_reference::IReference::from(value.text.clone()).into();
+                            value.value.SetContent(&content)?;
+                        }
+                        Ok(())
+                    }
+                    (
+                        Handle::TreeNode(value),
+                        PropertyId::Expanded,
+                        PropertyValue::Bool(expanded),
+                    ) => value.value.SetIsExpanded(*expanded).map_err(Into::into),
+                    (
+                        Handle::ListView(value),
+                        PropertyId::SelectedIndex,
+                        PropertyValue::SelectionIndex(selected),
+                    ) => value
+                        .value
+                        .cast::<native::ISelector>()?
+                        .SetSelectedIndex(native_selection_index(*selected)?)
+                        .map_err(Into::into),
+                    _ => Err(WinUiError::InvalidObject(object)),
+                };
+            };
+            let observation = feedback.and_then(|(event, _)| {
+                self.event_queue.feedback.borrow_mut().finish(object, event)
+            });
+            if let Some((owner, event)) = selection_feedback {
+                self.event_queue.feedback.borrow_mut().finish(owner, event);
+            }
+            result?;
+            if let Some(observation) = observation {
+                self.event_queue.queue(Some(observation), None);
+                Self::schedule_event_wake(&self.event_queue);
+            }
+        }
+        if initializing {
+            self.set_transition_properties(object, set, clear)?;
+        }
+        Ok(())
+    }
+
+    fn shared_image(
+        &mut self,
+        source: &ImageSource,
+    ) -> Result<Rc<NativeImageSource>, WinUiError> {
+        let key = ImageKey(source.value().clone());
+        if let Some(image) = self.images.get(&key).and_then(Weak::upgrade) {
+            return Ok(image);
+        }
+        let image = Rc::new(NativeImageSource::new(source.value())?);
+        self.images.insert(key, Rc::downgrade(&image));
+        Ok(image)
+    }
+
+    fn shared_icon_image(
+        &mut self,
+        icon: &Icon,
+    ) -> Result<Option<Rc<NativeImageSource>>, WinUiError> {
+        match icon.value() {
+            IconValue::Image(source) => self.shared_image(source).map(Some),
+            _ => Ok(None),
+        }
+    }
+
+    fn release_image(&mut self, object: ObjectId) {
+        // Keep released images until the batch completes so replacement controls can share them.
+        if let Some(subscription) = self.image_subscriptions.remove(&object) {
+            self.released_images.push(subscription.image);
+        }
+    }
+
+    /// Drops all adapter state for an object whose handle was just removed. Destroy, retirement
+    /// completion, and replacement all end an object's native lifetime through this path.
+    fn release_object(&mut self, object: ObjectId, handle: Handle) -> Result<(), WinUiError> {
+        self.release_image(object);
+        self.resource_override_keys.remove(&object);
+        self.style_states.remove(&object);
+        self.virtual_items.remove(&object);
+        self.observations
+            .retain(|(observed, _), _| *observed != object);
+        if let Some(initialization) = self.webview_initializations.borrow_mut().remove(&object) {
+            for completion in initialization.completions {
+                completion.call(Err(IntegrationError::Unavailable));
+            }
+        }
+        self.event_queue
+            .feedback
+            .borrow_mut()
+            .remove_object(object);
+        self.event_queue
+            .selection_items
+            .borrow_mut()
+            .retain(|item| item.object != object && item.owner != object);
+        match handle {
+            Handle::TreeNode(node) => {
+                self.tree_node_texts
+                    .borrow_mut()
+                    .remove(&com_identity(&node.value)?);
+            }
+            Handle::Generated(GeneratedHandle::ContentDialog(dialog)) => {
+                self.event_queue
+                    .content_dialogs
+                    .borrow_mut()
+                    .retire(object, *dialog)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn set_image_source(&mut self, object: ObjectId, source: &ImageSource) -> Result<(), WinUiError> {
+        let image = self.shared_image(source)?;
+        let callback = match self.handles.get(&object) {
+            Some(Handle::Generated(GeneratedHandle::Image(control))) => {
+                control.value.SetSource(&image.value)?;
+                control.invalidate_source_events();
+                control.source.set(true);
+                let opened = Rc::clone(&control.image_opened);
+                let failed = Rc::clone(&control.image_failed);
+                let event_queue = Rc::clone(&self.event_queue);
+                let callback: Rc<dyn Fn(bool)> = Rc::new(move |success| {
+                    let (event, id) = if success {
+                        (&opened, EventId::ImageOpened)
+                    } else {
+                        (&failed, EventId::ImageFailed)
+                    };
+                    Self::dispatch(event, &event_queue, object, id, None, ());
+                });
+                Some(callback)
+            }
+            Some(Handle::Generated(GeneratedHandle::ImageIcon(control))) => {
+                control.SetSource(&image.value)?;
+                None
+            }
+            _ => return Err(WinUiError::InvalidObject(object)),
+        };
+        self.release_image(object);
+        let result = callback
+            .as_ref()
+            .and_then(|callback| image.state.subscribe(callback));
+        let replay = callback.as_ref().map(Rc::downgrade);
+        self.image_subscriptions.insert(
+            object,
+            ImageSubscription {
+                property: PropertyId::Source,
+                image,
+                _callback: callback,
+            },
+        );
+        if let (Some(result), Some(replay)) = (result, replay) {
+            // Replay a completed load after the current batch applies event handlers.
+            let handler = native::DispatcherQueueHandler::new(move || {
+                if let Some(callback) = replay.upgrade() {
+                    callback(result);
+                }
+            });
+            let accepted = native::DispatcherQueue::GetForCurrentThread()?
+                .TryEnqueueWithPriority(native::DispatcherQueuePriority::Normal, &handler)?;
+            if !accepted {
+                return Err(windows_core::Error::new(
+                    native::E_FAIL,
+                    "dispatcher rejected image event replay",
+                )
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    fn replace(&mut self, object: ObjectId, kind: ObjectType) -> Result<(), WinUiError> {
+        if self.tooltips.contains_key(&object)
+            || self.tooltip_owners.contains_key(&object)
+            || self.flyouts.contains_key(&object)
+            || self.flyout_owners.contains_key(&object)
+            || self.menus.contains_key(&object)
+            || self.command_bar_flyouts.contains_key(&object)
+            || self.content_dialogs.contains_key(&object)
+            || self.content_dialog_owners.contains_key(&object)
+        {
+            return Err(WinUiError::StillOwned(object));
+        }
+        let (parent, relation) = self
+            .owners
+            .get(&object)
+            .copied()
+            .ok_or(WinUiError::InvalidReplacement(object))?;
+        let contract = relation_contract(self.kind(parent)?, relation)?;
+        if contract.realization != Realization::Owned
+            || contract.child != object_category(kind)
+        {
+            return Err(WinUiError::InvalidReplacement(object));
+        }
+        let previous = self.ui_element(object)?;
+        let index = match contract.cardinality {
+            Cardinality::One => {
+                match (self.handle(parent)?, relation) {
+                    (Handle::Generated(parent_handle), relation) => {
+                        parent_handle
+                            .set_content(relation, None)
+                            .ok_or(WinUiError::InvalidRelation(parent, relation))??;
+                    }
+                    (Handle::TreeNode(parent), RelationId::Content) => {
+                        let content: IInspectable =
+                            windows_reference::IReference::from(parent.text.clone()).into();
+                        parent.value.SetContent(&content)?;
+                        parent.content = None;
+                    }
+                    _ => return Err(WinUiError::InvalidRelation(parent, relation)),
+                }
+                None
+            }
+            Cardinality::Many => {
+                let values = self.owned_collection(parent, relation)?;
+                let mut index = 0;
+                while index < values.size()? && values.get_at(index)? != previous {
+                    index += 1;
+                }
+                if index == values.size()? {
+                    return Err(WinUiError::ChildNotFound(object));
+                }
+                values.remove_at(index)?;
+                Some(index)
+            }
+        };
+        let handle = self
+            .handles
+            .remove(&object)
+            .ok_or(WinUiError::MissingObject(object))?;
+        self.release_object(object, handle)?;
+        self.create(object, kind)?;
+        let replacement = self.ui_element(object)?;
+        if let Some(index) = index {
+            self.owned_collection(parent, relation)?
+                .insert_at(index, &replacement)?;
+        } else {
+            match (self.handle(parent)?, relation) {
+                (Handle::Generated(parent_handle), relation) => {
+                    parent_handle
+                        .set_content(relation, Some(&replacement))
+                        .ok_or(WinUiError::InvalidRelation(parent, relation))??;
+                }
+                (Handle::TreeNode(parent), RelationId::Content) => {
+                    parent.value.SetContent(&replacement)?;
+                    parent.content = Some(object);
+                }
+                _ => return Err(WinUiError::InvalidRelation(parent, relation)),
+            }
+        }
+        self.event_queue.events.borrow_mut().retain(|event| {
+            event
+                .event
+                .as_ref()
+                .is_none_or(|event| event.object != object)
+                && event.observation.as_ref().is_none_or(|observation| {
+                    !matches!(
+                        observation,
+                        Observation::SetProperty {
+                            object: observed,
+                            ..
+                        } | Observation::SetSelection {
+                            object: observed,
+                            ..
+                        } if *observed == object
+                    )
+                })
+        });
+        self.event_queue.feedback.borrow_mut().remove_object(object);
+        Ok(())
+    }
+}

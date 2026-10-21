@@ -1,0 +1,103 @@
+{
+  "window": {
+    "title": "AppContainer Loopback Exemption Tool",
+    "explanation": "For security and reliability, Windows prevents UWP apps from sending network traffic to this computer. This tool can remove that restriction for debugging.",
+    "learn_more": "Learn more",
+    "start_failed": "Unable to open the window.\n%{detail}"
+  },
+  "search": {
+    "placeholder": "Search apps",
+    "results": "Found %{count} items",
+    "empty": "No apps match your search."
+  },
+  "toolbar": {
+    "counter": "Exempt %{exempt} / %{total}",
+    "refresh": "Refresh",
+    "exempt_all": "Exempt all",
+    "exempt_none": "Exempt none",
+    "exempt_results": "Exempt results",
+    "exempt_none_results": "Unexempt results",
+    "save": "Save changes"
+  },
+  "status": {
+    "ready": "Ready",
+    "dirty": "Click Save changes to commit.",
+    "exempt_all": "All AppContainers are pending exemption. Click Save changes to commit.",
+    "exempt_none": "All AppContainers are pending exemption removal. Click Save changes to commit.",
+    "exempt_results": "All search results are pending exemption. Click Save changes to commit.",
+    "exempt_none_results": "All search results are pending exemption removal. Click Save changes to commit.",
+    "orphan_removal": "Saving will remove %{count} orphaned records.",
+    "saved": "Loopback exemption configuration updated.",
+    "not_saved_admin": "Changes not saved. Administrator privileges are required.",
+    "not_saved": "Changes not saved.",
+    "refreshing": "Refreshing AppContainer information…",
+    "refreshed": "Refreshed AppContainer information at %{time}.",
+    "load_failed": "Failed to get AppContainer information [%{code}]",
+    "failed": "Failed: %{detail}"
+  },
+  "runtime": {
+    "title": "Windows App Runtime required",
+    "missing": "This tool requires Windows App Runtime %{version} or later for %{architecture}.",
+    "install_from_store": "Install from Microsoft Store",
+    "download_installer": "Download installer",
+    "open_download_page": "Open download page",
+    "cancel": "Cancel",
+    "installing": "Installing Windows App Runtime from Microsoft Store. If you close this window, the installation continues in the background.",
+    "close": "Close",
+    "store_failed": "Microsoft Store could not install Windows App Runtime: %{detail}",
+    "store_incomplete": "Microsoft Store finished, but Windows App Runtime %{version} or later is still not installed."
+  },
+  "cli": {
+    "syntax": "Syntax:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Exempt all AppContainers.\n-none: Clear all exemptions.\n-allow NAME: Add AppContainers whose names contain NAME.\n-deny NAME: Remove matching exemptions; * removes all.\nCommands ignore case; the leading - or / is optional.\nNAME may contain spaces. Use * to match all.\nLanguages: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Skip automatic refresh. -registry: Read the registry directly.",
+    "missing_name": "Specify part of a name. Use * to match all.",
+    "missing_language": "Specify a language code after --lang."
+  },
+  "placeholder": {
+    "display_name": "(No DisplayName)",
+    "description": "(No Description)",
+    "package": "(No Package Name)",
+    "name": "(No AC Name)",
+    "sid": "(No AC SID)",
+    "users": "(No User SID)",
+    "binaries": "(None)"
+  },
+  "instance": {
+    "already_running": "This tool is already running, but its window could not be activated.",
+    "start_failed": "This tool appears to be running already.\n%{detail}"
+  },
+  "column": {
+    "display_name": "Display name",
+    "description": "Description",
+    "package": "Package",
+    "name": "AC name",
+    "sid": "AC SID",
+    "users": "Users",
+    "binaries": "Binaries",
+    "exempt": "Loopback exemption: %{name}"
+  },
+  "dialog": {
+    "refresh_title": "Discard changes?",
+    "refresh_body": "You have not saved your changes. Refresh anyway?",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "warning": "Warning",
+    "fallback": "Unable to use NetIsoEnumAppContainers to get the AppContainer list.\nError code: %{code}\n\nThe registry will be read instead; some information will be unavailable.",
+    "orphan_title": "Orphaned exemption found",
+    "orphan_body": "A loopback exemption exists for the SID below, but its AppContainer could not be found.",
+    "keep_prompting": "Keep prompting for other orphaned records this session",
+    "error_title": "Operation failed",
+    "firewall_title": "Windows Firewall is disabled",
+    "firewall_body": "The Windows Firewall service does not appear to be running. Third-party security software may have disabled or replaced it. Configure that software to allow loopback traffic, or enable Windows Firewall.\n\n%{detail}",
+    "load_failed": "Unable to collect the list of AppContainers on this system.\n\n%{detail}",
+    "admin_title": "Changes not saved",
+    "admin_body": "Run this tool as an administrator to change AppContainer configurations.",
+    "save_title": "Failed to save settings",
+    "close_title": "Exit without saving?",
+    "close_body": "You have not saved your changes. Exit anyway?",
+    "exit": "Exit"
+  },
+  "menu": {
+    "copy_rows": "Copy selected rows",
+    "copy_column": "Copy selected column"
+  }
+}

@@ -1,0 +1,24 @@
+[package]
+name = "windows-reference"
+version = "0.100.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Windows reference type"
+repository = "https://github.com/microsoft/windows-rs"
+categories = ["os::windows-apis"]
+readme = "readme.md"
+
+[dependencies]
+windows-core = { workspace = true, default-features = false }
+windows-time = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["windows-core/std", "windows-time/std"]
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+targets = []

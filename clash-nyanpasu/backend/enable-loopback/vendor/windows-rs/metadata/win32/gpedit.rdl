@@ -1,0 +1,114 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[library("GPEDIT.DLL")]
+        extern fn BrowseForGPO(lpBrowseInfo: LPGPOBROWSEINFO) -> HRESULT;
+        const CLSID_GPESnapIn: GUID = 0x8fc0b734_a0e1_11d1_a7d3_0000f87571e3;
+        const CLSID_GroupPolicyObject: GUID = 0xea502722_a23d_11d1_a7d3_0000f87571e3;
+        const CLSID_RSOPSnapIn: GUID = 0x6dc3804b_7212_458d_adb0_9a07e2ae1fa2;
+        #[library("GPEDIT.DLL")]
+        extern fn CreateGPOLink(lpGPO: LPOLESTR, lpContainer: LPOLESTR, fHighPriority: BOOL) -> HRESULT;
+        #[library("GPEDIT.DLL")]
+        extern fn DeleteAllGPOLinks(lpContainer: LPOLESTR) -> HRESULT;
+        #[library("GPEDIT.DLL")]
+        extern fn DeleteGPOLink(lpGPO: LPOLESTR, lpContainer: LPOLESTR) -> HRESULT;
+        #[library("GPEDIT.DLL")]
+        extern fn ExportRSoPData(lpNameSpace: LPOLESTR, lpFileName: LPOLESTR) -> HRESULT;
+        struct GPOBROWSEINFO {
+            dwSize: u32,
+            dwFlags: u32,
+            hwndOwner: HWND,
+            lpTitle: LPOLESTR,
+            lpInitialOU: LPOLESTR,
+            lpDSPath: LPOLESTR,
+            dwDSPathSize: u32,
+            lpName: LPOLESTR,
+            dwNameSize: u32,
+            gpoType: GROUP_POLICY_OBJECT_TYPE,
+            gpoHint: GROUP_POLICY_HINT_TYPE,
+        }
+        const GPO_BROWSE_DISABLENEW: i32 = 1;
+        const GPO_BROWSE_INITTOALL: i32 = 16;
+        const GPO_BROWSE_NOCOMPUTERS: i32 = 2;
+        const GPO_BROWSE_NODSGPOS: i32 = 4;
+        const GPO_BROWSE_NOUSERGPOS: i32 = 32;
+        const GPO_BROWSE_OPENBUTTON: i32 = 8;
+        const GPO_BROWSE_SENDAPPLYONEDIT: i32 = 64;
+        const GPO_OPEN_LOAD_REGISTRY: i32 = 1;
+        const GPO_OPEN_READ_ONLY: i32 = 2;
+        const GPO_OPTION_DISABLE_MACHINE: i32 = 2;
+        const GPO_OPTION_DISABLE_USER: i32 = 1;
+        const GPO_SECTION_MACHINE: i32 = 2;
+        const GPO_SECTION_ROOT: i32 = 0;
+        const GPO_SECTION_USER: i32 = 1;
+        #[repr(i32)]
+        enum GROUP_POLICY_HINT_TYPE {
+            GPHintUnknown = 0,
+            GPHintMachine = 1,
+            GPHintSite = 2,
+            GPHintDomain = 3,
+            GPHintOrganizationalUnit = 4,
+        }
+        #[repr(i32)]
+        enum GROUP_POLICY_OBJECT_TYPE {
+            GPOTypeLocal = 0,
+            GPOTypeRemote = 1,
+            GPOTypeDS = 2,
+            GPOTypeLocalUser = 3,
+            GPOTypeLocalGroup = 4,
+        }
+        #[guid(0x8fc0b735_a0e1_11d1_a7d3_0000f87571e3)]
+        interface IGPEInformation: IUnknown {
+            fn GetName(&self, #[len_param(1)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetDisplayName(&self, #[len_param(1)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetRegistryKey(&self, dwSection: u32, hKey: *mut HKEY) -> HRESULT;
+            fn GetDSPath(&self, dwSection: u32, #[len_param(2)] #[out] pszPath: LPOLESTR, cchMaxPath: i32) -> HRESULT;
+            fn GetFileSysPath(&self, dwSection: u32, #[len_param(2)] #[out] pszPath: LPOLESTR, cchMaxPath: i32) -> HRESULT;
+            fn GetOptions(&self, dwOptions: *mut u32) -> HRESULT;
+            fn GetType(&self, gpoType: *mut GROUP_POLICY_OBJECT_TYPE) -> HRESULT;
+            fn GetHint(&self, gpHint: *mut GROUP_POLICY_HINT_TYPE) -> HRESULT;
+            fn PolicyChanged(&self, bMachine: BOOL, bAdd: BOOL, pGuidExtension: *mut GUID, pGuidSnapin: *mut GUID) -> HRESULT;
+        }
+        #[guid(0xea502723_a23d_11d1_a7d3_0000f87571e3)]
+        interface IGroupPolicyObject: IUnknown {
+            fn New(&self, pszDomainName: LPOLESTR, #[opt] pszDisplayName: LPOLESTR, dwFlags: u32) -> HRESULT;
+            fn OpenDSGPO(&self, pszPath: LPOLESTR, dwFlags: u32) -> HRESULT;
+            fn OpenLocalMachineGPO(&self, dwFlags: u32) -> HRESULT;
+            fn OpenRemoteMachineGPO(&self, pszComputerName: LPOLESTR, dwFlags: u32) -> HRESULT;
+            fn Save(&self, bMachine: BOOL, bAdd: BOOL, pGuidExtension: *mut GUID, pGuid: *mut GUID) -> HRESULT;
+            fn Delete(&self) -> HRESULT;
+            fn GetName(&self, #[len_param(1)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetDisplayName(&self, #[len_param(1)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn SetDisplayName(&self, pszName: LPOLESTR) -> HRESULT;
+            fn GetPath(&self, #[len_param(1)] #[out] pszPath: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetDSPath(&self, dwSection: u32, #[len_param(2)] #[out] pszPath: LPOLESTR, cchMaxPath: i32) -> HRESULT;
+            fn GetFileSysPath(&self, dwSection: u32, #[len_param(2)] #[out] pszPath: LPOLESTR, cchMaxPath: i32) -> HRESULT;
+            fn GetRegistryKey(&self, dwSection: u32, hKey: *mut HKEY) -> HRESULT;
+            fn GetOptions(&self, dwOptions: *mut u32) -> HRESULT;
+            fn SetOptions(&self, dwOptions: u32, dwMask: u32) -> HRESULT;
+            fn GetType(&self, gpoType: *mut GROUP_POLICY_OBJECT_TYPE) -> HRESULT;
+            fn GetMachineName(&self, #[len_param(1)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetPropertySheetPages(&self, hPages: *mut *mut HPROPSHEETPAGE, uPageCount: *mut u32) -> HRESULT;
+        }
+        #[guid(0x9a5a81b5_d9c7_49ef_9d11_ddf50968c48d)]
+        interface IRSOPInformation: IUnknown {
+            fn GetNamespace(&self, dwSection: u32, #[len_param(2)] #[out] pszName: LPOLESTR, cchMaxLength: i32) -> HRESULT;
+            fn GetFlags(&self, pdwFlags: *mut u32) -> HRESULT;
+            fn GetEventLogEntryText(&self, pszEventSource: LPOLESTR, pszEventLogName: LPOLESTR, pszEventTime: LPOLESTR, dwEventID: u32, ppszText: *mut LPOLESTR) -> HRESULT;
+        }
+        #[library("GPEDIT.DLL")]
+        extern fn ImportRSoPData(lpNameSpace: LPOLESTR, lpFileName: LPOLESTR) -> HRESULT;
+        type LPGPOBROWSEINFO = *mut GPOBROWSEINFO;
+        const NODEID_Machine: GUID = 0x8fc0b737_a0e1_11d1_a7d3_0000f87571e3;
+        const NODEID_MachineSWSettings: GUID = 0x8fc0b73a_a0e1_11d1_a7d3_0000f87571e3;
+        const NODEID_RSOPMachine: GUID = 0xbd4c1a2e_0b7a_4a62_a6b0_c0577539c97e;
+        const NODEID_RSOPMachineSWSettings: GUID = 0x6a76273e_eb8e_45db_94c5_25663a5f2c1a;
+        const NODEID_RSOPUser: GUID = 0xab87364f_0cec_4cd8_9bf8_898f34628fb8;
+        const NODEID_RSOPUserSWSettings: GUID = 0xe52c5ce3_fd27_4402_84de_d9a5f2858910;
+        const NODEID_User: GUID = 0x8fc0b738_a0e1_11d1_a7d3_0000f87571e3;
+        const NODEID_UserSWSettings: GUID = 0x8fc0b73c_a0e1_11d1_a7d3_0000f87571e3;
+        type PGROUP_POLICY_HINT_TYPE = *mut GROUP_POLICY_HINT_TYPE;
+        type PGROUP_POLICY_OBJECT_TYPE = *mut GROUP_POLICY_OBJECT_TYPE;
+        const RSOP_INFO_FLAG_DIAGNOSTIC_MODE: i32 = 1;
+    }
+}

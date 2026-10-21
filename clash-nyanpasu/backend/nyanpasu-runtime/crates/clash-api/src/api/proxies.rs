@@ -146,7 +146,9 @@ pub struct Proxy {
     pub provider: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, nyanpasu_serde::DeserializeUntagged, serde::Serialize, specta::Type,
+)]
 pub enum ProviderType {
     Proxy,
     Rule,
@@ -164,7 +166,9 @@ impl ProviderType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, nyanpasu_serde::DeserializeUntagged, serde::Serialize, specta::Type,
+)]
 pub enum VehicleType {
     File,
     #[serde(rename = "HTTP")]

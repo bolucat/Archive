@@ -1,0 +1,11 @@
+[package]
+name = "tool-bindings"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+windows-bindgen = { workspace = true }
+
+[lints]
+workspace = true

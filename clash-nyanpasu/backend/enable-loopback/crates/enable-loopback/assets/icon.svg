@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9BE1FF"/>
+      <stop offset="1" stop-color="#55B4F8"/>
+    </linearGradient>
+    <linearGradient id="inside" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A4FB4"/>
+      <stop offset="0.55" stop-color="#1366D6"/>
+      <stop offset="1" stop-color="#2F93EE"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45B2FF"/>
+      <stop offset="1" stop-color="#0857CC"/>
+    </linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0A3E9E" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0A3E9E" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="arrow" gradientUnits="userSpaceOnUse" x1="100" y1="30" x2="236" y2="186">
+      <stop offset="0" stop-color="#6EF4DC"/>
+      <stop offset="1" stop-color="#0FA088"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#16324F" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(-8 6)">
+  <g filter="url(#shadow)">
+    <!-- Box: rim seen from above, the dark inside, and a tall front face -->
+    <rect x="34" y="62" width="156" height="66" rx="24" fill="url(#rim)"/>
+    <path d="M60 74 H164 A12 12 0 0 1 176 86 V114 H48 V86 A12 12 0 0 1 60 74 Z" fill="url(#inside)"/>
+    <path d="M48 114 H176" stroke="#0A4FB4" stroke-width="2" opacity="0.5"/>
+    <path d="M46 114 H178 A12 12 0 0 1 190 126 V190 A32 32 0 0 1 158 222 H66 A32 32 0 0 1 34 190 V126 A12 12 0 0 1 46 114 Z"
+          fill="url(#front)"/>
+    <path d="M150 114 H178 A12 12 0 0 1 190 126 V190 A32 32 0 0 1 158 222 H150 Z" fill="url(#side)"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <!-- Returning arrow: leaves the box on the right, loops over it and dives back into the opening -->
+    <path d="M172 170 C232 168 246 88 206 56 C176 32 126 38 118 74"
+          fill="none" stroke="url(#arrow)" stroke-width="24"/>
+    <path d="M90 74 H146 L118 112 Z" fill="url(#arrow)" stroke="url(#arrow)" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M172 158 V182" stroke="#0B8672" stroke-width="4" stroke-linecap="round" opacity="0.55"/>
+  </g>
+</g>
+</svg>

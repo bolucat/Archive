@@ -1,0 +1,23 @@
+[package]
+name = "windows-core-app"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "ApplicationModel_Core",
+    "UI_Core",
+    "combaseapi",
+    "objbase",
+    "winuser",
+    "windef",
+]
+
+[dependencies.windows-core]
+workspace = true
+
+[lints]
+workspace = true

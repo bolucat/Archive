@@ -1,0 +1,11 @@
+--out crates/libs/strings/src/bindings.rs
+--flat --sys
+
+
+--filter
+    GetProcessHeap
+    HeapAlloc
+    HeapFree
+    SysAllocStringLen
+    SysFreeString
+    SysStringLen

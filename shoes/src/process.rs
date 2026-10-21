@@ -13,10 +13,14 @@ use crate::dns::{self, DnsRegistry};
 use crate::option_util::OneOrSome;
 use crate::resources;
 
-async fn load_validated(paths: &[String]) -> io::Result<ValidatedConfigs> {
-    let configs = config::load_configs(&paths.to_vec()).await?;
+async fn load_validated(
+    paths: &[String],
+    discovered: &mut (dyn FnMut(&[PathBuf]) + Send),
+) -> io::Result<ValidatedConfigs> {
+    let mut configs = config::load_configs(&paths.to_vec()).await?;
+    discovered(&crate::rule_set::dependencies(&mut configs)?);
     let (configs, _) = config::convert_cert_paths(configs).await?;
-    config::create_server_configs(configs)
+    config::compile_configs(configs).await
 }
 
 struct PreparedServers {
@@ -26,8 +30,17 @@ struct PreparedServers {
     wireguard: crate::wireguard::Prepared,
 }
 
+#[cfg(test)]
 async fn prepare(paths: &[String], previous: Option<&DnsRegistry>) -> io::Result<PreparedServers> {
-    let mut validated = load_validated(paths).await?;
+    prepare_tracking(paths, previous, &mut |_| {}).await
+}
+
+async fn prepare_tracking(
+    paths: &[String],
+    previous: Option<&DnsRegistry>,
+    discovered: &mut (dyn FnMut(&[PathBuf]) + Send),
+) -> io::Result<PreparedServers> {
+    let mut validated = load_validated(paths, discovered).await?;
     if let Some(previous) = previous {
         validated
             .validate_network_endpoints(previous.forbidden_ranges())
@@ -112,6 +125,8 @@ async fn prepare(paths: &[String], previous: Option<&DnsRegistry>) -> io::Result
 #[derive(Default)]
 struct RunningServers {
     listeners: Vec<JoinHandle<()>>,
+    #[cfg(unix)]
+    tun: Vec<JoinHandle<io::Result<()>>>,
     reporter: Option<resources::ResourceReporter>,
     dns_snapshots: Option<dns::DnsSnapshotTask>,
     quic_retirements: crate::listener_tasks::QuicRetirements,
@@ -120,6 +135,20 @@ struct RunningServers {
 }
 
 impl RunningServers {
+    async fn tun_failure(&mut self) -> io::Error {
+        #[cfg(unix)]
+        if !self.tun.is_empty() {
+            let (result, index, _) = futures::future::select_all(self.tun.iter_mut()).await;
+            drop(self.tun.swap_remove(index));
+            return match result {
+                Ok(Err(error)) => error,
+                Ok(Ok(())) => io::Error::other("TUN service stopped unexpectedly"),
+                Err(error) => io::Error::other(error),
+            };
+        }
+        std::future::pending().await
+    }
+
     async fn shutdown(&mut self, registries: &[&DnsRegistry]) -> io::Result<()> {
         self.stop().await;
         let mut result = Ok(());
@@ -135,6 +164,15 @@ impl RunningServers {
     }
 
     async fn stop(&mut self) {
+        #[cfg(unix)]
+        {
+            for task in &self.tun {
+                task.abort();
+            }
+            for task in self.tun.drain(..) {
+                let _ = task.await;
+            }
+        }
         for task in &self.listeners {
             task.abort();
         }
@@ -167,6 +205,17 @@ impl RunningServers {
                 _ => None,
             };
             let resolver = prepared.dns.get_for_server(dns_ref);
+            #[cfg(unix)]
+            if let Config::TunServer(config) = config {
+                match crate::tun::start_tun_server(config.clone(), resolver).await {
+                    Ok(task) => self.tun.push(task),
+                    Err(error) => {
+                        self.stop().await;
+                        return Err(error);
+                    }
+                }
+                continue;
+            }
             let startup = crate::tcp::tcp_server::start_servers(config.clone(), resolver);
             match self.quic_retirements.track(startup).await {
                 Ok(tasks) => self.listeners.extend(tasks),
@@ -183,13 +232,17 @@ impl RunningServers {
 
 impl Drop for RunningServers {
     fn drop(&mut self) {
+        #[cfg(unix)]
+        for task in &self.tun {
+            task.abort();
+        }
         for task in &self.listeners {
             task.abort();
         }
     }
 }
 
-fn watch(paths: &[String], tx: mpsc::Sender<()>) -> io::Result<RecommendedWatcher> {
+fn watch<P: AsRef<Path>>(paths: &[P], tx: mpsc::Sender<()>) -> io::Result<RecommendedWatcher> {
     let mut files = HashSet::new();
     let mut required_directories = HashSet::new();
     for path in paths {
@@ -204,7 +257,12 @@ fn watch(paths: &[String], tx: mpsc::Sender<()>) -> io::Result<RecommendedWatche
             files.insert(canonical);
         }
         files.insert(path.clone());
-        resolve_watch_path(&path, &mut files, &mut 0)?;
+        if let Err(error) = resolve_watch_path(&path, &mut files, &mut 0) {
+            log::warn!(
+                "Could not resolve watch path {}: {error}; retaining lexical and discovered paths for recovery",
+                path.display()
+            );
+        }
     }
     let required_directories: HashSet<_> = required_directories
         .iter()
@@ -267,6 +325,59 @@ fn watch(paths: &[String], tx: mpsc::Sender<()>) -> io::Result<RecommendedWatche
         }
     }
     Ok(watcher)
+}
+
+struct ConfigWatches {
+    configs: Vec<PathBuf>,
+    active: Vec<PathBuf>,
+    candidate: Vec<PathBuf>,
+    watcher: Option<RecommendedWatcher>,
+    tx: mpsc::Sender<()>,
+    disabled: bool,
+}
+
+impl ConfigWatches {
+    fn new(paths: &[String], tx: mpsc::Sender<()>, disabled: bool) -> io::Result<Self> {
+        let mut state = Self {
+            configs: paths.iter().map(PathBuf::from).collect(),
+            active: Vec::new(),
+            candidate: Vec::new(),
+            watcher: None,
+            tx,
+            disabled,
+        };
+        state.refresh()?;
+        Ok(state)
+    }
+
+    fn refresh(&mut self) -> io::Result<()> {
+        if !self.disabled {
+            let paths: Vec<_> = self
+                .configs
+                .iter()
+                .chain(&self.active)
+                .chain(&self.candidate)
+                .collect();
+            // Construct the replacement before dropping the old watches.
+            self.watcher = Some(watch(&paths, self.tx.clone())?);
+        }
+        Ok(())
+    }
+
+    fn discovered(&mut self, paths: &[PathBuf]) {
+        self.candidate = paths.to_vec();
+        if let Err(error) = self.refresh() {
+            log::warn!("Could not refresh rule/config watches: {error}");
+        }
+    }
+
+    fn activated(&mut self, paths: &[PathBuf]) {
+        self.active = paths.to_vec();
+        self.candidate.clear();
+        if let Err(error) = self.refresh() {
+            log::warn!("Could not refresh rule/config watches: {error}");
+        }
+    }
 }
 
 fn watch_directory(path: &Path) -> PathBuf {
@@ -386,23 +497,21 @@ impl ReloadSignal {
 
 pub async fn run(paths: Vec<String>, dry_run: bool, no_reload: bool) -> io::Result<()> {
     if dry_run {
-        load_validated(&paths).await?;
+        load_validated(&paths, &mut |_| {}).await?;
         println!("Configuration valid");
         return Ok(());
     }
     let mut shutdown = ShutdownSignals::new()?;
     let mut reload = ReloadSignal::new()?;
     let (change_tx, mut changes) = mpsc::channel(1);
-    let mut _watcher = if no_reload {
-        None
-    } else {
-        Some(watch(&paths, change_tx.clone())?)
-    };
+    let mut watches = ConfigWatches::new(&paths, change_tx, no_reload)?;
+    let mut discovered = |paths: &[PathBuf]| watches.discovered(paths);
     let mut prepared = tokio::select! {
         biased;
         _ = shutdown.recv() => return Ok(()),
-        result = prepare(&paths, None) => result?,
+        result = prepare_tracking(&paths, None, &mut discovered) => result?,
     };
+    watches.activated(&prepared.validated.rule_files);
     let mut running = RunningServers::default();
     tokio::select! {
         biased;
@@ -416,6 +525,10 @@ pub async fn run(paths: Vec<String>, dry_run: bool, no_reload: bool) -> io::Resu
         let debounce = tokio::select! {
             biased;
             _ = shutdown.recv() => return running.shutdown(&[&prepared.dns]).await,
+            error = running.tun_failure() => {
+                let _ = running.shutdown(&[&prepared.dns]).await;
+                return Err(error);
+            },
             _ = reload.recv() => false,
             _ = changes.recv() => true,
         };
@@ -423,22 +536,28 @@ pub async fn run(paths: Vec<String>, dry_run: bool, no_reload: bool) -> io::Resu
             tokio::select! {
                 biased;
                 _ = shutdown.recv() => return running.shutdown(&[&prepared.dns]).await,
+                error = running.tun_failure() => {
+                    let _ = running.shutdown(&[&prepared.dns]).await;
+                    return Err(error);
+                },
                 _ = reload.recv() => {}
                 _ = tokio::time::sleep(Duration::from_secs(3)) => {}
             }
         }
         while changes.try_recv().is_ok() {}
-        if !no_reload {
-            // A symlink may now point outside the directories watched by the previous generation.
-            match watch(&paths, change_tx.clone()) {
-                Ok(watcher) => _watcher = Some(watcher),
-                Err(error) => log::warn!("Could not refresh config watches: {error}"),
-            }
+        // Refresh symlink targets even when the candidate's YAML is invalid.
+        if let Err(error) = watches.refresh() {
+            log::warn!("Could not refresh config watches: {error}");
         }
+        let mut discovered = |paths: &[PathBuf]| watches.discovered(paths);
         let candidate = tokio::select! {
             biased;
             _ = shutdown.recv() => return running.shutdown(&[&prepared.dns]).await,
-            result = prepare(&paths, Some(&prepared.dns)) => result,
+            error = running.tun_failure() => {
+                let _ = running.shutdown(&[&prepared.dns]).await;
+                return Err(error);
+            },
+            result = prepare_tracking(&paths, Some(&prepared.dns), &mut discovered) => result,
         };
         let mut candidate = match candidate {
             Ok(candidate) => candidate,
@@ -492,6 +611,7 @@ pub async fn run(paths: Vec<String>, dry_run: bool, no_reload: bool) -> io::Resu
                 }
             }
         }
+        watches.activated(&candidate.validated.rule_files);
         drop(std::mem::replace(&mut prepared, candidate));
     }
 }
@@ -524,7 +644,7 @@ mod tests {
             r#"[{"dns_group":"ordinary","dns_servers":"udp://198.18.0.5:53"}]"#,
         )
         .unwrap();
-        load_validated(&paths).await.unwrap();
+        load_validated(&paths, &mut |_| {}).await.unwrap();
         let error = prepare(&paths, Some(&live.dns)).await.err().unwrap();
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
         assert!(
@@ -559,7 +679,7 @@ mod tests {
             }]}),
         ] {
             std::fs::write(&path, json!([server]).to_string()).unwrap();
-            load_validated(&paths).await.unwrap();
+            load_validated(&paths, &mut |_| {}).await.unwrap();
             let error = prepare(&paths, Some(&removed.dns)).await.err().unwrap();
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
             assert!(
@@ -615,7 +735,7 @@ mod tests {
                     let mut tun = json!({"device_name":"tun0", "device_fd":42});
                     tun[field] = endpoint.into();
                     std::fs::write(&path, json!([tun]).to_string()).unwrap();
-                    load_validated(&paths).await.unwrap();
+                    load_validated(&paths, &mut |_| {}).await.unwrap();
                     let result = prepare(&paths, Some(&retained.dns)).await;
                     if allowed {
                         result.unwrap();

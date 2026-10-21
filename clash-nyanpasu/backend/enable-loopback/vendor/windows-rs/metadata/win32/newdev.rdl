@@ -1,0 +1,50 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const DIIDFLAG_BITS: i32 = 15;
+        const DIIDFLAG_INSTALLCOPYINFDRIVERS: i32 = 8;
+        const DIIDFLAG_INSTALLNULLDRIVER: i32 = 4;
+        const DIIDFLAG_NOFINISHINSTALLUI: i32 = 2;
+        const DIIDFLAG_SHOWSEARCHUI: i32 = 1;
+        const DIIRFLAG_BITS: i32 = 106;
+        const DIIRFLAG_FORCE_INF: i32 = 2;
+        const DIIRFLAG_HOTPATCH: i32 = 8;
+        const DIIRFLAG_HW_USING_THE_INF: i32 = 4;
+        const DIIRFLAG_INF_ALREADY_COPIED: i32 = 1;
+        const DIIRFLAG_INSTALL_AS_SET: i32 = 64;
+        const DIIRFLAG_NOBACKUP: i32 = 16;
+        const DIIRFLAG_PRE_CONFIGURE_INF: i32 = 32;
+        const DIIRFLAG_SYSTEM_BITS: i32 = 127;
+        const DIURFLAG_NO_REMOVE_INF: i32 = 1;
+        const DIURFLAG_RESERVED: i32 = 2;
+        const DIURFLAG_VALID: i32 = 3;
+        #[library("newdev.dll")]
+        extern fn DiInstallDevice(#[opt] hwndParent: HWND, DeviceInfoSet: HDEVINFO, DeviceInfoData: PSP_DEVINFO_DATA, #[opt] DriverInfoData: PSP_DRVINFO_DATA, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiInstallDriverA(#[opt] hwndParent: HWND, InfPath: PCSTR, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiInstallDriverW(#[opt] hwndParent: HWND, InfPath: PCWSTR, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiRollbackDriver(DeviceInfoSet: HDEVINFO, DeviceInfoData: PSP_DEVINFO_DATA, #[opt] hwndParent: HWND, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiShowUpdateDevice(#[opt] hwndParent: HWND, DeviceInfoSet: HDEVINFO, DeviceInfoData: PSP_DEVINFO_DATA, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiShowUpdateDriver(hwndParent: HWND, FilePath: PCWSTR, Flags: u32, NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiUninstallDevice(hwndParent: HWND, DeviceInfoSet: HDEVINFO, DeviceInfoData: PSP_DEVINFO_DATA, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiUninstallDriverA(#[opt] hwndParent: HWND, InfPath: PCSTR, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn DiUninstallDriverW(#[opt] hwndParent: HWND, InfPath: PCWSTR, Flags: u32, #[out] #[opt] NeedReboot: PBOOL) -> BOOL;
+        const INSTALLFLAG_BITS: i32 = 7;
+        const INSTALLFLAG_FORCE: i32 = 1;
+        const INSTALLFLAG_NONINTERACTIVE: i32 = 4;
+        const INSTALLFLAG_READONLY: i32 = 2;
+        const ROLLBACK_BITS: i32 = 1;
+        const ROLLBACK_FLAG_NO_UI: i32 = 1;
+        #[library("newdev.dll")]
+        extern fn UpdateDriverForPlugAndPlayDevicesA(#[opt] hwndParent: HWND, HardwareId: PCSTR, FullInfPath: PCSTR, InstallFlags: u32, #[out] #[opt] bRebootRequired: PBOOL) -> BOOL;
+        #[library("newdev.dll")]
+        extern fn UpdateDriverForPlugAndPlayDevicesW(#[opt] hwndParent: HWND, HardwareId: PCWSTR, FullInfPath: PCWSTR, InstallFlags: u32, #[out] #[opt] bRebootRequired: PBOOL) -> BOOL;
+    }
+}

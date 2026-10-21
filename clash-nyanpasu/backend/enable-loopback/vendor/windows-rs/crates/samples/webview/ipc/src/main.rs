@@ -1,0 +1,52 @@
+use windows_webview::*;
+
+const PAGE: &str = r#"<!DOCTYPE html><html><body>
+<h1>windows-webview IPC</h1>
+<button onclick="chrome.webview.postMessage('ping from page')">Send to host</button>
+<pre id="log"></pre>
+<script>
+  chrome.webview.addEventListener('message', e => {
+    document.getElementById('log').textContent += 'host says: ' + e.data + '\n';
+  });
+</script>
+</body></html>"#;
+
+fn main() -> Result<()> {
+    WebViewWindow::new("WebView2 IPC - windows-rs")
+        .size(1024, 768)
+        .run(|host| {
+            let webview = host.webview();
+            let navigate = webview.clone();
+            webview.add_script_to_execute_on_document_created(
+                "chrome.webview.postMessage('document created: ' + location.href);",
+                move |result| {
+                    result.unwrap();
+                    navigate.navigate_to_string(PAGE).unwrap();
+                },
+            )?;
+
+            let reply = webview.clone();
+            let script = webview.clone();
+
+            let registrations = vec![
+                webview.on_web_message_received(move |args| {
+                    let message = args.web_message_as_json();
+                    println!("page sent: {message}");
+                    reply
+                        .post_web_message_as_string(&format!("echo {message}"))
+                        .unwrap();
+                })?,
+                webview.on_navigation_completed(move |args| {
+                    if args.is_success() {
+                        script
+                            .execute_script("document.title", |result| {
+                                println!("execute_script returned: {result:?}");
+                            })
+                            .unwrap();
+                    }
+                })?,
+            ];
+            host.retain_all(registrations);
+            Ok(())
+        })
+}

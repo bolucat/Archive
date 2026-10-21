@@ -1,0 +1,94 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        type ATOM = u16;
+        type BOOL = i32;
+        const FALSE: i32 = 0;
+        extern fn FARPROC() -> isize;
+        struct FILETIME {
+            dwLowDateTime: u32,
+            dwHighDateTime: u32,
+        }
+        type GLOBALHANDLE = HANDLE;
+        type HFILE = i32;
+        type HGLOBAL = HANDLE;
+        type HINSTANCE = *mut HINSTANCE__;
+        struct HINSTANCE__ {
+            unused: i32,
+        }
+        type HKEY = *mut HKEY__;
+        struct HKEY__ {
+            unused: i32,
+        }
+        type HKL = *mut HKL__;
+        struct HKL__ {
+            unused: i32,
+        }
+        type HLOCAL = HANDLE;
+        type HLSURF = *mut HLSURF__;
+        struct HLSURF__ {
+            unused: i32,
+        }
+        type HMETAFILE = *mut HMETAFILE__;
+        struct HMETAFILE__ {
+            unused: i32,
+        }
+        type HMODULE = HINSTANCE;
+        type HRGN = *mut HRGN__;
+        struct HRGN__ {
+            unused: i32,
+        }
+        type HRSRC = *mut HRSRC__;
+        struct HRSRC__ {
+            unused: i32,
+        }
+        type HSPRITE = *mut HSPRITE__;
+        struct HSPRITE__ {
+            unused: i32,
+        }
+        type HSTR = *mut HSTR__;
+        struct HSTR__ {
+            unused: i32,
+        }
+        type HTASK = *mut HTASK__;
+        struct HTASK__ {
+            unused: i32,
+        }
+        type HWINSTA = *mut HWINSTA__;
+        struct HWINSTA__ {
+            unused: i32,
+        }
+        type LOCALHANDLE = HANDLE;
+        type LPARAM = isize;
+        type LPBOOL = *mut BOOL;
+        type LPBYTE = *mut u8;
+        type LPCVOID = *const void;
+        type LPDWORD = *mut u32;
+        type LPFILETIME = *mut FILETIME;
+        type LPHANDLE = *mut HANDLE;
+        type LPINT = *mut i32;
+        type LPLONG = *mut i32;
+        type LPWORD = *mut u16;
+        type LRESULT = isize;
+        const MAX_PATH: i32 = 260;
+        extern fn NEARPROC() -> isize;
+        type PBOOL = *mut BOOL;
+        type PBYTE = *mut u8;
+        type PDWORD = *mut u32;
+        type PFILETIME = *mut FILETIME;
+        type PFLOAT = *mut f32;
+        type PHKEY = *mut HKEY;
+        type PINT = *mut i32;
+        extern fn PROC() -> isize;
+        type PSZ = *mut i8;
+        type PUCHAR = *mut u8;
+        type PUINT = *mut u32;
+        type PULONG = *mut u32;
+        type PUSHORT = *mut u16;
+        type PWORD = *mut u16;
+        type SPHANDLE = *mut HANDLE;
+        const STRICT: i32 = 1;
+        const TRUE: i32 = 1;
+        type WPARAM = usize;
+    }
+}

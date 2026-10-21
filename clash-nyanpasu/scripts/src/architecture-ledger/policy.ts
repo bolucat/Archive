@@ -15,6 +15,7 @@ const SKIP_DIR_NAMES = new Set([
   // Upstream submodule under `backend/`. The ledger measures this repo's own
   // migration residual; vendored upstream sources are not ours to migrate.
   "nyanpasu-runtime",
+  "enable-loopback",
 ]);
 
 /**
@@ -178,7 +179,10 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "LANGUAGE_CASE",
   ]),
   ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
-  ...migrationModuleStatics("clash_config", ["MANAGEABLE_GUARD_FIELDS"]),
+  ...migrationModuleStatics("clash_config", [
+    "MANAGEABLE_GUARD_FIELDS",
+    "TUN_OVERRIDES",
+  ]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

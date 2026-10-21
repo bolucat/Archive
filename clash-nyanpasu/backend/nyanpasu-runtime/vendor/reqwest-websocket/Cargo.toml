@@ -1,0 +1,85 @@
+[package]
+name = "reqwest-websocket"
+version = "0.6.0"
+edition = "2021"
+authors = ["Janosch Gräf <janosch.graef@gmail.com>"]
+description = "WebSocket connections with reqwest"
+readme = "README.md"
+homepage = "https://github.com/jgraef/reqwest-websocket"
+repository = "https://github.com/jgraef/reqwest-websocket"
+license = "MIT"
+keywords = ["websocket", "reqwest", "stream"]
+categories = [
+    "network-programming",
+    "web-programming::http-client",
+    "web-programming::websocket",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+full = ["json", "middleware"]
+json = ["dep:serde", "dep:serde_json"]
+middleware = ["dep:reqwest-middleware"]
+
+[dependencies]
+# pin version, see https://github.com/jgraef/reqwest-websocket/pull/33
+futures-util = { version = ">=0.3.31", default-features = false, features = [
+    "sink",
+] }
+reqwest = { version = "0.13", default-features = false }
+thiserror = "2"
+tracing = "0.1"
+serde = { version = "1.0", default-features = false, optional = true }
+serde_json = { version = "1.0", default-features = false, optional = true, features = [
+    "alloc",
+] }
+bytes = "1.10.1"
+reqwest-middleware = { version = "0.5.0", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+async-tungstenite = { version = "0.32", default-features = false, features = [
+    "futures-03-sink",
+] }
+tokio-util = { version = "0.7", default-features = false, features = [
+    "compat",
+] }
+tungstenite = { version = "0.28", default-features = false, features = [
+    "handshake",
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = [
+    "WebSocket",
+    "CloseEvent",
+    "ErrorEvent",
+    "Event",
+    "MessageEvent",
+    "BinaryType",
+] }
+tokio = { version = "1", default-features = false, features = [
+    "sync",
+    "macros",
+] }
+
+[dev-dependencies]
+reqwest = { version = "0.13", features = ["default-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+futures-util = { version = "0.3", default-features = false, features = [
+    "sink",
+    "alloc",
+] }
+async-trait = "0.1.89"
+http = "1.4.0"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+wasm-bindgen-test = "0.3"
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+axum = { version = "0.8.7", features = ["ws"] }
+tokio = { version = "1", features = ["macros", "rt", "net"] }

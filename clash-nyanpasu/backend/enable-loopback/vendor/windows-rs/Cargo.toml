@@ -1,0 +1,86 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/libs/*",
+    "crates/tools/*",
+    "crates/samples/*/*",
+    "crates/tests/*/*",
+]
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"
+
+[profile.profiling]
+inherits = "release"
+debug = 1
+strip = "none"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(windows_slim_errors, windows_cast_diagnostics)'] }
+missing_unsafe_on_extern = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.cargo]
+unused_dependencies = "deny"
+
+[workspace.lints.clippy]
+self_named_module_files = "warn"
+type_complexity = "allow"
+manual_c_str_literals = "allow" # windows-bindgen needs to switch to signed char for this to work
+try_from_instead_of_from_str = "allow" # `GUID: TryFrom<&str>` is public API; switching to `FromStr` is a breaking change
+semicolon_if_nothing_returned = "warn"
+map_unwrap_or = "warn"
+manual_let_else = "warn"
+uninlined_format_args = "warn"
+redundant_clone = "warn"
+implicit_clone = "warn"
+single_match_else = "warn"
+cloned_instead_of_copied = "warn"
+manual_string_new = "warn"
+manual_assert = "warn"
+assigning_clones = "warn"
+explicit_iter_loop = "warn"
+use_self = "warn"
+
+[workspace.dependencies]
+helpers = { path = "crates/tools/helpers" }
+proc-macro2 = { version = "1.0", default-features = false }
+quote = { version = "1.0", default-features = false }
+serde = { version = "1.0", default-features = false }
+syn = { version = "2.0", default-features = false }
+# generated dependencies
+cppwinrt = { version = "0.100.0", path = "crates/libs/cppwinrt", default-features = false }
+windows = { version = "0.100.0", path = "crates/libs/windows", default-features = false }
+windows-animation = { version = "0.100.0", path = "crates/libs/animation", default-features = false }
+windows-bindgen = { version = "0.100.0", path = "crates/libs/bindgen", default-features = false }
+windows-canvas = { version = "0.100.0", path = "crates/libs/canvas", default-features = false }
+windows-clang = { version = "0.100.0", path = "crates/libs/clang", default-features = false }
+windows-collections = { version = "0.100.0", path = "crates/libs/collections", default-features = false }
+windows-composition = { version = "0.100.0", path = "crates/libs/composition", default-features = false }
+windows-core = { version = "0.100.0", path = "crates/libs/core", default-features = false }
+windows-default = { version = "0.100.0", path = "crates/libs/default", default-features = false }
+windows-future = { version = "0.100.0", path = "crates/libs/future", default-features = false }
+windows-implement = { version = "0.100.0", path = "crates/libs/implement", default-features = false }
+windows-interface = { version = "0.100.0", path = "crates/libs/interface", default-features = false }
+windows-link = { version = "0.100.0", path = "crates/libs/link", default-features = false }
+windows-metadata = { version = "0.100.0", path = "crates/libs/metadata", default-features = false }
+windows-numerics = { version = "0.100.0", path = "crates/libs/numerics", default-features = false }
+windows-pickers = { version = "0.100.0", path = "crates/libs/pickers", default-features = false }
+windows-rdl = { version = "0.100.0", path = "crates/libs/rdl", default-features = false }
+windows-reactor = { version = "0.100.0", path = "crates/libs/reactor", default-features = false }
+windows-reactor-setup = { version = "0.100.0", path = "crates/libs/reactor-setup", default-features = false }
+windows-reference = { version = "0.100.0", path = "crates/libs/reference", default-features = false }
+windows-registry = { version = "0.100.0", path = "crates/libs/registry", default-features = false }
+windows-result = { version = "0.100.0", path = "crates/libs/result", default-features = false }
+windows-services = { version = "0.100.0", path = "crates/libs/services", default-features = false }
+windows-strings = { version = "0.100.0", path = "crates/libs/strings", default-features = false }
+windows-sys = { version = "0.100.0", path = "crates/libs/sys", default-features = false }
+windows-threading = { version = "0.100.0", path = "crates/libs/threading", default-features = false }
+windows-time = { version = "0.100.0", path = "crates/libs/time", default-features = false }
+windows-version = { version = "0.100.0", path = "crates/libs/version", default-features = false }
+windows-webview = { version = "0.100.0", path = "crates/libs/webview", default-features = false }
+windows-window = { version = "0.100.0", path = "crates/libs/window", default-features = false }

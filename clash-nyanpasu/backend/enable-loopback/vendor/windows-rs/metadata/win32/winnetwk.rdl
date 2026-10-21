@@ -1,0 +1,310 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const CONNDLG_CONN_POINT: i32 = 2;
+        const CONNDLG_HIDE_BOX: i32 = 8;
+        const CONNDLG_NOT_PERSIST: i32 = 32;
+        const CONNDLG_PERSIST: i32 = 16;
+        const CONNDLG_RO_PATH: i32 = 1;
+        const CONNDLG_USE_MRU: i32 = 4;
+        type CONNECTDLGSTRUCT = CONNECTDLGSTRUCTA;
+        struct CONNECTDLGSTRUCTA {
+            cbStructure: u32,
+            hwndOwner: HWND,
+            lpConnRes: LPNETRESOURCEA,
+            dwFlags: u32,
+            dwDevNum: u32,
+        }
+        struct CONNECTDLGSTRUCTW {
+            cbStructure: u32,
+            hwndOwner: HWND,
+            lpConnRes: LPNETRESOURCEW,
+            dwFlags: u32,
+            dwDevNum: u32,
+        }
+        const CONNECT_CMD_SAVECRED: i32 = 4096;
+        const CONNECT_COMMANDLINE: i32 = 2048;
+        const CONNECT_CRED_RESET: i32 = 8192;
+        const CONNECT_CURRENT_MEDIA: i32 = 512;
+        const CONNECT_DEFERRED: i32 = 1024;
+        const CONNECT_GLOBAL_MAPPING: i32 = 262144;
+        const CONNECT_INTERACTIVE: i32 = 8;
+        const CONNECT_LOCALDRIVE: i32 = 256;
+        const CONNECT_NEED_DRIVE: i32 = 32;
+        const CONNECT_PROMPT: i32 = 16;
+        const CONNECT_REDIRECT: i32 = 128;
+        const CONNECT_REFCOUNT: i32 = 64;
+        const CONNECT_REQUIRE_INTEGRITY: i32 = 16384;
+        const CONNECT_REQUIRE_PRIVACY: i32 = 32768;
+        const CONNECT_RESERVED: u32 = 4278190080;
+        const CONNECT_TEMPORARY: i32 = 4;
+        const CONNECT_UPDATE_PROFILE: i32 = 1;
+        const CONNECT_UPDATE_RECENT: i32 = 2;
+        const CONNECT_WRITE_THROUGH_SEMANTICS: i32 = 65536;
+        type DISCDLGSTRUCT = DISCDLGSTRUCTA;
+        struct DISCDLGSTRUCTA {
+            cbStructure: u32,
+            hwndOwner: HWND,
+            lpLocalName: PSTR,
+            lpRemoteName: PSTR,
+            dwFlags: u32,
+        }
+        struct DISCDLGSTRUCTW {
+            cbStructure: u32,
+            hwndOwner: HWND,
+            lpLocalName: PWSTR,
+            lpRemoteName: PWSTR,
+            dwFlags: u32,
+        }
+        const DISC_NO_FORCE: i32 = 64;
+        const DISC_UPDATE_PROFILE: i32 = 1;
+        type LPCONNECTDLGSTRUCT = LPCONNECTDLGSTRUCTA;
+        type LPCONNECTDLGSTRUCTA = *mut CONNECTDLGSTRUCTA;
+        type LPCONNECTDLGSTRUCTW = *mut CONNECTDLGSTRUCTW;
+        type LPDISCDLGSTRUCT = LPDISCDLGSTRUCTA;
+        type LPDISCDLGSTRUCTA = *mut DISCDLGSTRUCTA;
+        type LPDISCDLGSTRUCTW = *mut DISCDLGSTRUCTW;
+        type LPNETCONNECTINFOSTRUCT = *mut NETCONNECTINFOSTRUCT;
+        type LPNETINFOSTRUCT = *mut NETINFOSTRUCT;
+        type LPNETRESOURCE = LPNETRESOURCEA;
+        type LPNETRESOURCEA = *mut NETRESOURCEA;
+        type LPNETRESOURCEW = *mut NETRESOURCEW;
+        type LPREMOTE_NAME_INFO = LPREMOTE_NAME_INFOA;
+        type LPREMOTE_NAME_INFOA = *mut REMOTE_NAME_INFOA;
+        type LPREMOTE_NAME_INFOW = *mut REMOTE_NAME_INFOW;
+        type LPUNIVERSAL_NAME_INFO = LPUNIVERSAL_NAME_INFOA;
+        type LPUNIVERSAL_NAME_INFOA = *mut UNIVERSAL_NAME_INFOA;
+        type LPUNIVERSAL_NAME_INFOW = *mut UNIVERSAL_NAME_INFOW;
+        #[library("MPR.dll")]
+        extern fn MultinetGetConnectionPerformanceA(lpNetResource: LPNETRESOURCEA, #[out] lpNetConnectInfoStruct: LPNETCONNECTINFOSTRUCT) -> u32;
+        #[library("MPR.dll")]
+        extern fn MultinetGetConnectionPerformanceW(lpNetResource: LPNETRESOURCEW, #[out] lpNetConnectInfoStruct: LPNETCONNECTINFOSTRUCT) -> u32;
+        struct NETCONNECTINFOSTRUCT {
+            cbStructure: u32,
+            dwFlags: u32,
+            dwSpeed: u32,
+            dwDelay: u32,
+            dwOptDataSize: u32,
+        }
+        struct NETINFOSTRUCT {
+            cbStructure: u32,
+            dwProviderVersion: u32,
+            dwStatus: u32,
+            dwCharacteristics: u32,
+            dwHandle: usize,
+            wNetType: u16,
+            dwPrinters: u32,
+            dwDrives: u32,
+        }
+        const NETINFO_DISKRED: i32 = 4;
+        const NETINFO_DLL16: i32 = 1;
+        const NETINFO_PRINTERRED: i32 = 8;
+        const NETPROPERTY_PERSISTENT: i32 = 1;
+        type NETRESOURCE = NETRESOURCEA;
+        struct NETRESOURCEA {
+            dwScope: u32,
+            dwType: u32,
+            dwDisplayType: u32,
+            dwUsage: u32,
+            lpLocalName: PSTR,
+            lpRemoteName: PSTR,
+            lpComment: PSTR,
+            lpProvider: PSTR,
+        }
+        struct NETRESOURCEW {
+            dwScope: u32,
+            dwType: u32,
+            dwDisplayType: u32,
+            dwUsage: u32,
+            lpLocalName: PWSTR,
+            lpRemoteName: PWSTR,
+            lpComment: PWSTR,
+            lpProvider: PWSTR,
+        }
+        type REMOTE_NAME_INFO = REMOTE_NAME_INFOA;
+        struct REMOTE_NAME_INFOA {
+            lpUniversalName: PSTR,
+            lpConnectionName: PSTR,
+            lpRemainingPath: PSTR,
+        }
+        struct REMOTE_NAME_INFOW {
+            lpUniversalName: PWSTR,
+            lpConnectionName: PWSTR,
+            lpRemainingPath: PWSTR,
+        }
+        const REMOTE_NAME_INFO_LEVEL: i32 = 2;
+        const RESOURCEDISPLAYTYPE_DIRECTORY: i32 = 9;
+        const RESOURCEDISPLAYTYPE_DOMAIN: i32 = 1;
+        const RESOURCEDISPLAYTYPE_FILE: i32 = 4;
+        const RESOURCEDISPLAYTYPE_GENERIC: i32 = 0;
+        const RESOURCEDISPLAYTYPE_GROUP: i32 = 5;
+        const RESOURCEDISPLAYTYPE_NDSCONTAINER: i32 = 11;
+        const RESOURCEDISPLAYTYPE_NETWORK: i32 = 6;
+        const RESOURCEDISPLAYTYPE_ROOT: i32 = 7;
+        const RESOURCEDISPLAYTYPE_SERVER: i32 = 2;
+        const RESOURCEDISPLAYTYPE_SHARE: i32 = 3;
+        const RESOURCEDISPLAYTYPE_SHAREADMIN: i32 = 8;
+        const RESOURCEDISPLAYTYPE_TREE: i32 = 10;
+        const RESOURCETYPE_ANY: i32 = 0;
+        const RESOURCETYPE_DISK: i32 = 1;
+        const RESOURCETYPE_PRINT: i32 = 2;
+        const RESOURCETYPE_RESERVED: i32 = 8;
+        const RESOURCETYPE_UNKNOWN: u32 = 4294967295;
+        const RESOURCEUSAGE_ALL: i32 = 19;
+        const RESOURCEUSAGE_ATTACHED: i32 = 16;
+        const RESOURCEUSAGE_CONNECTABLE: i32 = 1;
+        const RESOURCEUSAGE_CONTAINER: i32 = 2;
+        const RESOURCEUSAGE_NOLOCALDEVICE: i32 = 4;
+        const RESOURCEUSAGE_RESERVED: u32 = 2147483648;
+        const RESOURCEUSAGE_SIBLING: i32 = 8;
+        const RESOURCE_CONNECTED: i32 = 1;
+        const RESOURCE_CONTEXT: i32 = 5;
+        const RESOURCE_GLOBALNET: i32 = 2;
+        const RESOURCE_RECENT: i32 = 4;
+        const RESOURCE_REMEMBERED: i32 = 3;
+        type UNIVERSAL_NAME_INFO = UNIVERSAL_NAME_INFOA;
+        struct UNIVERSAL_NAME_INFOA {
+            lpUniversalName: PSTR,
+        }
+        struct UNIVERSAL_NAME_INFOW {
+            lpUniversalName: PWSTR,
+        }
+        const UNIVERSAL_NAME_INFO_LEVEL: i32 = 1;
+        const WNCON_DYNAMIC: i32 = 8;
+        const WNCON_FORNETCARD: i32 = 1;
+        const WNCON_NOTROUTED: i32 = 2;
+        const WNCON_SLOWLINK: i32 = 4;
+        const WNFMT_ABBREVIATED: i32 = 2;
+        const WNFMT_CONNECTION: i32 = 32;
+        const WNFMT_INENUM: i32 = 16;
+        const WNFMT_MULTILINE: i32 = 1;
+        const WN_ACCESS_DENIED: i32 = 5;
+        const WN_ALREADY_CONNECTED: i32 = 85;
+        const WN_BAD_DEV_TYPE: i32 = 66;
+        const WN_BAD_HANDLE: i32 = 6;
+        const WN_BAD_LEVEL: i32 = 124;
+        const WN_BAD_LOCALNAME: i32 = 1200;
+        const WN_BAD_NETNAME: i32 = 67;
+        const WN_BAD_PASSWORD: i32 = 86;
+        const WN_BAD_POINTER: i32 = 487;
+        const WN_BAD_PROFILE: i32 = 1206;
+        const WN_BAD_PROVIDER: i32 = 1204;
+        const WN_BAD_USER: i32 = 2202;
+        const WN_BAD_VALUE: i32 = 87;
+        const WN_CANCEL: i32 = 1223;
+        const WN_CANNOT_OPEN_PROFILE: i32 = 1205;
+        const WN_CONNECTED_OTHER_PASSWORD: i32 = 2108;
+        const WN_CONNECTED_OTHER_PASSWORD_DEFAULT: i32 = 2109;
+        const WN_CONNECTION_CLOSED: i32 = 1201;
+        const WN_DEVICE_ALREADY_REMEMBERED: i32 = 1202;
+        const WN_DEVICE_ERROR: i32 = 31;
+        const WN_DEVICE_IN_USE: i32 = 2404;
+        const WN_EXTENDED_ERROR: i32 = 1208;
+        const WN_FUNCTION_BUSY: i32 = 170;
+        const WN_MORE_DATA: i32 = 234;
+        const WN_NET_ERROR: i32 = 59;
+        const WN_NOT_AUTHENTICATED: i32 = 1244;
+        const WN_NOT_CONNECTED: i32 = 2250;
+        const WN_NOT_CONTAINER: i32 = 1207;
+        const WN_NOT_INITIALIZING: i32 = 1247;
+        const WN_NOT_LOGGED_ON: i32 = 1245;
+        const WN_NOT_SUPPORTED: i32 = 50;
+        const WN_NOT_VALIDATED: i32 = 1311;
+        const WN_NO_ERROR: i32 = 0;
+        const WN_NO_MORE_DEVICES: i32 = 1248;
+        const WN_NO_MORE_ENTRIES: i32 = 259;
+        const WN_NO_NETWORK: i32 = 1222;
+        const WN_NO_NET_OR_BAD_PATH: i32 = 1203;
+        const WN_OPEN_FILES: i32 = 2401;
+        const WN_OUT_OF_MEMORY: i32 = 8;
+        const WN_RETRY: i32 = 1237;
+        const WN_SUCCESS: i32 = 0;
+        const WN_WINDOWS_ERROR: i32 = 59;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection2A(lpNetResource: LPNETRESOURCEA, #[opt] lpPassword: PCSTR, #[opt] lpUserName: PCSTR, dwFlags: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection2W(lpNetResource: LPNETRESOURCEW, #[opt] lpPassword: PCWSTR, #[opt] lpUserName: PCWSTR, dwFlags: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection3A(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEA, #[opt] lpPassword: PCSTR, #[opt] lpUserName: PCSTR, dwFlags: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection3W(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEW, #[opt] lpPassword: PCWSTR, #[opt] lpUserName: PCWSTR, dwFlags: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection4A(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEA, #[size_param(3)] #[in] pAuthBuffer: *mut void, cbAuthBuffer: u32, dwFlags: u32, #[size_param(6)] lpUseOptions: PBYTE, cbUseOptions: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnection4W(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEW, #[size_param(3)] #[in] pAuthBuffer: *mut void, cbAuthBuffer: u32, dwFlags: u32, #[size_param(6)] lpUseOptions: PBYTE, cbUseOptions: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnectionA(lpRemoteName: PCSTR, #[opt] lpPassword: PCSTR, #[opt] lpLocalName: PCSTR) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetAddConnectionW(lpRemoteName: PCWSTR, #[opt] lpPassword: PCWSTR, #[opt] lpLocalName: PCWSTR) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetCancelConnection2A(lpName: PCSTR, dwFlags: u32, fForce: BOOL) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetCancelConnection2W(lpName: PCWSTR, dwFlags: u32, fForce: BOOL) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetCancelConnectionA(lpName: PCSTR, fForce: BOOL) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetCancelConnectionW(lpName: PCWSTR, fForce: BOOL) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetCloseEnum(hEnum: HANDLE) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetConnectionDialog(hwnd: HWND, dwType: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetConnectionDialog1A(#[in] #[out] lpConnDlgStruct: LPCONNECTDLGSTRUCTA) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetConnectionDialog1W(#[in] #[out] lpConnDlgStruct: LPCONNECTDLGSTRUCTW) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetDisconnectDialog(#[opt] hwnd: HWND, dwType: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetDisconnectDialog1A(lpConnDlgStruct: LPDISCDLGSTRUCTA) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetDisconnectDialog1W(lpConnDlgStruct: LPDISCDLGSTRUCTW) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetEnumResourceA(hEnum: HANDLE, #[in] #[out] lpcCount: LPDWORD, #[size_param(3)] lpBuffer: *mut void, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetEnumResourceW(hEnum: HANDLE, #[in] #[out] lpcCount: LPDWORD, #[size_param(3)] lpBuffer: *mut void, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetConnectionA(lpLocalName: PCSTR, #[len_param(2)] #[out] #[opt] lpRemoteName: PSTR, #[in] #[out] lpnLength: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetConnectionW(lpLocalName: PCWSTR, #[len_param(2)] #[out] #[opt] lpRemoteName: PWSTR, #[in] #[out] lpnLength: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetLastErrorA(#[out] lpError: LPDWORD, #[len_param(2)] #[out] lpErrorBuf: PSTR, nErrorBufSize: u32, #[len_param(4)] #[out] lpNameBuf: PSTR, nNameBufSize: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetLastErrorW(#[out] lpError: LPDWORD, #[len_param(2)] #[out] lpErrorBuf: PWSTR, nErrorBufSize: u32, #[len_param(4)] #[out] lpNameBuf: PWSTR, nNameBufSize: u32) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetNetworkInformationA(lpProvider: PCSTR, #[out] lpNetInfoStruct: LPNETINFOSTRUCT) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetNetworkInformationW(lpProvider: PCWSTR, #[out] lpNetInfoStruct: LPNETINFOSTRUCT) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetProviderNameA(dwNetType: u32, #[len_param(2)] #[out] lpProviderName: PSTR, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetProviderNameW(dwNetType: u32, #[len_param(2)] #[out] lpProviderName: PWSTR, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetResourceInformationA(lpNetResource: LPNETRESOURCEA, #[size_param(2)] lpBuffer: *mut void, #[in] #[out] lpcbBuffer: LPDWORD, lplpSystem: *mut PSTR) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetResourceInformationW(lpNetResource: LPNETRESOURCEW, #[size_param(2)] lpBuffer: *mut void, #[in] #[out] lpcbBuffer: LPDWORD, lplpSystem: *mut PWSTR) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetResourceParentA(lpNetResource: LPNETRESOURCEA, #[size_param(2)] lpBuffer: *mut void, #[in] #[out] lpcbBuffer: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetResourceParentW(lpNetResource: LPNETRESOURCEW, #[size_param(2)] lpBuffer: *mut void, #[in] #[out] lpcbBuffer: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetUniversalNameA(lpLocalPath: PCSTR, dwInfoLevel: u32, #[size_param(3)] lpBuffer: *mut void, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetUniversalNameW(lpLocalPath: PCWSTR, dwInfoLevel: u32, #[size_param(3)] lpBuffer: *mut void, #[in] #[out] lpBufferSize: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetUserA(#[opt] lpName: PCSTR, #[len_param(2)] #[out] lpUserName: PSTR, #[in] #[out] lpnLength: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetGetUserW(#[opt] lpName: PCWSTR, #[len_param(2)] #[out] lpUserName: PWSTR, #[in] #[out] lpnLength: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetOpenEnumA(dwScope: u32, dwType: u32, dwUsage: u32, #[opt] lpNetResource: LPNETRESOURCEA, #[out] lphEnum: LPHANDLE) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetOpenEnumW(dwScope: u32, dwType: u32, dwUsage: u32, #[opt] lpNetResource: LPNETRESOURCEW, #[out] lphEnum: LPHANDLE) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetUseConnection4A(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEA, #[size_param(3)] #[in] #[opt] pAuthBuffer: *mut void, cbAuthBuffer: u32, dwFlags: u32, #[size_param(6)] #[opt] lpUseOptions: PBYTE, cbUseOptions: u32, #[len_param(8)] #[out] #[opt] lpAccessName: PSTR, #[in] #[out] #[opt] lpBufferSize: LPDWORD, #[out] #[opt] lpResult: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetUseConnection4W(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEW, #[size_param(3)] #[in] #[opt] pAuthBuffer: *mut void, cbAuthBuffer: u32, dwFlags: u32, #[size_param(6)] #[opt] lpUseOptions: PBYTE, cbUseOptions: u32, #[len_param(8)] #[out] #[opt] lpAccessName: PWSTR, #[in] #[out] #[opt] lpBufferSize: LPDWORD, #[out] #[opt] lpResult: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetUseConnectionA(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEA, #[opt] lpPassword: PCSTR, #[opt] lpUserId: PCSTR, dwFlags: u32, #[len_param(6)] #[out] #[opt] lpAccessName: PSTR, #[in] #[out] #[opt] lpBufferSize: LPDWORD, #[out] #[opt] lpResult: LPDWORD) -> u32;
+        #[library("MPR.dll")]
+        extern fn WNetUseConnectionW(#[opt] hwndOwner: HWND, lpNetResource: LPNETRESOURCEW, #[opt] lpPassword: PCWSTR, #[opt] lpUserId: PCWSTR, dwFlags: u32, #[len_param(6)] #[out] #[opt] lpAccessName: PWSTR, #[in] #[out] #[opt] lpBufferSize: LPDWORD, #[out] #[opt] lpResult: LPDWORD) -> u32;
+    }
+}

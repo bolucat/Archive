@@ -1,0 +1,42 @@
+[package]
+name = "windows-dcomp"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+features = [
+    "bcrypt",
+    "combaseapi",
+    "d2d",
+    "d3d9",
+    "d3d11",
+    "d3dcommon",
+    "dcommon",
+    "dcomp",
+    "dwrite",
+    "dxgi",
+    "minwindef",
+    "objbase",
+    "shellscalingapi",
+    "shlwapi",
+    "wincodec",
+    "windef",
+    "winnt",
+    "winuser",
+    "wtypesbase",
+]
+
+[dependencies.windows-animation]
+workspace = true
+
+[dependencies.windows-numerics]
+workspace = true
+features = ["std"]
+
+[dependencies.windows-window]
+workspace = true
+
+[lints]
+workspace = true

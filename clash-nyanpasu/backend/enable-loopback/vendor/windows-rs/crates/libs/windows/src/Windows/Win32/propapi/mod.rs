@@ -1,0 +1,7 @@
+#[cfg(feature = "propidl")]
+#[inline]
+pub unsafe fn StgPropertyLengthAsVariant(pprop: *const super::SERIALIZEDPROPERTYVALUE, cbprop: u32, codepage: u16, breserved: Option<u8>) -> u32 {
+    windows_core::link!("ole32.dll" "system" fn StgPropertyLengthAsVariant(pprop : *const super::SERIALIZEDPROPERTYVALUE, cbprop : u32, codepage : u16, breserved : u8) -> u32);
+    unsafe { StgPropertyLengthAsVariant(pprop, cbprop, codepage, breserved.unwrap_or(core::mem::zeroed()) as _) }
+}
+pub type NTPROP = *mut core::ffi::c_void;

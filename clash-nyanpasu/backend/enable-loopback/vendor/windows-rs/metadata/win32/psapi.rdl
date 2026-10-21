@@ -1,0 +1,206 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        struct ENUM_PAGE_FILE_INFORMATION {
+            cb: u32,
+            Reserved: u32,
+            TotalSize: usize,
+            TotalInUse: usize,
+            PeakUsage: usize,
+        }
+        #[library("KERNEL32.dll", import = "K32EmptyWorkingSet")]
+        extern fn EmptyWorkingSet(hProcess: HANDLE) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumDeviceDrivers")]
+        extern fn EnumDeviceDrivers(#[size_param(1)] lpImageBase: *mut *mut void, cb: u32, #[out] lpcbNeeded: LPDWORD) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumPageFilesA")]
+        extern fn EnumPageFilesA(pCallBackRoutine: PENUM_PAGE_FILE_CALLBACKA, pContext: *mut void) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumPageFilesW")]
+        extern fn EnumPageFilesW(pCallBackRoutine: PENUM_PAGE_FILE_CALLBACKW, pContext: *mut void) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumProcessModules")]
+        extern fn EnumProcessModules(hProcess: HANDLE, #[size_param(2)] lphModule: *mut HMODULE, cb: u32, #[out] lpcbNeeded: LPDWORD) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumProcessModulesEx")]
+        extern fn EnumProcessModulesEx(hProcess: HANDLE, #[size_param(2)] lphModule: *mut HMODULE, cb: u32, #[out] lpcbNeeded: LPDWORD, dwFilterFlag: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32EnumProcesses")]
+        extern fn EnumProcesses(#[size_param(1)] lpidProcess: *mut u32, cb: u32, #[out] lpcbNeeded: LPDWORD) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32GetDeviceDriverBaseNameA")]
+        extern fn GetDeviceDriverBaseNameA(#[in] ImageBase: *mut void, #[len_param(2)] #[out] lpFilename: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetDeviceDriverBaseNameW")]
+        extern fn GetDeviceDriverBaseNameW(#[in] ImageBase: *mut void, #[len_param(2)] #[out] lpBaseName: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetDeviceDriverFileNameA")]
+        extern fn GetDeviceDriverFileNameA(#[in] ImageBase: *mut void, #[len_param(2)] #[out] lpFilename: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetDeviceDriverFileNameW")]
+        extern fn GetDeviceDriverFileNameW(#[in] ImageBase: *mut void, #[len_param(2)] #[out] lpFilename: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetMappedFileNameA")]
+        extern fn GetMappedFileNameA(hProcess: HANDLE, #[in] lpv: *mut void, #[len_param(3)] #[out] lpFilename: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetMappedFileNameW")]
+        extern fn GetMappedFileNameW(hProcess: HANDLE, #[in] lpv: *mut void, #[len_param(3)] #[out] lpFilename: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetModuleBaseNameA")]
+        extern fn GetModuleBaseNameA(hProcess: HANDLE, #[opt] hModule: HMODULE, #[len_param(3)] #[out] lpBaseName: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetModuleBaseNameW")]
+        extern fn GetModuleBaseNameW(hProcess: HANDLE, #[opt] hModule: HMODULE, #[len_param(3)] #[out] lpBaseName: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetModuleFileNameExA")]
+        extern fn GetModuleFileNameExA(#[opt] hProcess: HANDLE, #[opt] hModule: HMODULE, lpFilename: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetModuleFileNameExW")]
+        extern fn GetModuleFileNameExW(#[opt] hProcess: HANDLE, #[opt] hModule: HMODULE, lpFilename: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetModuleInformation")]
+        extern fn GetModuleInformation(hProcess: HANDLE, hModule: HMODULE, #[out] lpmodinfo: LPMODULEINFO, cb: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32GetPerformanceInfo")]
+        extern fn GetPerformanceInfo(pPerformanceInformation: PPERFORMANCE_INFORMATION, cb: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32GetProcessImageFileNameA")]
+        extern fn GetProcessImageFileNameA(hProcess: HANDLE, #[len_param(2)] #[out] lpImageFileName: PSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetProcessImageFileNameW")]
+        extern fn GetProcessImageFileNameW(hProcess: HANDLE, #[len_param(2)] #[out] lpImageFileName: PWSTR, nSize: u32) -> u32;
+        #[library("KERNEL32.dll", import = "K32GetProcessMemoryInfo")]
+        extern fn GetProcessMemoryInfo(Process: HANDLE, #[size_param(2)] #[out] ppsmemCounters: PPROCESS_MEMORY_COUNTERS, cb: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32GetWsChanges")]
+        extern fn GetWsChanges(hProcess: HANDLE, #[size_param(2)] #[out] lpWatchInfo: PPSAPI_WS_WATCH_INFORMATION, cb: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32GetWsChangesEx")]
+        extern fn GetWsChangesEx(hProcess: HANDLE, #[size_param(2)] #[out] lpWatchInfoEx: PPSAPI_WS_WATCH_INFORMATION_EX, #[in] #[out] cb: PDWORD) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32InitializeProcessForWsWatch")]
+        extern fn InitializeProcessForWsWatch(hProcess: HANDLE) -> BOOL;
+        const LIST_MODULES_32BIT: i32 = 1;
+        const LIST_MODULES_64BIT: i32 = 2;
+        const LIST_MODULES_ALL: i32 = 3;
+        const LIST_MODULES_DEFAULT: i32 = 0;
+        type LPMODULEINFO = *mut MODULEINFO;
+        struct MODULEINFO {
+            lpBaseOfDll: *mut void,
+            SizeOfImage: u32,
+            EntryPoint: *mut void,
+        }
+        extern fn PENUM_PAGE_FILE_CALLBACKA(pContext: *mut void, pPageFileInfo: PENUM_PAGE_FILE_INFORMATION, lpFilename: PCSTR) -> BOOL;
+        extern fn PENUM_PAGE_FILE_CALLBACKW(pContext: *mut void, pPageFileInfo: PENUM_PAGE_FILE_INFORMATION, lpFilename: PCWSTR) -> BOOL;
+        type PENUM_PAGE_FILE_INFORMATION = *mut ENUM_PAGE_FILE_INFORMATION;
+        type PERFORMACE_INFORMATION = PERFORMANCE_INFORMATION;
+        struct PERFORMANCE_INFORMATION {
+            cb: u32,
+            CommitTotal: usize,
+            CommitLimit: usize,
+            CommitPeak: usize,
+            PhysicalTotal: usize,
+            PhysicalAvailable: usize,
+            SystemCache: usize,
+            KernelTotal: usize,
+            KernelPaged: usize,
+            KernelNonpaged: usize,
+            PageSize: usize,
+            HandleCount: u32,
+            ProcessCount: u32,
+            ThreadCount: u32,
+        }
+        type PPERFORMACE_INFORMATION = *mut PERFORMANCE_INFORMATION;
+        type PPERFORMANCE_INFORMATION = *mut PERFORMANCE_INFORMATION;
+        type PPROCESS_MEMORY_COUNTERS = *mut PROCESS_MEMORY_COUNTERS;
+        type PPROCESS_MEMORY_COUNTERS_EX = *mut PROCESS_MEMORY_COUNTERS_EX;
+        type PPROCESS_MEMORY_COUNTERS_EX2 = *mut PROCESS_MEMORY_COUNTERS_EX2;
+        type PPSAPI_WORKING_SET_BLOCK = *mut PSAPI_WORKING_SET_BLOCK;
+        type PPSAPI_WORKING_SET_EX_BLOCK = *mut PSAPI_WORKING_SET_EX_BLOCK;
+        type PPSAPI_WORKING_SET_EX_INFORMATION = *mut PSAPI_WORKING_SET_EX_INFORMATION;
+        type PPSAPI_WORKING_SET_INFORMATION = *mut PSAPI_WORKING_SET_INFORMATION;
+        type PPSAPI_WS_WATCH_INFORMATION = *mut PSAPI_WS_WATCH_INFORMATION;
+        type PPSAPI_WS_WATCH_INFORMATION_EX = *mut PSAPI_WS_WATCH_INFORMATION_EX;
+        struct PROCESS_MEMORY_COUNTERS {
+            cb: u32,
+            PageFaultCount: u32,
+            PeakWorkingSetSize: usize,
+            WorkingSetSize: usize,
+            QuotaPeakPagedPoolUsage: usize,
+            QuotaPagedPoolUsage: usize,
+            QuotaPeakNonPagedPoolUsage: usize,
+            QuotaNonPagedPoolUsage: usize,
+            PagefileUsage: usize,
+            PeakPagefileUsage: usize,
+        }
+        struct PROCESS_MEMORY_COUNTERS_EX {
+            cb: u32,
+            PageFaultCount: u32,
+            PeakWorkingSetSize: usize,
+            WorkingSetSize: usize,
+            QuotaPeakPagedPoolUsage: usize,
+            QuotaPagedPoolUsage: usize,
+            QuotaPeakNonPagedPoolUsage: usize,
+            QuotaNonPagedPoolUsage: usize,
+            PagefileUsage: usize,
+            PeakPagefileUsage: usize,
+            PrivateUsage: usize,
+        }
+        struct PROCESS_MEMORY_COUNTERS_EX2 {
+            cb: u32,
+            PageFaultCount: u32,
+            PeakWorkingSetSize: usize,
+            WorkingSetSize: usize,
+            QuotaPeakPagedPoolUsage: usize,
+            QuotaPagedPoolUsage: usize,
+            QuotaPeakNonPagedPoolUsage: usize,
+            QuotaNonPagedPoolUsage: usize,
+            PagefileUsage: usize,
+            PeakPagefileUsage: usize,
+            PrivateUsage: usize,
+            PrivateWorkingSetSize: usize,
+            SharedCommitUsage: u64,
+        }
+        const PSAPI_VERSION: i32 = 2;
+        union PSAPI_WORKING_SET_BLOCK {
+            Flags: usize,
+            Anonymous: struct {
+                _bitfield: usize {
+                    Protection: 5,
+                    ShareCount: 3,
+                    Shared: 1,
+                    Reserved: 3,
+                    VirtualPage: 52,
+                },
+            },
+        }
+        union PSAPI_WORKING_SET_EX_BLOCK {
+            Flags: usize,
+            Anonymous: union {
+                Anonymous: struct {
+                    _bitfield: usize {
+                        Valid: 1,
+                        ShareCount: 3,
+                        Win32Protection: 11,
+                        Shared: 1,
+                        Node: 6,
+                        Locked: 1,
+                        LargePage: 1,
+                        Reserved: 7,
+                        Bad: 1,
+                        ReservedUlong: 32,
+                    },
+                },
+                Invalid: struct {
+                    _bitfield: usize {
+                        Valid: 1,
+                        Reserved0: 14,
+                        Shared: 1,
+                        Reserved1: 15,
+                        Bad: 1,
+                        ReservedUlong: 32,
+                    },
+                },
+            },
+        }
+        struct PSAPI_WORKING_SET_EX_INFORMATION {
+            VirtualAddress: *mut void,
+            VirtualAttributes: PSAPI_WORKING_SET_EX_BLOCK,
+        }
+        struct PSAPI_WORKING_SET_INFORMATION {
+            NumberOfEntries: usize,
+            WorkingSetInfo: [PSAPI_WORKING_SET_BLOCK; 1],
+        }
+        struct PSAPI_WS_WATCH_INFORMATION {
+            FaultingPc: *mut void,
+            FaultingVa: *mut void,
+        }
+        struct PSAPI_WS_WATCH_INFORMATION_EX {
+            BasicInfo: PSAPI_WS_WATCH_INFORMATION,
+            FaultingThreadId: usize,
+            Flags: usize,
+        }
+        #[library("KERNEL32.dll", import = "K32QueryWorkingSet")]
+        extern fn QueryWorkingSet(hProcess: HANDLE, #[size_param(2)] pv: *mut void, cb: u32) -> BOOL;
+        #[library("KERNEL32.dll", import = "K32QueryWorkingSetEx")]
+        extern fn QueryWorkingSetEx(hProcess: HANDLE, #[size_param(2)] pv: *mut void, cb: u32) -> BOOL;
+    }
+}

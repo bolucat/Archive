@@ -1,0 +1,51 @@
+windows_link::link!("advapi32.dll" "system" fn RegGetValueA(hkey : HKEY, lpsubkey : PCSTR, lpvalue : PCSTR, dwflags : u32, pdwtype : LPDWORD, pvdata : *mut core::ffi::c_void, pcbdata : LPDWORD) -> LSTATUS);
+windows_link::link!("ntdll.dll" "system" fn RtlGetVersion(lpversioninformation : PRTL_OSVERSIONINFOW) -> NTSTATUS);
+pub type HKEY = *mut HKEY__;
+pub const HKEY_LOCAL_MACHINE: HKEY = -2147483646 as _;
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct HKEY__ {
+    pub unused: i32,
+}
+pub type LPDWORD = *mut u32;
+pub type LSTATUS = i32;
+pub type NTSTATUS = i32;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OSVERSIONINFOEXW {
+    pub dwOSVersionInfoSize: u32,
+    pub dwMajorVersion: u32,
+    pub dwMinorVersion: u32,
+    pub dwBuildNumber: u32,
+    pub dwPlatformId: u32,
+    pub szCSDVersion: [u16; 128],
+    pub wServicePackMajor: u16,
+    pub wServicePackMinor: u16,
+    pub wSuiteMask: u16,
+    pub wProductType: u8,
+    pub wReserved: u8,
+}
+impl Default for OSVERSIONINFOEXW {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OSVERSIONINFOW {
+    pub dwOSVersionInfoSize: u32,
+    pub dwMajorVersion: u32,
+    pub dwMinorVersion: u32,
+    pub dwBuildNumber: u32,
+    pub dwPlatformId: u32,
+    pub szCSDVersion: [u16; 128],
+}
+impl Default for OSVERSIONINFOW {
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+pub type PCSTR = *const u8;
+pub type PRTL_OSVERSIONINFOW = *mut OSVERSIONINFOW;
+pub const RRF_RT_REG_DWORD: i32 = 16;
+pub const VER_NT_WORKSTATION: i32 = 1;

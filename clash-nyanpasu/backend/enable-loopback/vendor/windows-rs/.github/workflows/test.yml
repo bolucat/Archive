@@ -1,0 +1,96 @@
+name: test
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+  push:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    strategy:
+      matrix:
+        include:
+          - name: stable x64
+            host: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
+            runner: windows-2025-vs2026
+            clang-exclude: ""
+          - name: stable i686
+            host: x86_64-pc-windows-msvc
+            target: i686-pc-windows-msvc
+            runner: windows-2025-vs2026
+            # The pinned libclang packages do not include an x86 DLL. The native x64 and Arm64
+            # jobs cover this host-tool crate; its output is target-independent.
+            clang-exclude: "--exclude windows-clang --exclude test_clang"
+          - name: stable arm64
+            host: aarch64-pc-windows-msvc
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            clang-exclude: ""
+
+    runs-on: ${{ matrix.runner }}
+
+    env:
+      RUSTFLAGS: -D warnings
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Update toolchain
+        run: rustup update --no-self-update stable && rustup default stable-${{ matrix.host }}
+      - name: Add toolchain target
+        run: rustup target add ${{ matrix.target }}
+      - name: Install fmt
+        run: rustup component add rustfmt
+      - name: Fix environment
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/fix-environment
+        with:
+          target: ${{ matrix.target }}
+      - name: Install .NET x86 runtimes
+        # The windows-2025-vs2026 image ships .NET only for x64/arm64. The
+        # i686 C# tests launch win-x86 processes targeting .NET 9 and .NET 10.
+        if: matrix.target == 'i686-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $script = Join-Path $env:RUNNER_TEMP 'dotnet-install.ps1'
+          Invoke-WebRequest -UseBasicParsing 'https://dot.net/v1/dotnet-install.ps1' -OutFile $script
+          & $script -Channel 9.0 -Runtime dotnet -Architecture x86 -InstallDir "${env:ProgramFiles(x86)}\dotnet"
+          & $script -Channel 10.0 -Runtime dotnet -Architecture x86 -InstallDir "${env:ProgramFiles(x86)}\dotnet"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Provision libclang (Windows)
+        # Export LIBCLANG_PATH from the pinned NuGet build (the same one the scrapers use) for the
+        # windows-clang tests. After rust-cache so the tool-clang build is cache-accelerated.
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=$(cargo run -q -p tool-clang -- path)" >> "$GITHUB_ENV"
+        shell: bash
+      - name: Test
+        # The system Composition graph is excluded because Reactor consumers select the
+        # incompatible lifted Composition stack.
+        run: cargo test --all --target ${{ matrix.target }} ${{ matrix.clang-exclude }} --exclude windows-composition --exclude canvas-standalone --exclude test_composition --exclude composition-standalone --exclude composition-minesweeper --exclude composition-canvas
+      - name: Test system Composition stack
+        run: cargo test -p windows-canvas -p windows-composition -p canvas-standalone -p test_composition -p composition-standalone -p composition-minesweeper -p composition-canvas --features windows-canvas/system --target ${{ matrix.target }}
+      - name: Check diff
+        shell: bash
+        run: |
+          git add -N .
+          git diff --exit-code || (echo 'Tests changed code in the repo.'; exit 1)

@@ -1,0 +1,33 @@
+[package]
+name = "test_core"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows]
+workspace = true
+default-features = true
+features = [
+    "audioclient",
+    "errhandlingapi",
+    "oaidl",
+    "oleauto",
+    "ro",
+    "winerror",
+]
+
+[dependencies.windows-core]
+workspace = true
+
+[dependencies.windows-link]
+workspace = true
+
+[dev-dependencies]
+helpers = { workspace = true }
+
+[lints]
+workspace = true

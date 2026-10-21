@@ -1,0 +1,66 @@
+use super::*;
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypeName(pub &'static str, pub &'static str);
+
+impl Ord for TypeName {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Type names are sorted before namespaces. The `Type` sort order depends on this.
+        // This is more efficient in general as many types typically share a namespace.
+        (self.1, self.0).cmp(&(other.1, other.0))
+    }
+}
+
+impl PartialOrd for TypeName {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[expect(non_upper_case_globals)]
+impl TypeName {
+    pub const Object: Self = Self("System", "Object");
+
+    pub const IAsyncAction: Self = Self("Windows.Foundation", "IAsyncAction");
+    pub const IAsyncActionWithProgress: Self =
+        Self("Windows.Foundation", "IAsyncActionWithProgress");
+    pub const IAsyncOperation: Self = Self("Windows.Foundation", "IAsyncOperation");
+    pub const IAsyncOperationWithProgress: Self =
+        Self("Windows.Foundation", "IAsyncOperationWithProgress");
+
+    pub const IIterable: Self = Self("Windows.Foundation.Collections", "IIterable");
+    pub const IIterator: Self = Self("Windows.Foundation.Collections", "IIterator");
+
+    pub fn namespace(&self) -> &'static str {
+        self.0
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.1
+    }
+
+    pub fn write(&self, config: &Config, generics: &[Type]) -> TokenStream {
+        // Inside this type's own `impl` block, refer to it as `Self` (clippy::use_self).
+        // Only substitute when the generics match the enclosing block's exactly, so a
+        // differently-parameterized specialization of the same type is left untouched.
+        if config.self_ty == Some(*self) && generics == config.self_generics.as_slice() {
+            return quote! { Self };
+        }
+
+        let name = to_ident(self.name());
+        let namespace = config.write_namespace(*self);
+
+        if generics.is_empty() {
+            quote! { #namespace #name }
+        } else {
+            let generics = generics.iter().map(|ty| ty.write_name(config));
+            quote! { #namespace #name < #(#generics),* > }
+        }
+    }
+}
+
+impl std::fmt::Display for TypeName {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}.{}", self.0, self.1)
+    }
+}

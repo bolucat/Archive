@@ -1,0 +1,19 @@
+[package]
+name = "test_implement_core"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dependencies.windows-core]
+workspace = true
+features = ["proc-macros"]
+
+[dependencies]
+static_assertions = "1.1"
+
+[lints]
+workspace = true

@@ -1,0 +1,8 @@
+--out crates/libs/future/src/bindings_impl.rs
+--flat --sys
+
+--filter
+    CloseHandle
+    CreateEventW
+    SetEvent
+    WaitForSingleObject

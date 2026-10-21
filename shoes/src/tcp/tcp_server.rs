@@ -382,9 +382,19 @@ pub async fn start_servers(
 ) -> std::io::Result<Vec<JoinHandle<()>>> {
     match config {
         #[cfg(unix)]
-        Config::TunServer(tun_config) => start_tun_server(tun_config, resolver)
-            .await
-            .map(|t| vec![t]),
+        Config::TunServer(tun_config) => {
+            let task = tokio_util::task::AbortOnDropHandle::new(
+                start_tun_server(tun_config, resolver).await?,
+            );
+            Ok(vec![tokio::spawn(async move {
+                if let Err(error) = task
+                    .await
+                    .unwrap_or_else(|error| Err(std::io::Error::other(error)))
+                {
+                    error!("TUN server error: {error}");
+                }
+            })])
+        }
         #[cfg(not(unix))]
         Config::TunServer(_) => Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
@@ -814,7 +824,11 @@ mod lifetime_tests {
         .unwrap();
         let resolver: Arc<dyn Resolver> = Arc::new(crate::resolver::NativeResolver::new());
         let handler = Arc::new(Handler(Arc::new(
-            create_tcp_client_proxy_selector(vec![rule], resolver.clone()).unwrap(),
+            super::super::tcp_client_handler_factory::create_test_selector(
+                vec![rule],
+                resolver.clone(),
+            )
+            .unwrap(),
         )));
         let (server, mut peer) = tokio::io::duplex(512);
         let mut tasks = tokio::task::JoinSet::new();

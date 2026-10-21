@@ -1,0 +1,19 @@
+[package]
+name = "windows-uiautomation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.windows]
+workspace = true
+features = [
+    "UI_UIAutomation",
+    "combaseapi",
+    "objbase",
+    "uiautomationclient",
+    "winuser",
+    "windef",
+]
+
+[lints]
+workspace = true

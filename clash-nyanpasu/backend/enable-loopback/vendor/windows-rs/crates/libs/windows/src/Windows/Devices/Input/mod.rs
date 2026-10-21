@@ -1,0 +1,853 @@
+#[cfg(feature = "Devices_Input_Preview")]
+pub mod Preview;
+windows_core::imp::define_interface!(IKeyboardCapabilities, IKeyboardCapabilities_Vtbl, 0x3a3f9b56_6798_4bbc_833e_0f34b17c65ff);
+impl windows_core::RuntimeType for IKeyboardCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IKeyboardCapabilities");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IKeyboardCapabilities_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub KeyboardPresent: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMouseCapabilities, IMouseCapabilities_Vtbl, 0xbca5e023_7dd9_4b6b_9a92_55d43cb38f73);
+impl windows_core::RuntimeType for IMouseCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IMouseCapabilities");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMouseCapabilities_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MousePresent: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+    pub VerticalWheelPresent: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+    pub HorizontalWheelPresent: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+    pub SwapButtons: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+    pub NumberOfButtons: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMouseDevice, IMouseDevice_Vtbl, 0x88edf458_f2c8_49f4_be1f_c256b388bc11);
+impl windows_core::RuntimeType for IMouseDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IMouseDevice");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMouseDevice_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MouseMoved: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveMouseMoved: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMouseDeviceStatics, IMouseDeviceStatics_Vtbl, 0x484a9045_6d70_49db_8e68_46ffbd17d38d);
+impl windows_core::RuntimeType for IMouseDeviceStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IMouseDeviceStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMouseDeviceStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetForCurrentView: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMouseEventArgs, IMouseEventArgs_Vtbl, 0xf625aa5d_2354_4cc7_9230_96941c969fde);
+impl windows_core::RuntimeType for IMouseEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IMouseEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMouseEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MouseDelta: unsafe extern "system" fn(*mut core::ffi::c_void, *mut MouseDelta) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenButtonListener, IPenButtonListener_Vtbl, 0x8245c376_1ee3_53f7_b1f7_8334a16f2815);
+impl windows_core::RuntimeType for IPenButtonListener {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenButtonListener");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenButtonListener_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsSupported: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsSupportedChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveIsSupportedChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub TailButtonClicked: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveTailButtonClicked: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub TailButtonDoubleClicked: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveTailButtonDoubleClicked: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub TailButtonLongPressed: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveTailButtonLongPressed: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenButtonListenerStatics, IPenButtonListenerStatics_Vtbl, 0x19a8a584_862f_5f69_bfea_05f6584f133f);
+impl windows_core::RuntimeType for IPenButtonListenerStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenButtonListenerStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenButtonListenerStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetDefault: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenDevice, IPenDevice_Vtbl, 0x31856eba_a738_5a8c_b8f6_f97ef68d18ef);
+impl windows_core::RuntimeType for IPenDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDevice");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDevice_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub PenId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::GUID) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenDevice2, IPenDevice2_Vtbl, 0x0207d327_7fb8_5566_8c34_f8342037b7f9);
+impl windows_core::RuntimeType for IPenDevice2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDevice2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDevice2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Devices_Haptics")]
+    pub SimpleHapticsController: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Devices_Haptics"))]
+    SimpleHapticsController: usize,
+}
+windows_core::imp::define_interface!(IPenDeviceStatics, IPenDeviceStatics_Vtbl, 0x9dfbbe01_0966_5180_bcb4_b85060e39479);
+impl windows_core::RuntimeType for IPenDeviceStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDeviceStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDeviceStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetFromPointerId: unsafe extern "system" fn(*mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenDockListener, IPenDockListener_Vtbl, 0x759f4d90_1dc0_55cb_ad18_b9101456f592);
+impl windows_core::RuntimeType for IPenDockListener {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDockListener");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDockListener_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsSupported: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub IsSupportedChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveIsSupportedChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub Docked: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveDocked: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub Undocked: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveUndocked: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenDockListenerStatics, IPenDockListenerStatics_Vtbl, 0xcab75e9a_0016_5c72_969e_a97e11992a93);
+impl windows_core::RuntimeType for IPenDockListenerStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDockListenerStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDockListenerStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetDefault: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPenDockedEventArgs, IPenDockedEventArgs_Vtbl, 0xfd4277c6_ca63_5d4e_9ed3_a28a54521c8c);
+impl windows_core::RuntimeType for IPenDockedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenDockedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenDockedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IPenTailButtonClickedEventArgs, IPenTailButtonClickedEventArgs_Vtbl, 0x5d2fb7b6_6ad3_5d3e_ab29_05ea2410e390);
+impl windows_core::RuntimeType for IPenTailButtonClickedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenTailButtonClickedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenTailButtonClickedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IPenTailButtonDoubleClickedEventArgs, IPenTailButtonDoubleClickedEventArgs_Vtbl, 0x846321a2_618a_5478_b04c_b358231da4a7);
+impl windows_core::RuntimeType for IPenTailButtonDoubleClickedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenTailButtonDoubleClickedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenTailButtonDoubleClickedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IPenTailButtonLongPressedEventArgs, IPenTailButtonLongPressedEventArgs_Vtbl, 0xf37c606e_c60a_5f42_b818_a53112406c13);
+impl windows_core::RuntimeType for IPenTailButtonLongPressedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenTailButtonLongPressedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenTailButtonLongPressedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IPenUndockedEventArgs, IPenUndockedEventArgs_Vtbl, 0xccd09150_261b_59e6_a5d4_c1964cd03feb);
+impl windows_core::RuntimeType for IPenUndockedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPenUndockedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPenUndockedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IPointerDevice, IPointerDevice_Vtbl, 0x93c9bafc_ebcb_467e_82c6_276feae36b5a);
+impl windows_core::RuntimeType for IPointerDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPointerDevice");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPointerDevice_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub PointerDeviceType: unsafe extern "system" fn(*mut core::ffi::c_void, *mut PointerDeviceType) -> windows_core::HRESULT,
+    pub IsIntegrated: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub MaxContacts: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub PhysicalDeviceRect: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::super::Foundation::Rect) -> windows_core::HRESULT,
+    pub ScreenRect: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::super::Foundation::Rect) -> windows_core::HRESULT,
+    pub SupportedUsages: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPointerDevice2, IPointerDevice2_Vtbl, 0xf8a6d2a0_c484_489f_ae3e_30d2ee1ffd3e);
+impl windows_core::RuntimeType for IPointerDevice2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPointerDevice2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPointerDevice2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MaxPointersWithZDistance: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPointerDeviceStatics, IPointerDeviceStatics_Vtbl, 0xd8b89aa1_d1c6_416e_bd8d_5790914dc563);
+impl windows_core::RuntimeType for IPointerDeviceStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.IPointerDeviceStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPointerDeviceStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetPointerDevice: unsafe extern "system" fn(*mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetPointerDevices: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(ITouchCapabilities, ITouchCapabilities_Vtbl, 0x20dd55f9_13f1_46c8_9285_2c05fa3eda6f);
+impl windows_core::RuntimeType for ITouchCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.ITouchCapabilities");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct ITouchCapabilities_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub TouchPresent: unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> windows_core::HRESULT,
+    pub Contacts: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeyboardCapabilities(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(KeyboardCapabilities, windows_core::IUnknown, windows_core::IInspectable);
+impl KeyboardCapabilities {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<KeyboardCapabilities, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn KeyboardPresent(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).KeyboardPresent)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for KeyboardCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IKeyboardCapabilities>();
+}
+unsafe impl windows_core::Interface for KeyboardCapabilities {
+    type Vtable = <IKeyboardCapabilities as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IKeyboardCapabilities as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for KeyboardCapabilities {
+    const NAME: &'static str = "Windows.Devices.Input.KeyboardCapabilities";
+}
+unsafe impl Send for KeyboardCapabilities {}
+unsafe impl Sync for KeyboardCapabilities {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MouseCapabilities(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(MouseCapabilities, windows_core::IUnknown, windows_core::IInspectable);
+impl MouseCapabilities {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<MouseCapabilities, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn MousePresent(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).MousePresent)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn VerticalWheelPresent(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).VerticalWheelPresent)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn HorizontalWheelPresent(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).HorizontalWheelPresent)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SwapButtons(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SwapButtons)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn NumberOfButtons(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).NumberOfButtons)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for MouseCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IMouseCapabilities>();
+}
+unsafe impl windows_core::Interface for MouseCapabilities {
+    type Vtable = <IMouseCapabilities as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IMouseCapabilities as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for MouseCapabilities {
+    const NAME: &'static str = "Windows.Devices.Input.MouseCapabilities";
+}
+unsafe impl Send for MouseCapabilities {}
+unsafe impl Sync for MouseCapabilities {}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MouseDelta {
+    pub X: i32,
+    pub Y: i32,
+}
+impl windows_core::imp::TypeKind for MouseDelta {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for MouseDelta {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"struct(Windows.Devices.Input.MouseDelta;i4;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.MouseDelta");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MouseDevice(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(MouseDevice, windows_core::IUnknown, windows_core::IInspectable);
+impl MouseDevice {
+    pub fn MouseMoved<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<MouseEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, MouseEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).MouseMoved)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveMouseMoved))
+        }
+    }
+    pub fn GetForCurrentView() -> windows_core::Result<Self> {
+        Self::IMouseDeviceStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetForCurrentView)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IMouseDeviceStatics<R, F: FnOnce(&IMouseDeviceStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<MouseDevice, IMouseDeviceStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for MouseDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IMouseDevice>();
+}
+unsafe impl windows_core::Interface for MouseDevice {
+    type Vtable = <IMouseDevice as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IMouseDevice as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for MouseDevice {
+    const NAME: &'static str = "Windows.Devices.Input.MouseDevice";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MouseEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(MouseEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl MouseEventArgs {
+    pub fn MouseDelta(&self) -> windows_core::Result<MouseDelta> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).MouseDelta)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for MouseEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IMouseEventArgs>();
+}
+unsafe impl windows_core::Interface for MouseEventArgs {
+    type Vtable = <IMouseEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IMouseEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for MouseEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.MouseEventArgs";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenButtonListener(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenButtonListener, windows_core::IUnknown, windows_core::IInspectable);
+impl PenButtonListener {
+    pub fn IsSupported(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsSupported)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsSupportedChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).IsSupportedChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveIsSupportedChanged))
+        }
+    }
+    pub fn TailButtonClicked<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PenTailButtonClickedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, PenTailButtonClickedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).TailButtonClicked)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveTailButtonClicked))
+        }
+    }
+    pub fn TailButtonDoubleClicked<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PenTailButtonDoubleClickedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, PenTailButtonDoubleClickedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).TailButtonDoubleClicked)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveTailButtonDoubleClicked))
+        }
+    }
+    pub fn TailButtonLongPressed<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PenTailButtonLongPressedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, PenTailButtonLongPressedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).TailButtonLongPressed)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveTailButtonLongPressed))
+        }
+    }
+    pub fn GetDefault() -> windows_core::Result<Self> {
+        Self::IPenButtonListenerStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetDefault)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IPenButtonListenerStatics<R, F: FnOnce(&IPenButtonListenerStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<PenButtonListener, IPenButtonListenerStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for PenButtonListener {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenButtonListener>();
+}
+unsafe impl windows_core::Interface for PenButtonListener {
+    type Vtable = <IPenButtonListener as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenButtonListener as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenButtonListener {
+    const NAME: &'static str = "Windows.Devices.Input.PenButtonListener";
+}
+unsafe impl Send for PenButtonListener {}
+unsafe impl Sync for PenButtonListener {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenDevice(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenDevice, windows_core::IUnknown, windows_core::IInspectable);
+impl PenDevice {
+    pub fn PenId(&self) -> windows_core::Result<windows_core::GUID> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PenId)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    #[cfg(feature = "Devices_Haptics")]
+    pub fn SimpleHapticsController(&self) -> windows_core::Result<super::Haptics::SimpleHapticsController> {
+        let this = &windows_core::Interface::cast::<IPenDevice2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).SimpleHapticsController)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetFromPointerId(pointerid: u32) -> windows_core::Result<Self> {
+        Self::IPenDeviceStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetFromPointerId)(windows_core::Interface::as_raw(this), pointerid, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IPenDeviceStatics<R, F: FnOnce(&IPenDeviceStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<PenDevice, IPenDeviceStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for PenDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenDevice>();
+}
+unsafe impl windows_core::Interface for PenDevice {
+    type Vtable = <IPenDevice as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenDevice as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenDevice {
+    const NAME: &'static str = "Windows.Devices.Input.PenDevice";
+}
+unsafe impl Send for PenDevice {}
+unsafe impl Sync for PenDevice {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenDockListener(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenDockListener, windows_core::IUnknown, windows_core::IInspectable);
+impl PenDockListener {
+    pub fn IsSupported(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsSupported)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsSupportedChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).IsSupportedChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveIsSupportedChanged))
+        }
+    }
+    pub fn Docked<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PenDockedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, PenDockedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).Docked)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveDocked))
+        }
+    }
+    pub fn Undocked<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PenUndockedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, PenUndockedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).Undocked)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveUndocked))
+        }
+    }
+    pub fn GetDefault() -> windows_core::Result<Self> {
+        Self::IPenDockListenerStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetDefault)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IPenDockListenerStatics<R, F: FnOnce(&IPenDockListenerStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<PenDockListener, IPenDockListenerStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for PenDockListener {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenDockListener>();
+}
+unsafe impl windows_core::Interface for PenDockListener {
+    type Vtable = <IPenDockListener as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenDockListener as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenDockListener {
+    const NAME: &'static str = "Windows.Devices.Input.PenDockListener";
+}
+unsafe impl Send for PenDockListener {}
+unsafe impl Sync for PenDockListener {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenDockedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenDockedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl windows_core::RuntimeType for PenDockedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenDockedEventArgs>();
+}
+unsafe impl windows_core::Interface for PenDockedEventArgs {
+    type Vtable = <IPenDockedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenDockedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenDockedEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.PenDockedEventArgs";
+}
+unsafe impl Send for PenDockedEventArgs {}
+unsafe impl Sync for PenDockedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenTailButtonClickedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenTailButtonClickedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl windows_core::RuntimeType for PenTailButtonClickedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenTailButtonClickedEventArgs>();
+}
+unsafe impl windows_core::Interface for PenTailButtonClickedEventArgs {
+    type Vtable = <IPenTailButtonClickedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenTailButtonClickedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenTailButtonClickedEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.PenTailButtonClickedEventArgs";
+}
+unsafe impl Send for PenTailButtonClickedEventArgs {}
+unsafe impl Sync for PenTailButtonClickedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenTailButtonDoubleClickedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenTailButtonDoubleClickedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl windows_core::RuntimeType for PenTailButtonDoubleClickedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenTailButtonDoubleClickedEventArgs>();
+}
+unsafe impl windows_core::Interface for PenTailButtonDoubleClickedEventArgs {
+    type Vtable = <IPenTailButtonDoubleClickedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenTailButtonDoubleClickedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenTailButtonDoubleClickedEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.PenTailButtonDoubleClickedEventArgs";
+}
+unsafe impl Send for PenTailButtonDoubleClickedEventArgs {}
+unsafe impl Sync for PenTailButtonDoubleClickedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenTailButtonLongPressedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenTailButtonLongPressedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl windows_core::RuntimeType for PenTailButtonLongPressedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenTailButtonLongPressedEventArgs>();
+}
+unsafe impl windows_core::Interface for PenTailButtonLongPressedEventArgs {
+    type Vtable = <IPenTailButtonLongPressedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenTailButtonLongPressedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenTailButtonLongPressedEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.PenTailButtonLongPressedEventArgs";
+}
+unsafe impl Send for PenTailButtonLongPressedEventArgs {}
+unsafe impl Sync for PenTailButtonLongPressedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenUndockedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PenUndockedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl windows_core::RuntimeType for PenUndockedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPenUndockedEventArgs>();
+}
+unsafe impl windows_core::Interface for PenUndockedEventArgs {
+    type Vtable = <IPenUndockedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPenUndockedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PenUndockedEventArgs {
+    const NAME: &'static str = "Windows.Devices.Input.PenUndockedEventArgs";
+}
+unsafe impl Send for PenUndockedEventArgs {}
+unsafe impl Sync for PenUndockedEventArgs {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PointerDevice(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PointerDevice, windows_core::IUnknown, windows_core::IInspectable);
+impl PointerDevice {
+    pub fn PointerDeviceType(&self) -> windows_core::Result<PointerDeviceType> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PointerDeviceType)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsIntegrated(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsIntegrated)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn MaxContacts(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).MaxContacts)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn PhysicalDeviceRect(&self) -> windows_core::Result<super::super::Foundation::Rect> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PhysicalDeviceRect)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ScreenRect(&self) -> windows_core::Result<super::super::Foundation::Rect> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ScreenRect)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SupportedUsages(&self) -> windows_core::Result<windows_collections::IVectorView<PointerDeviceUsage>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SupportedUsages)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn MaxPointersWithZDistance(&self) -> windows_core::Result<u32> {
+        let this = &windows_core::Interface::cast::<IPointerDevice2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).MaxPointersWithZDistance)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn GetPointerDevice(pointerid: u32) -> windows_core::Result<Self> {
+        Self::IPointerDeviceStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetPointerDevice)(windows_core::Interface::as_raw(this), pointerid, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn GetPointerDevices() -> windows_core::Result<windows_collections::IVectorView<Self>> {
+        Self::IPointerDeviceStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetPointerDevices)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IPointerDeviceStatics<R, F: FnOnce(&IPointerDeviceStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<PointerDevice, IPointerDeviceStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for PointerDevice {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPointerDevice>();
+}
+unsafe impl windows_core::Interface for PointerDevice {
+    type Vtable = <IPointerDevice as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPointerDevice as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PointerDevice {
+    const NAME: &'static str = "Windows.Devices.Input.PointerDevice";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PointerDeviceType(pub i32);
+impl PointerDeviceType {
+    pub const Touch: Self = Self(0);
+    pub const Pen: Self = Self(1);
+    pub const Mouse: Self = Self(2);
+    pub const Touchpad: Self = Self(3);
+}
+impl windows_core::imp::TypeKind for PointerDeviceType {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for PointerDeviceType {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Devices.Input.PointerDeviceType;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.PointerDeviceType");
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PointerDeviceUsage {
+    pub UsagePage: u32,
+    pub Usage: u32,
+    pub MinLogical: i32,
+    pub MaxLogical: i32,
+    pub MinPhysical: i32,
+    pub MaxPhysical: i32,
+    pub Unit: u32,
+    pub PhysicalMultiplier: f32,
+}
+impl windows_core::imp::TypeKind for PointerDeviceUsage {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for PointerDeviceUsage {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"struct(Windows.Devices.Input.PointerDeviceUsage;u4;u4;i4;i4;i4;i4;u4;f4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Devices.Input.PointerDeviceUsage");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TouchCapabilities(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(TouchCapabilities, windows_core::IUnknown, windows_core::IInspectable);
+impl TouchCapabilities {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<TouchCapabilities, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn TouchPresent(&self) -> windows_core::Result<i32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TouchPresent)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Contacts(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Contacts)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for TouchCapabilities {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, ITouchCapabilities>();
+}
+unsafe impl windows_core::Interface for TouchCapabilities {
+    type Vtable = <ITouchCapabilities as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ITouchCapabilities as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for TouchCapabilities {
+    const NAME: &'static str = "Windows.Devices.Input.TouchCapabilities";
+}
+unsafe impl Send for TouchCapabilities {}
+unsafe impl Sync for TouchCapabilities {}

@@ -1,0 +1,713 @@
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentProvisioningProgressReport(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(AgentProvisioningProgressReport, windows_core::IUnknown, windows_core::IInspectable);
+impl AgentProvisioningProgressReport {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<AgentProvisioningProgressReport, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn State(&self) -> windows_core::Result<DeploymentAgentProgressState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).State)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetState(&self, value: DeploymentAgentProgressState) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetState)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+    pub fn ProgressPercentage(&self) -> windows_core::Result<f64> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ProgressPercentage)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetProgressPercentage(&self, value: f64) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetProgressPercentage)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+    pub fn EstimatedTimeRemaining(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).EstimatedTimeRemaining)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetEstimatedTimeRemaining(&self, value: windows_time::TimeSpan) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetEstimatedTimeRemaining)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+    pub fn DisplayProgress(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DisplayProgress)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetDisplayProgress(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetDisplayProgress)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn DisplayProgressSecondary(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DisplayProgressSecondary)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetDisplayProgressSecondary(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetDisplayProgressSecondary)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn Batches(&self) -> windows_core::Result<windows_collections::IVector<DeploymentWorkloadBatch>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Batches)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn CurrentBatchIndex(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CurrentBatchIndex)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetCurrentBatchIndex(&self, value: u32) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetCurrentBatchIndex)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+}
+impl windows_core::RuntimeType for AgentProvisioningProgressReport {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IAgentProvisioningProgressReport>();
+}
+unsafe impl windows_core::Interface for AgentProvisioningProgressReport {
+    type Vtable = <IAgentProvisioningProgressReport as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IAgentProvisioningProgressReport as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for AgentProvisioningProgressReport {
+    const NAME: &'static str = "Windows.Management.Setup.AgentProvisioningProgressReport";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeploymentAgentProgressState(pub i32);
+impl DeploymentAgentProgressState {
+    pub const NotStarted: Self = Self(0);
+    pub const Initializing: Self = Self(1);
+    pub const InProgress: Self = Self(2);
+    pub const Completed: Self = Self(3);
+    pub const ErrorOccurred: Self = Self(4);
+    pub const RebootRequired: Self = Self(5);
+    pub const Canceled: Self = Self(6);
+}
+impl windows_core::imp::TypeKind for DeploymentAgentProgressState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for DeploymentAgentProgressState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Management.Setup.DeploymentAgentProgressState;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.DeploymentAgentProgressState");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeploymentSessionConnectionChange(pub i32);
+impl DeploymentSessionConnectionChange {
+    pub const NoChange: Self = Self(0);
+    pub const HostConnectionLost: Self = Self(1);
+    pub const HostConnectionRestored: Self = Self(2);
+    pub const AgentConnectionLost: Self = Self(3);
+    pub const AgentConnectionRestored: Self = Self(4);
+    pub const InternetConnectionLost: Self = Self(5);
+    pub const InternetConnectionRestored: Self = Self(6);
+}
+impl windows_core::imp::TypeKind for DeploymentSessionConnectionChange {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for DeploymentSessionConnectionChange {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Management.Setup.DeploymentSessionConnectionChange;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.DeploymentSessionConnectionChange");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeploymentSessionConnectionChangedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DeploymentSessionConnectionChangedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl DeploymentSessionConnectionChangedEventArgs {
+    pub fn SessionId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SessionId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Change(&self) -> windows_core::Result<DeploymentSessionConnectionChange> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Change)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for DeploymentSessionConnectionChangedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDeploymentSessionConnectionChangedEventArgs>();
+}
+unsafe impl windows_core::Interface for DeploymentSessionConnectionChangedEventArgs {
+    type Vtable = <IDeploymentSessionConnectionChangedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDeploymentSessionConnectionChangedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DeploymentSessionConnectionChangedEventArgs {
+    const NAME: &'static str = "Windows.Management.Setup.DeploymentSessionConnectionChangedEventArgs";
+}
+windows_core::imp::define_interface!(DeploymentSessionHeartbeatRequested, DeploymentSessionHeartbeatRequested_Vtbl, 0xc94a770b_5b05_4595_9e69_79070484377e);
+impl windows_core::RuntimeType for DeploymentSessionHeartbeatRequested {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+}
+impl DeploymentSessionHeartbeatRequested {
+    pub fn new<F: Fn(windows_core::Ref<DeploymentSessionHeartbeatRequestedEventArgs>) -> windows_core::Result<()> + Send + 'static>(invoke: F) -> Self {
+        let com = windows_core::imp::DelegateBox::<Self, F>::new(&DeploymentSessionHeartbeatRequestedBox::<F>::VTABLE, invoke);
+        unsafe { core::mem::transmute(windows_core::imp::box_new(com)) }
+    }
+    pub fn Invoke<P0>(&self, eventargs: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<DeploymentSessionHeartbeatRequestedEventArgs>,
+    {
+        unsafe { (windows_core::Interface::vtable(self).Invoke)(windows_core::Interface::as_raw(self), eventargs.param().abi()).ok() }
+    }
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct DeploymentSessionHeartbeatRequested_Vtbl {
+    base__: windows_core::IUnknown_Vtbl,
+    Invoke: unsafe extern "system" fn(this: *mut core::ffi::c_void, eventargs: *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+struct DeploymentSessionHeartbeatRequestedBox<F: Fn(windows_core::Ref<DeploymentSessionHeartbeatRequestedEventArgs>) -> windows_core::Result<()> + Send + 'static>(core::marker::PhantomData<(fn() -> F,)>);
+impl<F: Fn(windows_core::Ref<DeploymentSessionHeartbeatRequestedEventArgs>) -> windows_core::Result<()> + Send + 'static> DeploymentSessionHeartbeatRequestedBox<F> {
+    const VTABLE: DeploymentSessionHeartbeatRequested_Vtbl = DeploymentSessionHeartbeatRequested_Vtbl {
+        base__: windows_core::IUnknown_Vtbl {
+            QueryInterface: windows_core::imp::DelegateBox::<DeploymentSessionHeartbeatRequested, F>::QueryInterface,
+            AddRef: windows_core::imp::DelegateBox::<DeploymentSessionHeartbeatRequested, F>::AddRef,
+            Release: windows_core::imp::DelegateBox::<DeploymentSessionHeartbeatRequested, F>::Release,
+        },
+        Invoke: Self::Invoke,
+    };
+    unsafe extern "system" fn Invoke(this: *mut core::ffi::c_void, eventargs: *mut core::ffi::c_void) -> windows_core::HRESULT {
+        unsafe {
+            let this = &mut *(this as *mut *mut core::ffi::c_void as *mut windows_core::imp::DelegateBox<DeploymentSessionHeartbeatRequested, F>);
+            (this.invoke)(core::mem::transmute_copy(&eventargs)).into()
+        }
+    }
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeploymentSessionHeartbeatRequestedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DeploymentSessionHeartbeatRequestedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl DeploymentSessionHeartbeatRequestedEventArgs {
+    pub fn Handled(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Handled)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetHandled(&self, value: bool) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetHandled)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+}
+impl windows_core::RuntimeType for DeploymentSessionHeartbeatRequestedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDeploymentSessionHeartbeatRequestedEventArgs>();
+}
+unsafe impl windows_core::Interface for DeploymentSessionHeartbeatRequestedEventArgs {
+    type Vtable = <IDeploymentSessionHeartbeatRequestedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDeploymentSessionHeartbeatRequestedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DeploymentSessionHeartbeatRequestedEventArgs {
+    const NAME: &'static str = "Windows.Management.Setup.DeploymentSessionHeartbeatRequestedEventArgs";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeploymentSessionStateChange(pub i32);
+impl DeploymentSessionStateChange {
+    pub const NoChange: Self = Self(0);
+    pub const CancelRequestedByUser: Self = Self(1);
+    pub const RetryRequestedByUser: Self = Self(2);
+}
+impl windows_core::imp::TypeKind for DeploymentSessionStateChange {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for DeploymentSessionStateChange {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Management.Setup.DeploymentSessionStateChange;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.DeploymentSessionStateChange");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeploymentSessionStateChangedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DeploymentSessionStateChangedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl DeploymentSessionStateChangedEventArgs {
+    pub fn SessionId(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SessionId)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Change(&self) -> windows_core::Result<DeploymentSessionStateChange> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Change)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for DeploymentSessionStateChangedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDeploymentSessionStateChangedEventArgs>();
+}
+unsafe impl windows_core::Interface for DeploymentSessionStateChangedEventArgs {
+    type Vtable = <IDeploymentSessionStateChangedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDeploymentSessionStateChangedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DeploymentSessionStateChangedEventArgs {
+    const NAME: &'static str = "Windows.Management.Setup.DeploymentSessionStateChangedEventArgs";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeploymentWorkload(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DeploymentWorkload, windows_core::IUnknown, windows_core::IInspectable);
+impl DeploymentWorkload {
+    pub fn Id(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Id)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn DisplayFriendlyName(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DisplayFriendlyName)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetDisplayFriendlyName(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetDisplayFriendlyName)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn StartTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StartTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn SetStartTime(&self, value: Option<windows_time::DateTime>) -> windows_core::Result<()> {
+        let value__ = value.map(<windows_reference::IReference<windows_time::DateTime> as From<_>>::from);
+        unsafe { (windows_core::Interface::vtable(self).SetStartTime)(windows_core::Interface::as_raw(self), windows_core::Param::param(value__.as_ref()).abi()).ok() }
+    }
+    pub fn EndTime(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).EndTime)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<windows_time::DateTime>| r__.Value())
+        }
+    }
+    pub fn SetEndTime(&self, value: Option<windows_time::DateTime>) -> windows_core::Result<()> {
+        let value__ = value.map(<windows_reference::IReference<windows_time::DateTime> as From<_>>::from);
+        unsafe { (windows_core::Interface::vtable(self).SetEndTime)(windows_core::Interface::as_raw(self), windows_core::Param::param(value__.as_ref()).abi()).ok() }
+    }
+    pub fn ErrorCode(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ErrorCode)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetErrorCode(&self, value: u32) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetErrorCode)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+    pub fn ErrorMessage(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ErrorMessage)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetErrorMessage(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetErrorMessage)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn PossibleCause(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PossibleCause)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetPossibleCause(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetPossibleCause)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn PossibleResolution(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PossibleResolution)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetPossibleResolution(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetPossibleResolution)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn State(&self) -> windows_core::Result<DeploymentWorkloadState> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).State)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetState(&self, value: DeploymentWorkloadState) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetState)(windows_core::Interface::as_raw(self), value).ok() }
+    }
+    pub fn StateDetails(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StateDetails)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetStateDetails(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetStateDetails)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn CreateInstance(id: &windows_core::HSTRING) -> windows_core::Result<Self> {
+        Self::IDeploymentWorkloadFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateInstance)(windows_core::Interface::as_raw(this), core::mem::transmute_copy(id), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IDeploymentWorkloadFactory<R, F: FnOnce(&IDeploymentWorkloadFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<DeploymentWorkload, IDeploymentWorkloadFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for DeploymentWorkload {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDeploymentWorkload>();
+}
+unsafe impl windows_core::Interface for DeploymentWorkload {
+    type Vtable = <IDeploymentWorkload as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDeploymentWorkload as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DeploymentWorkload {
+    const NAME: &'static str = "Windows.Management.Setup.DeploymentWorkload";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeploymentWorkloadBatch(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DeploymentWorkloadBatch, windows_core::IUnknown, windows_core::IInspectable);
+impl DeploymentWorkloadBatch {
+    pub fn Id(&self) -> windows_core::Result<u32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Id)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn DisplayCategoryTitle(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DisplayCategoryTitle)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetDisplayCategoryTitle(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetDisplayCategoryTitle)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn BatchWorkloads(&self) -> windows_core::Result<windows_collections::IVector<DeploymentWorkload>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BatchWorkloads)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn CreateInstance(id: u32) -> windows_core::Result<Self> {
+        Self::IDeploymentWorkloadBatchFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateInstance)(windows_core::Interface::as_raw(this), id, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IDeploymentWorkloadBatchFactory<R, F: FnOnce(&IDeploymentWorkloadBatchFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<DeploymentWorkloadBatch, IDeploymentWorkloadBatchFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for DeploymentWorkloadBatch {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDeploymentWorkloadBatch>();
+}
+unsafe impl windows_core::Interface for DeploymentWorkloadBatch {
+    type Vtable = <IDeploymentWorkloadBatch as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDeploymentWorkloadBatch as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DeploymentWorkloadBatch {
+    const NAME: &'static str = "Windows.Management.Setup.DeploymentWorkloadBatch";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeploymentWorkloadState(pub i32);
+impl DeploymentWorkloadState {
+    pub const NotStarted: Self = Self(0);
+    pub const InProgress: Self = Self(1);
+    pub const Completed: Self = Self(2);
+    pub const Failed: Self = Self(3);
+    pub const Canceled: Self = Self(4);
+    pub const Skipped: Self = Self(5);
+    pub const Uninstalled: Self = Self(6);
+    pub const RebootRequired: Self = Self(7);
+}
+impl windows_core::imp::TypeKind for DeploymentWorkloadState {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for DeploymentWorkloadState {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Management.Setup.DeploymentWorkloadState;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.DeploymentWorkloadState");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DevicePreparationExecutionContext(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(DevicePreparationExecutionContext, windows_core::IUnknown, windows_core::IInspectable);
+impl DevicePreparationExecutionContext {
+    pub fn Context(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Context)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for DevicePreparationExecutionContext {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDevicePreparationExecutionContext>();
+}
+unsafe impl windows_core::Interface for DevicePreparationExecutionContext {
+    type Vtable = <IDevicePreparationExecutionContext as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDevicePreparationExecutionContext as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for DevicePreparationExecutionContext {
+    const NAME: &'static str = "Windows.Management.Setup.DevicePreparationExecutionContext";
+}
+windows_core::imp::define_interface!(IAgentProvisioningProgressReport, IAgentProvisioningProgressReport_Vtbl, 0x5097398a_70cc_5181_a7af_d31c167323d1);
+impl windows_core::RuntimeType for IAgentProvisioningProgressReport {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IAgentProvisioningProgressReport");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IAgentProvisioningProgressReport_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub State: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentAgentProgressState) -> windows_core::HRESULT,
+    pub SetState: unsafe extern "system" fn(*mut core::ffi::c_void, DeploymentAgentProgressState) -> windows_core::HRESULT,
+    pub ProgressPercentage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut f64) -> windows_core::HRESULT,
+    pub SetProgressPercentage: unsafe extern "system" fn(*mut core::ffi::c_void, f64) -> windows_core::HRESULT,
+    pub EstimatedTimeRemaining: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub SetEstimatedTimeRemaining: unsafe extern "system" fn(*mut core::ffi::c_void, windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub DisplayProgress: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetDisplayProgress: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DisplayProgressSecondary: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetDisplayProgressSecondary: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Batches: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub CurrentBatchIndex: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub SetCurrentBatchIndex: unsafe extern "system" fn(*mut core::ffi::c_void, u32) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentSessionConnectionChangedEventArgs, IDeploymentSessionConnectionChangedEventArgs_Vtbl, 0x8d40c631_6e4b_5d59_92f8_0de54c2a3c6b);
+impl windows_core::RuntimeType for IDeploymentSessionConnectionChangedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentSessionConnectionChangedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentSessionConnectionChangedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SessionId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Change: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentSessionConnectionChange) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentSessionHeartbeatRequestedEventArgs, IDeploymentSessionHeartbeatRequestedEventArgs_Vtbl, 0x09d81fa0_1036_58e6_b63b_fe343c45005f);
+impl windows_core::RuntimeType for IDeploymentSessionHeartbeatRequestedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentSessionHeartbeatRequestedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentSessionHeartbeatRequestedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Handled: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SetHandled: unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentSessionStateChangedEventArgs, IDeploymentSessionStateChangedEventArgs_Vtbl, 0xfbd3b7f3_88cb_5703_b8a5_0218de8fed81);
+impl windows_core::RuntimeType for IDeploymentSessionStateChangedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentSessionStateChangedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentSessionStateChangedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SessionId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Change: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentSessionStateChange) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentWorkload, IDeploymentWorkload_Vtbl, 0x1cefd3d4_456c_50d1_9312_cc5c818fc12e);
+impl windows_core::RuntimeType for IDeploymentWorkload {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentWorkload");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentWorkload_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Id: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DisplayFriendlyName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetDisplayFriendlyName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub StartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetStartTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub EndTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetEndTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ErrorCode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub SetErrorCode: unsafe extern "system" fn(*mut core::ffi::c_void, u32) -> windows_core::HRESULT,
+    pub ErrorMessage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetErrorMessage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub PossibleCause: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetPossibleCause: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub PossibleResolution: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetPossibleResolution: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub State: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentWorkloadState) -> windows_core::HRESULT,
+    pub SetState: unsafe extern "system" fn(*mut core::ffi::c_void, DeploymentWorkloadState) -> windows_core::HRESULT,
+    pub StateDetails: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetStateDetails: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentWorkloadBatch, IDeploymentWorkloadBatch_Vtbl, 0x5e56e3df_b9c0_5fee_ba3f_e89d800a9bf2);
+impl windows_core::RuntimeType for IDeploymentWorkloadBatch {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentWorkloadBatch");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentWorkloadBatch_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Id: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    pub DisplayCategoryTitle: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetDisplayCategoryTitle: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub BatchWorkloads: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentWorkloadBatchFactory, IDeploymentWorkloadBatchFactory_Vtbl, 0xd0209697_9560_5a05_bdf6_f1af535cb0d4);
+impl windows_core::RuntimeType for IDeploymentWorkloadBatchFactory {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentWorkloadBatchFactory");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentWorkloadBatchFactory_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub CreateInstance: unsafe extern "system" fn(*mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDeploymentWorkloadFactory, IDeploymentWorkloadFactory_Vtbl, 0x41426c72_22a3_5339_bdf1_51268169aa61);
+impl windows_core::RuntimeType for IDeploymentWorkloadFactory {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDeploymentWorkloadFactory");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDeploymentWorkloadFactory_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub CreateInstance: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDevicePreparationExecutionContext, IDevicePreparationExecutionContext_Vtbl, 0x084f221b_2484_5e81_a4e7_83f6caf19dc4);
+impl windows_core::RuntimeType for IDevicePreparationExecutionContext {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IDevicePreparationExecutionContext");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDevicePreparationExecutionContext_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Context: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMachineProvisioningProgressReporter, IMachineProvisioningProgressReporter_Vtbl, 0xebd8677f_dfd2_59da_ac3d_753ee1667cbb);
+impl windows_core::RuntimeType for IMachineProvisioningProgressReporter {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IMachineProvisioningProgressReporter");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMachineProvisioningProgressReporter_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub SessionId: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_core::GUID) -> windows_core::HRESULT,
+    pub SessionConnection: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentSessionConnectionChange) -> windows_core::HRESULT,
+    pub SessionState: unsafe extern "system" fn(*mut core::ffi::c_void, *mut DeploymentSessionStateChange) -> windows_core::HRESULT,
+    pub SessionStateChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveSessionStateChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub SessionConnectionChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveSessionConnectionChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub ReportProgress: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetDevicePreparationExecutionContextAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IMachineProvisioningProgressReporterStatics, IMachineProvisioningProgressReporterStatics_Vtbl, 0x77682c17_5da3_51fc_a042_c7b53458ddb5);
+impl windows_core::RuntimeType for IMachineProvisioningProgressReporterStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Management.Setup.IMachineProvisioningProgressReporterStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMachineProvisioningProgressReporterStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetForLaunchUri: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MachineProvisioningProgressReporter(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(MachineProvisioningProgressReporter, windows_core::IUnknown, windows_core::IInspectable);
+impl MachineProvisioningProgressReporter {
+    pub fn SessionId(&self) -> windows_core::Result<windows_core::GUID> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SessionId)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SessionConnection(&self) -> windows_core::Result<DeploymentSessionConnectionChange> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SessionConnection)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SessionState(&self) -> windows_core::Result<DeploymentSessionStateChange> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SessionState)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SessionStateChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<DeploymentSessionStateChangedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, DeploymentSessionStateChangedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).SessionStateChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveSessionStateChanged))
+        }
+    }
+    pub fn SessionConnectionChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<DeploymentSessionConnectionChangedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, DeploymentSessionConnectionChangedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).SessionConnectionChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveSessionConnectionChanged))
+        }
+    }
+    pub fn ReportProgress<P0>(&self, updatereport: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<AgentProvisioningProgressReport>,
+    {
+        unsafe { (windows_core::Interface::vtable(self).ReportProgress)(windows_core::Interface::as_raw(self), updatereport.param().abi()).ok() }
+    }
+    pub fn GetDevicePreparationExecutionContextAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<DevicePreparationExecutionContext>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDevicePreparationExecutionContextAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn GetForLaunchUri<P0, P1>(launchuri: P0, heartbeathandler: P1) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::super::Foundation::Uri>,
+        P1: windows_core::Param<DeploymentSessionHeartbeatRequested>,
+    {
+        Self::IMachineProvisioningProgressReporterStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).GetForLaunchUri)(windows_core::Interface::as_raw(this), launchuri.param().abi(), heartbeathandler.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IMachineProvisioningProgressReporterStatics<R, F: FnOnce(&IMachineProvisioningProgressReporterStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<MachineProvisioningProgressReporter, IMachineProvisioningProgressReporterStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for MachineProvisioningProgressReporter {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IMachineProvisioningProgressReporter>();
+}
+unsafe impl windows_core::Interface for MachineProvisioningProgressReporter {
+    type Vtable = <IMachineProvisioningProgressReporter as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IMachineProvisioningProgressReporter as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for MachineProvisioningProgressReporter {
+    const NAME: &'static str = "Windows.Management.Setup.MachineProvisioningProgressReporter";
+}

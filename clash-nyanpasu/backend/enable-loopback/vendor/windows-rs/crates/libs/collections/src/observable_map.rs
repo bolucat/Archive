@@ -1,0 +1,280 @@
+use super::*;
+use windows_core::*;
+
+struct StockObservableMap<K, V>
+where
+    K: RuntimeType + 'static,
+    V: RuntimeType + 'static,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    map: std::sync::RwLock<std::collections::BTreeMap<K::Default, V::Default>>,
+    handlers: Event<MapChangedEventHandler<K, V>>,
+}
+
+implement_decl! {
+    impl<K, V> StockObservableMap as StockObservableMap_Impl: [
+        IObservableMap<K, V>,
+        IMap<K, V>,
+        IIterable<IKeyValuePair<K, V>>,
+    ]
+    where K: RuntimeType + 'static, V: RuntimeType + 'static, K::Default: Clone + Ord, V::Default: Clone
+}
+
+impl<K, V> IObservableMap_Impl<K, V> for StockObservableMap_Impl<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    fn MapChanged(&self, vhnd: Ref<MapChangedEventHandler<K, V>>) -> Result<i64> {
+        self.handlers.add(vhnd.ok()?)
+    }
+
+    fn RemoveMapChanged(&self, token: i64) -> Result<()> {
+        self.handlers.remove(token);
+        Ok(())
+    }
+}
+
+impl<K, V> IIterable_Impl<IKeyValuePair<K, V>> for StockObservableMap_Impl<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    fn First(&self) -> Result<IIterator<IKeyValuePair<K, V>>> {
+        let snapshot: Vec<(K::Default, V::Default)> = self
+            .map
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        Ok(ComObject::new(StockObservableMapIterator::<K, V> {
+            snapshot,
+            current: 0.into(),
+        })
+        .into_interface())
+    }
+}
+
+impl<K, V> IMap_Impl<K, V> for StockObservableMap_Impl<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    fn Lookup(&self, key: Ref<K>) -> Result<V> {
+        let map = self.map.read().unwrap();
+        let value = map
+            .get(ref_as_default::<K>(&key))
+            .ok_or_else(|| Error::from(E_BOUNDS))?;
+        V::from_default(value)
+    }
+
+    fn Size(&self) -> Result<u32> {
+        Ok(self.map.read().unwrap().len().try_into()?)
+    }
+
+    fn HasKey(&self, key: Ref<K>) -> Result<bool> {
+        Ok(self
+            .map
+            .read()
+            .unwrap()
+            .contains_key(ref_as_default::<K>(&key)))
+    }
+
+    fn GetView(&self) -> Result<IMapView<K, V>> {
+        let snapshot = self.map.read().unwrap().clone();
+        Ok(IMapView::<K, V>::from(snapshot))
+    }
+
+    fn Insert(&self, key: Ref<K>, value: Ref<V>) -> Result<bool> {
+        let replaced = {
+            let mut map = self.map.write().unwrap();
+            let replaced = map.contains_key(ref_as_default::<K>(&key));
+            map.insert(
+                ref_as_default::<K>(&key).clone(),
+                ref_as_default::<V>(&value).clone(),
+            );
+            replaced
+        };
+        let change = if replaced {
+            CollectionChange::ItemChanged
+        } else {
+            CollectionChange::ItemInserted
+        };
+        self.fire_changed(change, Some(ref_as_default::<K>(&key).clone()));
+        Ok(replaced)
+    }
+
+    fn Remove(&self, key: Ref<K>) -> Result<()> {
+        let key_clone = ref_as_default::<K>(&key).clone();
+        {
+            let mut map = self.map.write().unwrap();
+            if map.remove(ref_as_default::<K>(&key)).is_none() {
+                return Err(Error::from(E_BOUNDS));
+            }
+        }
+        self.fire_changed(CollectionChange::ItemRemoved, Some(key_clone));
+        Ok(())
+    }
+
+    fn Clear(&self) -> Result<()> {
+        self.map.write().unwrap().clear();
+        self.fire_changed(CollectionChange::Reset, None);
+        Ok(())
+    }
+}
+
+impl<K, V> StockObservableMap_Impl<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    fn fire_changed(&self, change: CollectionChange, key: Option<K::Default>) {
+        let observable: IObservableMap<K, V> = self.to_object().into_interface();
+        let args: IMapChangedEventArgs<K> =
+            ComObject::new(StockMapChangedEventArgs { change, key }).into_interface();
+        self.handlers
+            .call(|handler: &MapChangedEventHandler<K, V>| handler.Invoke(&observable, &args));
+    }
+}
+
+struct StockMapChangedEventArgs<K>
+where
+    K: RuntimeType + 'static,
+    K::Default: Clone,
+{
+    change: CollectionChange,
+    key: Option<K::Default>,
+}
+
+implement_decl! {
+    impl<K> StockMapChangedEventArgs as StockMapChangedEventArgs_Impl: [
+        IMapChangedEventArgs<K>,
+    ]
+    where K: RuntimeType + 'static, K::Default: Clone
+}
+
+impl<K> IMapChangedEventArgs_Impl<K> for StockMapChangedEventArgs_Impl<K>
+where
+    K: RuntimeType,
+    K::Default: Clone,
+{
+    fn CollectionChange(&self) -> Result<CollectionChange> {
+        Ok(self.change)
+    }
+
+    fn Key(&self) -> Result<K> {
+        match &self.key {
+            Some(key) => K::from_default(key),
+            None => Err(Error::from(E_BOUNDS)),
+        }
+    }
+}
+
+struct StockObservableMapIterator<K, V>
+where
+    K: RuntimeType + 'static,
+    V: RuntimeType + 'static,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    snapshot: Vec<(K::Default, V::Default)>,
+    current: std::sync::atomic::AtomicUsize,
+}
+
+implement_decl! {
+    impl<K, V> StockObservableMapIterator as StockObservableMapIterator_Impl: [
+        IIterator<IKeyValuePair<K, V>>,
+    ]
+    where K: RuntimeType + 'static, V: RuntimeType + 'static, K::Default: Clone + Ord, V::Default: Clone
+}
+
+impl<K, V> IIterator_Impl<IKeyValuePair<K, V>> for StockObservableMapIterator_Impl<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    fn Current(&self) -> Result<IKeyValuePair<K, V>> {
+        let current = self.current.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some((key, value)) = self.snapshot.get(current) {
+            Ok(ComObject::new(key_value_pair::StockKeyValuePair {
+                key: key.clone(),
+                value: value.clone(),
+            })
+            .into_interface())
+        } else {
+            Err(Error::from(E_BOUNDS))
+        }
+    }
+
+    fn HasCurrent(&self) -> Result<bool> {
+        let current = self.current.load(std::sync::atomic::Ordering::Relaxed);
+        Ok(self.snapshot.len() > current)
+    }
+
+    fn MoveNext(&self) -> Result<bool> {
+        let current = self.current.load(std::sync::atomic::Ordering::Relaxed);
+        let len = self.snapshot.len();
+
+        if current < len {
+            self.current
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        Ok(len > current + 1)
+    }
+
+    fn GetMany(&self, items: &mut [Option<IKeyValuePair<K, V>>]) -> Result<u32> {
+        let current = self.current.load(std::sync::atomic::Ordering::Relaxed);
+
+        if current >= self.snapshot.len() {
+            return Ok(0);
+        }
+
+        let actual = std::cmp::min(self.snapshot.len() - current, items.len());
+        let (items, _) = items.split_at_mut(actual);
+
+        for (item, (key, value)) in items.iter_mut().zip(self.snapshot[current..].iter()) {
+            *item = Some(
+                ComObject::new(key_value_pair::StockKeyValuePair {
+                    key: key.clone(),
+                    value: value.clone(),
+                })
+                .into_interface(),
+            );
+        }
+
+        self.current
+            .fetch_add(actual, std::sync::atomic::Ordering::Relaxed);
+
+        Ok(actual as u32)
+    }
+}
+
+impl<K, V> From<std::collections::BTreeMap<K::Default, V::Default>> for IObservableMap<K, V>
+where
+    K: RuntimeType,
+    V: RuntimeType,
+    K::Default: Clone + Ord,
+    V::Default: Clone,
+{
+    /// Creates an `IObservableMap<K, V>` from the given key/value pairs.
+    fn from(map: std::collections::BTreeMap<K::Default, V::Default>) -> Self {
+        ComObject::new(StockObservableMap {
+            map: std::sync::RwLock::new(map),
+            handlers: Event::new(),
+        })
+        .into_interface()
+    }
+}

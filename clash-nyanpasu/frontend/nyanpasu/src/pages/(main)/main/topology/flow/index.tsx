@@ -1,4 +1,5 @@
 import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
+import { lazy, Suspense } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import {
@@ -8,8 +9,10 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { dimensionName } from '@/utils/traffic-usage'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   DEFAULT_TEMPLATE,
@@ -20,7 +23,12 @@ import {
   type Limit,
 } from '../_modules/search'
 import { useTrafficPage } from '../_modules/traffic-context'
+import ViewRankings from '../_modules/view-rankings'
+import { useTrafficViewSettings } from '../_modules/view-settings'
 import { Sankey } from './_modules/sankey'
+
+// Loaded only by those who choose it.
+const CardGraph = lazy(() => import('./_modules/card-graph'))
 
 export const Route = createFileRoute('/(main)/main/topology/flow/')({
   component: TrafficFlowPage,
@@ -34,8 +42,20 @@ const limitName = (limit: Limit) =>
 const templateName = (template: LayerTemplate) =>
   LAYER_TEMPLATES[template].map(dimensionName).join(' → ')
 
+function Loading() {
+  return (
+    <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
+      <p className="text-lg">{m.traffic_loading_more()}</p>
+    </div>
+  )
+}
+
 function TrafficFlowPage() {
-  const { search, report, onSearchChange } = useTrafficPage()
+  const { search, report, empty, onSearchChange } = useTrafficPage()
+  const { flowGraph, rankings } = useTrafficViewSettings().settings
+  // Rankings under the card leave it a height of its own, so it does not
+  // follow theirs; without them it fills the page.
+  const rankingsShown = !!report && !empty && rankings.length > 0
   const topology = report?.topology
   const { layers: layerTemplate, limit } = search
   const template = layerTemplate ?? DEFAULT_TEMPLATE
@@ -43,11 +63,14 @@ function TrafficFlowPage() {
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 flex-1 flex-col gap-3"
       aria-label={m.topology_title()}
     >
       <Card
-        className="flex min-h-80 flex-1 flex-col p-3 md:p-4"
+        className={cn(
+          'flex min-h-80 flex-col p-3 md:p-4',
+          rankingsShown ? 'h-[min(40rem,70dvh)] flex-none' : 'flex-1',
+        )}
         data-slot="flow-card"
       >
         <div className="mb-4 flex min-w-0 flex-wrap items-end gap-3">
@@ -121,11 +144,19 @@ function TrafficFlowPage() {
         </div>
 
         {!topology?.nodes.length ? (
-          <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
-            <p className="text-lg">
-              {topology ? m.traffic_empty() : m.traffic_loading_more()}
-            </p>
-          </div>
+          topology ? (
+            <EmptyState
+              tone="normal"
+              className="min-h-64 flex-1"
+              message={m.traffic_empty()}
+            />
+          ) : (
+            <Loading />
+          )
+        ) : flowGraph === 'cards' ? (
+          <Suspense fallback={<Loading />}>
+            <CardGraph layers={layers} topology={topology} />
+          </Suspense>
         ) : (
           <Sankey layers={layers} topology={topology} />
         )}
@@ -133,6 +164,8 @@ function TrafficFlowPage() {
           {m.topology_caption()}
         </p>
       </Card>
+
+      <ViewRankings flowGraph />
     </section>
   )
 }

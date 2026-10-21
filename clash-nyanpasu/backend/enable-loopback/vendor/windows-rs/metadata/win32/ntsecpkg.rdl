@@ -1,0 +1,986 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        #[repr(i32)]
+        enum CRED_FETCH {
+            CredFetchDefault = 0,
+            CredFetchDPAPI = 1,
+            CredFetchForced = 2,
+        }
+        #[repr(i32)]
+        enum KSEC_CONTEXT_TYPE {
+            KSecPaged = 0,
+            KSecNonPaged = 1,
+        }
+        extern fn KSEC_CREATE_CONTEXT_LIST(Type: KSEC_CONTEXT_TYPE) -> *mut void;
+        extern fn KSEC_DEREFERENCE_LIST_ENTRY(Entry: PKSEC_LIST_ENTRY, #[opt] Delete: *mut BOOLEAN);
+        extern fn KSEC_INSERT_LIST_ENTRY(#[in] List: *mut void, Entry: PKSEC_LIST_ENTRY);
+        struct KSEC_LIST_ENTRY {
+            List: LIST_ENTRY,
+            RefCount: i32,
+            Signature: u32,
+            OwningList: *mut void,
+            Reserved: *mut void,
+        }
+        extern fn KSEC_LOCATE_PKG_BY_ID(PackageId: u32) -> *mut void;
+        extern fn KSEC_REFERENCE_LIST_ENTRY(Entry: PKSEC_LIST_ENTRY, Signature: u32, RemoveNoRef: BOOLEAN) -> NTSTATUS;
+        extern fn KSEC_SERIALIZE_SCHANNEL_AUTH_DATA(#[in] pvAuthData: *mut void, #[out] Size: PULONG, SerializedData: *mut *mut void) -> NTSTATUS;
+        extern fn KSEC_SERIALIZE_WINNT_AUTH_DATA(#[in] pvAuthData: *mut void, #[out] Size: PULONG, SerializedData: *mut *mut void) -> NTSTATUS;
+        extern fn KspCompleteTokenFn(ContextId: LSA_SEC_HANDLE, Token: PSecBufferDesc) -> NTSTATUS;
+        extern fn KspDeleteContextFn(ContextId: LSA_SEC_HANDLE, #[out] LsaContextId: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn KspGetTokenFn(ContextId: LSA_SEC_HANDLE, #[out] #[opt] ImpersonationToken: PHANDLE, RawToken: *mut PACCESS_TOKEN) -> NTSTATUS;
+        extern fn KspInitContextFn(ContextId: LSA_SEC_HANDLE, ContextData: PSecBuffer, #[out] NewContextId: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn KspInitPackageFn(FunctionTable: PSECPKG_KERNEL_FUNCTIONS) -> NTSTATUS;
+        extern fn KspMakeSignatureFn(ContextId: LSA_SEC_HANDLE, fQOP: u32, Message: PSecBufferDesc, MessageSeqNo: u32) -> NTSTATUS;
+        extern fn KspMapHandleFn(ContextId: LSA_SEC_HANDLE, #[out] LsaContextId: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn KspQueryAttributesFn(ContextId: LSA_SEC_HANDLE, Attribute: u32, #[in] #[out] Buffer: *mut void) -> NTSTATUS;
+        extern fn KspSealMessageFn(ContextId: LSA_SEC_HANDLE, fQOP: u32, Message: PSecBufferDesc, MessageSeqNo: u32) -> NTSTATUS;
+        extern fn KspSerializeAuthDataFn(#[in] pvAuthData: *mut void, #[out] Size: PULONG, SerializedData: *mut *mut void) -> NTSTATUS;
+        extern fn KspSetPagingModeFn(PagingMode: BOOLEAN) -> NTSTATUS;
+        extern fn KspUnsealMessageFn(ContextId: LSA_SEC_HANDLE, Message: PSecBufferDesc, MessageSeqNo: u32, #[out] #[opt] pfQOP: PULONG) -> NTSTATUS;
+        extern fn KspVerifySignatureFn(ContextId: LSA_SEC_HANDLE, Message: PSecBufferDesc, MessageSeqNo: u32, #[out] #[opt] pfQOP: PULONG) -> NTSTATUS;
+        extern fn LSA_ADD_CREDENTIAL(LogonId: PLUID, AuthenticationPackage: u32, PrimaryKeyValue: PLSA_STRING, Credentials: PLSA_STRING) -> NTSTATUS;
+        extern fn LSA_ALLOCATE_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, LengthRequired: u32, ClientBaseAddress: *mut *mut void) -> NTSTATUS;
+        extern fn LSA_ALLOCATE_LSA_HEAP(Length: u32) -> *mut void;
+        extern fn LSA_ALLOCATE_PRIVATE_HEAP(Length: usize) -> *mut void;
+        extern fn LSA_ALLOCATE_SHARED_MEMORY(#[in] SharedMem: *mut void, Size: u32) -> *mut void;
+        extern fn LSA_AP_CALL_PACKAGE(ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_AP_CALL_PACKAGE_PASSTHROUGH(ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern "C" fn LSA_AP_CALL_PACKAGE_UNTRUSTED(ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_AP_INITIALIZE_PACKAGE(AuthenticationPackageId: u32, LsaDispatchTable: PLSA_DISPATCH_TABLE, #[opt] Database: PLSA_STRING, #[opt] Confidentiality: PLSA_STRING, AuthenticationPackageName: *mut PLSA_STRING) -> NTSTATUS;
+        extern fn LSA_AP_LOGON_TERMINATED(LogonId: PLUID);
+        extern fn LSA_AP_LOGON_USER(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] AuthenticationInformation: *mut void, #[in] ClientAuthenticationBase: *mut void, AuthenticationInformationLength: u32, ProfileBuffer: *mut *mut void, #[out] ProfileBufferLength: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PLSA_UNICODE_STRING, AuthenticatingAuthority: *mut PLSA_UNICODE_STRING) -> NTSTATUS;
+        extern fn LSA_AP_LOGON_USER_EX(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] AuthenticationInformation: *mut void, #[in] ClientAuthenticationBase: *mut void, AuthenticationInformationLength: u32, ProfileBuffer: *mut *mut void, #[out] ProfileBufferLength: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PUNICODE_STRING, AuthenticatingAuthority: *mut PUNICODE_STRING, MachineName: *mut PUNICODE_STRING) -> NTSTATUS;
+        extern "C" fn LSA_AP_LOGON_USER_EX2(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferSize: u32, ProfileBuffer: *mut *mut void, #[out] ProfileBufferSize: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PUNICODE_STRING, AuthenticatingAuthority: *mut PUNICODE_STRING, MachineName: *mut PUNICODE_STRING, #[out] PrimaryCredentials: PSECPKG_PRIMARY_CRED, SupplementalCredentials: *mut PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        extern "C" fn LSA_AP_LOGON_USER_EX3(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferSize: u32, #[in] #[out] SurrogateLogon: PSECPKG_SURROGATE_LOGON, ProfileBuffer: *mut *mut void, #[out] ProfileBufferSize: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PUNICODE_STRING, AuthenticatingAuthority: *mut PUNICODE_STRING, MachineName: *mut PUNICODE_STRING, #[out] PrimaryCredentials: PSECPKG_PRIMARY_CRED, SupplementalCredentials: *mut PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        #[encoding("ansi")]
+        const LSA_AP_NAME_CALL_PACKAGE: String = "LsaApCallPackage\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_CALL_PACKAGE_PASSTHROUGH: String = "LsaApCallPackagePassthrough\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_CALL_PACKAGE_UNTRUSTED: String = "LsaApCallPackageUntrusted\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_INITIALIZE_PACKAGE: String = "LsaApInitializePackage\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_LOGON_TERMINATED: String = "LsaApLogonTerminated\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_LOGON_USER: String = "LsaApLogonUser\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_LOGON_USER_EX: String = "LsaApLogonUserEx\0";
+        #[encoding("ansi")]
+        const LSA_AP_NAME_LOGON_USER_EX2: String = "LsaApLogonUserEx2\0";
+        extern fn LSA_AP_POST_LOGON_USER(PostLogonUserInfo: PSECPKG_POST_LOGON_USER_INFO) -> NTSTATUS;
+        extern "C" fn LSA_AP_POST_LOGON_USER_SURROGATE(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferSize: u32, SurrogateLogon: PSECPKG_SURROGATE_LOGON, #[size_param(7)] #[in] ProfileBuffer: *mut void, ProfileBufferSize: u32, LogonId: PLUID, Status: NTSTATUS, SubStatus: NTSTATUS, TokenInformationType: LSA_TOKEN_INFORMATION_TYPE, #[in] TokenInformation: *mut void, AccountName: PUNICODE_STRING, AuthenticatingAuthority: PUNICODE_STRING, MachineName: PUNICODE_STRING, PrimaryCredentials: PSECPKG_PRIMARY_CRED, SupplementalCredentials: PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        extern "C" fn LSA_AP_PRE_LOGON_USER_SURROGATE(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferSize: u32, #[in] #[out] SurrogateLogon: PSECPKG_SURROGATE_LOGON, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_AUDIT_ACCOUNT_LOGON(AuditId: u32, Success: BOOLEAN, #[opt] Source: PUNICODE_STRING, #[opt] ClientName: PUNICODE_STRING, #[opt] MappedName: PUNICODE_STRING, Status: NTSTATUS) -> NTSTATUS;
+        extern fn LSA_AUDIT_LOGON(Status: NTSTATUS, SubStatus: NTSTATUS, #[opt] AccountName: PUNICODE_STRING, #[opt] AuthenticatingAuthority: PUNICODE_STRING, #[opt] WorkstationName: PUNICODE_STRING, #[opt] UserSid: PSID, LogonType: SECURITY_LOGON_TYPE, TokenSource: PTOKEN_SOURCE, LogonId: PLUID);
+        extern fn LSA_AUDIT_LOGON_EX(Status: NTSTATUS, SubStatus: NTSTATUS, #[opt] AccountName: PUNICODE_STRING, #[opt] AuthenticatingAuthority: PUNICODE_STRING, #[opt] WorkstationName: PUNICODE_STRING, #[opt] UserSid: PSID, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenSource: PTOKEN_SOURCE, LogonId: PLUID);
+        extern fn LSA_CALLBACK_FUNCTION(Argument1: usize, Argument2: usize, InputBuffer: PSecBuffer, OutputBuffer: PSecBuffer) -> NTSTATUS;
+        extern fn LSA_CALL_PACKAGE(AuthenticationPackage: PUNICODE_STRING, #[size_param(2)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_CALL_PACKAGEEX(AuthenticationPackage: PUNICODE_STRING, #[in] ClientBufferBase: *mut void, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_CALL_PACKAGE_PASSTHROUGH(AuthenticationPackage: PUNICODE_STRING, #[in] ClientBufferBase: *mut void, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_CANCEL_NOTIFICATION(NotifyHandle: HANDLE) -> NTSTATUS;
+        extern fn LSA_CHECK_PROTECTED_USER_BY_TOKEN(UserToken: HANDLE, #[out] ProtectedUser: PBOOLEAN) -> NTSTATUS;
+        extern fn LSA_CLIENT_CALLBACK(Callback: PCHAR, Argument1: usize, Argument2: usize, Input: PSecBuffer, #[out] Output: PSecBuffer) -> NTSTATUS;
+        extern fn LSA_CLOSE_SAM_USER(#[in] UserHandle: *mut void) -> NTSTATUS;
+        extern fn LSA_CONVERT_AUTH_DATA_TO_TOKEN(#[in] UserAuthData: *mut void, UserAuthDataSize: u32, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, AuthorityName: PUNICODE_STRING, #[out] Token: PHANDLE, #[out] LogonId: PLUID, #[out] AccountName: PUNICODE_STRING, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_COPY_FROM_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, Length: u32, #[size_param(1)] BufferToCopy: *mut void, #[size_param(1)] #[in] ClientBaseAddress: *mut void) -> NTSTATUS;
+        extern fn LSA_COPY_TO_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, Length: u32, #[size_param(1)] ClientBaseAddress: *mut void, #[size_param(1)] #[in] BufferToCopy: *mut void) -> NTSTATUS;
+        extern fn LSA_CRACK_SINGLE_NAME(FormatOffered: u32, PerformAtGC: BOOLEAN, NameInput: PUNICODE_STRING, #[opt] Prefix: PUNICODE_STRING, RequestedFormat: u32, #[out] CrackedName: PUNICODE_STRING, #[out] DnsDomainName: PUNICODE_STRING, #[out] SubStatus: PULONG) -> NTSTATUS;
+        extern fn LSA_CREATE_LOGON_SESSION(#[in] #[out] LogonId: PLUID) -> NTSTATUS;
+        extern fn LSA_CREATE_SHARED_MEMORY(MaxSize: u32, InitialSize: u32) -> *mut void;
+        extern fn LSA_CREATE_THREAD(SecurityAttributes: SEC_ATTRS, StackSize: u32, StartFunction: SEC_THREAD_START, #[in] ThreadParameter: *mut void, CreationFlags: u32, #[out] ThreadId: PULONG) -> HANDLE;
+        extern fn LSA_CREATE_TOKEN(LogonId: PLUID, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenInformationType: LSA_TOKEN_INFORMATION_TYPE, #[in] TokenInformation: *mut void, #[opt] TokenGroups: PTOKEN_GROUPS, AccountName: PUNICODE_STRING, AuthorityName: PUNICODE_STRING, #[opt] Workstation: PUNICODE_STRING, #[opt] ProfilePath: PUNICODE_STRING, #[out] Token: PHANDLE, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_CREATE_TOKEN_EX(LogonId: PLUID, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenInformationType: LSA_TOKEN_INFORMATION_TYPE, #[in] TokenInformation: *mut void, #[opt] TokenGroups: PTOKEN_GROUPS, #[opt] Workstation: PUNICODE_STRING, #[opt] ProfilePath: PUNICODE_STRING, #[in] SessionInformation: *mut void, SessionInformationType: SECPKG_SESSIONINFO_TYPE, #[out] Token: PHANDLE, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn LSA_DELETE_CREDENTIAL(LogonId: PLUID, AuthenticationPackage: u32, PrimaryKeyValue: PLSA_STRING) -> NTSTATUS;
+        extern fn LSA_DELETE_LOGON_SESSION(LogonId: PLUID) -> NTSTATUS;
+        extern fn LSA_DELETE_SHARED_MEMORY(#[in] SharedMem: *mut void) -> BOOLEAN;
+        struct LSA_DISPATCH_TABLE {
+            CreateLogonSession: PLSA_CREATE_LOGON_SESSION,
+            DeleteLogonSession: PLSA_DELETE_LOGON_SESSION,
+            AddCredential: PLSA_ADD_CREDENTIAL,
+            GetCredentials: PLSA_GET_CREDENTIALS,
+            DeleteCredential: PLSA_DELETE_CREDENTIAL,
+            AllocateLsaHeap: PLSA_ALLOCATE_LSA_HEAP,
+            FreeLsaHeap: PLSA_FREE_LSA_HEAP,
+            AllocateClientBuffer: PLSA_ALLOCATE_CLIENT_BUFFER,
+            FreeClientBuffer: PLSA_FREE_CLIENT_BUFFER,
+            CopyToClientBuffer: PLSA_COPY_TO_CLIENT_BUFFER,
+            CopyFromClientBuffer: PLSA_COPY_FROM_CLIENT_BUFFER,
+        }
+        extern fn LSA_DUPLICATE_HANDLE(SourceHandle: HANDLE, #[out] DestionationHandle: PHANDLE) -> NTSTATUS;
+        extern fn LSA_EXPAND_AUTH_DATA_FOR_DOMAIN(#[size_param(1)] UserAuthData: PUCHAR, UserAuthDataSize: u32, #[in] Reserved: *mut void, ExpandedAuthData: *mut PUCHAR, #[out] ExpandedAuthDataSize: PULONG) -> NTSTATUS;
+        extern fn LSA_FREE_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, #[in] ClientBaseAddress: *mut void) -> NTSTATUS;
+        extern fn LSA_FREE_LSA_HEAP(#[in] Base: *mut void);
+        extern fn LSA_FREE_PRIVATE_HEAP(#[in] Base: *mut void);
+        extern fn LSA_FREE_SHARED_MEMORY(#[in] SharedMem: *mut void, #[in] #[out] #[opt] Memory: *mut void);
+        extern fn LSA_GET_APP_MODE_INFO(#[out] #[opt] UserFunction: PULONG, #[out] #[opt] Argument1: PULONG_PTR, #[out] #[opt] Argument2: PULONG_PTR, #[out] #[opt] UserData: PSecBuffer, #[out] #[opt] ReturnToLsa: PBOOLEAN) -> NTSTATUS;
+        extern fn LSA_GET_AUTH_DATA_FOR_USER(Name: PSECURITY_STRING, NameType: SECPKG_NAME_TYPE, #[opt] Prefix: PSECURITY_STRING, UserAuthData: *mut PUCHAR, #[out] UserAuthDataSize: PULONG, #[out] #[opt] UserFlatName: PUNICODE_STRING) -> NTSTATUS;
+        extern fn LSA_GET_CALL_INFO(#[out] Info: PSECPKG_CALL_INFO) -> BOOLEAN;
+        extern fn LSA_GET_CLIENT_INFO(#[out] ClientInfo: PSECPKG_CLIENT_INFO) -> NTSTATUS;
+        extern fn LSA_GET_CLIENT_INFO_EX(#[out] ClientInfo: PSECPKG_CLIENT_INFO_EX, StructSize: u32) -> NTSTATUS;
+        extern fn LSA_GET_CREDENTIALS(LogonId: PLUID, AuthenticationPackage: u32, #[in] #[out] QueryContext: PULONG, RetrieveAllCredentials: BOOLEAN, PrimaryKeyValue: PLSA_STRING, #[out] PrimaryKeyLength: PULONG, Credentials: PLSA_STRING) -> NTSTATUS;
+        extern fn LSA_GET_EXTENDED_CALL_FLAGS(#[out] Flags: PULONG) -> NTSTATUS;
+        extern fn LSA_GET_SECPKG_FAILURE_REASON(PackageID: usize, Reason: *mut SECPKG_FAILURE_REASON) -> NTSTATUS;
+        extern fn LSA_GET_SERVICE_ACCOUNT_PASSWORD(AccountName: PUNICODE_STRING, #[opt] DomainName: PUNICODE_STRING, CredFetch: CRED_FETCH, #[in] #[out] FileTimeExpiry: *mut FILETIME, #[out] CurrentPassword: PUNICODE_STRING, #[out] PreviousPassword: PUNICODE_STRING, #[opt] FileTimeCurrPwdValidForOutbound: *mut FILETIME) -> NTSTATUS;
+        extern fn LSA_GET_USER_AUTH_DATA(#[in] UserHandle: *mut void, UserAuthData: *mut PUCHAR, #[out] UserAuthDataSize: PULONG) -> NTSTATUS;
+        extern fn LSA_GET_USER_CREDENTIALS(#[in] UserHandle: *mut void, PrimaryCreds: *mut *mut void, #[out] PrimaryCredsSize: PULONG, SupplementalCreds: *mut *mut void, #[out] SupplementalCredsSize: PULONG) -> NTSTATUS;
+        extern fn LSA_IMPERSONATE_CLIENT() -> NTSTATUS;
+        extern fn LSA_LOCATE_PKG_BY_ID(PackgeId: u32) -> *mut void;
+        extern fn LSA_MAP_BUFFER(InputBuffer: PSecBuffer, #[out] OutputBuffer: PSecBuffer) -> NTSTATUS;
+        extern fn LSA_OPEN_SAM_USER(Name: PSECURITY_STRING, NameType: SECPKG_NAME_TYPE, Prefix: PSECURITY_STRING, AllowGuest: BOOLEAN, Reserved: u32, UserHandle: *mut *mut void) -> NTSTATUS;
+        extern fn LSA_OPEN_TOKEN_BY_LOGON_ID(LogonId: PLUID, RetTokenHandle: *mut HANDLE) -> NTSTATUS;
+        extern fn LSA_PROTECT_MEMORY(#[size_param(1)] #[in] #[out] Buffer: *mut void, BufferSize: u32);
+        const LSA_QUERY_CLIENT_PRELOGON_SESSION_ID: i32 = 1;
+        extern fn LSA_QUERY_CLIENT_REQUEST(ClientRequest: PLSA_CLIENT_REQUEST, QueryType: u32, ReplyBuffer: *mut *mut void) -> NTSTATUS;
+        extern fn LSA_REDIRECTED_LOGON_CALLBACK(RedirectedLogonHandle: HANDLE, Buffer: *mut void, BufferLength: u32, ReturnBuffer: *mut *mut void, ReturnBufferLength: *mut u32) -> NTSTATUS;
+        extern fn LSA_REDIRECTED_LOGON_CLEANUP_CALLBACK(RedirectedLogonHandle: HANDLE);
+        extern fn LSA_REDIRECTED_LOGON_GET_LOGON_CREDS(RedirectedLogonHandle: HANDLE, LogonBuffer: *mut PBYTE, LogonBufferLength: PULONG) -> NTSTATUS;
+        extern fn LSA_REDIRECTED_LOGON_GET_SID(RedirectedLogonHandle: HANDLE, Sid: *mut PSID) -> NTSTATUS;
+        extern fn LSA_REDIRECTED_LOGON_GET_SUPP_CREDS(RedirectedLogonHandle: HANDLE, SupplementalCredentials: *mut PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        extern fn LSA_REDIRECTED_LOGON_INIT(RedirectedLogonHandle: HANDLE, PackageName: *const UNICODE_STRING, SessionId: u32, LogonId: *const LUID) -> NTSTATUS;
+        extern fn LSA_REGISTER_CALLBACK(CallbackId: u32, Callback: PLSA_CALLBACK_FUNCTION) -> NTSTATUS;
+        extern fn LSA_REGISTER_NOTIFICATION(StartFunction: SEC_THREAD_START, #[in] #[opt] Parameter: *mut void, NotificationType: u32, NotificationClass: u32, NotificationFlags: u32, IntervalMinutes: u32, #[opt] WaitEvent: HANDLE) -> HANDLE;
+        extern fn LSA_SAVE_SUPPLEMENTAL_CREDENTIALS(LogonId: PLUID, SupplementalCredSize: u32, #[size_param(1)] #[in] SupplementalCreds: *mut void, Synchronous: BOOLEAN) -> NTSTATUS;
+        struct LSA_SECPKG_FUNCTION_TABLE {
+            CreateLogonSession: PLSA_CREATE_LOGON_SESSION,
+            DeleteLogonSession: PLSA_DELETE_LOGON_SESSION,
+            AddCredential: PLSA_ADD_CREDENTIAL,
+            GetCredentials: PLSA_GET_CREDENTIALS,
+            DeleteCredential: PLSA_DELETE_CREDENTIAL,
+            AllocateLsaHeap: PLSA_ALLOCATE_LSA_HEAP,
+            FreeLsaHeap: PLSA_FREE_LSA_HEAP,
+            AllocateClientBuffer: PLSA_ALLOCATE_CLIENT_BUFFER,
+            FreeClientBuffer: PLSA_FREE_CLIENT_BUFFER,
+            CopyToClientBuffer: PLSA_COPY_TO_CLIENT_BUFFER,
+            CopyFromClientBuffer: PLSA_COPY_FROM_CLIENT_BUFFER,
+            ImpersonateClient: PLSA_IMPERSONATE_CLIENT,
+            UnloadPackage: PLSA_UNLOAD_PACKAGE,
+            DuplicateHandle: PLSA_DUPLICATE_HANDLE,
+            SaveSupplementalCredentials: PLSA_SAVE_SUPPLEMENTAL_CREDENTIALS,
+            CreateThread: PLSA_CREATE_THREAD,
+            GetClientInfo: PLSA_GET_CLIENT_INFO,
+            RegisterNotification: PLSA_REGISTER_NOTIFICATION,
+            CancelNotification: PLSA_CANCEL_NOTIFICATION,
+            MapBuffer: PLSA_MAP_BUFFER,
+            CreateToken: PLSA_CREATE_TOKEN,
+            AuditLogon: PLSA_AUDIT_LOGON,
+            CallPackage: PLSA_CALL_PACKAGE,
+            FreeReturnBuffer: PLSA_FREE_LSA_HEAP,
+            GetCallInfo: PLSA_GET_CALL_INFO,
+            CallPackageEx: PLSA_CALL_PACKAGEEX,
+            CreateSharedMemory: PLSA_CREATE_SHARED_MEMORY,
+            AllocateSharedMemory: PLSA_ALLOCATE_SHARED_MEMORY,
+            FreeSharedMemory: PLSA_FREE_SHARED_MEMORY,
+            DeleteSharedMemory: PLSA_DELETE_SHARED_MEMORY,
+            OpenSamUser: PLSA_OPEN_SAM_USER,
+            GetUserCredentials: PLSA_GET_USER_CREDENTIALS,
+            GetUserAuthData: PLSA_GET_USER_AUTH_DATA,
+            CloseSamUser: PLSA_CLOSE_SAM_USER,
+            ConvertAuthDataToToken: PLSA_CONVERT_AUTH_DATA_TO_TOKEN,
+            ClientCallback: PLSA_CLIENT_CALLBACK,
+            UpdateCredentials: PLSA_UPDATE_PRIMARY_CREDENTIALS,
+            GetAuthDataForUser: PLSA_GET_AUTH_DATA_FOR_USER,
+            CrackSingleName: PLSA_CRACK_SINGLE_NAME,
+            AuditAccountLogon: PLSA_AUDIT_ACCOUNT_LOGON,
+            CallPackagePassthrough: PLSA_CALL_PACKAGE_PASSTHROUGH,
+            DummyFunction1: PLSA_PROTECT_MEMORY,
+            DummyFunction2: PLSA_PROTECT_MEMORY,
+            DummyFunction3: PLSA_PROTECT_MEMORY,
+            LsaProtectMemory: PLSA_PROTECT_MEMORY,
+            LsaUnprotectMemory: PLSA_PROTECT_MEMORY,
+            OpenTokenByLogonId: PLSA_OPEN_TOKEN_BY_LOGON_ID,
+            ExpandAuthDataForDomain: PLSA_EXPAND_AUTH_DATA_FOR_DOMAIN,
+            AllocatePrivateHeap: PLSA_ALLOCATE_PRIVATE_HEAP,
+            FreePrivateHeap: PLSA_FREE_PRIVATE_HEAP,
+            CreateTokenEx: PLSA_CREATE_TOKEN_EX,
+            DummyFunction4: PLSA_PROTECT_MEMORY,
+            DummyFunction5: PLSA_PROTECT_MEMORY,
+            DummyFunction6: PLSA_PROTECT_MEMORY,
+            GetExtendedCallFlags: PLSA_GET_EXTENDED_CALL_FLAGS,
+            DuplicateTokenHandle: PLSA_DUPLICATE_HANDLE,
+            GetServiceAccountPassword: PLSA_GET_SERVICE_ACCOUNT_PASSWORD,
+            DummyFunction7: PLSA_PROTECT_MEMORY,
+            AuditLogonEx: PLSA_AUDIT_LOGON_EX,
+            CheckProtectedUserByToken: PLSA_CHECK_PROTECTED_USER_BY_TOKEN,
+            QueryClientRequest: PLSA_QUERY_CLIENT_REQUEST,
+            GetAppModeInfo: PLSA_GET_APP_MODE_INFO,
+            SetAppModeInfo: PLSA_SET_APP_MODE_INFO,
+            GetClientInfoEx: PLSA_GET_CLIENT_INFO_EX,
+            GetSecpkgFailureReason: PLSA_GET_SECPKG_FAILURE_REASON,
+            SetSecpkgFailureReason: PLSA_SET_SECPKG_FAILURE_REASON,
+        }
+        type LSA_SEC_HANDLE = usize;
+        extern fn LSA_SET_APP_MODE_INFO(UserFunction: u32, #[opt] Argument1: usize, #[opt] Argument2: usize, #[opt] UserData: PSecBuffer, #[opt] ReturnToLsa: BOOLEAN) -> NTSTATUS;
+        extern fn LSA_SET_SECPKG_FAILURE_REASON(Reason: SECPKG_FAILURE_REASON) -> NTSTATUS;
+        struct LSA_TOKEN_INFORMATION_NULL {
+            ExpirationTime: LARGE_INTEGER,
+            Groups: PTOKEN_GROUPS,
+        }
+        #[repr(i32)]
+        enum LSA_TOKEN_INFORMATION_TYPE {
+            LsaTokenInformationNull = 0,
+            LsaTokenInformationV1 = 1,
+            LsaTokenInformationV2 = 2,
+            LsaTokenInformationV3 = 3,
+        }
+        struct LSA_TOKEN_INFORMATION_V1 {
+            ExpirationTime: LARGE_INTEGER,
+            User: TOKEN_USER,
+            Groups: PTOKEN_GROUPS,
+            PrimaryGroup: TOKEN_PRIMARY_GROUP,
+            Privileges: PTOKEN_PRIVILEGES,
+            Owner: TOKEN_OWNER,
+            DefaultDacl: TOKEN_DEFAULT_DACL,
+        }
+        type LSA_TOKEN_INFORMATION_V2 = LSA_TOKEN_INFORMATION_V1;
+        struct LSA_TOKEN_INFORMATION_V3 {
+            ExpirationTime: LARGE_INTEGER,
+            User: TOKEN_USER,
+            Groups: PTOKEN_GROUPS,
+            PrimaryGroup: TOKEN_PRIMARY_GROUP,
+            Privileges: PTOKEN_PRIVILEGES,
+            Owner: TOKEN_OWNER,
+            DefaultDacl: TOKEN_DEFAULT_DACL,
+            UserClaims: TOKEN_USER_CLAIMS,
+            DeviceClaims: TOKEN_DEVICE_CLAIMS,
+            DeviceGroups: PTOKEN_GROUPS,
+        }
+        extern fn LSA_UNLOAD_PACKAGE() -> NTSTATUS;
+        extern fn LSA_UPDATE_PRIMARY_CREDENTIALS(PrimaryCredentials: PSECPKG_PRIMARY_CRED, #[opt] Credentials: PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        const MAX_CRED_SIZE: i32 = 1024;
+        const NOTIFIER_FLAG_NEW_THREAD: i32 = 1;
+        const NOTIFIER_FLAG_ONE_SHOT: i32 = 2;
+        const NOTIFIER_FLAG_SECONDS: u32 = 2147483648;
+        const NOTIFIER_TYPE_HANDLE_WAIT: i32 = 2;
+        const NOTIFIER_TYPE_IMMEDIATE: i32 = 16;
+        const NOTIFIER_TYPE_INTERVAL: i32 = 1;
+        const NOTIFIER_TYPE_NOTIFY_EVENT: i32 = 4;
+        const NOTIFIER_TYPE_STATE_CHANGE: i32 = 3;
+        const NOTIFY_CLASS_DOMAIN_CHANGE: i32 = 3;
+        const NOTIFY_CLASS_PACKAGE_CHANGE: i32 = 1;
+        const NOTIFY_CLASS_REGISTRY_CHANGE: i32 = 4;
+        const NOTIFY_CLASS_ROLE_CHANGE: i32 = 2;
+        const NO_LONG_NAMES: i32 = 2;
+        type PCRED_FETCH = *mut CRED_FETCH;
+        extern fn PKSEC_CREATE_CONTEXT_LIST(Type: KSEC_CONTEXT_TYPE) -> *mut void;
+        extern fn PKSEC_DEREFERENCE_LIST_ENTRY(Entry: PKSEC_LIST_ENTRY, #[opt] Delete: *mut BOOLEAN);
+        extern fn PKSEC_INSERT_LIST_ENTRY(#[in] List: *mut void, Entry: PKSEC_LIST_ENTRY);
+        type PKSEC_LIST_ENTRY = *mut KSEC_LIST_ENTRY;
+        extern fn PKSEC_LOCATE_PKG_BY_ID(PackageId: u32) -> *mut void;
+        extern fn PKSEC_REFERENCE_LIST_ENTRY(Entry: PKSEC_LIST_ENTRY, Signature: u32, RemoveNoRef: BOOLEAN) -> NTSTATUS;
+        extern fn PKSEC_SERIALIZE_SCHANNEL_AUTH_DATA(#[in] pvAuthData: *mut void, #[out] Size: PULONG, SerializedData: *mut *mut void) -> NTSTATUS;
+        extern fn PKSEC_SERIALIZE_WINNT_AUTH_DATA(#[in] pvAuthData: *mut void, #[out] Size: PULONG, SerializedData: *mut *mut void) -> NTSTATUS;
+        extern fn PLSA_ADD_CREDENTIAL(LogonId: PLUID, AuthenticationPackage: u32, PrimaryKeyValue: PLSA_STRING, Credentials: PLSA_STRING) -> NTSTATUS;
+        extern fn PLSA_ALLOCATE_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, LengthRequired: u32, ClientBaseAddress: *mut *mut void) -> NTSTATUS;
+        extern fn PLSA_ALLOCATE_LSA_HEAP(Length: u32) -> *mut void;
+        extern fn PLSA_ALLOCATE_PRIVATE_HEAP(Length: usize) -> *mut void;
+        extern fn PLSA_ALLOCATE_SHARED_MEMORY(#[in] SharedMem: *mut void, Size: u32) -> *mut void;
+        extern fn PLSA_AP_CALL_PACKAGE(ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_AP_CALL_PACKAGE_PASSTHROUGH(ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern "C" fn PLSA_AP_CALL_PACKAGE_UNTRUSTED(param0: PLSA_CLIENT_REQUEST, param1: *mut void, param2: *mut void, param3: u32, param4: *mut *mut void, param5: PULONG, param6: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_AP_INITIALIZE_PACKAGE(AuthenticationPackageId: u32, LsaDispatchTable: PLSA_DISPATCH_TABLE, #[opt] Database: PLSA_STRING, #[opt] Confidentiality: PLSA_STRING, AuthenticationPackageName: *mut PLSA_STRING) -> NTSTATUS;
+        extern fn PLSA_AP_LOGON_TERMINATED(LogonId: PLUID);
+        extern fn PLSA_AP_LOGON_USER(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] AuthenticationInformation: *mut void, #[in] ClientAuthenticationBase: *mut void, AuthenticationInformationLength: u32, ProfileBuffer: *mut *mut void, #[out] ProfileBufferLength: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PLSA_UNICODE_STRING, AuthenticatingAuthority: *mut PLSA_UNICODE_STRING) -> NTSTATUS;
+        extern fn PLSA_AP_LOGON_USER_EX(ClientRequest: PLSA_CLIENT_REQUEST, LogonType: SECURITY_LOGON_TYPE, #[size_param(4)] #[in] AuthenticationInformation: *mut void, #[in] ClientAuthenticationBase: *mut void, AuthenticationInformationLength: u32, ProfileBuffer: *mut *mut void, #[out] ProfileBufferLength: PULONG, #[out] LogonId: PLUID, #[out] SubStatus: PNTSTATUS, #[out] TokenInformationType: PLSA_TOKEN_INFORMATION_TYPE, TokenInformation: *mut *mut void, AccountName: *mut PUNICODE_STRING, AuthenticatingAuthority: *mut PUNICODE_STRING, MachineName: *mut PUNICODE_STRING) -> NTSTATUS;
+        type PLSA_AP_LOGON_USER_EX2 = *mut u8;
+        type PLSA_AP_LOGON_USER_EX3 = *mut u8;
+        type PLSA_AP_POST_LOGON_USER_SURROGATE = *mut u8;
+        type PLSA_AP_PRE_LOGON_USER_SURROGATE = *mut u8;
+        extern fn PLSA_AUDIT_ACCOUNT_LOGON(AuditId: u32, Success: BOOLEAN, #[opt] Source: PUNICODE_STRING, #[opt] ClientName: PUNICODE_STRING, #[opt] MappedName: PUNICODE_STRING, Status: NTSTATUS) -> NTSTATUS;
+        extern fn PLSA_AUDIT_LOGON(Status: NTSTATUS, SubStatus: NTSTATUS, #[opt] AccountName: PUNICODE_STRING, #[opt] AuthenticatingAuthority: PUNICODE_STRING, #[opt] WorkstationName: PUNICODE_STRING, #[opt] UserSid: PSID, LogonType: SECURITY_LOGON_TYPE, TokenSource: PTOKEN_SOURCE, LogonId: PLUID);
+        extern fn PLSA_AUDIT_LOGON_EX(Status: NTSTATUS, SubStatus: NTSTATUS, #[opt] AccountName: PUNICODE_STRING, #[opt] AuthenticatingAuthority: PUNICODE_STRING, #[opt] WorkstationName: PUNICODE_STRING, #[opt] UserSid: PSID, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenSource: PTOKEN_SOURCE, LogonId: PLUID);
+        extern fn PLSA_CALLBACK_FUNCTION(Argument1: usize, Argument2: usize, InputBuffer: PSecBuffer, OutputBuffer: PSecBuffer) -> NTSTATUS;
+        extern fn PLSA_CALL_PACKAGE(AuthenticationPackage: PUNICODE_STRING, #[size_param(2)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_CALL_PACKAGEEX(AuthenticationPackage: PUNICODE_STRING, #[in] ClientBufferBase: *mut void, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_CALL_PACKAGE_PASSTHROUGH(AuthenticationPackage: PUNICODE_STRING, #[in] ClientBufferBase: *mut void, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, SubmitBufferLength: u32, ProtocolReturnBuffer: *mut *mut void, #[out] ReturnBufferLength: PULONG, #[out] ProtocolStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_CANCEL_NOTIFICATION(NotifyHandle: HANDLE) -> NTSTATUS;
+        extern fn PLSA_CHECK_PROTECTED_USER_BY_TOKEN(UserToken: HANDLE, #[out] ProtectedUser: PBOOLEAN) -> NTSTATUS;
+        extern fn PLSA_CLIENT_CALLBACK(Callback: PCHAR, Argument1: usize, Argument2: usize, Input: PSecBuffer, #[out] Output: PSecBuffer) -> NTSTATUS;
+        type PLSA_CLIENT_REQUEST = *mut *mut void;
+        extern fn PLSA_CLOSE_SAM_USER(#[in] UserHandle: *mut void) -> NTSTATUS;
+        extern fn PLSA_CONVERT_AUTH_DATA_TO_TOKEN(#[in] UserAuthData: *mut void, UserAuthDataSize: u32, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, AuthorityName: PUNICODE_STRING, #[out] Token: PHANDLE, #[out] LogonId: PLUID, #[out] AccountName: PUNICODE_STRING, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_COPY_FROM_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, Length: u32, #[size_param(1)] BufferToCopy: *mut void, #[size_param(1)] #[in] ClientBaseAddress: *mut void) -> NTSTATUS;
+        extern fn PLSA_COPY_TO_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, Length: u32, #[size_param(1)] ClientBaseAddress: *mut void, #[size_param(1)] #[in] BufferToCopy: *mut void) -> NTSTATUS;
+        extern fn PLSA_CRACK_SINGLE_NAME(FormatOffered: u32, PerformAtGC: BOOLEAN, NameInput: PUNICODE_STRING, #[opt] Prefix: PUNICODE_STRING, RequestedFormat: u32, #[out] CrackedName: PUNICODE_STRING, #[out] DnsDomainName: PUNICODE_STRING, #[out] SubStatus: PULONG) -> NTSTATUS;
+        extern fn PLSA_CREATE_LOGON_SESSION(#[in] #[out] LogonId: PLUID) -> NTSTATUS;
+        extern fn PLSA_CREATE_SHARED_MEMORY(MaxSize: u32, InitialSize: u32) -> *mut void;
+        extern fn PLSA_CREATE_THREAD(SecurityAttributes: SEC_ATTRS, StackSize: u32, StartFunction: SEC_THREAD_START, #[in] ThreadParameter: *mut void, CreationFlags: u32, #[out] ThreadId: PULONG) -> HANDLE;
+        extern fn PLSA_CREATE_TOKEN(LogonId: PLUID, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenInformationType: LSA_TOKEN_INFORMATION_TYPE, #[in] TokenInformation: *mut void, #[opt] TokenGroups: PTOKEN_GROUPS, AccountName: PUNICODE_STRING, AuthorityName: PUNICODE_STRING, #[opt] Workstation: PUNICODE_STRING, #[opt] ProfilePath: PUNICODE_STRING, #[out] Token: PHANDLE, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_CREATE_TOKEN_EX(LogonId: PLUID, TokenSource: PTOKEN_SOURCE, LogonType: SECURITY_LOGON_TYPE, ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL, TokenInformationType: LSA_TOKEN_INFORMATION_TYPE, #[in] TokenInformation: *mut void, #[opt] TokenGroups: PTOKEN_GROUPS, #[opt] Workstation: PUNICODE_STRING, #[opt] ProfilePath: PUNICODE_STRING, #[in] SessionInformation: *mut void, SessionInformationType: SECPKG_SESSIONINFO_TYPE, #[out] Token: PHANDLE, #[out] SubStatus: PNTSTATUS) -> NTSTATUS;
+        extern fn PLSA_DELETE_CREDENTIAL(LogonId: PLUID, AuthenticationPackage: u32, PrimaryKeyValue: PLSA_STRING) -> NTSTATUS;
+        extern fn PLSA_DELETE_LOGON_SESSION(LogonId: PLUID) -> NTSTATUS;
+        extern fn PLSA_DELETE_SHARED_MEMORY(#[in] SharedMem: *mut void) -> BOOLEAN;
+        type PLSA_DISPATCH_TABLE = *mut LSA_DISPATCH_TABLE;
+        extern fn PLSA_DUPLICATE_HANDLE(SourceHandle: HANDLE, #[out] DestionationHandle: PHANDLE) -> NTSTATUS;
+        extern fn PLSA_EXPAND_AUTH_DATA_FOR_DOMAIN(#[size_param(1)] UserAuthData: PUCHAR, UserAuthDataSize: u32, #[in] Reserved: *mut void, ExpandedAuthData: *mut PUCHAR, #[out] ExpandedAuthDataSize: PULONG) -> NTSTATUS;
+        extern fn PLSA_FREE_CLIENT_BUFFER(ClientRequest: PLSA_CLIENT_REQUEST, #[in] ClientBaseAddress: *mut void) -> NTSTATUS;
+        extern fn PLSA_FREE_LSA_HEAP(#[in] Base: *mut void);
+        extern fn PLSA_FREE_PRIVATE_HEAP(#[in] Base: *mut void);
+        extern fn PLSA_FREE_SHARED_MEMORY(#[in] SharedMem: *mut void, #[in] #[out] #[opt] Memory: *mut void);
+        extern fn PLSA_GET_APP_MODE_INFO(#[out] #[opt] UserFunction: PULONG, #[out] #[opt] Argument1: PULONG_PTR, #[out] #[opt] Argument2: PULONG_PTR, #[out] #[opt] UserData: PSecBuffer, #[out] #[opt] ReturnToLsa: PBOOLEAN) -> NTSTATUS;
+        extern fn PLSA_GET_AUTH_DATA_FOR_USER(Name: PSECURITY_STRING, NameType: SECPKG_NAME_TYPE, #[opt] Prefix: PSECURITY_STRING, UserAuthData: *mut PUCHAR, #[out] UserAuthDataSize: PULONG, #[out] #[opt] UserFlatName: PUNICODE_STRING) -> NTSTATUS;
+        extern fn PLSA_GET_CALL_INFO(#[out] Info: PSECPKG_CALL_INFO) -> BOOLEAN;
+        extern fn PLSA_GET_CLIENT_INFO(#[out] ClientInfo: PSECPKG_CLIENT_INFO) -> NTSTATUS;
+        extern fn PLSA_GET_CLIENT_INFO_EX(#[out] ClientInfo: PSECPKG_CLIENT_INFO_EX, StructSize: u32) -> NTSTATUS;
+        extern fn PLSA_GET_CREDENTIALS(LogonId: PLUID, AuthenticationPackage: u32, #[in] #[out] QueryContext: PULONG, RetrieveAllCredentials: BOOLEAN, PrimaryKeyValue: PLSA_STRING, #[out] PrimaryKeyLength: PULONG, Credentials: PLSA_STRING) -> NTSTATUS;
+        extern fn PLSA_GET_EXTENDED_CALL_FLAGS(#[out] Flags: PULONG) -> NTSTATUS;
+        extern fn PLSA_GET_SECPKG_FAILURE_REASON(PackageID: usize, Reason: *mut SECPKG_FAILURE_REASON) -> NTSTATUS;
+        extern fn PLSA_GET_SERVICE_ACCOUNT_PASSWORD(AccountName: PUNICODE_STRING, #[opt] DomainName: PUNICODE_STRING, CredFetch: CRED_FETCH, #[in] #[out] FileTimeExpiry: *mut FILETIME, #[out] CurrentPassword: PUNICODE_STRING, #[out] PreviousPassword: PUNICODE_STRING, #[opt] FileTimeCurrPwdValidForOutbound: *mut FILETIME) -> NTSTATUS;
+        extern fn PLSA_GET_USER_AUTH_DATA(#[in] UserHandle: *mut void, UserAuthData: *mut PUCHAR, #[out] UserAuthDataSize: PULONG) -> NTSTATUS;
+        extern fn PLSA_GET_USER_CREDENTIALS(#[in] UserHandle: *mut void, PrimaryCreds: *mut *mut void, #[out] PrimaryCredsSize: PULONG, SupplementalCreds: *mut *mut void, #[out] SupplementalCredsSize: PULONG) -> NTSTATUS;
+        extern fn PLSA_IMPERSONATE_CLIENT() -> NTSTATUS;
+        extern fn PLSA_LOCATE_PKG_BY_ID(PackgeId: u32) -> *mut void;
+        extern fn PLSA_MAP_BUFFER(InputBuffer: PSecBuffer, #[out] OutputBuffer: PSecBuffer) -> NTSTATUS;
+        extern fn PLSA_OPEN_SAM_USER(Name: PSECURITY_STRING, NameType: SECPKG_NAME_TYPE, Prefix: PSECURITY_STRING, AllowGuest: BOOLEAN, Reserved: u32, UserHandle: *mut *mut void) -> NTSTATUS;
+        extern fn PLSA_OPEN_TOKEN_BY_LOGON_ID(LogonId: PLUID, RetTokenHandle: *mut HANDLE) -> NTSTATUS;
+        extern fn PLSA_PROTECT_MEMORY(#[size_param(1)] #[in] #[out] Buffer: *mut void, BufferSize: u32);
+        extern fn PLSA_QUERY_CLIENT_REQUEST(ClientRequest: PLSA_CLIENT_REQUEST, QueryType: u32, ReplyBuffer: *mut *mut void) -> NTSTATUS;
+        extern fn PLSA_REDIRECTED_LOGON_CALLBACK(RedirectedLogonHandle: HANDLE, Buffer: *mut void, BufferLength: u32, ReturnBuffer: *mut *mut void, ReturnBufferLength: *mut u32) -> NTSTATUS;
+        extern fn PLSA_REDIRECTED_LOGON_CLEANUP_CALLBACK(RedirectedLogonHandle: HANDLE);
+        extern fn PLSA_REDIRECTED_LOGON_GET_LOGON_CREDS(RedirectedLogonHandle: HANDLE, LogonBuffer: *mut PBYTE, LogonBufferLength: PULONG) -> NTSTATUS;
+        extern fn PLSA_REDIRECTED_LOGON_GET_SID(RedirectedLogonHandle: HANDLE, Sid: *mut PSID) -> NTSTATUS;
+        extern fn PLSA_REDIRECTED_LOGON_GET_SUPP_CREDS(RedirectedLogonHandle: HANDLE, SupplementalCredentials: *mut PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        extern fn PLSA_REDIRECTED_LOGON_INIT(RedirectedLogonHandle: HANDLE, PackageName: *const UNICODE_STRING, SessionId: u32, LogonId: *const LUID) -> NTSTATUS;
+        extern fn PLSA_REGISTER_CALLBACK(CallbackId: u32, Callback: PLSA_CALLBACK_FUNCTION) -> NTSTATUS;
+        extern fn PLSA_REGISTER_NOTIFICATION(StartFunction: SEC_THREAD_START, #[in] #[opt] Parameter: *mut void, NotificationType: u32, NotificationClass: u32, NotificationFlags: u32, IntervalMinutes: u32, #[opt] WaitEvent: HANDLE) -> HANDLE;
+        extern fn PLSA_SAVE_SUPPLEMENTAL_CREDENTIALS(LogonId: PLUID, SupplementalCredSize: u32, #[size_param(1)] #[in] SupplementalCreds: *mut void, Synchronous: BOOLEAN) -> NTSTATUS;
+        type PLSA_SECPKG_FUNCTION_TABLE = *mut LSA_SECPKG_FUNCTION_TABLE;
+        type PLSA_SEC_HANDLE = *mut LSA_SEC_HANDLE;
+        extern fn PLSA_SET_APP_MODE_INFO(UserFunction: u32, #[opt] Argument1: usize, #[opt] Argument2: usize, #[opt] UserData: PSecBuffer, #[opt] ReturnToLsa: BOOLEAN) -> NTSTATUS;
+        extern fn PLSA_SET_SECPKG_FAILURE_REASON(Reason: SECPKG_FAILURE_REASON) -> NTSTATUS;
+        type PLSA_TOKEN_INFORMATION_NULL = *mut LSA_TOKEN_INFORMATION_NULL;
+        type PLSA_TOKEN_INFORMATION_TYPE = *mut LSA_TOKEN_INFORMATION_TYPE;
+        type PLSA_TOKEN_INFORMATION_V1 = *mut LSA_TOKEN_INFORMATION_V1;
+        type PLSA_TOKEN_INFORMATION_V2 = *mut LSA_TOKEN_INFORMATION_V1;
+        type PLSA_TOKEN_INFORMATION_V3 = *mut LSA_TOKEN_INFORMATION_V3;
+        extern fn PLSA_UNLOAD_PACKAGE() -> NTSTATUS;
+        extern fn PLSA_UPDATE_PRIMARY_CREDENTIALS(PrimaryCredentials: PSECPKG_PRIMARY_CRED, #[opt] Credentials: PSECPKG_SUPPLEMENTAL_CRED_ARRAY) -> NTSTATUS;
+        const PRIMARY_CRED_ARSO_LOGON: i32 = 2097152;
+        const PRIMARY_CRED_AUTH_ID: i32 = 512;
+        const PRIMARY_CRED_CACHED_INTERACTIVE_LOGON: i32 = 262144;
+        const PRIMARY_CRED_CACHED_LOGON: i32 = 8;
+        const PRIMARY_CRED_CLEAR_PASSWORD: i32 = 1;
+        const PRIMARY_CRED_DO_NOT_SPLIT: i32 = 1024;
+        const PRIMARY_CRED_ENCRYPTED_CREDGUARD_PASSWORD: i32 = 131072;
+        const PRIMARY_CRED_ENTERPRISE_INTERNET_USER: i32 = 65536;
+        const PRIMARY_CRED_EX: i32 = 4096;
+        const PRIMARY_CRED_FOR_PASSWORD_CHANGE: i32 = 8388608;
+        const PRIMARY_CRED_INTERACTIVE_FIDO_LOGON: i32 = 1048576;
+        const PRIMARY_CRED_INTERACTIVE_NGC_LOGON: i32 = 524288;
+        const PRIMARY_CRED_INTERACTIVE_SMARTCARD_LOGON: i32 = 64;
+        const PRIMARY_CRED_INTERNET_USER: i32 = 256;
+        const PRIMARY_CRED_LOCAL_USER: i32 = 16777216;
+        const PRIMARY_CRED_LOGON_LUA: i32 = 32;
+        const PRIMARY_CRED_LOGON_NO_TCB: i32 = 16;
+        const PRIMARY_CRED_LOGON_PACKAGE_SHIFT: i32 = 24;
+        const PRIMARY_CRED_OWF_PASSWORD: i32 = 2;
+        const PRIMARY_CRED_PACKAGE_MASK: u32 = 4278190080;
+        const PRIMARY_CRED_PACKED_CREDS: i32 = 32768;
+        const PRIMARY_CRED_PROTECTED_USER: i32 = 2048;
+        const PRIMARY_CRED_REFRESH_NEEDED: i32 = 128;
+        const PRIMARY_CRED_RESTRICTED_TS: i32 = 16384;
+        const PRIMARY_CRED_SUPPLEMENTAL: i32 = 4194304;
+        const PRIMARY_CRED_TRANSFER: i32 = 8192;
+        const PRIMARY_CRED_UPDATE: i32 = 4;
+        extern "C" fn PSAM_CREDENTIAL_UPDATE_FREE_ROUTINE(#[in] p: *mut void);
+        extern "C" fn PSAM_CREDENTIAL_UPDATE_NOTIFY_ROUTINE(ClearPassword: PUNICODE_STRING, #[size_param(2)] #[in] OldCredentials: *mut void, OldCredentialSize: u32, UserAccountControl: u32, #[opt] UPN: PUNICODE_STRING, UserName: PUNICODE_STRING, NetbiosDomainName: PUNICODE_STRING, DnsDomainName: PUNICODE_STRING, NewCredentials: *mut *mut void, NewCredentialSize: *mut u32) -> NTSTATUS;
+        extern "C" fn PSAM_CREDENTIAL_UPDATE_REGISTER_MAPPED_ENTRYPOINTS_ROUTINE(Table: *mut SAM_REGISTER_MAPPING_TABLE) -> NTSTATUS;
+        extern "C" fn PSAM_CREDENTIAL_UPDATE_REGISTER_ROUTINE(#[out] CredentialName: PUNICODE_STRING) -> BOOLEAN;
+        type PSAM_REGISTER_MAPPING_ELEMENT = *mut SAM_REGISTER_MAPPING_ELEMENT;
+        type PSAM_REGISTER_MAPPING_LIST = *mut SAM_REGISTER_MAPPING_LIST;
+        type PSAM_REGISTER_MAPPING_TABLE = *mut SAM_REGISTER_MAPPING_TABLE;
+        type PSECPKG_BYTE_VECTOR = *mut SECPKG_BYTE_VECTOR;
+        type PSECPKG_CALL_INFO = *mut SECPKG_CALL_INFO;
+        type PSECPKG_CALL_PACKAGE_MESSAGE_TYPE = *mut SECPKG_CALL_PACKAGE_MESSAGE_TYPE;
+        type PSECPKG_CALL_PACKAGE_PIN_DC_REQUEST = *mut SECPKG_CALL_PACKAGE_PIN_DC_REQUEST;
+        type PSECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST = *mut SECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST;
+        type PSECPKG_CALL_PACKAGE_UNPIN_ALL_DCS_REQUEST = *mut SECPKG_CALL_PACKAGE_UNPIN_ALL_DCS_REQUEST;
+        type PSECPKG_CLIENT_INFO = *mut SECPKG_CLIENT_INFO;
+        type PSECPKG_CLIENT_INFO_EX = *mut SECPKG_CLIENT_INFO_EX;
+        type PSECPKG_CONTEXT_THUNKS = *mut SECPKG_CONTEXT_THUNKS;
+        type PSECPKG_CREDENTIAL = *mut SECPKG_CREDENTIAL;
+        type PSECPKG_DLL_FUNCTIONS = *mut SECPKG_DLL_FUNCTIONS;
+        type PSECPKG_EVENT_DOMAIN_CHANGE = *mut SECPKG_PARAMETERS;
+        type PSECPKG_EVENT_NOTIFY = *mut SECPKG_EVENT_NOTIFY;
+        type PSECPKG_EVENT_PACKAGE_CHANGE = *mut SECPKG_EVENT_PACKAGE_CHANGE;
+        type PSECPKG_EVENT_ROLE_CHANGE = *mut SECPKG_EVENT_ROLE_CHANGE;
+        type PSECPKG_EXTENDED_INFORMATION = *mut SECPKG_EXTENDED_INFORMATION;
+        type PSECPKG_EXTRA_OIDS = *mut SECPKG_EXTRA_OIDS;
+        type PSECPKG_FAILURE_REASON = *mut SECPKG_FAILURE_REASON;
+        type PSECPKG_FAILURE_SPECIAL_REASON = *mut SECPKG_FAILURE_SPECIAL_REASON;
+        type PSECPKG_FUNCTION_TABLE = *mut SECPKG_FUNCTION_TABLE;
+        type PSECPKG_GSS_INFO = *mut SECPKG_GSS_INFO;
+        type PSECPKG_KERNEL_FUNCTIONS = *mut SECPKG_KERNEL_FUNCTIONS;
+        type PSECPKG_KERNEL_FUNCTION_TABLE = *mut SECPKG_KERNEL_FUNCTION_TABLE;
+        type PSECPKG_MUTUAL_AUTH_LEVEL = *mut SECPKG_MUTUAL_AUTH_LEVEL;
+        type PSECPKG_NEGO2_INFO = *mut SECPKG_NEGO2_INFO;
+        type PSECPKG_NTLM_TARGETINFO = *mut SECPKG_NTLM_TARGETINFO;
+        type PSECPKG_PARAMETERS = *mut SECPKG_PARAMETERS;
+        type PSECPKG_POST_LOGON_USER_INFO = *mut SECPKG_POST_LOGON_USER_INFO;
+        type PSECPKG_PRIMARY_CRED = *mut SECPKG_PRIMARY_CRED;
+        type PSECPKG_PRIMARY_CRED_EX = *mut SECPKG_PRIMARY_CRED_EX;
+        type PSECPKG_REDIRECTED_LOGON_BUFFER = *mut SECPKG_REDIRECTED_LOGON_BUFFER;
+        type PSECPKG_SERIALIZED_OID = *mut SECPKG_SERIALIZED_OID;
+        type PSECPKG_SHORT_VECTOR = *mut SECPKG_SHORT_VECTOR;
+        type PSECPKG_SUPPLEMENTAL_CRED = *mut SECPKG_SUPPLEMENTAL_CRED;
+        type PSECPKG_SUPPLEMENTAL_CRED_ARRAY = *mut SECPKG_SUPPLEMENTAL_CRED_ARRAY;
+        type PSECPKG_SUPPLIED_CREDENTIAL = *mut SECPKG_SUPPLIED_CREDENTIAL;
+        type PSECPKG_SURROGATE_LOGON = *mut SECPKG_SURROGATE_LOGON;
+        type PSECPKG_SURROGATE_LOGON_ENTRY = *mut SECPKG_SURROGATE_LOGON_ENTRY;
+        type PSECPKG_TARGETINFO = *mut SECPKG_TARGETINFO;
+        type PSECPKG_USER_FUNCTION_TABLE = *mut SECPKG_USER_FUNCTION_TABLE;
+        type PSECPKG_WOW_CLIENT_DLL = *mut SECPKG_WOW_CLIENT_DLL;
+        type PSECURITY_USER_DATA = *mut SECURITY_USER_DATA;
+        type PSEC_WINNT_AUTH_IDENTITY32 = *mut SEC_WINNT_AUTH_IDENTITY32;
+        type PSEC_WINNT_AUTH_IDENTITY_EX32 = *mut SEC_WINNT_AUTH_IDENTITY_EX32;
+        type PSecPkgContext_SaslContext = *mut SecPkgContext_SaslContext;
+        type PSecurityUserData = *mut SECURITY_USER_DATA;
+        #[encoding("ansi")]
+        const SAM_CREDENTIAL_UPDATE_FREE_ROUTINE: String = "CredentialUpdateFree";
+        #[encoding("ansi")]
+        const SAM_CREDENTIAL_UPDATE_NOTIFY_ROUTINE: String = "CredentialUpdateNotify";
+        #[encoding("ansi")]
+        const SAM_CREDENTIAL_UPDATE_REGISTER_MAPPED_ENTRYPOINTS_ROUTINE: String = "RegisterMappedEntrypoints";
+        #[encoding("ansi")]
+        const SAM_CREDENTIAL_UPDATE_REGISTER_ROUTINE: String = "CredentialUpdateRegister";
+        struct SAM_REGISTER_MAPPING_ELEMENT {
+            Original: PSTR,
+            Mapped: PSTR,
+            Continuable: BOOLEAN,
+        }
+        struct SAM_REGISTER_MAPPING_LIST {
+            Count: u32,
+            Elements: PSAM_REGISTER_MAPPING_ELEMENT,
+        }
+        struct SAM_REGISTER_MAPPING_TABLE {
+            Count: u32,
+            Lists: PSAM_REGISTER_MAPPING_LIST,
+        }
+        const SECBUFFER_KERNEL_MAP: i32 = 536870912;
+        const SECBUFFER_UNMAPPED: i32 = 1073741824;
+        const SECPKG_ALL_PACKAGES: u32 = 4294967294;
+        const SECPKG_ANSI_ATTRIBUTE: i32 = 0;
+        const SECPKG_ATTR_SASL_CONTEXT: i32 = 65536;
+        const SECPKG_ATTR_THUNK_ALL: i32 = 65536;
+        struct SECPKG_BYTE_VECTOR {
+            ByteArrayOffset: u32,
+            ByteArrayLength: u16,
+        }
+        const SECPKG_CALL_AGENT_LOGON: i32 = 524288;
+        const SECPKG_CALL_ANSI: i32 = 2;
+        const SECPKG_CALL_ASYNC_UPDATE: i32 = 4096;
+        const SECPKG_CALL_BUFFER_MARSHAL: i32 = 65536;
+        const SECPKG_CALL_CLEANUP: i32 = 32;
+        const SECPKG_CALL_CLOUDAP_CONNECT: i32 = 262144;
+        struct SECPKG_CALL_INFO {
+            ProcessId: u32,
+            ThreadId: u32,
+            Attributes: u32,
+            CallCount: u32,
+            MechOid: *mut void,
+        }
+        const SECPKG_CALL_IN_PROC: i32 = 16;
+        const SECPKG_CALL_IS_TCB: i32 = 512;
+        const SECPKG_CALL_KERNEL_MODE: i32 = 1;
+        const SECPKG_CALL_NEGO: i32 = 16384;
+        const SECPKG_CALL_NEGO_EXTENDER: i32 = 32768;
+        const SECPKG_CALL_NETWORK_ONLY: i32 = 1024;
+        #[repr(i32)]
+        enum SECPKG_CALL_PACKAGE_MESSAGE_TYPE {
+            SecPkgCallPackageMinMessage = 1024,
+            SecPkgCallPackagePinDcMessage = 1024,
+            SecPkgCallPackageUnpinAllDcsMessage = 1025,
+            SecPkgCallPackageTransferCredMessage = 1026,
+            SecPkgCallPackageMaxMessage = 1026,
+        }
+        struct SECPKG_CALL_PACKAGE_PIN_DC_REQUEST {
+            MessageType: u32,
+            Flags: u32,
+            DomainName: UNICODE_STRING,
+            DcName: UNICODE_STRING,
+            DcFlags: u32,
+        }
+        struct SECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST {
+            MessageType: u32,
+            OriginLogonId: LUID,
+            DestinationLogonId: LUID,
+            Flags: u32,
+        }
+        const SECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST_FLAG_CLEANUP_CREDENTIALS: i32 = 2;
+        const SECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST_FLAG_OPTIMISTIC_LOGON: i32 = 1;
+        const SECPKG_CALL_PACKAGE_TRANSFER_CRED_REQUEST_FLAG_TO_SSO_SESSION: i32 = 4;
+        struct SECPKG_CALL_PACKAGE_UNPIN_ALL_DCS_REQUEST {
+            MessageType: u32,
+            Flags: u32,
+        }
+        const SECPKG_CALL_PROCESS_TERM: i32 = 256;
+        const SECPKG_CALL_RECURSIVE: i32 = 8;
+        const SECPKG_CALL_SYSTEM_PROC: i32 = 8192;
+        const SECPKG_CALL_THREAD_TERM: i32 = 128;
+        const SECPKG_CALL_UNLOCK: i32 = 131072;
+        const SECPKG_CALL_URGENT: i32 = 4;
+        const SECPKG_CALL_WINLOGON: i32 = 2048;
+        const SECPKG_CALL_WOWA32: i32 = 262144;
+        const SECPKG_CALL_WOWCLIENT: i32 = 64;
+        const SECPKG_CALL_WOWX86: i32 = 64;
+        struct SECPKG_CLIENT_INFO {
+            LogonId: LUID,
+            ProcessID: u32,
+            ThreadID: u32,
+            HasTcbPrivilege: BOOLEAN,
+            Impersonating: BOOLEAN,
+            Restricted: BOOLEAN,
+            ClientFlags: u8,
+            ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL,
+            ClientToken: HANDLE,
+        }
+        struct SECPKG_CLIENT_INFO_EX {
+            LogonId: LUID,
+            ProcessID: u32,
+            ThreadID: u32,
+            HasTcbPrivilege: BOOLEAN,
+            Impersonating: BOOLEAN,
+            Restricted: BOOLEAN,
+            ClientFlags: u8,
+            ImpersonationLevel: SECURITY_IMPERSONATION_LEVEL,
+            ClientToken: HANDLE,
+            IdentificationLogonId: LUID,
+            IdentificationToken: HANDLE,
+        }
+        const SECPKG_CLIENT_PROCESS_TERMINATED: i32 = 1;
+        const SECPKG_CLIENT_THREAD_TERMINATED: i32 = 2;
+        struct SECPKG_CONTEXT_THUNKS {
+            InfoLevelCount: u32,
+            Levels: [u32; 1],
+        }
+        struct SECPKG_CREDENTIAL {
+            Version: u64,
+            cbHeaderLength: u16,
+            cbStructureLength: u32,
+            ClientProcess: u32,
+            ClientThread: u32,
+            LogonId: LUID,
+            ClientToken: HANDLE,
+            SessionId: u32,
+            ModifiedId: LUID,
+            fCredentials: u32,
+            Flags: u32,
+            PrincipalName: SECPKG_BYTE_VECTOR,
+            PackageList: SECPKG_BYTE_VECTOR,
+            MarshaledSuppliedCreds: SECPKG_BYTE_VECTOR,
+        }
+        const SECPKG_CREDENTIAL_ATTRIBUTE: i32 = 0;
+        const SECPKG_CREDENTIAL_FLAGS_CALLER_HAS_TCB: i32 = 1;
+        const SECPKG_CREDENTIAL_FLAGS_CREDMAN_CRED: i32 = 2;
+        const SECPKG_CREDENTIAL_VERSION: i32 = 201;
+        struct SECPKG_DLL_FUNCTIONS {
+            AllocateHeap: PLSA_ALLOCATE_LSA_HEAP,
+            FreeHeap: PLSA_FREE_LSA_HEAP,
+            RegisterCallback: PLSA_REGISTER_CALLBACK,
+            LocatePackageById: PLSA_LOCATE_PKG_BY_ID,
+        }
+        type SECPKG_EVENT_DOMAIN_CHANGE = SECPKG_PARAMETERS;
+        struct SECPKG_EVENT_NOTIFY {
+            EventClass: u32,
+            Reserved: u32,
+            EventDataSize: u32,
+            EventData: *mut void,
+            PackageParameter: *mut void,
+        }
+        struct SECPKG_EVENT_PACKAGE_CHANGE {
+            ChangeType: u32,
+            PackageId: LSA_SEC_HANDLE,
+            PackageName: SECURITY_STRING,
+        }
+        struct SECPKG_EVENT_ROLE_CHANGE {
+            PreviousRole: u32,
+            NewRole: u32,
+        }
+        struct SECPKG_EXTENDED_INFORMATION {
+            Class: SECPKG_EXTENDED_INFORMATION_CLASS,
+            Info: union {
+                GssInfo: SECPKG_GSS_INFO,
+                ContextThunks: SECPKG_CONTEXT_THUNKS,
+                MutualAuthLevel: SECPKG_MUTUAL_AUTH_LEVEL,
+                WowClientDll: SECPKG_WOW_CLIENT_DLL,
+                ExtraOids: SECPKG_EXTRA_OIDS,
+                Nego2Info: SECPKG_NEGO2_INFO,
+            },
+        }
+        #[repr(i32)]
+        enum SECPKG_EXTENDED_INFORMATION_CLASS {
+            SecpkgGssInfo = 1,
+            SecpkgContextThunks = 2,
+            SecpkgMutualAuthLevel = 3,
+            SecpkgWowClientDll = 4,
+            SecpkgExtraOids = 5,
+            SecpkgMaxInfo = 6,
+            SecpkgNego2Info = 7,
+        }
+        struct SECPKG_EXTRA_OIDS {
+            OidCount: u32,
+            Oids: [SECPKG_SERIALIZED_OID; 1],
+        }
+        struct SECPKG_FAILURE_REASON {
+            Status: NTSTATUS,
+            Reason: SECPKG_FAILURE_SPECIAL_REASON,
+        }
+        #[repr(i32)]
+        enum SECPKG_FAILURE_SPECIAL_REASON {
+            SecpkgFailureReason_Unknown = 0,
+            SecpkgFailureReason_NoFailure = 1,
+            SecpkgFailureReason_LocalAccount = 2,
+            SecpkgFailureReason_DomainAccount = 3,
+            SecpkgFailureReason_CloudAccount = 4,
+            SecpkgFailureReason_NullTarget = 5,
+            SecpkgFailureReason_UnknownTarget = 6,
+            SecpkgFailureReason_IpAddress = 7,
+            SecpkgFailureReason_DupTarget = 8,
+            SecpkgFailureReason_NoLineOfSight = 9,
+            SecpkgFailureReason_Loopback = 10,
+            SecpkgFailureReason_NullSession = 11,
+            SecpkgFailureReason_GlobalSPN = 12,
+        }
+        struct SECPKG_FUNCTION_TABLE {
+            InitializePackage: PLSA_AP_INITIALIZE_PACKAGE,
+            LogonUserA: PLSA_AP_LOGON_USER,
+            CallPackage: PLSA_AP_CALL_PACKAGE,
+            LogonTerminated: PLSA_AP_LOGON_TERMINATED,
+            CallPackageUntrusted: PLSA_AP_CALL_PACKAGE_UNTRUSTED,
+            CallPackagePassthrough: PLSA_AP_CALL_PACKAGE_PASSTHROUGH,
+            LogonUserExA: PLSA_AP_LOGON_USER_EX,
+            LogonUserEx2: PLSA_AP_LOGON_USER_EX2,
+            Initialize: SpInitializeFn,
+            Shutdown: SpShutdownFn,
+            GetInfo: SpGetInfoFn,
+            AcceptCredentials: SpAcceptCredentialsFn,
+            AcquireCredentialsHandleA: SpAcquireCredentialsHandleFn,
+            QueryCredentialsAttributesA: SpQueryCredentialsAttributesFn,
+            FreeCredentialsHandle: SpFreeCredentialsHandleFn,
+            SaveCredentials: SpSaveCredentialsFn,
+            GetCredentials: SpGetCredentialsFn,
+            DeleteCredentials: SpDeleteCredentialsFn,
+            InitLsaModeContext: SpInitLsaModeContextFn,
+            AcceptLsaModeContext: SpAcceptLsaModeContextFn,
+            DeleteContext: SpDeleteContextFn,
+            ApplyControlToken: SpApplyControlTokenFn,
+            GetUserInfo: SpGetUserInfoFn,
+            GetExtendedInformation: SpGetExtendedInformationFn,
+            QueryContextAttributesA: SpQueryContextAttributesFn,
+            AddCredentialsA: SpAddCredentialsFn,
+            SetExtendedInformation: SpSetExtendedInformationFn,
+            SetContextAttributesA: SpSetContextAttributesFn,
+            SetCredentialsAttributesA: SpSetCredentialsAttributesFn,
+            ChangeAccountPasswordA: SpChangeAccountPasswordFn,
+            QueryMetaData: SpQueryMetaDataFn,
+            ExchangeMetaData: SpExchangeMetaDataFn,
+            GetCredUIContext: SpGetCredUIContextFn,
+            UpdateCredentials: SpUpdateCredentialsFn,
+            ValidateTargetInfo: SpValidateTargetInfoFn,
+            PostLogonUser: LSA_AP_POST_LOGON_USER,
+            GetRemoteCredGuardLogonBuffer: SpGetRemoteCredGuardLogonBufferFn,
+            GetRemoteCredGuardSupplementalCreds: SpGetRemoteCredGuardSupplementalCredsFn,
+            GetTbalSupplementalCreds: SpGetTbalSupplementalCredsFn,
+            LogonUserEx3: PLSA_AP_LOGON_USER_EX3,
+            PreLogonUserSurrogate: PLSA_AP_PRE_LOGON_USER_SURROGATE,
+            PostLogonUserSurrogate: PLSA_AP_POST_LOGON_USER_SURROGATE,
+            ExtractTargetInfo: SpExtractTargetInfoFn,
+        }
+        struct SECPKG_GSS_INFO {
+            EncodedIdLength: u32,
+            EncodedId: [u8; 4],
+        }
+        const SECPKG_INTERFACE_VERSION: i32 = 65536;
+        const SECPKG_INTERFACE_VERSION_10: i32 = 33554432;
+        const SECPKG_INTERFACE_VERSION_11: i32 = 67108864;
+        const SECPKG_INTERFACE_VERSION_2: i32 = 131072;
+        const SECPKG_INTERFACE_VERSION_3: i32 = 262144;
+        const SECPKG_INTERFACE_VERSION_4: i32 = 524288;
+        const SECPKG_INTERFACE_VERSION_5: i32 = 1048576;
+        const SECPKG_INTERFACE_VERSION_6: i32 = 2097152;
+        const SECPKG_INTERFACE_VERSION_7: i32 = 4194304;
+        const SECPKG_INTERFACE_VERSION_8: i32 = 8388608;
+        const SECPKG_INTERFACE_VERSION_9: i32 = 16777216;
+        struct SECPKG_KERNEL_FUNCTIONS {
+            AllocateHeap: PLSA_ALLOCATE_LSA_HEAP,
+            FreeHeap: PLSA_FREE_LSA_HEAP,
+            CreateContextList: PKSEC_CREATE_CONTEXT_LIST,
+            InsertListEntry: PKSEC_INSERT_LIST_ENTRY,
+            ReferenceListEntry: PKSEC_REFERENCE_LIST_ENTRY,
+            DereferenceListEntry: PKSEC_DEREFERENCE_LIST_ENTRY,
+            SerializeWinntAuthData: PKSEC_SERIALIZE_WINNT_AUTH_DATA,
+            SerializeSchannelAuthData: PKSEC_SERIALIZE_SCHANNEL_AUTH_DATA,
+            LocatePackageById: PKSEC_LOCATE_PKG_BY_ID,
+        }
+        struct SECPKG_KERNEL_FUNCTION_TABLE {
+            Initialize: KspInitPackageFn,
+            DeleteContext: KspDeleteContextFn,
+            InitContext: KspInitContextFn,
+            MapHandle: KspMapHandleFn,
+            Sign: KspMakeSignatureFn,
+            Verify: KspVerifySignatureFn,
+            Seal: KspSealMessageFn,
+            Unseal: KspUnsealMessageFn,
+            GetToken: KspGetTokenFn,
+            QueryAttributes: KspQueryAttributesFn,
+            CompleteToken: KspCompleteTokenFn,
+            ExportContext: SpExportSecurityContextFn,
+            ImportContext: SpImportSecurityContextFn,
+            SetPackagePagingMode: KspSetPagingModeFn,
+            SerializeAuthData: KspSerializeAuthDataFn,
+        }
+        #[encoding("ansi")]
+        const SECPKG_LSAMODEINIT_NAME: String = "SpLsaModeInitialize";
+        const SECPKG_MAX_OID_LENGTH: i32 = 32;
+        const SECPKG_MSVAV_FLAGS_VALID: i32 = 1;
+        const SECPKG_MSVAV_TIMESTAMP_VALID: i32 = 2;
+        struct SECPKG_MUTUAL_AUTH_LEVEL {
+            MutualAuthLevel: u32,
+        }
+        #[repr(i32)]
+        enum SECPKG_NAME_TYPE {
+            SecNameSamCompatible = 0,
+            SecNameAlternateId = 1,
+            SecNameFlat = 2,
+            SecNameDN = 3,
+            SecNameSPN = 4,
+        }
+        struct SECPKG_NEGO2_INFO {
+            AuthScheme: [u8; 16],
+            PackageFlags: u32,
+        }
+        struct SECPKG_NTLM_TARGETINFO {
+            Flags: u32,
+            MsvAvNbComputerName: PWSTR,
+            MsvAvNbDomainName: PWSTR,
+            MsvAvDnsComputerName: PWSTR,
+            MsvAvDnsDomainName: PWSTR,
+            MsvAvDnsTreeName: PWSTR,
+            MsvAvFlags: u32,
+            MsvAvTimestamp: FILETIME,
+            MsvAvTargetName: PWSTR,
+        }
+        const SECPKG_PACKAGE_CHANGE_LOAD: i32 = 0;
+        const SECPKG_PACKAGE_CHANGE_SELECT: i32 = 2;
+        const SECPKG_PACKAGE_CHANGE_UNLOAD: i32 = 1;
+        struct SECPKG_PARAMETERS {
+            Version: u32,
+            MachineState: u32,
+            SetupMode: u32,
+            DomainSid: PSID,
+            DomainName: UNICODE_STRING,
+            DnsDomainName: UNICODE_STRING,
+            DomainGuid: GUID,
+        }
+        struct SECPKG_POST_LOGON_USER_INFO {
+            Flags: u32,
+            LogonId: LUID,
+            LinkedLogonId: LUID,
+        }
+        struct SECPKG_PRIMARY_CRED {
+            LogonId: LUID,
+            DownlevelName: UNICODE_STRING,
+            DomainName: UNICODE_STRING,
+            Password: UNICODE_STRING,
+            OldPassword: UNICODE_STRING,
+            UserSid: PSID,
+            Flags: u32,
+            DnsDomainName: UNICODE_STRING,
+            Upn: UNICODE_STRING,
+            LogonServer: UNICODE_STRING,
+            Spare1: UNICODE_STRING,
+            Spare2: UNICODE_STRING,
+            Spare3: UNICODE_STRING,
+            Spare4: UNICODE_STRING,
+        }
+        struct SECPKG_PRIMARY_CRED_EX {
+            LogonId: LUID,
+            DownlevelName: UNICODE_STRING,
+            DomainName: UNICODE_STRING,
+            Password: UNICODE_STRING,
+            OldPassword: UNICODE_STRING,
+            UserSid: PSID,
+            Flags: u32,
+            DnsDomainName: UNICODE_STRING,
+            Upn: UNICODE_STRING,
+            LogonServer: UNICODE_STRING,
+            Spare1: UNICODE_STRING,
+            Spare2: UNICODE_STRING,
+            Spare3: UNICODE_STRING,
+            Spare4: UNICODE_STRING,
+            PackageId: usize,
+            PrevLogonId: LUID,
+            FlagsEx: u32,
+        }
+        const SECPKG_PRIMARY_CRED_EX_FLAGS_EX_DELEGATION_TOKEN: i32 = 1;
+        struct SECPKG_REDIRECTED_LOGON_BUFFER {
+            RedirectedLogonGuid: GUID,
+            RedirectedLogonHandle: HANDLE,
+            Init: PLSA_REDIRECTED_LOGON_INIT,
+            Callback: PLSA_REDIRECTED_LOGON_CALLBACK,
+            CleanupCallback: PLSA_REDIRECTED_LOGON_CLEANUP_CALLBACK,
+            GetLogonCreds: PLSA_REDIRECTED_LOGON_GET_LOGON_CREDS,
+            GetSupplementalCreds: PLSA_REDIRECTED_LOGON_GET_SUPP_CREDS,
+            GetRedirectedLogonSid: PLSA_REDIRECTED_LOGON_GET_SID,
+        }
+        struct SECPKG_SERIALIZED_OID {
+            OidLength: u32,
+            OidAttributes: u32,
+            OidValue: [u8; 32],
+        }
+        #[repr(i32)]
+        enum SECPKG_SESSIONINFO_TYPE {
+            SecSessionPrimaryCred = 0,
+        }
+        struct SECPKG_SHORT_VECTOR {
+            ShortArrayOffset: u32,
+            ShortArrayCount: u16,
+        }
+        const SECPKG_STATE_CRED_ISOLATION_ENABLED: i32 = 32;
+        const SECPKG_STATE_DOMAIN_CONTROLLER: i32 = 4;
+        const SECPKG_STATE_ENCRYPTION_PERMITTED: i32 = 1;
+        const SECPKG_STATE_RESERVED_1: u32 = 2147483648;
+        const SECPKG_STATE_STANDALONE: i32 = 16;
+        const SECPKG_STATE_STRONG_ENCRYPTION_PERMITTED: i32 = 2;
+        const SECPKG_STATE_WORKSTATION: i32 = 8;
+        struct SECPKG_SUPPLEMENTAL_CRED {
+            PackageName: UNICODE_STRING,
+            CredentialSize: u32,
+            Credentials: PUCHAR,
+        }
+        struct SECPKG_SUPPLEMENTAL_CRED_ARRAY {
+            CredentialCount: u32,
+            Credentials: [SECPKG_SUPPLEMENTAL_CRED; 1],
+        }
+        struct SECPKG_SUPPLIED_CREDENTIAL {
+            cbHeaderLength: u16,
+            cbStructureLength: u16,
+            UserName: SECPKG_SHORT_VECTOR,
+            DomainName: SECPKG_SHORT_VECTOR,
+            PackedCredentials: SECPKG_BYTE_VECTOR,
+            CredFlags: u32,
+        }
+        struct SECPKG_SURROGATE_LOGON {
+            Version: u32,
+            SurrogateLogonID: LUID,
+            EntryCount: u32,
+            Entries: PSECPKG_SURROGATE_LOGON_ENTRY,
+        }
+        struct SECPKG_SURROGATE_LOGON_ENTRY {
+            Type: GUID,
+            Data: *mut void,
+        }
+        const SECPKG_SURROGATE_LOGON_VERSION_1: i32 = 1;
+        struct SECPKG_TARGETINFO {
+            DomainSid: PSID,
+            ComputerName: PCWSTR,
+        }
+        const SECPKG_UNICODE_ATTRIBUTE: u32 = 2147483648;
+        #[encoding("ansi")]
+        const SECPKG_USERMODEINIT_NAME: String = "SpUserModeInitialize";
+        struct SECPKG_USER_FUNCTION_TABLE {
+            InstanceInit: SpInstanceInitFn,
+            InitUserModeContext: SpInitUserModeContextFn,
+            MakeSignature: SpMakeSignatureFn,
+            VerifySignature: SpVerifySignatureFn,
+            SealMessage: SpSealMessageFn,
+            UnsealMessage: SpUnsealMessageFn,
+            GetContextToken: SpGetContextTokenFn,
+            QueryContextAttributesA: SpQueryContextAttributesFn,
+            CompleteAuthToken: SpCompleteAuthTokenFn,
+            DeleteUserModeContext: SpDeleteContextFn,
+            FormatCredentials: SpFormatCredentialsFn,
+            MarshallSupplementalCreds: SpMarshallSupplementalCredsFn,
+            ExportContext: SpExportSecurityContextFn,
+            ImportContext: SpImportSecurityContextFn,
+            MarshalAttributeData: SpMarshalAttributeDataFn,
+        }
+        struct SECPKG_WOW_CLIENT_DLL {
+            WowClientDllPath: SECURITY_STRING,
+        }
+        struct SECURITY_USER_DATA {
+            UserName: SECURITY_STRING,
+            LogonDomainName: SECURITY_STRING,
+            LogonServer: SECURITY_STRING,
+            pSid: PSID,
+        }
+        type SEC_ATTRS = LPSECURITY_ATTRIBUTES;
+        type SEC_THREAD_START = LPTHREAD_START_ROUTINE;
+        struct SEC_WINNT_AUTH_IDENTITY32 {
+            User: u32,
+            UserLength: u32,
+            Domain: u32,
+            DomainLength: u32,
+            Password: u32,
+            PasswordLength: u32,
+            Flags: u32,
+        }
+        struct SEC_WINNT_AUTH_IDENTITY_EX32 {
+            Version: u32,
+            Length: u32,
+            User: u32,
+            UserLength: u32,
+            Domain: u32,
+            DomainLength: u32,
+            Password: u32,
+            PasswordLength: u32,
+            Flags: u32,
+            PackageList: u32,
+            PackageListLength: u32,
+        }
+        #[encoding("ansi")]
+        const SP_ACCEPT_CREDENTIALS_NAME: String = "SpAcceptCredentials\0";
+        struct SecPkgContext_SaslContext {
+            SaslContext: *mut void,
+        }
+        type SecurityUserData = SECURITY_USER_DATA;
+        extern fn SpAcceptCredentialsFn(LogonType: SECURITY_LOGON_TYPE, AccountName: PUNICODE_STRING, #[opt] PrimaryCredentials: PSECPKG_PRIMARY_CRED, #[opt] SupplementalCredentials: PSECPKG_SUPPLEMENTAL_CRED) -> NTSTATUS;
+        extern fn SpAcceptLsaModeContextFn(#[opt] CredentialHandle: LSA_SEC_HANDLE, #[opt] ContextHandle: LSA_SEC_HANDLE, InputBuffer: PSecBufferDesc, ContextRequirements: u32, TargetDataRep: u32, #[out] NewContextHandle: PLSA_SEC_HANDLE, #[in] #[out] OutputBuffer: PSecBufferDesc, #[out] ContextAttributes: PULONG, #[out] ExpirationTime: PTimeStamp, #[out] MappedContext: PBOOLEAN, #[out] ContextData: PSecBuffer) -> NTSTATUS;
+        extern fn SpAcquireCredentialsHandleFn(#[opt] PrincipalName: PUNICODE_STRING, CredentialUseFlags: u32, #[opt] LogonId: PLUID, #[in] #[opt] AuthorizationData: *mut void, #[in] #[opt] GetKeyFunciton: *mut void, #[in] #[opt] GetKeyArgument: *mut void, #[out] CredentialHandle: PLSA_SEC_HANDLE, #[out] ExpirationTime: PTimeStamp) -> NTSTATUS;
+        extern fn SpAddCredentialsFn(CredentialHandle: LSA_SEC_HANDLE, #[opt] PrincipalName: PUNICODE_STRING, Package: PUNICODE_STRING, CredentialUseFlags: u32, #[in] AuthorizationData: *mut void, #[in] GetKeyFunciton: *mut void, #[in] GetKeyArgument: *mut void, #[out] ExpirationTime: PTimeStamp) -> NTSTATUS;
+        extern fn SpApplyControlTokenFn(ContextHandle: LSA_SEC_HANDLE, ControlToken: PSecBufferDesc) -> NTSTATUS;
+        extern fn SpChangeAccountPasswordFn(pDomainName: PUNICODE_STRING, pAccountName: PUNICODE_STRING, pOldPassword: PUNICODE_STRING, pNewPassword: PUNICODE_STRING, Impersonating: BOOLEAN, #[in] #[out] pOutput: PSecBufferDesc) -> NTSTATUS;
+        extern fn SpCompleteAuthTokenFn(ContextHandle: LSA_SEC_HANDLE, InputBuffer: PSecBufferDesc) -> NTSTATUS;
+        extern fn SpDeleteContextFn(ContextHandle: LSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn SpDeleteCredentialsFn(CredentialHandle: LSA_SEC_HANDLE, Key: PSecBuffer) -> NTSTATUS;
+        extern fn SpExchangeMetaDataFn(#[opt] CredentialHandle: LSA_SEC_HANDLE, #[opt] TargetName: PUNICODE_STRING, ContextRequirements: u32, MetaDataLength: u32, #[size_param(3)] MetaData: PUCHAR, #[in] #[out] ContextHandle: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn SpExportSecurityContextFn(phContext: LSA_SEC_HANDLE, fFlags: u32, #[out] pPackedContext: PSecBuffer, #[out] #[opt] pToken: PHANDLE) -> NTSTATUS;
+        extern fn SpExtractTargetInfoFn(#[opt] ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] #[opt] ClientBufferBase: *mut void, SubmitBufferLength: u32, ppvTargetInfo: *mut *mut void, pcbTargetInfo: *mut u32) -> NTSTATUS;
+        extern fn SpFormatCredentialsFn(Credentials: PSecBuffer, #[out] FormattedCredentials: PSecBuffer) -> NTSTATUS;
+        extern fn SpFreeCredentialsHandleFn(CredentialHandle: LSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn SpGetContextTokenFn(ContextHandle: LSA_SEC_HANDLE, #[out] ImpersonationToken: PHANDLE) -> NTSTATUS;
+        extern fn SpGetCredUIContextFn(ContextHandle: LSA_SEC_HANDLE, #[in] CredType: *mut GUID, #[out] FlatCredUIContextLength: PULONG, FlatCredUIContext: *mut PUCHAR) -> NTSTATUS;
+        extern fn SpGetCredentialsFn(CredentialHandle: LSA_SEC_HANDLE, #[in] #[out] Credentials: PSecBuffer) -> NTSTATUS;
+        extern fn SpGetExtendedInformationFn(Class: SECPKG_EXTENDED_INFORMATION_CLASS, ppInformation: *mut PSECPKG_EXTENDED_INFORMATION) -> NTSTATUS;
+        extern fn SpGetInfoFn(#[out] PackageInfo: PSecPkgInfoA) -> NTSTATUS;
+        extern fn SpGetRemoteCredGuardLogonBufferFn(CredHandle: LSA_SEC_HANDLE, ContextHandle: LSA_SEC_HANDLE, TargetName: *const UNICODE_STRING, #[out] RedirectedLogonHandle: PHANDLE, Callback: *mut PLSA_REDIRECTED_LOGON_CALLBACK, CleanupCallback: *mut PLSA_REDIRECTED_LOGON_CLEANUP_CALLBACK, #[out] LogonBufferSize: PULONG, LogonBuffer: *mut *mut void) -> NTSTATUS;
+        extern fn SpGetRemoteCredGuardSupplementalCredsFn(CredHandle: LSA_SEC_HANDLE, TargetName: *const UNICODE_STRING, #[out] RedirectedLogonHandle: PHANDLE, Callback: *mut PLSA_REDIRECTED_LOGON_CALLBACK, CleanupCallback: *mut PLSA_REDIRECTED_LOGON_CLEANUP_CALLBACK, #[out] SupplementalCredsSize: PULONG, SupplementalCreds: *mut *mut void) -> NTSTATUS;
+        extern fn SpGetTbalSupplementalCredsFn(LogonId: LUID, #[out] SupplementalCredsSize: PULONG, SupplementalCreds: *mut *mut void) -> NTSTATUS;
+        extern fn SpGetUserInfoFn(LogonId: PLUID, Flags: u32, UserData: *mut PSecurityUserData) -> NTSTATUS;
+        extern fn SpImportSecurityContextFn(pPackedContext: PSecBuffer, #[opt] Token: HANDLE, #[out] phContext: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn SpInitLsaModeContextFn(#[opt] CredentialHandle: LSA_SEC_HANDLE, #[opt] ContextHandle: LSA_SEC_HANDLE, #[opt] TargetName: PUNICODE_STRING, ContextRequirements: u32, TargetDataRep: u32, InputBuffers: PSecBufferDesc, #[out] NewContextHandle: PLSA_SEC_HANDLE, #[in] #[out] OutputBuffers: PSecBufferDesc, #[out] ContextAttributes: PULONG, #[out] ExpirationTime: PTimeStamp, #[out] MappedContext: PBOOLEAN, #[out] ContextData: PSecBuffer) -> NTSTATUS;
+        extern fn SpInitUserModeContextFn(ContextHandle: LSA_SEC_HANDLE, PackedContext: PSecBuffer) -> NTSTATUS;
+        extern fn SpInitializeFn(PackageId: usize, Parameters: PSECPKG_PARAMETERS, FunctionTable: PLSA_SECPKG_FUNCTION_TABLE) -> NTSTATUS;
+        extern fn SpInstanceInitFn(Version: u32, FunctionTable: PSECPKG_DLL_FUNCTIONS, UserFunctions: *mut *mut void) -> NTSTATUS;
+        extern fn SpLsaModeInitializeFn(LsaVersion: u32, #[out] PackageVersion: PULONG, ppTables: *mut PSECPKG_FUNCTION_TABLE, #[out] pcTables: PULONG) -> NTSTATUS;
+        extern fn SpMakeSignatureFn(ContextHandle: LSA_SEC_HANDLE, QualityOfProtection: u32, MessageBuffers: PSecBufferDesc, MessageSequenceNumber: u32) -> NTSTATUS;
+        extern fn SpMarshalAttributeDataFn(AttributeInfo: u32, Attribute: u32, AttributeDataSize: u32, #[size_param(2)] AttributeData: PBYTE, #[out] MarshaledAttributeDataSize: PULONG, MarshaledAttributeData: *mut PBYTE) -> NTSTATUS;
+        extern fn SpMarshallSupplementalCredsFn(CredentialSize: u32, #[size_param(0)] Credentials: PUCHAR, #[out] MarshalledCredSize: PULONG, MarshalledCreds: *mut *mut void) -> NTSTATUS;
+        extern fn SpQueryContextAttributesFn(ContextHandle: LSA_SEC_HANDLE, ContextAttribute: u32, #[in] #[out] Buffer: *mut void) -> NTSTATUS;
+        extern fn SpQueryCredentialsAttributesFn(CredentialHandle: LSA_SEC_HANDLE, CredentialAttribute: u32, #[in] #[out] Buffer: *mut void) -> NTSTATUS;
+        extern fn SpQueryMetaDataFn(#[opt] CredentialHandle: LSA_SEC_HANDLE, #[opt] TargetName: PUNICODE_STRING, ContextRequirements: u32, #[out] MetaDataLength: PULONG, MetaData: *mut PUCHAR, #[in] #[out] ContextHandle: PLSA_SEC_HANDLE) -> NTSTATUS;
+        extern fn SpSaveCredentialsFn(CredentialHandle: LSA_SEC_HANDLE, Credentials: PSecBuffer) -> NTSTATUS;
+        extern fn SpSealMessageFn(ContextHandle: LSA_SEC_HANDLE, QualityOfProtection: u32, MessageBuffers: PSecBufferDesc, MessageSequenceNumber: u32) -> NTSTATUS;
+        extern fn SpSetContextAttributesFn(ContextHandle: LSA_SEC_HANDLE, ContextAttribute: u32, #[size_param(3)] #[in] Buffer: *mut void, BufferSize: u32) -> NTSTATUS;
+        extern fn SpSetCredentialsAttributesFn(CredentialHandle: LSA_SEC_HANDLE, CredentialAttribute: u32, #[size_param(3)] #[in] Buffer: *mut void, BufferSize: u32) -> NTSTATUS;
+        extern fn SpSetExtendedInformationFn(Class: SECPKG_EXTENDED_INFORMATION_CLASS, Info: PSECPKG_EXTENDED_INFORMATION) -> NTSTATUS;
+        extern fn SpShutdownFn() -> NTSTATUS;
+        extern fn SpUnsealMessageFn(ContextHandle: LSA_SEC_HANDLE, MessageBuffers: PSecBufferDesc, MessageSequenceNumber: u32, #[out] #[opt] QualityOfProtection: PULONG) -> NTSTATUS;
+        extern fn SpUpdateCredentialsFn(ContextHandle: LSA_SEC_HANDLE, #[in] CredType: *mut GUID, FlatCredUIContextLength: u32, #[size_param(2)] FlatCredUIContext: PUCHAR) -> NTSTATUS;
+        extern fn SpUserModeInitializeFn(LsaVersion: u32, #[out] PackageVersion: PULONG, ppTables: *mut PSECPKG_USER_FUNCTION_TABLE, #[out] pcTables: PULONG) -> NTSTATUS;
+        extern fn SpValidateTargetInfoFn(#[opt] ClientRequest: PLSA_CLIENT_REQUEST, #[size_param(3)] #[in] ProtocolSubmitBuffer: *mut void, #[in] ClientBufferBase: *mut void, SubmitBufferLength: u32, TargetInfo: PSECPKG_TARGETINFO) -> NTSTATUS;
+        extern fn SpVerifySignatureFn(ContextHandle: LSA_SEC_HANDLE, MessageBuffers: PSecBufferDesc, MessageSequenceNumber: u32, #[out] #[opt] QualityOfProtection: PULONG) -> NTSTATUS;
+        const UNDERSTANDS_LONG_NAMES: i32 = 1;
+    }
+}

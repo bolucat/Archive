@@ -1,0 +1,132 @@
+name: test_reactor
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  test:
+    name: Reactor tests
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update toolchain
+        run: rustup update --no-self-update stable nightly && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Restore public API tool
+        id: public-api-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}\reactor-public-api
+          key: reactor-public-api-0.52.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install public API tool
+        shell: pwsh
+        env:
+          CACHE_HIT: ${{ steps.public-api-cache.outputs.cache-hit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $root = Join-Path $env:RUNNER_TEMP "reactor-public-api"
+          if ($env:CACHE_HIT -ne "true") {
+            cargo install cargo-public-api --locked --version 0.52.0 --root $root
+          }
+          Add-Content $env:GITHUB_PATH (Join-Path $root "bin")
+
+      - name: Save public API tool
+        if: steps.public-api-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}\reactor-public-api
+          key: ${{ steps.public-api-cache.outputs.cache-primary-key }}
+
+      - name: Check Reactor feature combinations
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo clippy -p windows-reactor --all-targets --quiet
+          cargo clippy -p windows-reactor --all-features --all-targets --quiet
+          cargo clippy -p test-reactor --all-targets --quiet
+          cargo clippy -p reactor-virtual --features perf --all-targets --quiet
+          cargo clippy -p windows-canvas --no-default-features `
+            --features reactor --all-targets --quiet
+          cargo clippy -p windows-composition --no-default-features `
+            --features reactor --all-targets --quiet
+          cargo clippy -p windows-webview --no-default-features `
+            --features reactor --all-targets --quiet
+
+      - name: Public API
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-D warnings"
+          RUSTDOCFLAGS: "--document-hidden-items"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $actual = (cargo public-api -p windows-reactor -sss --color never |
+            Out-String).Replace("`r`n", "`n").Trim()
+          $expected = (Get-Content crates\libs\reactor\public-api.txt -Raw).
+            Replace("`r`n", "`n").Trim()
+          if ($actual -ne $expected) {
+            $actualPath = Join-Path $env:RUNNER_TEMP "reactor-public-api.txt"
+            Set-Content -Path $actualPath -Value $actual
+            $PSNativeCommandUseErrorActionPreference = $false
+            git --no-pager diff --no-index -- `
+              crates\libs\reactor\public-api.txt $actualPath
+            throw "windows-reactor public API changed"
+          }
+
+      - name: Run Reactor tests
+        # Workspace tests cover feature unification; keep this default-feature run isolated.
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo test -p test-reactor --quiet
+
+  performance:
+    name: Reactor performance
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update toolchain
+        run: rustup update --no-self-update stable && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run recording benchmarks
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo run -p test-reactor-bench --release --quiet -- `
+            --architecture-gate --gate-samples 6
+          cargo run -p reactor-virtual --bin reactor-virtual-perf `
+            --features perf --release --quiet

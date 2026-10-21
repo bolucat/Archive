@@ -1,0 +1,532 @@
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AddFileResult(pub i32);
+impl AddFileResult {
+    pub const Added: Self = Self(0);
+    pub const AlreadyAdded: Self = Self(1);
+    pub const NotAllowed: Self = Self(2);
+    pub const Unavailable: Self = Self(3);
+}
+impl windows_core::imp::TypeKind for AddFileResult {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for AddFileResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Storage.Pickers.Provider.AddFileResult;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.AddFileResult");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileOpenPickerUI(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(FileOpenPickerUI, windows_core::IUnknown, windows_core::IInspectable);
+impl FileOpenPickerUI {
+    #[cfg(feature = "Storage_Streams")]
+    pub fn AddFile<P1>(&self, id: &windows_core::HSTRING, file: P1) -> windows_core::Result<AddFileResult>
+    where
+        P1: windows_core::Param<super::super::IStorageFile>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AddFile)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(id), file.param().abi(), &mut result__).map(|| result__)
+        }
+    }
+    pub fn RemoveFile(&self, id: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).RemoveFile)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(id)).ok() }
+    }
+    pub fn ContainsFile(&self, id: &windows_core::HSTRING) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ContainsFile)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(id), &mut result__).map(|| result__)
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn CanAddFile<P0>(&self, file: P0) -> windows_core::Result<bool>
+    where
+        P0: windows_core::Param<super::super::IStorageFile>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CanAddFile)(windows_core::Interface::as_raw(self), file.param().abi(), &mut result__).map(|| result__)
+        }
+    }
+    pub fn AllowedFileTypes(&self) -> windows_core::Result<windows_collections::IVectorView<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AllowedFileTypes)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SelectionMode(&self) -> windows_core::Result<FileSelectionMode> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SelectionMode)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SettingsIdentifier(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SettingsIdentifier)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Title(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Title)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetTitle(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetTitle)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn FileRemoved<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<FileRemovedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, FileRemovedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).FileRemoved)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveFileRemoved))
+        }
+    }
+    pub fn Closing<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<PickerClosingEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, PickerClosingEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).Closing)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveClosing))
+        }
+    }
+}
+impl windows_core::RuntimeType for FileOpenPickerUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IFileOpenPickerUI>();
+}
+unsafe impl windows_core::Interface for FileOpenPickerUI {
+    type Vtable = <IFileOpenPickerUI as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IFileOpenPickerUI as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for FileOpenPickerUI {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.FileOpenPickerUI";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileRemovedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(FileRemovedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl FileRemovedEventArgs {
+    pub fn Id(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Id)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for FileRemovedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IFileRemovedEventArgs>();
+}
+unsafe impl windows_core::Interface for FileRemovedEventArgs {
+    type Vtable = <IFileRemovedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IFileRemovedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for FileRemovedEventArgs {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.FileRemovedEventArgs";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileSavePickerUI(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(FileSavePickerUI, windows_core::IUnknown, windows_core::IInspectable);
+impl FileSavePickerUI {
+    pub fn Title(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Title)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn SetTitle(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).SetTitle)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value)).ok() }
+    }
+    pub fn AllowedFileTypes(&self) -> windows_core::Result<windows_collections::IVectorView<windows_core::HSTRING>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AllowedFileTypes)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SettingsIdentifier(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SettingsIdentifier)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn FileName(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).FileName)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn TrySetFileName(&self, value: &windows_core::HSTRING) -> windows_core::Result<SetFileNameResult> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TrySetFileName)(windows_core::Interface::as_raw(self), core::mem::transmute_copy(value), &mut result__).map(|| result__)
+        }
+    }
+    pub fn FileNameChanged<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).FileNameChanged)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveFileNameChanged))
+        }
+    }
+    pub fn TargetFileRequested<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<TargetFileRequestedEventArgs>) + Send + 'static,
+    {
+        let handler = <super::super::super::Foundation::TypedEventHandler<Self, TargetFileRequestedEventArgs>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).TargetFileRequested)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveTargetFileRequested))
+        }
+    }
+}
+impl windows_core::RuntimeType for FileSavePickerUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IFileSavePickerUI>();
+}
+unsafe impl windows_core::Interface for FileSavePickerUI {
+    type Vtable = <IFileSavePickerUI as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IFileSavePickerUI as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for FileSavePickerUI {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.FileSavePickerUI";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FileSelectionMode(pub i32);
+impl FileSelectionMode {
+    pub const Single: Self = Self(0);
+    pub const Multiple: Self = Self(1);
+}
+impl windows_core::imp::TypeKind for FileSelectionMode {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for FileSelectionMode {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Storage.Pickers.Provider.FileSelectionMode;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.FileSelectionMode");
+}
+windows_core::imp::define_interface!(IFileOpenPickerUI, IFileOpenPickerUI_Vtbl, 0xdda45a10_f9d4_40c4_8af5_c5b6b5a61d1d);
+impl windows_core::RuntimeType for IFileOpenPickerUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IFileOpenPickerUI");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IFileOpenPickerUI_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Storage_Streams")]
+    pub AddFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut AddFileResult) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    AddFile: usize,
+    pub RemoveFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub ContainsFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    #[cfg(feature = "Storage_Streams")]
+    pub CanAddFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    CanAddFile: usize,
+    pub AllowedFileTypes: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SelectionMode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut FileSelectionMode) -> windows_core::HRESULT,
+    pub SettingsIdentifier: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Title: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetTitle: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub FileRemoved: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveFileRemoved: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub Closing: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveClosing: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IFileRemovedEventArgs, IFileRemovedEventArgs_Vtbl, 0x13043da7_7fca_4c2b_9eca_6890f9f00185);
+impl windows_core::RuntimeType for IFileRemovedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IFileRemovedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IFileRemovedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Id: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IFileSavePickerUI, IFileSavePickerUI_Vtbl, 0x9656c1e7_3e56_43cc_8a39_33c73d9d542b);
+impl windows_core::RuntimeType for IFileSavePickerUI {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IFileSavePickerUI");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IFileSavePickerUI_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Title: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SetTitle: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub AllowedFileTypes: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub SettingsIdentifier: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub FileName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub TrySetFileName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut SetFileNameResult) -> windows_core::HRESULT,
+    pub FileNameChanged: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveFileNameChanged: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub TargetFileRequested: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveTargetFileRequested: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPickerClosingDeferral, IPickerClosingDeferral_Vtbl, 0x7af7f71e_1a67_4a31_ae80_e907708a619b);
+impl windows_core::RuntimeType for IPickerClosingDeferral {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IPickerClosingDeferral");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPickerClosingDeferral_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Complete: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPickerClosingEventArgs, IPickerClosingEventArgs_Vtbl, 0x7e59f224_b332_4f12_8b9f_a8c2f06b32cd);
+impl windows_core::RuntimeType for IPickerClosingEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IPickerClosingEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPickerClosingEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ClosingOperation: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub IsCanceled: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IPickerClosingOperation, IPickerClosingOperation_Vtbl, 0x4ce9fb84_beee_4e39_a773_fc5f0eae328d);
+impl windows_core::RuntimeType for IPickerClosingOperation {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.IPickerClosingOperation");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IPickerClosingOperation_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Deadline: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::DateTime) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(ITargetFileRequest, ITargetFileRequest_Vtbl, 0x42bd3355_7f88_478b_8e81_690b20340678);
+impl windows_core::RuntimeType for ITargetFileRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.ITargetFileRequest");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct ITargetFileRequest_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Storage_Streams")]
+    pub TargetFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    TargetFile: usize,
+    #[cfg(feature = "Storage_Streams")]
+    pub SetTargetFile: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Storage_Streams"))]
+    SetTargetFile: usize,
+    pub GetDeferral: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(ITargetFileRequestDeferral, ITargetFileRequestDeferral_Vtbl, 0x4aee9d91_bf15_4da9_95f6_f6b7d558225b);
+impl windows_core::RuntimeType for ITargetFileRequestDeferral {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.ITargetFileRequestDeferral");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct ITargetFileRequestDeferral_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Complete: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(ITargetFileRequestedEventArgs, ITargetFileRequestedEventArgs_Vtbl, 0xb163dbc1_1b51_4c89_a591_0fd40b3c57c9);
+impl windows_core::RuntimeType for ITargetFileRequestedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.ITargetFileRequestedEventArgs");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct ITargetFileRequestedEventArgs_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Request: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PickerClosingDeferral(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PickerClosingDeferral, windows_core::IUnknown, windows_core::IInspectable);
+impl PickerClosingDeferral {
+    pub fn Complete(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).Complete)(windows_core::Interface::as_raw(self)).ok() }
+    }
+}
+impl windows_core::RuntimeType for PickerClosingDeferral {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPickerClosingDeferral>();
+}
+unsafe impl windows_core::Interface for PickerClosingDeferral {
+    type Vtable = <IPickerClosingDeferral as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPickerClosingDeferral as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PickerClosingDeferral {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.PickerClosingDeferral";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PickerClosingEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PickerClosingEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl PickerClosingEventArgs {
+    pub fn ClosingOperation(&self) -> windows_core::Result<PickerClosingOperation> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ClosingOperation)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn IsCanceled(&self) -> windows_core::Result<bool> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).IsCanceled)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for PickerClosingEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPickerClosingEventArgs>();
+}
+unsafe impl windows_core::Interface for PickerClosingEventArgs {
+    type Vtable = <IPickerClosingEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPickerClosingEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PickerClosingEventArgs {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.PickerClosingEventArgs";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PickerClosingOperation(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(PickerClosingOperation, windows_core::IUnknown, windows_core::IInspectable);
+impl PickerClosingOperation {
+    pub fn GetDeferral(&self) -> windows_core::Result<PickerClosingDeferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Deadline(&self) -> windows_core::Result<windows_time::DateTime> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Deadline)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for PickerClosingOperation {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IPickerClosingOperation>();
+}
+unsafe impl windows_core::Interface for PickerClosingOperation {
+    type Vtable = <IPickerClosingOperation as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IPickerClosingOperation as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for PickerClosingOperation {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.PickerClosingOperation";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SetFileNameResult(pub i32);
+impl SetFileNameResult {
+    pub const Succeeded: Self = Self(0);
+    pub const NotAllowed: Self = Self(1);
+    pub const Unavailable: Self = Self(2);
+}
+impl windows_core::imp::TypeKind for SetFileNameResult {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for SetFileNameResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Storage.Pickers.Provider.SetFileNameResult;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Storage.Pickers.Provider.SetFileNameResult");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetFileRequest(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(TargetFileRequest, windows_core::IUnknown, windows_core::IInspectable);
+impl TargetFileRequest {
+    #[cfg(feature = "Storage_Streams")]
+    pub fn TargetFile(&self) -> windows_core::Result<super::super::IStorageFile> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TargetFile)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Storage_Streams")]
+    pub fn SetTargetFile<P0>(&self, value: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<super::super::IStorageFile>,
+    {
+        unsafe { (windows_core::Interface::vtable(self).SetTargetFile)(windows_core::Interface::as_raw(self), value.param().abi()).ok() }
+    }
+    pub fn GetDeferral(&self) -> windows_core::Result<TargetFileRequestDeferral> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetDeferral)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for TargetFileRequest {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, ITargetFileRequest>();
+}
+unsafe impl windows_core::Interface for TargetFileRequest {
+    type Vtable = <ITargetFileRequest as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ITargetFileRequest as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for TargetFileRequest {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.TargetFileRequest";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetFileRequestDeferral(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(TargetFileRequestDeferral, windows_core::IUnknown, windows_core::IInspectable);
+impl TargetFileRequestDeferral {
+    pub fn Complete(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).Complete)(windows_core::Interface::as_raw(self)).ok() }
+    }
+}
+impl windows_core::RuntimeType for TargetFileRequestDeferral {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, ITargetFileRequestDeferral>();
+}
+unsafe impl windows_core::Interface for TargetFileRequestDeferral {
+    type Vtable = <ITargetFileRequestDeferral as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ITargetFileRequestDeferral as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for TargetFileRequestDeferral {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.TargetFileRequestDeferral";
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetFileRequestedEventArgs(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(TargetFileRequestedEventArgs, windows_core::IUnknown, windows_core::IInspectable);
+impl TargetFileRequestedEventArgs {
+    pub fn Request(&self) -> windows_core::Result<TargetFileRequest> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Request)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for TargetFileRequestedEventArgs {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, ITargetFileRequestedEventArgs>();
+}
+unsafe impl windows_core::Interface for TargetFileRequestedEventArgs {
+    type Vtable = <ITargetFileRequestedEventArgs as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ITargetFileRequestedEventArgs as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for TargetFileRequestedEventArgs {
+    const NAME: &'static str = "Windows.Storage.Pickers.Provider.TargetFileRequestedEventArgs";
+}

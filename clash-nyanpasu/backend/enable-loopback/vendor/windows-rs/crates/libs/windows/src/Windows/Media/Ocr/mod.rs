@@ -1,0 +1,253 @@
+windows_core::imp::define_interface!(IOcrEngine, IOcrEngine_Vtbl, 0x5a14bc41_5b76_3140_b680_8825562683ac);
+impl windows_core::RuntimeType for IOcrEngine {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Ocr.IOcrEngine");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IOcrEngine_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Graphics_Imaging")]
+    pub RecognizeAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Graphics_Imaging"))]
+    RecognizeAsync: usize,
+    #[cfg(feature = "Globalization")]
+    pub RecognizerLanguage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Globalization"))]
+    RecognizerLanguage: usize,
+}
+windows_core::imp::define_interface!(IOcrEngineStatics, IOcrEngineStatics_Vtbl, 0x5bffa85a_3384_3540_9940_699120d428a8);
+impl windows_core::RuntimeType for IOcrEngineStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Ocr.IOcrEngineStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IOcrEngineStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MaxImageDimension: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u32) -> windows_core::HRESULT,
+    #[cfg(feature = "Globalization")]
+    pub AvailableRecognizerLanguages: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Globalization"))]
+    AvailableRecognizerLanguages: usize,
+    #[cfg(feature = "Globalization")]
+    pub IsLanguageSupported: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Globalization"))]
+    IsLanguageSupported: usize,
+    #[cfg(feature = "Globalization")]
+    pub TryCreateFromLanguage: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Globalization"))]
+    TryCreateFromLanguage: usize,
+    pub TryCreateFromUserProfileLanguages: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IOcrLine, IOcrLine_Vtbl, 0x0043a16f_e31f_3a24_899c_d444bd088124);
+impl windows_core::RuntimeType for IOcrLine {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Ocr.IOcrLine");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IOcrLine_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Words: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Text: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IOcrResult, IOcrResult_Vtbl, 0x9bd235b2_175b_3d6a_92e2_388c206e2f63);
+impl windows_core::RuntimeType for IOcrResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Ocr.IOcrResult");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IOcrResult_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Lines: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub TextAngle: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Text: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IOcrWord, IOcrWord_Vtbl, 0x3c2a477a_5cd9_3525_ba2a_23d1e0a68a1d);
+impl windows_core::RuntimeType for IOcrWord {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Media.Ocr.IOcrWord");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IOcrWord_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub BoundingRect: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::super::Foundation::Rect) -> windows_core::HRESULT,
+    pub Text: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OcrEngine(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(OcrEngine, windows_core::IUnknown, windows_core::IInspectable);
+impl OcrEngine {
+    #[cfg(feature = "Graphics_Imaging")]
+    pub fn RecognizeAsync<P0>(&self, bitmap: P0) -> windows_core::Result<windows_future::IAsyncOperation<OcrResult>>
+    where
+        P0: windows_core::Param<super::super::Graphics::Imaging::SoftwareBitmap>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RecognizeAsync)(windows_core::Interface::as_raw(self), bitmap.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Globalization")]
+    pub fn RecognizerLanguage(&self) -> windows_core::Result<super::super::Globalization::Language> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).RecognizerLanguage)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn MaxImageDimension() -> windows_core::Result<u32> {
+        Self::IOcrEngineStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).MaxImageDimension)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        })
+    }
+    #[cfg(feature = "Globalization")]
+    pub fn AvailableRecognizerLanguages() -> windows_core::Result<windows_collections::IVectorView<super::super::Globalization::Language>> {
+        Self::IOcrEngineStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).AvailableRecognizerLanguages)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    #[cfg(feature = "Globalization")]
+    pub fn IsLanguageSupported<P0>(language: P0) -> windows_core::Result<bool>
+    where
+        P0: windows_core::Param<super::super::Globalization::Language>,
+    {
+        Self::IOcrEngineStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IsLanguageSupported)(windows_core::Interface::as_raw(this), language.param().abi(), &mut result__).map(|| result__)
+        })
+    }
+    #[cfg(feature = "Globalization")]
+    pub fn TryCreateFromLanguage<P0>(language: P0) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::super::Globalization::Language>,
+    {
+        Self::IOcrEngineStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TryCreateFromLanguage)(windows_core::Interface::as_raw(this), language.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn TryCreateFromUserProfileLanguages() -> windows_core::Result<Self> {
+        Self::IOcrEngineStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TryCreateFromUserProfileLanguages)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IOcrEngineStatics<R, F: FnOnce(&IOcrEngineStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<OcrEngine, IOcrEngineStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for OcrEngine {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IOcrEngine>();
+}
+unsafe impl windows_core::Interface for OcrEngine {
+    type Vtable = <IOcrEngine as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IOcrEngine as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for OcrEngine {
+    const NAME: &'static str = "Windows.Media.Ocr.OcrEngine";
+}
+unsafe impl Send for OcrEngine {}
+unsafe impl Sync for OcrEngine {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OcrLine(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(OcrLine, windows_core::IUnknown, windows_core::IInspectable);
+impl OcrLine {
+    pub fn Words(&self) -> windows_core::Result<windows_collections::IVectorView<OcrWord>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Words)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn Text(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Text)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for OcrLine {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IOcrLine>();
+}
+unsafe impl windows_core::Interface for OcrLine {
+    type Vtable = <IOcrLine as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IOcrLine as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for OcrLine {
+    const NAME: &'static str = "Windows.Media.Ocr.OcrLine";
+}
+unsafe impl Send for OcrLine {}
+unsafe impl Sync for OcrLine {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OcrResult(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(OcrResult, windows_core::IUnknown, windows_core::IInspectable);
+impl OcrResult {
+    pub fn Lines(&self) -> windows_core::Result<windows_collections::IVectorView<OcrLine>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Lines)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn TextAngle(&self) -> windows_core::Result<f64> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TextAngle)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__)).and_then(|r__: windows_reference::IReference<f64>| r__.Value())
+        }
+    }
+    pub fn Text(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Text)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for OcrResult {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IOcrResult>();
+}
+unsafe impl windows_core::Interface for OcrResult {
+    type Vtable = <IOcrResult as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IOcrResult as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for OcrResult {
+    const NAME: &'static str = "Windows.Media.Ocr.OcrResult";
+}
+unsafe impl Send for OcrResult {}
+unsafe impl Sync for OcrResult {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OcrWord(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(OcrWord, windows_core::IUnknown, windows_core::IInspectable);
+impl OcrWord {
+    pub fn BoundingRect(&self) -> windows_core::Result<super::super::Foundation::Rect> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).BoundingRect)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Text(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Text)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for OcrWord {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IOcrWord>();
+}
+unsafe impl windows_core::Interface for OcrWord {
+    type Vtable = <IOcrWord as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IOcrWord as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for OcrWord {
+    const NAME: &'static str = "Windows.Media.Ocr.OcrWord";
+}
+unsafe impl Send for OcrWord {}
+unsafe impl Sync for OcrWord {}

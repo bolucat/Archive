@@ -1,0 +1,30 @@
+[package]
+name = "test_result"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+doc = false
+doctest = false
+
+[dev-dependencies.windows]
+workspace = true
+features = [
+    "bcrypt",
+    "ntstatus",
+    "winerror",
+]
+
+[dependencies.windows-result]
+workspace = true
+
+[dependencies.windows-link]
+workspace = true
+
+[dev-dependencies]
+helpers = { workspace = true }
+static_assertions = "1.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,103 @@
+{
+  "window": {
+    "title": "AppContainer 回环豁免工具",
+    "explanation": "出于安全与可靠性考虑，Windows 禁止 UWP 应用向本机发送网络流量。本工具可为调试目的解除此限制。",
+    "learn_more": "了解更多",
+    "start_failed": "无法打开窗口。\n%{detail}"
+  },
+  "search": {
+    "placeholder": "搜索应用",
+    "results": "找到 %{count} 项",
+    "empty": "未找到匹配的应用。"
+  },
+  "toolbar": {
+    "counter": "已豁免 %{exempt} / %{total}",
+    "refresh": "刷新",
+    "exempt_all": "全部豁免",
+    "exempt_none": "全部取消",
+    "exempt_results": "豁免全部结果",
+    "exempt_none_results": "取消全部结果",
+    "save": "保存修改"
+  },
+  "status": {
+    "ready": "就绪",
+    "dirty": "点击“保存修改”以提交。",
+    "exempt_all": "所有 AppContainer 待豁免。点击“保存修改”以提交。",
+    "exempt_none": "所有 AppContainer 待移除豁免。点击“保存修改”以提交。",
+    "exempt_results": "所有搜索结果待豁免。点击“保存修改”以提交。",
+    "exempt_none_results": "所有搜索结果待移除豁免。点击“保存修改”以提交。",
+    "orphan_removal": "保存将移除 %{count} 条孤立记录。",
+    "saved": "回环豁免配置已更新。",
+    "not_saved_admin": "未保存。需要管理员权限。",
+    "not_saved": "未保存。",
+    "refreshing": "正在刷新 AppContainer 信息…",
+    "refreshed": "已于 %{time} 刷新 AppContainer 信息。",
+    "load_failed": "获取 AppContainer 信息失败 [%{code}]",
+    "failed": "失败：%{detail}"
+  },
+  "runtime": {
+    "title": "需要 Windows App Runtime",
+    "missing": "本工具需要适用于 %{architecture} 的 Windows App Runtime %{version} 或更高版本。",
+    "install_from_store": "从 Microsoft Store 安装",
+    "download_installer": "下载安装程序",
+    "open_download_page": "打开下载页",
+    "cancel": "取消",
+    "installing": "正在从 Microsoft Store 安装 Windows App Runtime。关闭此窗口后，安装会在后台继续。",
+    "close": "关闭",
+    "store_failed": "Microsoft Store 无法安装 Windows App Runtime：%{detail}",
+    "store_incomplete": "Microsoft Store 已完成，但仍未安装 Windows App Runtime %{version} 或更高版本。"
+  },
+  "cli": {
+    "syntax": "语法：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：豁免所有 AppContainer。\n-none：清空豁免名单。\n-allow NAME：添加名称包含 NAME 的 AppContainer。\n-deny NAME：移除名称匹配的豁免；* 表示全部移除。\n命令不区分大小写，前导 - 或 / 可省略。\nNAME 可包含空格，用 * 匹配全部。\n语言：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：不自动刷新。-registry：直接读取注册表。",
+    "missing_name": "必须指定部分名称，用 * 匹配全部。",
+    "missing_language": "请在 --lang 后指定语言代码。"
+  },
+  "placeholder": {
+    "display_name": "(无显示名称)",
+    "description": "(无描述)",
+    "package": "(无包名称)",
+    "name": "(无 AC 名称)",
+    "sid": "(无 AC SID)",
+    "users": "(无用户 SID)",
+    "binaries": "(无)"
+  },
+  "instance": {
+    "already_running": "本工具已在运行，但无法切换到其窗口。",
+    "start_failed": "本工具似乎已在运行。\n%{detail}"
+  },
+  "column": {
+    "display_name": "显示名称",
+    "description": "描述",
+    "package": "包",
+    "name": "AC 名称",
+    "sid": "AC SID",
+    "users": "用户",
+    "binaries": "文件",
+    "exempt": "回环豁免：%{name}"
+  },
+  "dialog": {
+    "refresh_title": "放弃修改？",
+    "refresh_body": "尚未保存修改，仍要刷新吗？",
+    "cancel": "取消",
+    "ok": "确定",
+    "warning": "警告",
+    "fallback": "无法用 NetIsoEnumAppContainers 获取列表。\n错误码：%{code}\n\n将改为读取注册表，部分信息不可用。",
+    "orphan_title": "发现孤立的豁免记录",
+    "orphan_body": "存在以下 SID 的回环豁免，但找不到对应的 AppContainer。",
+    "keep_prompting": "本次会话中继续提示其他孤立记录",
+    "error_title": "操作失败",
+    "firewall_title": "Windows 防火墙已停用",
+    "firewall_body": "Windows 防火墙服务似乎未运行。第三方安全软件可能已停用或替换了该服务。请在第三方软件中允许回环流量，或启用 Windows 防火墙。\n\n%{detail}",
+    "load_failed": "无法获取本机的 AppContainer 列表。\n\n%{detail}",
+    "admin_title": "未保存修改",
+    "admin_body": "必须以管理员身份运行本工具才能修改 AppContainer 配置。",
+    "save_title": "保存失败",
+    "close_title": "不保存就退出？",
+    "close_body": "尚未保存修改，仍要退出吗？",
+    "exit": "退出"
+  },
+  "menu": {
+    "copy_rows": "复制选中行",
+    "copy_column": "复制选中列"
+  }
+}

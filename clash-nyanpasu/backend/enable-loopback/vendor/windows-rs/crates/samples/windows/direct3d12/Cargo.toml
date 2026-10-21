@@ -1,0 +1,29 @@
+[package]
+name = "windows-direct3d12"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+array-init = "2.0.0"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "d3d12",
+    "d3dcommon",
+    "d3dcompiler",
+    "dxgi",
+    "minwinbase",
+    "synchapi",
+    "winbase",
+    "windef",
+    "winnt",
+    "winuser",
+]
+
+[dependencies.windows-window]
+workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+# Link the C runtime statically. Without the Visual C++ Redistributable the loader
+# would stop the tool before its Windows App Runtime check can run.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

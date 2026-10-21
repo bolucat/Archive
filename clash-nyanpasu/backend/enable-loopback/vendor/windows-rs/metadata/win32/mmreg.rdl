@@ -1,0 +1,2406 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        const ACM_MPEG_COPYRIGHT: i32 = 2;
+        const ACM_MPEG_DUALCHANNEL: i32 = 4;
+        const ACM_MPEG_ID_MPEG1: i32 = 16;
+        const ACM_MPEG_JOINTSTEREO: i32 = 2;
+        const ACM_MPEG_LAYER1: i32 = 1;
+        const ACM_MPEG_LAYER2: i32 = 2;
+        const ACM_MPEG_LAYER3: i32 = 4;
+        const ACM_MPEG_ORIGINALHOME: i32 = 4;
+        const ACM_MPEG_PRIVATEBIT: i32 = 1;
+        const ACM_MPEG_PROTECTIONBIT: i32 = 8;
+        const ACM_MPEG_SINGLECHANNEL: i32 = 8;
+        const ACM_MPEG_STEREO: i32 = 1;
+        #[packed(1)]
+        struct ADPCMCOEFSET {
+            iCoef1: i16,
+            iCoef2: i16,
+        }
+        #[packed(1)]
+        struct ADPCMEWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        #[packed(1)]
+        struct ADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+            wNumCoef: u16,
+            aCoef: [ADPCMCOEFSET; 0],
+        }
+        struct APTXWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct AUDIOFILE_AF10WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct AUDIOFILE_AF36WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        const AVIIF_CONTROLFRAME: i32 = 512;
+        const BICOMP_CREATIVEYUV: u32 = 1987410275;
+        const BICOMP_IBMPHOTOMOTION: u32 = 1330464848;
+        const BICOMP_IBMULTIMOTION: u32 = 1230261333;
+        #[packed(1)]
+        struct CONTRESCR10WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        #[packed(1)]
+        struct CONTRESVQLPCWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        #[packed(1)]
+        struct CREATIVEADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        #[packed(1)]
+        struct CREATIVEFASTSPEECH10WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        #[packed(1)]
+        struct CREATIVEFASTSPEECH8WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        const CRYSTAL_NET_SFM_CODEC: i32 = 1;
+        struct CSIMAADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct DIALOGICOKIADPCMWAVEFORMAT {
+            ewf: WAVEFORMATEX,
+        }
+        #[packed(1)]
+        struct DIGIADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        struct DIGIFIXWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        #[packed(1)]
+        struct DIGIREALWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        struct DIGISTDWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        #[packed(1)]
+        struct DOLBYAC2WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            nAuxBitsCode: u16,
+        }
+        #[packed(1)]
+        struct DRMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wReserved: u16,
+            ulContentId: u32,
+            wfxSecure: WAVEFORMATEX,
+        }
+        #[packed(1)]
+        struct DVIADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        struct ECHOSC1WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        #[packed(1)]
+        struct ECHOWAVEFILTER {
+            wfltr: WAVEFILTER,
+            dwVolume: u32,
+            dwDelay: u32,
+        }
+        #[packed(1)]
+        struct EXBMINFOHEADER {
+            bmi: BITMAPINFOHEADER,
+            biExtDataOffset: u32,
+        }
+        #[packed(1)]
+        struct FMTOWNS_SND_WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        const FOURCC_RDSP: u32 = 1347634258;
+        #[packed(1)]
+        struct G721_ADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            nAuxBlockSize: u16,
+        }
+        #[packed(1)]
+        struct G723_ADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            cbExtraSize: u16,
+            nAuxBlockSize: u16,
+        }
+        #[packed(1)]
+        struct GSM610WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        struct HEAACWAVEFORMAT {
+            wfInfo: HEAACWAVEINFO,
+            pbAudioSpecificConfig: [u8; 1],
+        }
+        #[packed(1)]
+        struct HEAACWAVEINFO {
+            wfx: WAVEFORMATEX,
+            wPayloadType: u16,
+            wAudioProfileLevelIndication: u16,
+            wStructType: u16,
+            wReserved1: u16,
+            dwReserved2: u32,
+        }
+        const ICTYPE_AUDIO: u32 = 1667528033;
+        const ICTYPE_VIDEO: u32 = 1667524982;
+        #[packed(1)]
+        struct IMAADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        const JIFMK_00: i32 = 65280;
+        const JIFMK_APP0: i32 = 65504;
+        const JIFMK_APP1: i32 = 65505;
+        const JIFMK_APP2: i32 = 65506;
+        const JIFMK_APP3: i32 = 65507;
+        const JIFMK_APP4: i32 = 65508;
+        const JIFMK_APP5: i32 = 65509;
+        const JIFMK_APP6: i32 = 65510;
+        const JIFMK_APP7: i32 = 65511;
+        const JIFMK_COM: i32 = 65534;
+        const JIFMK_DAC: i32 = 65484;
+        const JIFMK_DHP: i32 = 65502;
+        const JIFMK_DHT: i32 = 65476;
+        const JIFMK_DNL: i32 = 65500;
+        const JIFMK_DQT: i32 = 65499;
+        const JIFMK_DRI: i32 = 65501;
+        const JIFMK_EOI: i32 = 65497;
+        const JIFMK_EXP: i32 = 65503;
+        const JIFMK_FF: i32 = 65535;
+        const JIFMK_JPG: i32 = 65480;
+        const JIFMK_JPG0: i32 = 65520;
+        const JIFMK_JPG1: i32 = 65521;
+        const JIFMK_JPG10: i32 = 65530;
+        const JIFMK_JPG11: i32 = 65531;
+        const JIFMK_JPG12: i32 = 65532;
+        const JIFMK_JPG13: i32 = 65533;
+        const JIFMK_JPG2: i32 = 65522;
+        const JIFMK_JPG3: i32 = 65523;
+        const JIFMK_JPG4: i32 = 65524;
+        const JIFMK_JPG5: i32 = 65525;
+        const JIFMK_JPG6: i32 = 65526;
+        const JIFMK_JPG7: i32 = 65527;
+        const JIFMK_JPG8: i32 = 65528;
+        const JIFMK_JPG9: i32 = 65529;
+        const JIFMK_RES: i32 = 65282;
+        const JIFMK_RST0: i32 = 65488;
+        const JIFMK_RST1: i32 = 65489;
+        const JIFMK_RST2: i32 = 65490;
+        const JIFMK_RST3: i32 = 65491;
+        const JIFMK_RST4: i32 = 65492;
+        const JIFMK_RST5: i32 = 65493;
+        const JIFMK_RST6: i32 = 65494;
+        const JIFMK_RST7: i32 = 65495;
+        const JIFMK_SOF0: i32 = 65472;
+        const JIFMK_SOF1: i32 = 65473;
+        const JIFMK_SOF10: i32 = 65482;
+        const JIFMK_SOF11: i32 = 65483;
+        const JIFMK_SOF13: i32 = 65485;
+        const JIFMK_SOF14: i32 = 65486;
+        const JIFMK_SOF15: i32 = 65487;
+        const JIFMK_SOF2: i32 = 65474;
+        const JIFMK_SOF3: i32 = 65475;
+        const JIFMK_SOF5: i32 = 65477;
+        const JIFMK_SOF6: i32 = 65478;
+        const JIFMK_SOF7: i32 = 65479;
+        const JIFMK_SOF9: i32 = 65481;
+        const JIFMK_SOI: i32 = 65496;
+        const JIFMK_SOS: i32 = 65498;
+        const JIFMK_TEM: i32 = 65281;
+        #[packed(1)]
+        struct JPEGINFOHEADER {
+            JPEGSize: u32,
+            JPEGProcess: u32,
+            JPEGColorSpaceID: u32,
+            JPEGBitsPerSample: u32,
+            JPEGHSubSampling: u32,
+            JPEGVSubSampling: u32,
+        }
+        const JPEG_DIB: u32 = 1195724874;
+        const JPEG_PROCESS_BASELINE: i32 = 0;
+        const JPEG_RGB: i32 = 3;
+        const JPEG_Y: i32 = 1;
+        const JPEG_YCbCr: i32 = 2;
+        const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: GUID = 0x00000003_0000_0010_8000_00aa00389b71;
+        const KSDATAFORMAT_SUBTYPE_PCM: GUID = 0x00000001_0000_0010_8000_00aa00389b71;
+        const KSDATAFORMAT_SUBTYPE_WAVEFORMATEX: GUID = 0x00000000_0000_0010_8000_00aa00389b71;
+        type LPADPCMCOEFSET = *mut ADPCMCOEFSET;
+        type LPADPCMEWAVEFORMAT = *mut ADPCMEWAVEFORMAT;
+        type LPADPCMWAVEFORMAT = *mut ADPCMWAVEFORMAT;
+        type LPAPTXWAVEFORMAT = *mut APTXWAVEFORMAT;
+        type LPAUDIOFILE_AF10WAVEFORMAT = *mut AUDIOFILE_AF10WAVEFORMAT;
+        type LPAUDIOFILE_AF36WAVEFORMAT = *mut AUDIOFILE_AF36WAVEFORMAT;
+        type LPCONTRESCR10WAVEFORMAT = *mut CONTRESCR10WAVEFORMAT;
+        type LPCONTRESVQLPCWAVEFORMAT = *mut CONTRESVQLPCWAVEFORMAT;
+        type LPCREATIVEADPCMWAVEFORMAT = *mut CREATIVEADPCMWAVEFORMAT;
+        type LPCREATIVEFASTSPEECH10WAVEFORMAT = *mut CREATIVEFASTSPEECH10WAVEFORMAT;
+        type LPCREATIVEFASTSPEECH8WAVEFORMAT = *mut CREATIVEFASTSPEECH8WAVEFORMAT;
+        type LPCSIMAADPCMWAVEFORMAT = *mut CSIMAADPCMWAVEFORMAT;
+        type LPDIALOGICOKIADPCMWAVEFORMAT = *mut DIALOGICOKIADPCMWAVEFORMAT;
+        type LPDIGIADPCMWAVEFORMAT = *mut DIGIADPCMWAVEFORMAT;
+        type LPDIGIFIXWAVEFORMAT = *mut DIGIFIXWAVEFORMAT;
+        type LPDIGIREALWAVEFORMAT = *mut DIGIREALWAVEFORMAT;
+        type LPDIGISTDWAVEFORMAT = *mut DIGISTDWAVEFORMAT;
+        type LPDRMWAVEFORMAT = *mut DRMWAVEFORMAT;
+        type LPDVIADPCMWAVEFORMAT = *mut DVIADPCMWAVEFORMAT;
+        type LPECHOSC1WAVEFORMAT = *mut ECHOSC1WAVEFORMAT;
+        type LPECHOWAVEFILTER = *mut ECHOWAVEFILTER;
+        type LPFMTOWNS_SND_WAVEFORMAT = *mut FMTOWNS_SND_WAVEFORMAT;
+        type LPG721_ADPCMWAVEFORMAT = *mut G721_ADPCMWAVEFORMAT;
+        type LPG723_ADPCMWAVEFORMAT = *mut G723_ADPCMWAVEFORMAT;
+        type LPGSM610WAVEFORMAT = *mut GSM610WAVEFORMAT;
+        type LPHEAACWAVEFORMAT = *mut HEAACWAVEFORMAT;
+        type LPHEAACWAVEINFO = *mut HEAACWAVEINFO;
+        type LPIMAADPCMWAVEFORMAT = *mut IMAADPCMWAVEFORMAT;
+        type LPMEDIASPACEADPCMWAVEFORMAT = *mut MEDIASPACEADPCMWAVEFORMAT;
+        type LPMPEG1WAVEFORMAT = *mut MPEG1WAVEFORMAT;
+        type LPMPEGLAYER3WAVEFORMAT = *mut MPEGLAYER3WAVEFORMAT;
+        type LPMSAUDIO1WAVEFORMAT = *mut MSAUDIO1WAVEFORMAT;
+        type LPNMS_VBXADPCMWAVEFORMAT = *mut NMS_VBXADPCMWAVEFORMAT;
+        type LPOLIADPCMWAVEFORMAT = *mut OLIADPCMWAVEFORMAT;
+        type LPOLICELPWAVEFORMAT = *mut OLICELPWAVEFORMAT;
+        type LPOLIGSMWAVEFORMAT = *mut OLIGSMWAVEFORMAT;
+        type LPOLIOPRWAVEFORMAT = *mut OLIOPRWAVEFORMAT;
+        type LPOLISBCWAVEFORMAT = *mut OLISBCWAVEFORMAT;
+        type LPSIERRAADPCMWAVEFORMAT = *mut SIERRAADPCMWAVEFORMAT;
+        type LPSONARCWAVEFORMAT = *mut SONARCWAVEFORMAT;
+        type LPTRUESPEECHWAVEFORMAT = *mut TRUESPEECHWAVEFORMAT;
+        type LPVOLUMEWAVEFILTER = *mut VOLUMEWAVEFILTER;
+        type LPWAVEFILTER = *mut WAVEFILTER;
+        type LPWAVEFORMATIEEEFLOATEX = *mut WAVEFORMATIEEEFLOATEX;
+        type LPWAVEFORMATPCMEX = *mut WAVEFORMATPCMEX;
+        type LPWMAUDIO2WAVEFORMAT = *mut WMAUDIO2WAVEFORMAT;
+        type LPWMAUDIO3WAVEFORMAT = *mut WMAUDIO3WAVEFORMAT;
+        type LPYAMAHA_ADPCMWAVEFORMAT = *mut YAMAHA_ADPCMWAVEFORMAT;
+        #[packed(1)]
+        struct MEDIASPACEADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        const MIXERCONTROL_CONTROLTYPE_SRS_MTS: i32 = 536936454;
+        const MIXERCONTROL_CONTROLTYPE_SRS_ONOFF: i32 = 536936455;
+        const MIXERCONTROL_CONTROLTYPE_SRS_SYNTHSELECT: i32 = 536936456;
+        const MJPG_DIB: u32 = 1196444237;
+        const MM_3COM: i32 = 260;
+        const MM_3COM_CB_MIXER: i32 = 1;
+        const MM_3COM_CB_WAVEIN: i32 = 2;
+        const MM_3COM_CB_WAVEOUT: i32 = 3;
+        const MM_3DFX: i32 = 262;
+        const MM_AARDVARK: i32 = 11;
+        const MM_AARDVARK_STUDIO12_WAVEIN: i32 = 2;
+        const MM_AARDVARK_STUDIO12_WAVEOUT: i32 = 1;
+        const MM_AARDVARK_STUDIO88_WAVEIN: i32 = 4;
+        const MM_AARDVARK_STUDIO88_WAVEOUT: i32 = 3;
+        const MM_ACTIVEVOICE: i32 = 225;
+        const MM_ACTIVEVOICE_ACM_VOXADPCM: i32 = 1;
+        const MM_ACULAB: i32 = 14;
+        const MM_ADDX: i32 = 118;
+        const MM_ADDX_PCTV_AUX_CD: i32 = 5;
+        const MM_ADDX_PCTV_AUX_LINE: i32 = 6;
+        const MM_ADDX_PCTV_DIGITALMIX: i32 = 1;
+        const MM_ADDX_PCTV_MIXER: i32 = 4;
+        const MM_ADDX_PCTV_WAVEIN: i32 = 2;
+        const MM_ADDX_PCTV_WAVEOUT: i32 = 3;
+        const MM_ADLACC: i32 = 91;
+        const MM_ADLIB: i32 = 9;
+        const MM_ADMOS: i32 = 235;
+        const MM_ADMOS_FM_SYNTH: i32 = 1;
+        const MM_ADMOS_QS3AMIDIIN: i32 = 3;
+        const MM_ADMOS_QS3AMIDIOUT: i32 = 2;
+        const MM_ADMOS_QS3AWAVEIN: i32 = 5;
+        const MM_ADMOS_QS3AWAVEOUT: i32 = 4;
+        const MM_AHEAD: i32 = 77;
+        const MM_AHEAD_GENERIC: i32 = 4;
+        const MM_AHEAD_MULTISOUND: i32 = 1;
+        const MM_AHEAD_PROAUDIO: i32 = 3;
+        const MM_AHEAD_SOUNDBLASTER: i32 = 2;
+        const MM_ALARIS: i32 = 174;
+        const MM_ALDIGITAL: i32 = 143;
+        const MM_ALESIS: i32 = 243;
+        const MM_ALGOVISION: i32 = 266;
+        const MM_ALGOVISION_VB80AUX: i32 = 4;
+        const MM_ALGOVISION_VB80AUX2: i32 = 5;
+        const MM_ALGOVISION_VB80MIXER: i32 = 3;
+        const MM_ALGOVISION_VB80WAVEIN: i32 = 2;
+        const MM_ALGOVISION_VB80WAVEOUT: i32 = 1;
+        const MM_AMD: i32 = 146;
+        const MM_AMD_INTERWAVE_AUX1: i32 = 10;
+        const MM_AMD_INTERWAVE_AUX2: i32 = 11;
+        const MM_AMD_INTERWAVE_AUX_CD: i32 = 13;
+        const MM_AMD_INTERWAVE_AUX_MIC: i32 = 12;
+        const MM_AMD_INTERWAVE_EX_CD: i32 = 7;
+        const MM_AMD_INTERWAVE_EX_TELEPHONY: i32 = 16;
+        const MM_AMD_INTERWAVE_JOYSTICK: i32 = 6;
+        const MM_AMD_INTERWAVE_MIDIIN: i32 = 8;
+        const MM_AMD_INTERWAVE_MIDIOUT: i32 = 9;
+        const MM_AMD_INTERWAVE_MIXER1: i32 = 4;
+        const MM_AMD_INTERWAVE_MIXER2: i32 = 5;
+        const MM_AMD_INTERWAVE_MONO_IN: i32 = 14;
+        const MM_AMD_INTERWAVE_MONO_OUT: i32 = 15;
+        const MM_AMD_INTERWAVE_STEREO_ENHANCED: i32 = 19;
+        const MM_AMD_INTERWAVE_SYNTH: i32 = 3;
+        const MM_AMD_INTERWAVE_WAVEIN: i32 = 1;
+        const MM_AMD_INTERWAVE_WAVEOUT: i32 = 2;
+        const MM_AMD_INTERWAVE_WAVEOUT_BASE: i32 = 17;
+        const MM_AMD_INTERWAVE_WAVEOUT_TREBLE: i32 = 18;
+        const MM_ANALOGDEVICES: i32 = 252;
+        const MM_ANTEX: i32 = 31;
+        const MM_ANTEX_AUDIOPORT22_FEEDTHRU: i32 = 9;
+        const MM_ANTEX_AUDIOPORT22_WAVEIN: i32 = 7;
+        const MM_ANTEX_AUDIOPORT22_WAVEOUT: i32 = 8;
+        const MM_ANTEX_SX12_WAVEIN: i32 = 1;
+        const MM_ANTEX_SX12_WAVEOUT: i32 = 2;
+        const MM_ANTEX_SX15_WAVEIN: i32 = 3;
+        const MM_ANTEX_SX15_WAVEOUT: i32 = 4;
+        const MM_ANTEX_VP625_WAVEIN: i32 = 5;
+        const MM_ANTEX_VP625_WAVEOUT: i32 = 6;
+        const MM_APICOM: i32 = 116;
+        const MM_APPLE: i32 = 99;
+        const MM_APPS: i32 = 42;
+        const MM_APT: i32 = 56;
+        const MM_APT_ACE100CD: i32 = 1;
+        const MM_ARRAY: i32 = 231;
+        const MM_ARTISOFT: i32 = 20;
+        const MM_ARTISOFT_SBWAVEIN: i32 = 1;
+        const MM_ARTISOFT_SBWAVEOUT: i32 = 2;
+        const MM_AST: i32 = 64;
+        const MM_AST_MODEMWAVE_WAVEIN: i32 = 13;
+        const MM_AST_MODEMWAVE_WAVEOUT: i32 = 14;
+        const MM_ATI: i32 = 27;
+        const MM_ATT: i32 = 185;
+        const MM_ATT_G729A: i32 = 1;
+        const MM_ATT_MICROELECTRONICS: i32 = 139;
+        const MM_AU8820_AUX: i32 = 21;
+        const MM_AU8820_MIDIIN: i32 = 23;
+        const MM_AU8820_MIDIOUT: i32 = 22;
+        const MM_AU8820_MIXER: i32 = 20;
+        const MM_AU8820_SYNTH: i32 = 17;
+        const MM_AU8820_WAVEIN: i32 = 19;
+        const MM_AU8820_WAVEOUT: i32 = 18;
+        const MM_AU8830_AUX: i32 = 37;
+        const MM_AU8830_MIDIIN: i32 = 39;
+        const MM_AU8830_MIDIOUT: i32 = 38;
+        const MM_AU8830_MIXER: i32 = 36;
+        const MM_AU8830_SYNTH: i32 = 33;
+        const MM_AU8830_WAVEIN: i32 = 35;
+        const MM_AU8830_WAVEOUT: i32 = 34;
+        const MM_AUDIOFILE: i32 = 47;
+        const MM_AUDIOPT: i32 = 74;
+        const MM_AUDIOSCIENCE: i32 = 217;
+        const MM_AURAVISION: i32 = 80;
+        const MM_AUREAL: i32 = 181;
+        const MM_AUREAL_AU8820: i32 = 16;
+        const MM_AUREAL_AU8830: i32 = 32;
+        const MM_AZTECH: i32 = 52;
+        const MM_AZTECH_AUX: i32 = 404;
+        const MM_AZTECH_AUX_CD: i32 = 401;
+        const MM_AZTECH_AUX_LINE: i32 = 402;
+        const MM_AZTECH_AUX_MIC: i32 = 403;
+        const MM_AZTECH_DSP16_FMSYNTH: i32 = 68;
+        const MM_AZTECH_DSP16_WAVEIN: i32 = 65;
+        const MM_AZTECH_DSP16_WAVEOUT: i32 = 66;
+        const MM_AZTECH_DSP16_WAVESYNTH: i32 = 70;
+        const MM_AZTECH_FMSYNTH: i32 = 20;
+        const MM_AZTECH_MIDIIN: i32 = 4;
+        const MM_AZTECH_MIDIOUT: i32 = 3;
+        const MM_AZTECH_MIXER: i32 = 21;
+        const MM_AZTECH_NOVA16_MIXER: i32 = 73;
+        const MM_AZTECH_NOVA16_WAVEIN: i32 = 71;
+        const MM_AZTECH_NOVA16_WAVEOUT: i32 = 72;
+        const MM_AZTECH_PRO16_FMSYNTH: i32 = 38;
+        const MM_AZTECH_PRO16_WAVEIN: i32 = 33;
+        const MM_AZTECH_PRO16_WAVEOUT: i32 = 34;
+        const MM_AZTECH_WASH16_MIXER: i32 = 76;
+        const MM_AZTECH_WASH16_WAVEIN: i32 = 74;
+        const MM_AZTECH_WASH16_WAVEOUT: i32 = 75;
+        const MM_AZTECH_WAVEIN: i32 = 17;
+        const MM_AZTECH_WAVEOUT: i32 = 18;
+        const MM_BCB: i32 = 192;
+        const MM_BCB_NETBOARD_10: i32 = 1;
+        const MM_BCB_TT75_10: i32 = 2;
+        const MM_BECUBED: i32 = 10;
+        const MM_BERCOS: i32 = 199;
+        const MM_BERCOS_MIXER: i32 = 2;
+        const MM_BERCOS_WAVEIN: i32 = 1;
+        const MM_BERCOS_WAVEOUT: i32 = 3;
+        const MM_BERKOM: i32 = 189;
+        const MM_BINTEC: i32 = 12;
+        const MM_BINTEC_TAPI_WAVE: i32 = 1;
+        const MM_BROOKTREE: i32 = 121;
+        const MM_BTV_AUX_CD: i32 = 8;
+        const MM_BTV_AUX_LINE: i32 = 6;
+        const MM_BTV_AUX_MIC: i32 = 7;
+        const MM_BTV_DIGITALIN: i32 = 9;
+        const MM_BTV_DIGITALOUT: i32 = 10;
+        const MM_BTV_MIDIIN: i32 = 3;
+        const MM_BTV_MIDIOUT: i32 = 4;
+        const MM_BTV_MIDISYNTH: i32 = 5;
+        const MM_BTV_MIDIWAVESTREAM: i32 = 11;
+        const MM_BTV_MIXER: i32 = 12;
+        const MM_BTV_WAVEIN: i32 = 1;
+        const MM_BTV_WAVEOUT: i32 = 2;
+        const MM_CANAM: i32 = 148;
+        const MM_CANAM_CBXWAVEIN: i32 = 2;
+        const MM_CANAM_CBXWAVEOUT: i32 = 1;
+        const MM_CANOPUS: i32 = 49;
+        const MM_CANOPUS_ACM_DVREX: i32 = 1;
+        const MM_CASIO: i32 = 162;
+        const MM_CASIO_LSG_MIDIOUT: i32 = 3;
+        const MM_CASIO_WP150_MIDIIN: i32 = 2;
+        const MM_CASIO_WP150_MIDIOUT: i32 = 1;
+        const MM_CAT: i32 = 41;
+        const MM_CAT_WAVEOUT: i32 = 1;
+        const MM_CDPC_AUX: i32 = 119;
+        const MM_CDPC_MIDIIN: i32 = 114;
+        const MM_CDPC_MIDIOUT: i32 = 113;
+        const MM_CDPC_MIXER: i32 = 118;
+        const MM_CDPC_SYNTH: i32 = 115;
+        const MM_CDPC_WAVEIN: i32 = 117;
+        const MM_CDPC_WAVEOUT: i32 = 116;
+        const MM_CHROMATIC: i32 = 155;
+        const MM_CHROMATIC_M1: i32 = 1;
+        const MM_CHROMATIC_M1_AUX: i32 = 6;
+        const MM_CHROMATIC_M1_AUX_CD: i32 = 7;
+        const MM_CHROMATIC_M1_FMSYNTH: i32 = 4;
+        const MM_CHROMATIC_M1_MIDIIN: i32 = 8;
+        const MM_CHROMATIC_M1_MIDIOUT: i32 = 9;
+        const MM_CHROMATIC_M1_MIXER: i32 = 5;
+        const MM_CHROMATIC_M1_MPEGWAVEIN: i32 = 17;
+        const MM_CHROMATIC_M1_MPEGWAVEOUT: i32 = 18;
+        const MM_CHROMATIC_M1_WAVEIN: i32 = 2;
+        const MM_CHROMATIC_M1_WAVEOUT: i32 = 3;
+        const MM_CHROMATIC_M1_WTSYNTH: i32 = 16;
+        const MM_CHROMATIC_M2: i32 = 19;
+        const MM_CHROMATIC_M2_AUX: i32 = 24;
+        const MM_CHROMATIC_M2_AUX_CD: i32 = 25;
+        const MM_CHROMATIC_M2_FMSYNTH: i32 = 22;
+        const MM_CHROMATIC_M2_MIDIIN: i32 = 32;
+        const MM_CHROMATIC_M2_MIDIOUT: i32 = 33;
+        const MM_CHROMATIC_M2_MIXER: i32 = 23;
+        const MM_CHROMATIC_M2_MPEGWAVEIN: i32 = 35;
+        const MM_CHROMATIC_M2_MPEGWAVEOUT: i32 = 36;
+        const MM_CHROMATIC_M2_WAVEIN: i32 = 20;
+        const MM_CHROMATIC_M2_WAVEOUT: i32 = 21;
+        const MM_CHROMATIC_M2_WTSYNTH: i32 = 34;
+        const MM_CIRRUSLOGIC: i32 = 105;
+        const MM_COLORGRAPH: i32 = 179;
+        const MM_COMPAQ: i32 = 92;
+        const MM_COMPAQ_BB_WAVEAUX: i32 = 3;
+        const MM_COMPAQ_BB_WAVEIN: i32 = 1;
+        const MM_COMPAQ_BB_WAVEOUT: i32 = 2;
+        const MM_COMPUSIC: i32 = 89;
+        const MM_COMPUTER_FRIENDS: i32 = 45;
+        const MM_CONCEPTS: i32 = 108;
+        const MM_CONNECTIX: i32 = 158;
+        const MM_CONNECTIX_VIDEC_CODEC: i32 = 1;
+        const MM_CONTROLRES: i32 = 84;
+        const MM_COREDYNAMICS: i32 = 147;
+        const MM_COREDYNAMICS_DYNAGRAFX_VGA: i32 = 9;
+        const MM_COREDYNAMICS_DYNAGRAFX_WAVE_IN: i32 = 10;
+        const MM_COREDYNAMICS_DYNAGRAFX_WAVE_OUT: i32 = 11;
+        const MM_COREDYNAMICS_DYNAMIXHR: i32 = 1;
+        const MM_COREDYNAMICS_DYNASONIX_AUDIO_IN: i32 = 7;
+        const MM_COREDYNAMICS_DYNASONIX_AUDIO_OUT: i32 = 8;
+        const MM_COREDYNAMICS_DYNASONIX_MIDI_IN: i32 = 3;
+        const MM_COREDYNAMICS_DYNASONIX_MIDI_OUT: i32 = 4;
+        const MM_COREDYNAMICS_DYNASONIX_SYNTH: i32 = 2;
+        const MM_COREDYNAMICS_DYNASONIX_WAVE_IN: i32 = 5;
+        const MM_COREDYNAMICS_DYNASONIX_WAVE_OUT: i32 = 6;
+        const MM_CREATIVE: i32 = 2;
+        const MM_CREATIVE_AUX_CD: i32 = 401;
+        const MM_CREATIVE_AUX_LINE: i32 = 402;
+        const MM_CREATIVE_AUX_MASTER: i32 = 404;
+        const MM_CREATIVE_AUX_MIC: i32 = 403;
+        const MM_CREATIVE_AUX_MIDI: i32 = 407;
+        const MM_CREATIVE_AUX_PCSPK: i32 = 405;
+        const MM_CREATIVE_AUX_WAVE: i32 = 406;
+        const MM_CREATIVE_FMSYNTH_MONO: i32 = 301;
+        const MM_CREATIVE_FMSYNTH_STEREO: i32 = 302;
+        const MM_CREATIVE_MIDIIN: i32 = 202;
+        const MM_CREATIVE_MIDIOUT: i32 = 201;
+        const MM_CREATIVE_MIDI_AWE32: i32 = 303;
+        const MM_CREATIVE_PHNBLST_WAVEIN: i32 = 5;
+        const MM_CREATIVE_PHNBLST_WAVEOUT: i32 = 105;
+        const MM_CREATIVE_SB15_WAVEIN: i32 = 1;
+        const MM_CREATIVE_SB15_WAVEOUT: i32 = 101;
+        const MM_CREATIVE_SB16_MIXER: i32 = 409;
+        const MM_CREATIVE_SB20_WAVEIN: i32 = 2;
+        const MM_CREATIVE_SB20_WAVEOUT: i32 = 102;
+        const MM_CREATIVE_SBP16_WAVEIN: i32 = 4;
+        const MM_CREATIVE_SBP16_WAVEOUT: i32 = 104;
+        const MM_CREATIVE_SBPRO_MIXER: i32 = 408;
+        const MM_CREATIVE_SBPRO_WAVEIN: i32 = 3;
+        const MM_CREATIVE_SBPRO_WAVEOUT: i32 = 103;
+        const MM_CRYSTAL: i32 = 132;
+        const MM_CRYSTAL_CS4232_INPUTGAIN_AUX1: i32 = 13;
+        const MM_CRYSTAL_CS4232_INPUTGAIN_LOOP: i32 = 14;
+        const MM_CRYSTAL_CS4232_MIDIIN: i32 = 9;
+        const MM_CRYSTAL_CS4232_MIDIOUT: i32 = 10;
+        const MM_CRYSTAL_CS4232_WAVEAUX_AUX1: i32 = 4;
+        const MM_CRYSTAL_CS4232_WAVEAUX_AUX2: i32 = 5;
+        const MM_CRYSTAL_CS4232_WAVEAUX_LINE: i32 = 6;
+        const MM_CRYSTAL_CS4232_WAVEAUX_MASTER: i32 = 8;
+        const MM_CRYSTAL_CS4232_WAVEAUX_MONO: i32 = 7;
+        const MM_CRYSTAL_CS4232_WAVEIN: i32 = 1;
+        const MM_CRYSTAL_CS4232_WAVEMIXER: i32 = 3;
+        const MM_CRYSTAL_CS4232_WAVEOUT: i32 = 2;
+        const MM_CRYSTAL_NET: i32 = 154;
+        const MM_CRYSTAL_SOUND_FUSION_JOYSTICK: i32 = 26;
+        const MM_CRYSTAL_SOUND_FUSION_MIDIIN: i32 = 24;
+        const MM_CRYSTAL_SOUND_FUSION_MIDIOUT: i32 = 25;
+        const MM_CRYSTAL_SOUND_FUSION_MIXER: i32 = 23;
+        const MM_CRYSTAL_SOUND_FUSION_WAVEIN: i32 = 21;
+        const MM_CRYSTAL_SOUND_FUSION_WAVEOUT: i32 = 22;
+        const MM_CS: i32 = 242;
+        const MM_CYRIX: i32 = 6;
+        const MM_CYRIX_XAAUX: i32 = 6;
+        const MM_CYRIX_XAMIDIIN: i32 = 2;
+        const MM_CYRIX_XAMIDIOUT: i32 = 3;
+        const MM_CYRIX_XAMIXER: i32 = 7;
+        const MM_CYRIX_XASYNTH: i32 = 1;
+        const MM_CYRIX_XAWAVEIN: i32 = 4;
+        const MM_CYRIX_XAWAVEOUT: i32 = 5;
+        const MM_DATAFUSION: i32 = 196;
+        const MM_DATARAN: i32 = 232;
+        const MM_DDD: i32 = 151;
+        const MM_DDD_MIDILINK_MIDIIN: i32 = 1;
+        const MM_DDD_MIDILINK_MIDIOUT: i32 = 2;
+        const MM_DF_ACM_G726: i32 = 1;
+        const MM_DF_ACM_GSM610: i32 = 2;
+        const MM_DIACOUSTICS: i32 = 129;
+        const MM_DIACOUSTICS_DRUM_ACTION: i32 = 1;
+        const MM_DIALOGIC: i32 = 93;
+        const MM_DIAMONDMM: i32 = 163;
+        const MM_DICTAPHONE: i32 = 214;
+        const MM_DICTAPHONE_G726: i32 = 1;
+        const MM_DIGIGRAM: i32 = 227;
+        const MM_DIGITAL: i32 = 100;
+        const MM_DIGITAL_ACM_G723: i32 = 3;
+        const MM_DIGITAL_AUDIO_LABS: i32 = 136;
+        const MM_DIGITAL_AUDIO_LABS_CDLX: i32 = 19;
+        const MM_DIGITAL_AUDIO_LABS_CPRO: i32 = 17;
+        const MM_DIGITAL_AUDIO_LABS_CTDIF: i32 = 20;
+        const MM_DIGITAL_AUDIO_LABS_DOC: i32 = 2;
+        const MM_DIGITAL_AUDIO_LABS_TC: i32 = 1;
+        const MM_DIGITAL_AUDIO_LABS_V8: i32 = 16;
+        const MM_DIGITAL_AUDIO_LABS_VP: i32 = 18;
+        const MM_DIGITAL_AV320_WAVEIN: i32 = 1;
+        const MM_DIGITAL_AV320_WAVEOUT: i32 = 2;
+        const MM_DIGITAL_ICM_H261: i32 = 5;
+        const MM_DIGITAL_ICM_H263: i32 = 4;
+        const MM_DIMD_AUX_LINE: i32 = 9;
+        const MM_DIMD_DIRSOUND: i32 = 1;
+        const MM_DIMD_MIDIIN: i32 = 7;
+        const MM_DIMD_MIDIOUT: i32 = 8;
+        const MM_DIMD_MIXER: i32 = 10;
+        const MM_DIMD_PLATFORM: i32 = 0;
+        const MM_DIMD_VIRTJOY: i32 = 4;
+        const MM_DIMD_VIRTMPU: i32 = 2;
+        const MM_DIMD_VIRTSB: i32 = 3;
+        const MM_DIMD_WAVEIN: i32 = 5;
+        const MM_DIMD_WAVEOUT: i32 = 6;
+        const MM_DIMD_WSS_AUX: i32 = 21;
+        const MM_DIMD_WSS_MIXER: i32 = 17;
+        const MM_DIMD_WSS_SYNTH: i32 = 76;
+        const MM_DIMD_WSS_WAVEIN: i32 = 14;
+        const MM_DIMD_WSS_WAVEOUT: i32 = 15;
+        const MM_DOLBY: i32 = 78;
+        const MM_DPSINC: i32 = 191;
+        const MM_DSP_GROUP: i32 = 43;
+        const MM_DSP_GROUP_TRUESPEECH: i32 = 1;
+        const MM_DSP_SOLUTIONS: i32 = 25;
+        const MM_DSP_SOLUTIONS_AUX: i32 = 4;
+        const MM_DSP_SOLUTIONS_SYNTH: i32 = 3;
+        const MM_DSP_SOLUTIONS_WAVEIN: i32 = 2;
+        const MM_DSP_SOLUTIONS_WAVEOUT: i32 = 1;
+        const MM_DTS: i32 = 226;
+        const MM_DTS_DS: i32 = 1;
+        const MM_DUCK: i32 = 197;
+        const MM_DVISION: i32 = 165;
+        const MM_ECHO: i32 = 39;
+        const MM_ECHO_AUX: i32 = 6;
+        const MM_ECHO_MIDIIN: i32 = 5;
+        const MM_ECHO_MIDIOUT: i32 = 4;
+        const MM_ECHO_SYNTH: i32 = 1;
+        const MM_ECHO_WAVEIN: i32 = 3;
+        const MM_ECHO_WAVEOUT: i32 = 2;
+        const MM_ECS: i32 = 145;
+        const MM_ECS_AADF_MIDI_IN: i32 = 10;
+        const MM_ECS_AADF_MIDI_OUT: i32 = 11;
+        const MM_ECS_AADF_WAVE2MIDI_IN: i32 = 12;
+        const MM_EES: i32 = 219;
+        const MM_EES_PCMIDI14: i32 = 1;
+        const MM_EES_PCMIDI14_IN: i32 = 2;
+        const MM_EES_PCMIDI14_OUT1: i32 = 3;
+        const MM_EES_PCMIDI14_OUT2: i32 = 4;
+        const MM_EES_PCMIDI14_OUT3: i32 = 5;
+        const MM_EES_PCMIDI14_OUT4: i32 = 6;
+        const MM_EMAGIC: i32 = 208;
+        const MM_EMAGIC_UNITOR8: i32 = 1;
+        const MM_EMU: i32 = 19;
+        const MM_EMU_APSMIDIIN: i32 = 2;
+        const MM_EMU_APSMIDIOUT: i32 = 3;
+        const MM_EMU_APSSYNTH: i32 = 1;
+        const MM_EMU_APSWAVEIN: i32 = 4;
+        const MM_EMU_APSWAVEOUT: i32 = 5;
+        const MM_ENET: i32 = 206;
+        const MM_ENET_T2000_HANDSETIN: i32 = 3;
+        const MM_ENET_T2000_HANDSETOUT: i32 = 4;
+        const MM_ENET_T2000_LINEIN: i32 = 1;
+        const MM_ENET_T2000_LINEOUT: i32 = 2;
+        const MM_ENSONIQ: i32 = 125;
+        const MM_ENSONIQ_SOUNDSCAPE: i32 = 16;
+        const MM_EPSON: i32 = 50;
+        const MM_EPS_FMSND: i32 = 1;
+        const MM_ESS: i32 = 46;
+        const MM_ESS_AMAUX: i32 = 3;
+        const MM_ESS_AMMIDIIN: i32 = 6;
+        const MM_ESS_AMMIDIOUT: i32 = 5;
+        const MM_ESS_AMSYNTH: i32 = 4;
+        const MM_ESS_AMWAVEIN: i32 = 2;
+        const MM_ESS_AMWAVEOUT: i32 = 1;
+        const MM_ESS_AUX_CD: i32 = 8;
+        const MM_ESS_ES1488_MIXER: i32 = 24;
+        const MM_ESS_ES1488_WAVEIN: i32 = 23;
+        const MM_ESS_ES1488_WAVEOUT: i32 = 22;
+        const MM_ESS_ES1688_MIXER: i32 = 27;
+        const MM_ESS_ES1688_WAVEIN: i32 = 26;
+        const MM_ESS_ES1688_WAVEOUT: i32 = 25;
+        const MM_ESS_ES1788_MIXER: i32 = 30;
+        const MM_ESS_ES1788_WAVEIN: i32 = 29;
+        const MM_ESS_ES1788_WAVEOUT: i32 = 28;
+        const MM_ESS_ES1868_MIXER: i32 = 36;
+        const MM_ESS_ES1868_WAVEIN: i32 = 35;
+        const MM_ESS_ES1868_WAVEOUT: i32 = 34;
+        const MM_ESS_ES1878_MIXER: i32 = 39;
+        const MM_ESS_ES1878_WAVEIN: i32 = 38;
+        const MM_ESS_ES1878_WAVEOUT: i32 = 37;
+        const MM_ESS_ES1888_MIXER: i32 = 33;
+        const MM_ESS_ES1888_WAVEIN: i32 = 32;
+        const MM_ESS_ES1888_WAVEOUT: i32 = 31;
+        const MM_ESS_ES488_MIXER: i32 = 18;
+        const MM_ESS_ES488_WAVEIN: i32 = 17;
+        const MM_ESS_ES488_WAVEOUT: i32 = 16;
+        const MM_ESS_ES688_MIXER: i32 = 21;
+        const MM_ESS_ES688_WAVEIN: i32 = 20;
+        const MM_ESS_ES688_WAVEOUT: i32 = 19;
+        const MM_ESS_MIXER: i32 = 7;
+        const MM_ESS_MPU401_MIDIIN: i32 = 10;
+        const MM_ESS_MPU401_MIDIOUT: i32 = 9;
+        const MM_ETEK: i32 = 241;
+        const MM_ETEK_KWIKMIDI_MIDIIN: i32 = 1;
+        const MM_ETEK_KWIKMIDI_MIDIOUT: i32 = 2;
+        const MM_EUPHONICS: i32 = 152;
+        const MM_EUPHONICS_AUX_CD: i32 = 1;
+        const MM_EUPHONICS_AUX_LINE: i32 = 2;
+        const MM_EUPHONICS_AUX_MASTER: i32 = 3;
+        const MM_EUPHONICS_AUX_MIC: i32 = 4;
+        const MM_EUPHONICS_AUX_MIDI: i32 = 5;
+        const MM_EUPHONICS_AUX_WAVE: i32 = 6;
+        const MM_EUPHONICS_EUSYNTH: i32 = 14;
+        const MM_EUPHONICS_FMSYNTH_MONO: i32 = 7;
+        const MM_EUPHONICS_FMSYNTH_STEREO: i32 = 8;
+        const MM_EUPHONICS_MIDIIN: i32 = 9;
+        const MM_EUPHONICS_MIDIOUT: i32 = 10;
+        const MM_EUPHONICS_MIXER: i32 = 11;
+        const MM_EUPHONICS_WAVEIN: i32 = 12;
+        const MM_EUPHONICS_WAVEOUT: i32 = 13;
+        const MM_EVEREX: i32 = 38;
+        const MM_EVEREX_CARRIER: i32 = 1;
+        const MM_EXAN: i32 = 63;
+        const MM_FAITH: i32 = 15;
+        const MM_FAST: i32 = 126;
+        const MM_FHGIIS_MPEGLAYER3: i32 = 10;
+        const MM_FHGIIS_MPEGLAYER3_ADVANCED: i32 = 12;
+        const MM_FHGIIS_MPEGLAYER3_ADVANCEDPLUS: i32 = 14;
+        const MM_FHGIIS_MPEGLAYER3_BASIC: i32 = 11;
+        const MM_FHGIIS_MPEGLAYER3_DECODE: i32 = 9;
+        const MM_FHGIIS_MPEGLAYER3_LITE: i32 = 10;
+        const MM_FHGIIS_MPEGLAYER3_PROFESSIONAL: i32 = 13;
+        const MM_FLEXION: i32 = 249;
+        const MM_FLEXION_X300_WAVEIN: i32 = 1;
+        const MM_FLEXION_X300_WAVEOUT: i32 = 2;
+        const MM_FORTEMEDIA: i32 = 229;
+        const MM_FORTEMEDIA_AUX: i32 = 5;
+        const MM_FORTEMEDIA_FMSYNC: i32 = 3;
+        const MM_FORTEMEDIA_MIXER: i32 = 4;
+        const MM_FORTEMEDIA_WAVEIN: i32 = 1;
+        const MM_FORTEMEDIA_WAVEOUT: i32 = 2;
+        const MM_FRAUNHOFER_IIS: i32 = 172;
+        const MM_FRONTIER: i32 = 160;
+        const MM_FRONTIER_WAVECENTER_MIDIIN: i32 = 1;
+        const MM_FRONTIER_WAVECENTER_MIDIOUT: i32 = 2;
+        const MM_FRONTIER_WAVECENTER_WAVEIN: i32 = 3;
+        const MM_FRONTIER_WAVECENTER_WAVEOUT: i32 = 4;
+        const MM_FTR: i32 = 198;
+        const MM_FTR_ACM: i32 = 2;
+        const MM_FTR_ENCODER_WAVEIN: i32 = 1;
+        const MM_FUJITSU: i32 = 4;
+        const MM_GADGETLABS: i32 = 159;
+        const MM_GADGETLABS_WAVE42_WAVEIN: i32 = 3;
+        const MM_GADGETLABS_WAVE42_WAVEOUT: i32 = 4;
+        const MM_GADGETLABS_WAVE44_WAVEIN: i32 = 1;
+        const MM_GADGETLABS_WAVE44_WAVEOUT: i32 = 2;
+        const MM_GADGETLABS_WAVE4_MIDIIN: i32 = 5;
+        const MM_GADGETLABS_WAVE4_MIDIOUT: i32 = 6;
+        const MM_GRANDE: i32 = 117;
+        const MM_GRAVIS: i32 = 34;
+        const MM_GUILLEMOT: i32 = 207;
+        const MM_GULBRANSEN: i32 = 130;
+        const MM_HAFTMANN: i32 = 220;
+        const MM_HAFTMANN_LPTDAC2: i32 = 1;
+        const MM_HEADSPACE: i32 = 222;
+        const MM_HEADSPACE_HAEMIXER: i32 = 4;
+        const MM_HEADSPACE_HAESYNTH: i32 = 1;
+        const MM_HEADSPACE_HAEWAVEIN: i32 = 3;
+        const MM_HEADSPACE_HAEWAVEOUT: i32 = 2;
+        const MM_HEWLETT_PACKARD: i32 = 13;
+        const MM_HEWLETT_PACKARD_CU_CODEC: i32 = 1;
+        const MM_HORIZONS: i32 = 107;
+        const MM_HP: i32 = 253;
+        const MM_HP_WAVEIN: i32 = 2;
+        const MM_HP_WAVEOUT: i32 = 1;
+        const MM_HYPERACTIVE: i32 = 246;
+        const MM_IBM: i32 = 22;
+        const MM_IBM_MWAVE_AUX: i32 = 23;
+        const MM_IBM_MWAVE_MIDIIN: i32 = 21;
+        const MM_IBM_MWAVE_MIDIOUT: i32 = 22;
+        const MM_IBM_MWAVE_MIXER: i32 = 20;
+        const MM_IBM_MWAVE_WAVEIN: i32 = 18;
+        const MM_IBM_MWAVE_WAVEOUT: i32 = 19;
+        const MM_IBM_PCMCIA_AUX: i32 = 16;
+        const MM_IBM_PCMCIA_MIDIIN: i32 = 14;
+        const MM_IBM_PCMCIA_MIDIOUT: i32 = 15;
+        const MM_IBM_PCMCIA_SYNTH: i32 = 13;
+        const MM_IBM_PCMCIA_WAVEIN: i32 = 11;
+        const MM_IBM_PCMCIA_WAVEOUT: i32 = 12;
+        const MM_IBM_THINKPAD200: i32 = 17;
+        const MM_IBM_WC_MIDIOUT: i32 = 30;
+        const MM_IBM_WC_MIXEROUT: i32 = 33;
+        const MM_IBM_WC_WAVEOUT: i32 = 31;
+        const MM_ICCC: i32 = 259;
+        const MM_ICCC_UNA3_AUX: i32 = 3;
+        const MM_ICCC_UNA3_MIXER: i32 = 4;
+        const MM_ICCC_UNA3_WAVEIN: i32 = 1;
+        const MM_ICCC_UNA3_WAVEOUT: i32 = 2;
+        const MM_ICE: i32 = 239;
+        const MM_ICE_AUX: i32 = 11;
+        const MM_ICE_MIDIIN1: i32 = 6;
+        const MM_ICE_MIDIIN2: i32 = 8;
+        const MM_ICE_MIDIOUT1: i32 = 5;
+        const MM_ICE_MIDIOUT2: i32 = 7;
+        const MM_ICE_MIXER: i32 = 10;
+        const MM_ICE_MTWAVEIN: i32 = 4;
+        const MM_ICE_MTWAVEOUT: i32 = 3;
+        const MM_ICE_SYNTH: i32 = 9;
+        const MM_ICE_WAVEIN: i32 = 2;
+        const MM_ICE_WAVEOUT: i32 = 1;
+        const MM_ICL_PS: i32 = 32;
+        const MM_ICOM_AUX: i32 = 6;
+        const MM_ICOM_LINE: i32 = 7;
+        const MM_ICOM_MIXER: i32 = 5;
+        const MM_ICOM_WAVEIN: i32 = 3;
+        const MM_ICOM_WAVEOUT: i32 = 4;
+        const MM_ICS: i32 = 57;
+        const MM_ICS_2115_LITE_MIDIOUT: i32 = 13;
+        const MM_ICS_2120_LITE_MIDIOUT: i32 = 14;
+        const MM_ICS_WAVEDECK_AUX: i32 = 4;
+        const MM_ICS_WAVEDECK_MIXER: i32 = 3;
+        const MM_ICS_WAVEDECK_SYNTH: i32 = 5;
+        const MM_ICS_WAVEDECK_WAVEIN: i32 = 2;
+        const MM_ICS_WAVEDECK_WAVEOUT: i32 = 1;
+        const MM_ICS_WAVEDEC_SB_AUX: i32 = 12;
+        const MM_ICS_WAVEDEC_SB_FM_MIDIOUT: i32 = 8;
+        const MM_ICS_WAVEDEC_SB_MIXER: i32 = 11;
+        const MM_ICS_WAVEDEC_SB_MPU401_MIDIIN: i32 = 10;
+        const MM_ICS_WAVEDEC_SB_MPU401_MIDIOUT: i32 = 9;
+        const MM_ICS_WAVEDEC_SB_WAVEIN: i32 = 7;
+        const MM_ICS_WAVEDEC_SB_WAVEOUT: i32 = 6;
+        const MM_INSOFT: i32 = 94;
+        const MM_INTEL: i32 = 33;
+        const MM_INTELOPD_AUX: i32 = 401;
+        const MM_INTELOPD_WAVEIN: i32 = 1;
+        const MM_INTELOPD_WAVEOUT: i32 = 101;
+        const MM_INTEL_NSPMODEMLINEIN: i32 = 501;
+        const MM_INTEL_NSPMODEMLINEOUT: i32 = 502;
+        const MM_INTERACTIVE: i32 = 36;
+        const MM_INTERACTIVE_WAVEIN: i32 = 69;
+        const MM_INTERACTIVE_WAVEOUT: i32 = 69;
+        const MM_INTERNET: i32 = 244;
+        const MM_INTERNET_SSW_MIDIIN: i32 = 11;
+        const MM_INTERNET_SSW_MIDIOUT: i32 = 10;
+        const MM_INTERNET_SSW_WAVEIN: i32 = 13;
+        const MM_INTERNET_SSW_WAVEOUT: i32 = 12;
+        const MM_INVISION: i32 = 188;
+        const MM_IODD: i32 = 258;
+        const MM_IOMAGIC: i32 = 82;
+        const MM_IOMAGIC_TEMPO_AUXOUT: i32 = 6;
+        const MM_IOMAGIC_TEMPO_MIDIOUT: i32 = 4;
+        const MM_IOMAGIC_TEMPO_MXDOUT: i32 = 5;
+        const MM_IOMAGIC_TEMPO_SYNTH: i32 = 3;
+        const MM_IOMAGIC_TEMPO_WAVEIN: i32 = 2;
+        const MM_IOMAGIC_TEMPO_WAVEOUT: i32 = 1;
+        const MM_IPI: i32 = 238;
+        const MM_IPI_ACM_HSX: i32 = 1;
+        const MM_IPI_ACM_RPELP: i32 = 2;
+        const MM_IPI_AT_MIXER: i32 = 6;
+        const MM_IPI_AT_WAVEIN: i32 = 5;
+        const MM_IPI_AT_WAVEOUT: i32 = 4;
+        const MM_IPI_WF_ASSS: i32 = 3;
+        const MM_ISOLUTION: i32 = 106;
+        const MM_ISOLUTION_PASCAL: i32 = 1;
+        const MM_ITERATEDSYS: i32 = 58;
+        const MM_ITERATEDSYS_FUFCODEC: i32 = 1;
+        const MM_I_LINK: i32 = 233;
+        const MM_I_LINK_VOICE_CODER: i32 = 1;
+        const MM_KAY_ELEMETRICS: i32 = 131;
+        const MM_KAY_ELEMETRICS_CSL: i32 = 17152;
+        const MM_KAY_ELEMETRICS_CSL_4CHANNEL: i32 = 17161;
+        const MM_KAY_ELEMETRICS_CSL_DAT: i32 = 17160;
+        const MM_KORG: i32 = 55;
+        const MM_KORG_1212IO_MSWAVEIN: i32 = 3;
+        const MM_KORG_1212IO_MSWAVEOUT: i32 = 4;
+        const MM_KORG_PCIF_MIDIIN: i32 = 2;
+        const MM_KORG_PCIF_MIDIOUT: i32 = 1;
+        const MM_LERNOUT_ANDHAUSPIE_LHCODECACM: i32 = 1;
+        const MM_LERNOUT_AND_HAUSPIE: i32 = 97;
+        const MM_LEXICON: i32 = 236;
+        const MM_LEXICON_STUDIO_WAVE_IN: i32 = 2;
+        const MM_LEXICON_STUDIO_WAVE_OUT: i32 = 1;
+        const MM_LOGITECH: i32 = 60;
+        const MM_LUCENT: i32 = 184;
+        const MM_LUCENT_ACM_G723: i32 = 0;
+        const MM_LUCID: i32 = 221;
+        const MM_LUCID_PCI24WAVEIN: i32 = 1;
+        const MM_LUCID_PCI24WAVEOUT: i32 = 2;
+        const MM_LUMINOSITI: i32 = 224;
+        const MM_LUMINOSITI_SCWAVEIN: i32 = 1;
+        const MM_LUMINOSITI_SCWAVEMIX: i32 = 3;
+        const MM_LUMINOSITI_SCWAVEOUT: i32 = 2;
+        const MM_LYNX: i32 = 212;
+        const MM_LYRRUS: i32 = 88;
+        const MM_LYRRUS_BRIDGE_GUITAR: i32 = 1;
+        const MM_MALDEN: i32 = 261;
+        const MM_MARIAN: i32 = 190;
+        const MM_MARIAN_ARC44WAVEIN: i32 = 1;
+        const MM_MARIAN_ARC44WAVEOUT: i32 = 2;
+        const MM_MARIAN_ARC88WAVEIN: i32 = 5;
+        const MM_MARIAN_ARC88WAVEOUT: i32 = 6;
+        const MM_MARIAN_PRODIF24WAVEIN: i32 = 3;
+        const MM_MARIAN_PRODIF24WAVEOUT: i32 = 4;
+        const MM_MATROX_DIV: i32 = 254;
+        const MM_MATSUSHITA: i32 = 83;
+        const MM_MATSUSHITA_AUX: i32 = 5;
+        const MM_MATSUSHITA_FMSYNTH_STEREO: i32 = 3;
+        const MM_MATSUSHITA_MIXER: i32 = 4;
+        const MM_MATSUSHITA_WAVEIN: i32 = 1;
+        const MM_MATSUSHITA_WAVEOUT: i32 = 2;
+        const MM_MEDIASONIC: i32 = 71;
+        const MM_MEDIASONIC_ACM_G723: i32 = 1;
+        const MM_MEDIASONIC_ICOM: i32 = 2;
+        const MM_MEDIATRIX: i32 = 141;
+        const MM_MEDIAVISION: i32 = 3;
+        const MM_MEDIAVISION_CDPC: i32 = 112;
+        const MM_MEDIAVISION_OPUS1208: i32 = 128;
+        const MM_MEDIAVISION_OPUS1216: i32 = 144;
+        const MM_MEDIAVISION_PROAUDIO: i32 = 16;
+        const MM_MEDIAVISION_PROAUDIO_16: i32 = 96;
+        const MM_MEDIAVISION_PROAUDIO_PLUS: i32 = 80;
+        const MM_MEDIAVISION_PROSTUDIO_16: i32 = 96;
+        const MM_MEDIAVISION_THUNDER: i32 = 32;
+        const MM_MEDIAVISION_TPORT: i32 = 64;
+        const MM_MELABS: i32 = 44;
+        const MM_MELABS_MIDI2GO: i32 = 1;
+        const MM_MERGING_MPEGL3: i32 = 1;
+        const MM_MERGING_TECHNOLOGIES: i32 = 177;
+        const MM_METHEUS: i32 = 59;
+        const MM_METHEUS_ZIPPER: i32 = 1;
+        const MM_MICRONAS: i32 = 251;
+        const MM_MICRONAS_CLP833: i32 = 2;
+        const MM_MICRONAS_SC4: i32 = 1;
+        const MM_MICROSOFT: i32 = 1;
+        const MM_MIDI_MAPPER: i32 = 1;
+        const MM_MINDMAKER: i32 = 263;
+        const MM_MINDMAKER_GC_MIXER: i32 = 3;
+        const MM_MINDMAKER_GC_WAVEIN: i32 = 1;
+        const MM_MINDMAKER_GC_WAVEOUT: i32 = 2;
+        const MM_MIRO: i32 = 104;
+        const MM_MIRO_DC30_MIX: i32 = 7;
+        const MM_MIRO_DC30_WAVEIN: i32 = 6;
+        const MM_MIRO_DC30_WAVEOUT: i32 = 5;
+        const MM_MIRO_MOVIEPRO: i32 = 1;
+        const MM_MIRO_VIDEOD1: i32 = 2;
+        const MM_MIRO_VIDEODC1TV: i32 = 3;
+        const MM_MIRO_VIDEOTD: i32 = 4;
+        const MM_MITEL: i32 = 16;
+        const MM_MITEL_MEDIAPATH_WAVEIN: i32 = 301;
+        const MM_MITEL_MEDIAPATH_WAVEOUT: i32 = 300;
+        const MM_MITEL_MPA_HANDSET_WAVEIN: i32 = 201;
+        const MM_MITEL_MPA_HANDSET_WAVEOUT: i32 = 200;
+        const MM_MITEL_MPA_HANDSFREE_WAVEIN: i32 = 203;
+        const MM_MITEL_MPA_HANDSFREE_WAVEOUT: i32 = 202;
+        const MM_MITEL_MPA_LINE1_WAVEIN: i32 = 205;
+        const MM_MITEL_MPA_LINE1_WAVEOUT: i32 = 204;
+        const MM_MITEL_MPA_LINE2_WAVEIN: i32 = 207;
+        const MM_MITEL_MPA_LINE2_WAVEOUT: i32 = 206;
+        const MM_MITEL_TALKTO_BRIDGED_WAVEIN: i32 = 105;
+        const MM_MITEL_TALKTO_BRIDGED_WAVEOUT: i32 = 104;
+        const MM_MITEL_TALKTO_HANDSET_WAVEIN: i32 = 103;
+        const MM_MITEL_TALKTO_HANDSET_WAVEOUT: i32 = 102;
+        const MM_MITEL_TALKTO_LINE_WAVEIN: i32 = 101;
+        const MM_MITEL_TALKTO_LINE_WAVEOUT: i32 = 100;
+        const MM_MMOTION_WAVEAUX: i32 = 1;
+        const MM_MMOTION_WAVEIN: i32 = 3;
+        const MM_MMOTION_WAVEOUT: i32 = 2;
+        const MM_MOSCOM: i32 = 68;
+        const MM_MOSCOM_VPC2400_IN: i32 = 1;
+        const MM_MOSCOM_VPC2400_OUT: i32 = 2;
+        const MM_MOTIONPIXELS: i32 = 193;
+        const MM_MOTIONPIXELS_MVI2: i32 = 1;
+        const MM_MOTOROLA: i32 = 48;
+        const MM_MOTU: i32 = 101;
+        const MM_MOTU_DTX_MIDI_IN_A: i32 = 801;
+        const MM_MOTU_DTX_MIDI_IN_B: i32 = 802;
+        const MM_MOTU_DTX_MIDI_IN_SYNC: i32 = 800;
+        const MM_MOTU_DTX_MIDI_OUT_A: i32 = 801;
+        const MM_MOTU_DTX_MIDI_OUT_B: i32 = 802;
+        const MM_MOTU_FLYER_MIDI_IN_A: i32 = 601;
+        const MM_MOTU_FLYER_MIDI_IN_B: i32 = 602;
+        const MM_MOTU_FLYER_MIDI_IN_SYNC: i32 = 600;
+        const MM_MOTU_FLYER_MIDI_OUT_A: i32 = 601;
+        const MM_MOTU_FLYER_MIDI_OUT_B: i32 = 602;
+        const MM_MOTU_MTPAV_MIDIIN_1: i32 = 901;
+        const MM_MOTU_MTPAV_MIDIIN_2: i32 = 902;
+        const MM_MOTU_MTPAV_MIDIIN_3: i32 = 903;
+        const MM_MOTU_MTPAV_MIDIIN_4: i32 = 904;
+        const MM_MOTU_MTPAV_MIDIIN_5: i32 = 905;
+        const MM_MOTU_MTPAV_MIDIIN_6: i32 = 906;
+        const MM_MOTU_MTPAV_MIDIIN_7: i32 = 907;
+        const MM_MOTU_MTPAV_MIDIIN_8: i32 = 908;
+        const MM_MOTU_MTPAV_MIDIIN_ADAT: i32 = 917;
+        const MM_MOTU_MTPAV_MIDIIN_SYNC: i32 = 900;
+        const MM_MOTU_MTPAV_MIDIOUT_1: i32 = 901;
+        const MM_MOTU_MTPAV_MIDIOUT_2: i32 = 902;
+        const MM_MOTU_MTPAV_MIDIOUT_3: i32 = 903;
+        const MM_MOTU_MTPAV_MIDIOUT_4: i32 = 904;
+        const MM_MOTU_MTPAV_MIDIOUT_5: i32 = 905;
+        const MM_MOTU_MTPAV_MIDIOUT_6: i32 = 906;
+        const MM_MOTU_MTPAV_MIDIOUT_7: i32 = 907;
+        const MM_MOTU_MTPAV_MIDIOUT_8: i32 = 908;
+        const MM_MOTU_MTPAV_MIDIOUT_ADAT: i32 = 917;
+        const MM_MOTU_MTPAV_MIDIOUT_ALL: i32 = 900;
+        const MM_MOTU_MTPAV_NET_MIDIIN_1: i32 = 909;
+        const MM_MOTU_MTPAV_NET_MIDIIN_2: i32 = 910;
+        const MM_MOTU_MTPAV_NET_MIDIIN_3: i32 = 911;
+        const MM_MOTU_MTPAV_NET_MIDIIN_4: i32 = 912;
+        const MM_MOTU_MTPAV_NET_MIDIIN_5: i32 = 913;
+        const MM_MOTU_MTPAV_NET_MIDIIN_6: i32 = 914;
+        const MM_MOTU_MTPAV_NET_MIDIIN_7: i32 = 915;
+        const MM_MOTU_MTPAV_NET_MIDIIN_8: i32 = 916;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_1: i32 = 909;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_2: i32 = 910;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_3: i32 = 911;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_4: i32 = 912;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_5: i32 = 913;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_6: i32 = 914;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_7: i32 = 915;
+        const MM_MOTU_MTPAV_NET_MIDIOUT_8: i32 = 916;
+        const MM_MOTU_MTPII_MIDIIN_1: i32 = 201;
+        const MM_MOTU_MTPII_MIDIIN_2: i32 = 202;
+        const MM_MOTU_MTPII_MIDIIN_3: i32 = 203;
+        const MM_MOTU_MTPII_MIDIIN_4: i32 = 204;
+        const MM_MOTU_MTPII_MIDIIN_5: i32 = 205;
+        const MM_MOTU_MTPII_MIDIIN_6: i32 = 206;
+        const MM_MOTU_MTPII_MIDIIN_7: i32 = 207;
+        const MM_MOTU_MTPII_MIDIIN_8: i32 = 208;
+        const MM_MOTU_MTPII_MIDIIN_SYNC: i32 = 200;
+        const MM_MOTU_MTPII_MIDIOUT_1: i32 = 201;
+        const MM_MOTU_MTPII_MIDIOUT_2: i32 = 202;
+        const MM_MOTU_MTPII_MIDIOUT_3: i32 = 203;
+        const MM_MOTU_MTPII_MIDIOUT_4: i32 = 204;
+        const MM_MOTU_MTPII_MIDIOUT_5: i32 = 205;
+        const MM_MOTU_MTPII_MIDIOUT_6: i32 = 206;
+        const MM_MOTU_MTPII_MIDIOUT_7: i32 = 207;
+        const MM_MOTU_MTPII_MIDIOUT_8: i32 = 208;
+        const MM_MOTU_MTPII_MIDIOUT_ALL: i32 = 200;
+        const MM_MOTU_MTPII_NET_MIDIIN_1: i32 = 209;
+        const MM_MOTU_MTPII_NET_MIDIIN_2: i32 = 210;
+        const MM_MOTU_MTPII_NET_MIDIIN_3: i32 = 211;
+        const MM_MOTU_MTPII_NET_MIDIIN_4: i32 = 212;
+        const MM_MOTU_MTPII_NET_MIDIIN_5: i32 = 213;
+        const MM_MOTU_MTPII_NET_MIDIIN_6: i32 = 214;
+        const MM_MOTU_MTPII_NET_MIDIIN_7: i32 = 215;
+        const MM_MOTU_MTPII_NET_MIDIIN_8: i32 = 216;
+        const MM_MOTU_MTPII_NET_MIDIOUT_1: i32 = 209;
+        const MM_MOTU_MTPII_NET_MIDIOUT_2: i32 = 210;
+        const MM_MOTU_MTPII_NET_MIDIOUT_3: i32 = 211;
+        const MM_MOTU_MTPII_NET_MIDIOUT_4: i32 = 212;
+        const MM_MOTU_MTPII_NET_MIDIOUT_5: i32 = 213;
+        const MM_MOTU_MTPII_NET_MIDIOUT_6: i32 = 214;
+        const MM_MOTU_MTPII_NET_MIDIOUT_7: i32 = 215;
+        const MM_MOTU_MTPII_NET_MIDIOUT_8: i32 = 216;
+        const MM_MOTU_MTP_MIDIIN_1: i32 = 101;
+        const MM_MOTU_MTP_MIDIIN_2: i32 = 102;
+        const MM_MOTU_MTP_MIDIIN_3: i32 = 103;
+        const MM_MOTU_MTP_MIDIIN_4: i32 = 104;
+        const MM_MOTU_MTP_MIDIIN_5: i32 = 105;
+        const MM_MOTU_MTP_MIDIIN_6: i32 = 106;
+        const MM_MOTU_MTP_MIDIIN_7: i32 = 107;
+        const MM_MOTU_MTP_MIDIIN_8: i32 = 108;
+        const MM_MOTU_MTP_MIDIOUT_1: i32 = 101;
+        const MM_MOTU_MTP_MIDIOUT_2: i32 = 102;
+        const MM_MOTU_MTP_MIDIOUT_3: i32 = 103;
+        const MM_MOTU_MTP_MIDIOUT_4: i32 = 104;
+        const MM_MOTU_MTP_MIDIOUT_5: i32 = 105;
+        const MM_MOTU_MTP_MIDIOUT_6: i32 = 106;
+        const MM_MOTU_MTP_MIDIOUT_7: i32 = 107;
+        const MM_MOTU_MTP_MIDIOUT_8: i32 = 108;
+        const MM_MOTU_MTP_MIDIOUT_ALL: i32 = 100;
+        const MM_MOTU_MXN_MIDIIN_1: i32 = 501;
+        const MM_MOTU_MXN_MIDIIN_2: i32 = 502;
+        const MM_MOTU_MXN_MIDIIN_3: i32 = 503;
+        const MM_MOTU_MXN_MIDIIN_4: i32 = 504;
+        const MM_MOTU_MXN_MIDIIN_SYNC: i32 = 500;
+        const MM_MOTU_MXN_MIDIOUT_1: i32 = 501;
+        const MM_MOTU_MXN_MIDIOUT_2: i32 = 502;
+        const MM_MOTU_MXN_MIDIOUT_3: i32 = 503;
+        const MM_MOTU_MXN_MIDIOUT_4: i32 = 504;
+        const MM_MOTU_MXN_MIDIOUT_ALL: i32 = 500;
+        const MM_MOTU_MXPMPU_MIDIIN_1: i32 = 401;
+        const MM_MOTU_MXPMPU_MIDIIN_2: i32 = 402;
+        const MM_MOTU_MXPMPU_MIDIIN_3: i32 = 403;
+        const MM_MOTU_MXPMPU_MIDIIN_4: i32 = 404;
+        const MM_MOTU_MXPMPU_MIDIIN_5: i32 = 405;
+        const MM_MOTU_MXPMPU_MIDIIN_6: i32 = 406;
+        const MM_MOTU_MXPMPU_MIDIIN_SYNC: i32 = 400;
+        const MM_MOTU_MXPMPU_MIDIOUT_1: i32 = 401;
+        const MM_MOTU_MXPMPU_MIDIOUT_2: i32 = 402;
+        const MM_MOTU_MXPMPU_MIDIOUT_3: i32 = 403;
+        const MM_MOTU_MXPMPU_MIDIOUT_4: i32 = 404;
+        const MM_MOTU_MXPMPU_MIDIOUT_5: i32 = 405;
+        const MM_MOTU_MXPMPU_MIDIOUT_6: i32 = 406;
+        const MM_MOTU_MXPMPU_MIDIOUT_ALL: i32 = 400;
+        const MM_MOTU_MXPXT_MIDIIN_1: i32 = 1001;
+        const MM_MOTU_MXPXT_MIDIIN_2: i32 = 1002;
+        const MM_MOTU_MXPXT_MIDIIN_3: i32 = 1003;
+        const MM_MOTU_MXPXT_MIDIIN_4: i32 = 1004;
+        const MM_MOTU_MXPXT_MIDIIN_5: i32 = 1005;
+        const MM_MOTU_MXPXT_MIDIIN_6: i32 = 1006;
+        const MM_MOTU_MXPXT_MIDIIN_7: i32 = 1007;
+        const MM_MOTU_MXPXT_MIDIIN_8: i32 = 1008;
+        const MM_MOTU_MXPXT_MIDIIN_SYNC: i32 = 1000;
+        const MM_MOTU_MXPXT_MIDIOUT_1: i32 = 1001;
+        const MM_MOTU_MXPXT_MIDIOUT_2: i32 = 1002;
+        const MM_MOTU_MXPXT_MIDIOUT_3: i32 = 1003;
+        const MM_MOTU_MXPXT_MIDIOUT_4: i32 = 1004;
+        const MM_MOTU_MXPXT_MIDIOUT_5: i32 = 1005;
+        const MM_MOTU_MXPXT_MIDIOUT_6: i32 = 1006;
+        const MM_MOTU_MXPXT_MIDIOUT_7: i32 = 1007;
+        const MM_MOTU_MXPXT_MIDIOUT_8: i32 = 1008;
+        const MM_MOTU_MXPXT_MIDIOUT_ALL: i32 = 1000;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_1: i32 = 301;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_2: i32 = 302;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_3: i32 = 303;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_4: i32 = 304;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_5: i32 = 305;
+        const MM_MOTU_MXP_MIDIIN_MIDIIN_6: i32 = 306;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_1: i32 = 301;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_2: i32 = 302;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_3: i32 = 303;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_4: i32 = 304;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_5: i32 = 305;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_6: i32 = 306;
+        const MM_MOTU_MXP_MIDIIN_MIDIOUT_ALL: i32 = 300;
+        const MM_MOTU_MXP_MIDIIN_SYNC: i32 = 300;
+        const MM_MOTU_PKX_MIDI_IN_A: i32 = 701;
+        const MM_MOTU_PKX_MIDI_IN_B: i32 = 702;
+        const MM_MOTU_PKX_MIDI_IN_SYNC: i32 = 700;
+        const MM_MOTU_PKX_MIDI_OUT_A: i32 = 701;
+        const MM_MOTU_PKX_MIDI_OUT_B: i32 = 702;
+        const MM_MPTUS: i32 = 95;
+        const MM_MPTUS_SPWAVEOUT: i32 = 1;
+        const MM_MPU401_MIDIIN: i32 = 11;
+        const MM_MPU401_MIDIOUT: i32 = 10;
+        const MM_MSFT_ACM_G711: i32 = 37;
+        const MM_MSFT_ACM_GSM610: i32 = 36;
+        const MM_MSFT_ACM_IMAADPCM: i32 = 34;
+        const MM_MSFT_ACM_MSADPCM: i32 = 33;
+        const MM_MSFT_ACM_MSAUDIO1: i32 = 39;
+        const MM_MSFT_ACM_MSFILTER: i32 = 35;
+        const MM_MSFT_ACM_MSG723: i32 = 92;
+        const MM_MSFT_ACM_MSNAUDIO: i32 = 91;
+        const MM_MSFT_ACM_MSRT24: i32 = 93;
+        const MM_MSFT_ACM_PCM: i32 = 38;
+        const MM_MSFT_ACM_WMAUDIO: i32 = 39;
+        const MM_MSFT_ACM_WMAUDIO2: i32 = 101;
+        const MM_MSFT_GENERIC_AUX_CD: i32 = 30;
+        const MM_MSFT_GENERIC_AUX_LINE: i32 = 28;
+        const MM_MSFT_GENERIC_AUX_MIC: i32 = 29;
+        const MM_MSFT_GENERIC_MIDIIN: i32 = 25;
+        const MM_MSFT_GENERIC_MIDIOUT: i32 = 26;
+        const MM_MSFT_GENERIC_MIDISYNTH: i32 = 27;
+        const MM_MSFT_GENERIC_WAVEIN: i32 = 23;
+        const MM_MSFT_GENERIC_WAVEOUT: i32 = 24;
+        const MM_MSFT_MSACM: i32 = 32;
+        const MM_MSFT_MSOPL_SYNTH: i32 = 76;
+        const MM_MSFT_SB16_AUX_CD: i32 = 66;
+        const MM_MSFT_SB16_AUX_LINE: i32 = 65;
+        const MM_MSFT_SB16_MIDIIN: i32 = 62;
+        const MM_MSFT_SB16_MIDIOUT: i32 = 63;
+        const MM_MSFT_SB16_MIXER: i32 = 67;
+        const MM_MSFT_SB16_SYNTH: i32 = 64;
+        const MM_MSFT_SB16_WAVEIN: i32 = 60;
+        const MM_MSFT_SB16_WAVEOUT: i32 = 61;
+        const MM_MSFT_SBPRO_AUX_CD: i32 = 74;
+        const MM_MSFT_SBPRO_AUX_LINE: i32 = 73;
+        const MM_MSFT_SBPRO_MIDIIN: i32 = 70;
+        const MM_MSFT_SBPRO_MIDIOUT: i32 = 71;
+        const MM_MSFT_SBPRO_MIXER: i32 = 75;
+        const MM_MSFT_SBPRO_SYNTH: i32 = 72;
+        const MM_MSFT_SBPRO_WAVEIN: i32 = 68;
+        const MM_MSFT_SBPRO_WAVEOUT: i32 = 69;
+        const MM_MSFT_VMDMS_HANDSET_WAVEIN: i32 = 82;
+        const MM_MSFT_VMDMS_HANDSET_WAVEOUT: i32 = 83;
+        const MM_MSFT_VMDMS_LINE_WAVEIN: i32 = 80;
+        const MM_MSFT_VMDMS_LINE_WAVEOUT: i32 = 81;
+        const MM_MSFT_VMDMW_HANDSET_WAVEIN: i32 = 86;
+        const MM_MSFT_VMDMW_HANDSET_WAVEOUT: i32 = 87;
+        const MM_MSFT_VMDMW_LINE_WAVEIN: i32 = 84;
+        const MM_MSFT_VMDMW_LINE_WAVEOUT: i32 = 85;
+        const MM_MSFT_VMDMW_MIXER: i32 = 88;
+        const MM_MSFT_VMDM_GAME_WAVEIN: i32 = 90;
+        const MM_MSFT_VMDM_GAME_WAVEOUT: i32 = 89;
+        const MM_MSFT_WDMAUDIO_AUX: i32 = 105;
+        const MM_MSFT_WDMAUDIO_MIDIIN: i32 = 103;
+        const MM_MSFT_WDMAUDIO_MIDIOUT: i32 = 102;
+        const MM_MSFT_WDMAUDIO_MIXER: i32 = 104;
+        const MM_MSFT_WDMAUDIO_WAVEIN: i32 = 101;
+        const MM_MSFT_WDMAUDIO_WAVEOUT: i32 = 100;
+        const MM_MSFT_WSS_AUX: i32 = 21;
+        const MM_MSFT_WSS_FMSYNTH_STEREO: i32 = 16;
+        const MM_MSFT_WSS_MIXER: i32 = 17;
+        const MM_MSFT_WSS_NT_AUX: i32 = 59;
+        const MM_MSFT_WSS_NT_FMSYNTH_STEREO: i32 = 57;
+        const MM_MSFT_WSS_NT_MIXER: i32 = 58;
+        const MM_MSFT_WSS_NT_WAVEIN: i32 = 55;
+        const MM_MSFT_WSS_NT_WAVEOUT: i32 = 56;
+        const MM_MSFT_WSS_OEM_AUX: i32 = 22;
+        const MM_MSFT_WSS_OEM_FMSYNTH_STEREO: i32 = 20;
+        const MM_MSFT_WSS_OEM_MIXER: i32 = 31;
+        const MM_MSFT_WSS_OEM_WAVEIN: i32 = 18;
+        const MM_MSFT_WSS_OEM_WAVEOUT: i32 = 19;
+        const MM_MSFT_WSS_WAVEIN: i32 = 14;
+        const MM_MSFT_WSS_WAVEOUT: i32 = 15;
+        const MM_MWM: i32 = 209;
+        const MM_NCR: i32 = 62;
+        const MM_NCR_BA_AUX: i32 = 4;
+        const MM_NCR_BA_MIXER: i32 = 5;
+        const MM_NCR_BA_SYNTH: i32 = 3;
+        const MM_NCR_BA_WAVEIN: i32 = 1;
+        const MM_NCR_BA_WAVEOUT: i32 = 2;
+        const MM_NEC: i32 = 26;
+        const MM_NEC_26_SYNTH: i32 = 9;
+        const MM_NEC_73_86_SYNTH: i32 = 5;
+        const MM_NEC_73_86_WAVEIN: i32 = 7;
+        const MM_NEC_73_86_WAVEOUT: i32 = 6;
+        const MM_NEC_JOYSTICK: i32 = 12;
+        const MM_NEC_MPU401_MIDIIN: i32 = 11;
+        const MM_NEC_MPU401_MIDIOUT: i32 = 10;
+        const MM_NEOMAGIC: i32 = 176;
+        const MM_NEOMAGIC_AUX: i32 = 6;
+        const MM_NEOMAGIC_MIDIIN: i32 = 5;
+        const MM_NEOMAGIC_MIDIOUT: i32 = 4;
+        const MM_NEOMAGIC_MW3DX_AUX: i32 = 17;
+        const MM_NEOMAGIC_MW3DX_FMSYNTH: i32 = 14;
+        const MM_NEOMAGIC_MW3DX_GMSYNTH: i32 = 15;
+        const MM_NEOMAGIC_MW3DX_MIDIIN: i32 = 13;
+        const MM_NEOMAGIC_MW3DX_MIDIOUT: i32 = 12;
+        const MM_NEOMAGIC_MW3DX_MIXER: i32 = 16;
+        const MM_NEOMAGIC_MW3DX_WAVEIN: i32 = 11;
+        const MM_NEOMAGIC_MW3DX_WAVEOUT: i32 = 10;
+        const MM_NEOMAGIC_MWAVE_AUX: i32 = 25;
+        const MM_NEOMAGIC_MWAVE_MIDIIN: i32 = 23;
+        const MM_NEOMAGIC_MWAVE_MIDIOUT: i32 = 22;
+        const MM_NEOMAGIC_MWAVE_MIXER: i32 = 24;
+        const MM_NEOMAGIC_MWAVE_WAVEIN: i32 = 21;
+        const MM_NEOMAGIC_MWAVE_WAVEOUT: i32 = 20;
+        const MM_NEOMAGIC_SYNTH: i32 = 1;
+        const MM_NEOMAGIC_WAVEIN: i32 = 3;
+        const MM_NEOMAGIC_WAVEOUT: i32 = 2;
+        const MM_NETSCAPE: i32 = 166;
+        const MM_NETXL: i32 = 8;
+        const MM_NETXL_XLVIDEO: i32 = 1;
+        const MM_NEWMEDIA: i32 = 86;
+        const MM_NEWMEDIA_WAVJAMMER: i32 = 1;
+        const MM_NMP: i32 = 195;
+        const MM_NMP_ACM_AMR: i32 = 10;
+        const MM_NMP_CCP_WAVEIN: i32 = 1;
+        const MM_NMP_CCP_WAVEOUT: i32 = 2;
+        const MM_NMS: i32 = 87;
+        const MM_NOGATECH: i32 = 75;
+        const MM_NORRIS: i32 = 150;
+        const MM_NORRIS_VOICELINK: i32 = 1;
+        const MM_NORTEL_MPXAC_WAVEIN: i32 = 1;
+        const MM_NORTEL_MPXAC_WAVEOUT: i32 = 2;
+        const MM_NORTHERN_TELECOM: i32 = 115;
+        const MM_NVIDIA: i32 = 127;
+        const MM_NVIDIA_AUX: i32 = 7;
+        const MM_NVIDIA_GAMEPORT: i32 = 5;
+        const MM_NVIDIA_MIDIIN: i32 = 4;
+        const MM_NVIDIA_MIDIOUT: i32 = 3;
+        const MM_NVIDIA_MIXER: i32 = 6;
+        const MM_NVIDIA_WAVEIN: i32 = 2;
+        const MM_NVIDIA_WAVEOUT: i32 = 1;
+        const MM_OKI: i32 = 79;
+        const MM_OKSORI: i32 = 128;
+        const MM_OKSORI_BASE: i32 = 0;
+        const MM_OKSORI_EXT_MIC1: i32 = 15;
+        const MM_OKSORI_EXT_MIC2: i32 = 16;
+        const MM_OKSORI_FM_OPL4: i32 = 5;
+        const MM_OKSORI_MIDIIN: i32 = 18;
+        const MM_OKSORI_MIDIOUT: i32 = 17;
+        const MM_OKSORI_MIX_AUX1: i32 = 13;
+        const MM_OKSORI_MIX_CD: i32 = 10;
+        const MM_OKSORI_MIX_ECHO: i32 = 12;
+        const MM_OKSORI_MIX_FM: i32 = 8;
+        const MM_OKSORI_MIX_LINE: i32 = 9;
+        const MM_OKSORI_MIX_LINE1: i32 = 14;
+        const MM_OKSORI_MIX_MASTER: i32 = 6;
+        const MM_OKSORI_MIX_MIC: i32 = 11;
+        const MM_OKSORI_MIX_WAVE: i32 = 7;
+        const MM_OKSORI_MPEG_CDVISION: i32 = 19;
+        const MM_OKSORI_OSR16_WAVEIN: i32 = 4;
+        const MM_OKSORI_OSR16_WAVEOUT: i32 = 3;
+        const MM_OKSORI_OSR8_WAVEIN: i32 = 2;
+        const MM_OKSORI_OSR8_WAVEOUT: i32 = 1;
+        const MM_OLIVETTI: i32 = 81;
+        const MM_OLIVETTI_ACM_ADPCM: i32 = 10;
+        const MM_OLIVETTI_ACM_CELP: i32 = 11;
+        const MM_OLIVETTI_ACM_GSM: i32 = 9;
+        const MM_OLIVETTI_ACM_OPR: i32 = 13;
+        const MM_OLIVETTI_ACM_SBC: i32 = 12;
+        const MM_OLIVETTI_AUX: i32 = 4;
+        const MM_OLIVETTI_JOYSTICK: i32 = 8;
+        const MM_OLIVETTI_MIDIIN: i32 = 5;
+        const MM_OLIVETTI_MIDIOUT: i32 = 6;
+        const MM_OLIVETTI_MIXER: i32 = 3;
+        const MM_OLIVETTI_SYNTH: i32 = 7;
+        const MM_OLIVETTI_WAVEIN: i32 = 1;
+        const MM_OLIVETTI_WAVEOUT: i32 = 2;
+        const MM_ONLIVE: i32 = 200;
+        const MM_ONLIVE_MPCODEC: i32 = 1;
+        const MM_OPCODE: i32 = 113;
+        const MM_OPTI: i32 = 90;
+        const MM_OPTI_M16_AUX: i32 = 7;
+        const MM_OPTI_M16_FMSYNTH_STEREO: i32 = 1;
+        const MM_OPTI_M16_MIDIIN: i32 = 2;
+        const MM_OPTI_M16_MIDIOUT: i32 = 3;
+        const MM_OPTI_M16_MIXER: i32 = 6;
+        const MM_OPTI_M16_WAVEIN: i32 = 4;
+        const MM_OPTI_M16_WAVEOUT: i32 = 5;
+        const MM_OPTI_M32_AUX: i32 = 38;
+        const MM_OPTI_M32_MIDIIN: i32 = 34;
+        const MM_OPTI_M32_MIDIOUT: i32 = 35;
+        const MM_OPTI_M32_MIXER: i32 = 37;
+        const MM_OPTI_M32_SYNTH_STEREO: i32 = 36;
+        const MM_OPTI_M32_WAVEIN: i32 = 32;
+        const MM_OPTI_M32_WAVEOUT: i32 = 33;
+        const MM_OPTI_P16_AUX: i32 = 22;
+        const MM_OPTI_P16_FMSYNTH_STEREO: i32 = 16;
+        const MM_OPTI_P16_MIDIIN: i32 = 17;
+        const MM_OPTI_P16_MIDIOUT: i32 = 18;
+        const MM_OPTI_P16_MIXER: i32 = 21;
+        const MM_OPTI_P16_WAVEIN: i32 = 19;
+        const MM_OPTI_P16_WAVEOUT: i32 = 20;
+        const MM_OPUS1208_AUX: i32 = 135;
+        const MM_OPUS1208_MIXER: i32 = 134;
+        const MM_OPUS1208_SYNTH: i32 = 131;
+        const MM_OPUS1208_WAVEIN: i32 = 133;
+        const MM_OPUS1208_WAVEOUT: i32 = 132;
+        const MM_OPUS1216_AUX: i32 = 151;
+        const MM_OPUS1216_MIDIIN: i32 = 146;
+        const MM_OPUS1216_MIDIOUT: i32 = 145;
+        const MM_OPUS1216_MIXER: i32 = 150;
+        const MM_OPUS1216_SYNTH: i32 = 147;
+        const MM_OPUS1216_WAVEIN: i32 = 149;
+        const MM_OPUS1216_WAVEOUT: i32 = 148;
+        const MM_OPUS401_MIDIIN: i32 = 130;
+        const MM_OPUS401_MIDIOUT: i32 = 129;
+        const MM_OSITECH: i32 = 103;
+        const MM_OSITECH_TRUMPCARD: i32 = 1;
+        const MM_OSPREY: i32 = 140;
+        const MM_OSPREY_1000WAVEIN: i32 = 1;
+        const MM_OSPREY_1000WAVEOUT: i32 = 2;
+        const MM_OTI: i32 = 180;
+        const MM_OTI_611MIDIN: i32 = 18;
+        const MM_OTI_611MIDIOUT: i32 = 19;
+        const MM_OTI_611MIXER: i32 = 7;
+        const MM_OTI_611WAVEIN: i32 = 5;
+        const MM_OTI_611WAVEOUT: i32 = 6;
+        const MM_PACIFICRESEARCH: i32 = 210;
+        const MM_PCSPEAKER_WAVEOUT: i32 = 13;
+        const MM_PC_JOYSTICK: i32 = 12;
+        const MM_PHILIPS_ACM_LPCBB: i32 = 1;
+        const MM_PHILIPS_SPEECH_PROCESSING: i32 = 7;
+        const MM_PHONET: i32 = 203;
+        const MM_PHONET_PP_MIXER: i32 = 3;
+        const MM_PHONET_PP_WAVEIN: i32 = 2;
+        const MM_PHONET_PP_WAVEOUT: i32 = 1;
+        const MM_PICTURETEL: i32 = 138;
+        const MM_PID_UNMAPPED: i32 = 65535;
+        const MM_PINNACLE: i32 = 218;
+        const MM_PRAGMATRAX: i32 = 5;
+        const MM_PRECEPT: i32 = 153;
+        const MM_PROAUD_16_AUX: i32 = 103;
+        const MM_PROAUD_16_MIDIIN: i32 = 98;
+        const MM_PROAUD_16_MIDIOUT: i32 = 97;
+        const MM_PROAUD_16_MIXER: i32 = 102;
+        const MM_PROAUD_16_SYNTH: i32 = 99;
+        const MM_PROAUD_16_WAVEIN: i32 = 101;
+        const MM_PROAUD_16_WAVEOUT: i32 = 100;
+        const MM_PROAUD_AUX: i32 = 23;
+        const MM_PROAUD_MIDIIN: i32 = 18;
+        const MM_PROAUD_MIDIOUT: i32 = 17;
+        const MM_PROAUD_MIXER: i32 = 22;
+        const MM_PROAUD_PLUS_AUX: i32 = 87;
+        const MM_PROAUD_PLUS_MIDIIN: i32 = 82;
+        const MM_PROAUD_PLUS_MIDIOUT: i32 = 81;
+        const MM_PROAUD_PLUS_MIXER: i32 = 86;
+        const MM_PROAUD_PLUS_SYNTH: i32 = 83;
+        const MM_PROAUD_PLUS_WAVEIN: i32 = 85;
+        const MM_PROAUD_PLUS_WAVEOUT: i32 = 84;
+        const MM_PROAUD_SYNTH: i32 = 19;
+        const MM_PROAUD_WAVEIN: i32 = 21;
+        const MM_PROAUD_WAVEOUT: i32 = 20;
+        const MM_QCIAR: i32 = 98;
+        const MM_QDESIGN: i32 = 194;
+        const MM_QDESIGN_ACM_MPEG: i32 = 1;
+        const MM_QDESIGN_ACM_QDESIGN_MUSIC: i32 = 2;
+        const MM_QTEAM: i32 = 169;
+        const MM_QUALCOMM: i32 = 215;
+        const MM_QUANTUM3D: i32 = 17;
+        const MM_QUARTERDECK: i32 = 134;
+        const MM_QUARTERDECK_LHWAVEIN: i32 = 0;
+        const MM_QUARTERDECK_LHWAVEOUT: i32 = 1;
+        const MM_QUICKAUDIO: i32 = 255;
+        const MM_QUICKAUDIO_MAXIMIDI: i32 = 2;
+        const MM_QUICKAUDIO_MINIMIDI: i32 = 1;
+        const MM_QUICKNET: i32 = 173;
+        const MM_QUICKNET_PJWAVEIN: i32 = 1;
+        const MM_QUICKNET_PJWAVEOUT: i32 = 2;
+        const MM_RADIUS: i32 = 110;
+        const MM_RHETOREX: i32 = 120;
+        const MM_RHETOREX_WAVEIN: i32 = 1;
+        const MM_RHETOREX_WAVEOUT: i32 = 2;
+        const MM_RICHMOND: i32 = 257;
+        const MM_ROCKWELL: i32 = 111;
+        const MM_ROLAND: i32 = 24;
+        const MM_ROLAND_MPU401_MIDIIN: i32 = 16;
+        const MM_ROLAND_MPU401_MIDIOUT: i32 = 15;
+        const MM_ROLAND_RAP10_MIDIIN: i32 = 11;
+        const MM_ROLAND_RAP10_MIDIOUT: i32 = 10;
+        const MM_ROLAND_RAP10_SYNTH: i32 = 12;
+        const MM_ROLAND_RAP10_WAVEIN: i32 = 14;
+        const MM_ROLAND_RAP10_WAVEOUT: i32 = 13;
+        const MM_ROLAND_SC7_MIDIIN: i32 = 22;
+        const MM_ROLAND_SC7_MIDIOUT: i32 = 21;
+        const MM_ROLAND_SCP_AUX: i32 = 48;
+        const MM_ROLAND_SCP_MIDIIN: i32 = 39;
+        const MM_ROLAND_SCP_MIDIOUT: i32 = 38;
+        const MM_ROLAND_SCP_MIXER: i32 = 42;
+        const MM_ROLAND_SCP_WAVEIN: i32 = 41;
+        const MM_ROLAND_SCP_WAVEOUT: i32 = 40;
+        const MM_ROLAND_SERIAL_MIDIIN: i32 = 24;
+        const MM_ROLAND_SERIAL_MIDIOUT: i32 = 23;
+        const MM_ROLAND_SMPU_MIDIINA: i32 = 19;
+        const MM_ROLAND_SMPU_MIDIINB: i32 = 20;
+        const MM_ROLAND_SMPU_MIDIOUTA: i32 = 17;
+        const MM_ROLAND_SMPU_MIDIOUTB: i32 = 18;
+        const MM_RZS: i32 = 216;
+        const MM_RZS_ACM_TUBGSM: i32 = 1;
+        const MM_S3: i32 = 164;
+        const MM_S3_AUX: i32 = 7;
+        const MM_S3_FMSYNTH: i32 = 5;
+        const MM_S3_MIDIIN: i32 = 4;
+        const MM_S3_MIDIOUT: i32 = 3;
+        const MM_S3_MIXER: i32 = 6;
+        const MM_S3_WAVEIN: i32 = 2;
+        const MM_S3_WAVEOUT: i32 = 1;
+        const MM_SANYO: i32 = 72;
+        const MM_SANYO_ACM_LD_ADPCM: i32 = 1;
+        const MM_SCALACS: i32 = 54;
+        const MM_SEERSYS: i32 = 137;
+        const MM_SEERSYS_REALITY: i32 = 6;
+        const MM_SEERSYS_SEERMIX: i32 = 3;
+        const MM_SEERSYS_SEERSYNTH: i32 = 1;
+        const MM_SEERSYS_SEERWAVE: i32 = 2;
+        const MM_SEERSYS_WAVESYNTH: i32 = 4;
+        const MM_SEERSYS_WAVESYNTH_WG: i32 = 5;
+        const MM_SELSIUS_SYSTEMS: i32 = 234;
+        const MM_SELSIUS_SYSTEMS_RTPWAVEIN: i32 = 2;
+        const MM_SELSIUS_SYSTEMS_RTPWAVEOUT: i32 = 1;
+        const MM_SGI: i32 = 237;
+        const MM_SGI_320_MIXER: i32 = 3;
+        const MM_SGI_320_WAVEIN: i32 = 1;
+        const MM_SGI_320_WAVEOUT: i32 = 2;
+        const MM_SGI_540_MIXER: i32 = 6;
+        const MM_SGI_540_WAVEIN: i32 = 4;
+        const MM_SGI_540_WAVEOUT: i32 = 5;
+        const MM_SGI_RAD_ADAT8CHAN_WAVEIN: i32 = 19;
+        const MM_SGI_RAD_ADAT8CHAN_WAVEOUT: i32 = 32;
+        const MM_SGI_RAD_ADATMONO1_WAVEIN: i32 = 7;
+        const MM_SGI_RAD_ADATMONO1_WAVEOUT: i32 = 20;
+        const MM_SGI_RAD_ADATMONO2_WAVEIN: i32 = 8;
+        const MM_SGI_RAD_ADATMONO2_WAVEOUT: i32 = 21;
+        const MM_SGI_RAD_ADATMONO3_WAVEIN: i32 = 9;
+        const MM_SGI_RAD_ADATMONO3_WAVEOUT: i32 = 22;
+        const MM_SGI_RAD_ADATMONO4_WAVEIN: i32 = 10;
+        const MM_SGI_RAD_ADATMONO4_WAVEOUT: i32 = 23;
+        const MM_SGI_RAD_ADATMONO5_WAVEIN: i32 = 11;
+        const MM_SGI_RAD_ADATMONO5_WAVEOUT: i32 = 24;
+        const MM_SGI_RAD_ADATMONO6_WAVEIN: i32 = 12;
+        const MM_SGI_RAD_ADATMONO6_WAVEOUT: i32 = 25;
+        const MM_SGI_RAD_ADATMONO7_WAVEIN: i32 = 13;
+        const MM_SGI_RAD_ADATMONO7_WAVEOUT: i32 = 26;
+        const MM_SGI_RAD_ADATMONO8_WAVEIN: i32 = 14;
+        const MM_SGI_RAD_ADATMONO8_WAVEOUT: i32 = 27;
+        const MM_SGI_RAD_ADATSTEREO12_WAVEIN: i32 = 15;
+        const MM_SGI_RAD_ADATSTEREO12_WAVEOUT: i32 = 28;
+        const MM_SGI_RAD_ADATSTEREO32_WAVEOUT: i32 = 29;
+        const MM_SGI_RAD_ADATSTEREO34_WAVEIN: i32 = 16;
+        const MM_SGI_RAD_ADATSTEREO56_WAVEIN: i32 = 17;
+        const MM_SGI_RAD_ADATSTEREO56_WAVEOUT: i32 = 30;
+        const MM_SGI_RAD_ADATSTEREO78_WAVEIN: i32 = 18;
+        const MM_SGI_RAD_ADATSTEREO78_WAVEOUT: i32 = 31;
+        const MM_SGI_RAD_AESMONO1_WAVEIN: i32 = 33;
+        const MM_SGI_RAD_AESMONO1_WAVEOUT: i32 = 36;
+        const MM_SGI_RAD_AESMONO2_WAVEIN: i32 = 34;
+        const MM_SGI_RAD_AESMONO2_WAVEOUT: i32 = 37;
+        const MM_SGI_RAD_AESSTEREO_WAVEIN: i32 = 35;
+        const MM_SGI_RAD_AESSTEREO_WAVEOUT: i32 = 38;
+        const MM_SHARP: i32 = 183;
+        const MM_SHARP_MDC_AUX: i32 = 6;
+        const MM_SHARP_MDC_AUX_BASS: i32 = 101;
+        const MM_SHARP_MDC_AUX_CHR: i32 = 109;
+        const MM_SHARP_MDC_AUX_MASTER: i32 = 100;
+        const MM_SHARP_MDC_AUX_MIDI_VOL: i32 = 103;
+        const MM_SHARP_MDC_AUX_RVB: i32 = 108;
+        const MM_SHARP_MDC_AUX_TREBLE: i32 = 102;
+        const MM_SHARP_MDC_AUX_VOL: i32 = 107;
+        const MM_SHARP_MDC_AUX_WAVE_CHR: i32 = 106;
+        const MM_SHARP_MDC_AUX_WAVE_RVB: i32 = 105;
+        const MM_SHARP_MDC_AUX_WAVE_VOL: i32 = 104;
+        const MM_SHARP_MDC_MIDI_IN: i32 = 2;
+        const MM_SHARP_MDC_MIDI_OUT: i32 = 3;
+        const MM_SHARP_MDC_MIDI_SYNTH: i32 = 1;
+        const MM_SHARP_MDC_MIXER: i32 = 10;
+        const MM_SHARP_MDC_WAVE_IN: i32 = 4;
+        const MM_SHARP_MDC_WAVE_OUT: i32 = 5;
+        const MM_SICRESOURCE: i32 = 175;
+        const MM_SICRESOURCE_SSO3D: i32 = 2;
+        const MM_SICRESOURCE_SSOW3DI: i32 = 3;
+        const MM_SIEMENS_SBC: i32 = 201;
+        const MM_SIERRA: i32 = 40;
+        const MM_SIERRA_ARIA_AUX: i32 = 25;
+        const MM_SIERRA_ARIA_AUX2: i32 = 32;
+        const MM_SIERRA_ARIA_MIDIIN: i32 = 21;
+        const MM_SIERRA_ARIA_MIDIOUT: i32 = 20;
+        const MM_SIERRA_ARIA_SYNTH: i32 = 22;
+        const MM_SIERRA_ARIA_WAVEIN: i32 = 24;
+        const MM_SIERRA_ARIA_WAVEOUT: i32 = 23;
+        const MM_SIERRA_QUARTET_AUX_CD: i32 = 85;
+        const MM_SIERRA_QUARTET_AUX_LINE: i32 = 86;
+        const MM_SIERRA_QUARTET_AUX_MODEM: i32 = 87;
+        const MM_SIERRA_QUARTET_MIDIIN: i32 = 82;
+        const MM_SIERRA_QUARTET_MIDIOUT: i32 = 83;
+        const MM_SIERRA_QUARTET_MIXER: i32 = 88;
+        const MM_SIERRA_QUARTET_SYNTH: i32 = 84;
+        const MM_SIERRA_QUARTET_WAVEIN: i32 = 80;
+        const MM_SIERRA_QUARTET_WAVEOUT: i32 = 81;
+        const MM_SILICONSOFT: i32 = 69;
+        const MM_SILICONSOFT_SC1_WAVEIN: i32 = 1;
+        const MM_SILICONSOFT_SC1_WAVEOUT: i32 = 2;
+        const MM_SILICONSOFT_SC2_WAVEIN: i32 = 3;
+        const MM_SILICONSOFT_SC2_WAVEOUT: i32 = 4;
+        const MM_SILICONSOFT_SOUNDJR2PR_WAVEIN: i32 = 6;
+        const MM_SILICONSOFT_SOUNDJR2PR_WAVEOUT: i32 = 7;
+        const MM_SILICONSOFT_SOUNDJR2_WAVEOUT: i32 = 5;
+        const MM_SILICONSOFT_SOUNDJR3_WAVEOUT: i32 = 8;
+        const MM_SIPROLAB: i32 = 211;
+        const MM_SIPROLAB_ACELPNET: i32 = 1;
+        const MM_SNDBLST_MIDIIN: i32 = 4;
+        const MM_SNDBLST_MIDIOUT: i32 = 3;
+        const MM_SNDBLST_SYNTH: i32 = 5;
+        const MM_SNDBLST_WAVEIN: i32 = 7;
+        const MM_SNDBLST_WAVEOUT: i32 = 6;
+        const MM_SNI: i32 = 18;
+        const MM_SNI_ACM_G721: i32 = 1;
+        const MM_SOFTLAB_NSK: i32 = 228;
+        const MM_SOFTLAB_NSK_FRW_AUX: i32 = 4;
+        const MM_SOFTLAB_NSK_FRW_MIXER: i32 = 3;
+        const MM_SOFTLAB_NSK_FRW_WAVEIN: i32 = 1;
+        const MM_SOFTLAB_NSK_FRW_WAVEOUT: i32 = 2;
+        const MM_SOFTSOUND: i32 = 149;
+        const MM_SOFTSOUND_CODEC: i32 = 1;
+        const MM_SONICFOUNDRY: i32 = 66;
+        const MM_SONORUS: i32 = 230;
+        const MM_SONORUS_STUDIO: i32 = 1;
+        const MM_SONY: i32 = 245;
+        const MM_SONY_ACM_SCX: i32 = 1;
+        const MM_SORVIS: i32 = 187;
+        const MM_SOUNDESIGNS: i32 = 142;
+        const MM_SOUNDESIGNS_WAVEIN: i32 = 1;
+        const MM_SOUNDESIGNS_WAVEOUT: i32 = 2;
+        const MM_SOUNDSCAPE_AUX: i32 = 24;
+        const MM_SOUNDSCAPE_MIDIIN: i32 = 21;
+        const MM_SOUNDSCAPE_MIDIOUT: i32 = 20;
+        const MM_SOUNDSCAPE_MIXER: i32 = 23;
+        const MM_SOUNDSCAPE_SYNTH: i32 = 22;
+        const MM_SOUNDSCAPE_WAVEIN: i32 = 19;
+        const MM_SOUNDSCAPE_WAVEOUT: i32 = 17;
+        const MM_SOUNDSCAPE_WAVEOUT_AUX: i32 = 18;
+        const MM_SOUNDSPACE: i32 = 167;
+        const MM_SPECTRUM_PRODUCTIONS: i32 = 213;
+        const MM_SPECTRUM_SIGNAL_PROCESSING: i32 = 144;
+        const MM_SPEECHCOMP: i32 = 76;
+        const MM_SPLASH_STUDIOS: i32 = 133;
+        const MM_SSP_SNDFESAUX: i32 = 7;
+        const MM_SSP_SNDFESMIDIIN: i32 = 3;
+        const MM_SSP_SNDFESMIDIOUT: i32 = 4;
+        const MM_SSP_SNDFESMIX: i32 = 6;
+        const MM_SSP_SNDFESSYNTH: i32 = 5;
+        const MM_SSP_SNDFESWAVEIN: i32 = 1;
+        const MM_SSP_SNDFESWAVEOUT: i32 = 2;
+        const MM_STUDER: i32 = 171;
+        const MM_STUDIO_16_AUX: i32 = 103;
+        const MM_STUDIO_16_MIDIIN: i32 = 98;
+        const MM_STUDIO_16_MIDIOUT: i32 = 97;
+        const MM_STUDIO_16_MIXER: i32 = 102;
+        const MM_STUDIO_16_SYNTH: i32 = 99;
+        const MM_STUDIO_16_WAVEIN: i32 = 101;
+        const MM_STUDIO_16_WAVEOUT: i32 = 100;
+        const MM_ST_MICROELECTRONICS: i32 = 265;
+        const MM_SUNCOM: i32 = 186;
+        const MM_SUPERMAC: i32 = 73;
+        const MM_SYDEC_NV: i32 = 248;
+        const MM_SYDEC_NV_WAVEIN: i32 = 1;
+        const MM_SYDEC_NV_WAVEOUT: i32 = 2;
+        const MM_TANDY: i32 = 29;
+        const MM_TANDY_PSSJWAVEIN: i32 = 9;
+        const MM_TANDY_PSSJWAVEOUT: i32 = 10;
+        const MM_TANDY_SENS_MMAMIDIIN: i32 = 6;
+        const MM_TANDY_SENS_MMAMIDIOUT: i32 = 7;
+        const MM_TANDY_SENS_MMAWAVEIN: i32 = 4;
+        const MM_TANDY_SENS_MMAWAVEOUT: i32 = 5;
+        const MM_TANDY_SENS_VISWAVEOUT: i32 = 8;
+        const MM_TANDY_VISBIOSSYNTH: i32 = 3;
+        const MM_TANDY_VISWAVEIN: i32 = 1;
+        const MM_TANDY_VISWAVEOUT: i32 = 2;
+        const MM_TBS_TROPEZ_AUX1: i32 = 39;
+        const MM_TBS_TROPEZ_AUX2: i32 = 40;
+        const MM_TBS_TROPEZ_LINE: i32 = 41;
+        const MM_TBS_TROPEZ_WAVEIN: i32 = 37;
+        const MM_TBS_TROPEZ_WAVEOUT: i32 = 38;
+        const MM_TDK: i32 = 135;
+        const MM_TDK_MW_AUX: i32 = 6;
+        const MM_TDK_MW_AUX_BASS: i32 = 101;
+        const MM_TDK_MW_AUX_CHR: i32 = 109;
+        const MM_TDK_MW_AUX_MASTER: i32 = 100;
+        const MM_TDK_MW_AUX_MIDI_VOL: i32 = 103;
+        const MM_TDK_MW_AUX_RVB: i32 = 108;
+        const MM_TDK_MW_AUX_TREBLE: i32 = 102;
+        const MM_TDK_MW_AUX_VOL: i32 = 107;
+        const MM_TDK_MW_AUX_WAVE_CHR: i32 = 106;
+        const MM_TDK_MW_AUX_WAVE_RVB: i32 = 105;
+        const MM_TDK_MW_AUX_WAVE_VOL: i32 = 104;
+        const MM_TDK_MW_MIDI_IN: i32 = 2;
+        const MM_TDK_MW_MIDI_OUT: i32 = 3;
+        const MM_TDK_MW_MIDI_SYNTH: i32 = 1;
+        const MM_TDK_MW_MIXER: i32 = 10;
+        const MM_TDK_MW_WAVE_IN: i32 = 4;
+        const MM_TDK_MW_WAVE_OUT: i32 = 5;
+        const MM_TELEKOL: i32 = 264;
+        const MM_TELEKOL_WAVEIN: i32 = 2;
+        const MM_TELEKOL_WAVEOUT: i32 = 1;
+        const MM_TERALOGIC: i32 = 202;
+        const MM_TERRATEC: i32 = 70;
+        const MM_THUNDER_AUX: i32 = 39;
+        const MM_THUNDER_SYNTH: i32 = 35;
+        const MM_THUNDER_WAVEIN: i32 = 37;
+        const MM_THUNDER_WAVEOUT: i32 = 36;
+        const MM_TPORT_SYNTH: i32 = 67;
+        const MM_TPORT_WAVEIN: i32 = 66;
+        const MM_TPORT_WAVEOUT: i32 = 65;
+        const MM_TRUEVISION: i32 = 51;
+        const MM_TRUEVISION_WAVEIN1: i32 = 1;
+        const MM_TRUEVISION_WAVEOUT1: i32 = 2;
+        const MM_TTEWS_AUX: i32 = 9;
+        const MM_TTEWS_MIDIIN: i32 = 3;
+        const MM_TTEWS_MIDIMONITOR: i32 = 6;
+        const MM_TTEWS_MIDIOUT: i32 = 4;
+        const MM_TTEWS_MIDISYNTH: i32 = 5;
+        const MM_TTEWS_MIXER: i32 = 10;
+        const MM_TTEWS_VMIDIIN: i32 = 7;
+        const MM_TTEWS_VMIDIOUT: i32 = 8;
+        const MM_TTEWS_WAVEIN: i32 = 1;
+        const MM_TTEWS_WAVEOUT: i32 = 2;
+        const MM_TURTLE_BEACH: i32 = 21;
+        const MM_UHER_INFORMATIC: i32 = 247;
+        const MM_UH_ACM_ADPCM: i32 = 1;
+        const MM_UNISYS: i32 = 223;
+        const MM_UNISYS_ACM_NAP: i32 = 1;
+        const MM_UNMAPPED: i32 = 65535;
+        const MM_VAL: i32 = 35;
+        const MM_VAL_MICROKEY_AP_WAVEIN: i32 = 1;
+        const MM_VAL_MICROKEY_AP_WAVEOUT: i32 = 2;
+        const MM_VANKOEVERING: i32 = 168;
+        const MM_VIA: i32 = 250;
+        const MM_VIA_AUX: i32 = 4;
+        const MM_VIA_MIXER: i32 = 3;
+        const MM_VIA_MPU401_MIDIIN: i32 = 6;
+        const MM_VIA_MPU401_MIDIOUT: i32 = 5;
+        const MM_VIA_SWFM_SYNTH: i32 = 7;
+        const MM_VIA_WAVEIN: i32 = 2;
+        const MM_VIA_WAVEOUT: i32 = 1;
+        const MM_VIA_WDM_MIXER: i32 = 10;
+        const MM_VIA_WDM_MPU401_MIDIIN: i32 = 12;
+        const MM_VIA_WDM_MPU401_MIDIOUT: i32 = 11;
+        const MM_VIA_WDM_WAVEIN: i32 = 9;
+        const MM_VIA_WDM_WAVEOUT: i32 = 8;
+        const MM_VIDEOLOGIC: i32 = 53;
+        const MM_VIDEOLOGIC_MSWAVEIN: i32 = 1;
+        const MM_VIDEOLOGIC_MSWAVEOUT: i32 = 2;
+        const MM_VIENNASYS: i32 = 157;
+        const MM_VIENNASYS_TSP_WAVE_DRIVER: i32 = 1;
+        const MM_VIONA: i32 = 161;
+        const MM_VIONAQVINPCI_WAVEOUT: i32 = 3;
+        const MM_VIONA_BUSTER_MIXER: i32 = 4;
+        const MM_VIONA_CINEMASTER_MIXER: i32 = 5;
+        const MM_VIONA_CONCERTO_MIXER: i32 = 6;
+        const MM_VIONA_QVINPCI_MIXER: i32 = 1;
+        const MM_VIONA_QVINPCI_WAVEIN: i32 = 2;
+        const MM_VIRTUALMUSIC: i32 = 205;
+        const MM_VITEC: i32 = 67;
+        const MM_VITEC_VMAKER: i32 = 1;
+        const MM_VITEC_VMPRO: i32 = 2;
+        const MM_VIVO: i32 = 182;
+        const MM_VIVO_AUDIO_CODEC: i32 = 1;
+        const MM_VKC_MPU401_MIDIIN: i32 = 256;
+        const MM_VKC_MPU401_MIDIOUT: i32 = 512;
+        const MM_VKC_SERIAL_MIDIIN: i32 = 257;
+        const MM_VKC_SERIAL_MIDIOUT: i32 = 513;
+        const MM_VOCALTEC: i32 = 23;
+        const MM_VOCALTEC_WAVEIN: i32 = 2;
+        const MM_VOCALTEC_WAVEOUT: i32 = 1;
+        const MM_VOICEINFO: i32 = 156;
+        const MM_VOICEMIXER: i32 = 1;
+        const MM_VOXWARE: i32 = 114;
+        const MM_VOXWARE_CODEC: i32 = 1;
+        const MM_VOYETRA: i32 = 30;
+        const MM_VQST: i32 = 240;
+        const MM_VQST_VQC1: i32 = 1;
+        const MM_VQST_VQC2: i32 = 2;
+        const MM_VTG: i32 = 109;
+        const MM_WANGLABS: i32 = 28;
+        const MM_WANGLABS_WAVEIN1: i32 = 1;
+        const MM_WANGLABS_WAVEOUT1: i32 = 2;
+        const MM_WAVE_MAPPER: i32 = 2;
+        const MM_WEITEK: i32 = 96;
+        const MM_WILDCAT: i32 = 119;
+        const MM_WILDCAT_AUTOSCOREMIDIIN: i32 = 1;
+        const MM_WILLOPOND_SNDCOMM_WAVEIN: i32 = 108;
+        const MM_WILLOWPOND: i32 = 65;
+        const MM_WILLOWPOND_FMSYNTH_STEREO: i32 = 20;
+        const MM_WILLOWPOND_GENERIC_AUX: i32 = 115;
+        const MM_WILLOWPOND_GENERIC_MIXER: i32 = 114;
+        const MM_WILLOWPOND_GENERIC_WAVEIN: i32 = 112;
+        const MM_WILLOWPOND_GENERIC_WAVEOUT: i32 = 113;
+        const MM_WILLOWPOND_MPU401: i32 = 21;
+        const MM_WILLOWPOND_PH_AUX: i32 = 107;
+        const MM_WILLOWPOND_PH_MIXER: i32 = 106;
+        const MM_WILLOWPOND_PH_WAVEIN: i32 = 104;
+        const MM_WILLOWPOND_PH_WAVEOUT: i32 = 105;
+        const MM_WILLOWPOND_SNDCOMM_AUX: i32 = 111;
+        const MM_WILLOWPOND_SNDCOMM_MIXER: i32 = 110;
+        const MM_WILLOWPOND_SNDCOMM_WAVEOUT: i32 = 109;
+        const MM_WILLOWPOND_SNDPORT_AUX: i32 = 103;
+        const MM_WILLOWPOND_SNDPORT_MIXER: i32 = 102;
+        const MM_WILLOWPOND_SNDPORT_WAVEIN: i32 = 100;
+        const MM_WILLOWPOND_SNDPORT_WAVEOUT: i32 = 101;
+        const MM_WINBOND: i32 = 204;
+        const MM_WINNOV: i32 = 61;
+        const MM_WINNOV_CAVIAR_CHAMPAGNE: i32 = 4;
+        const MM_WINNOV_CAVIAR_VIDC: i32 = 3;
+        const MM_WINNOV_CAVIAR_WAVEIN: i32 = 1;
+        const MM_WINNOV_CAVIAR_WAVEOUT: i32 = 2;
+        const MM_WINNOV_CAVIAR_YUV8: i32 = 5;
+        const MM_WORKBIT: i32 = 102;
+        const MM_WORKBIT_AUX: i32 = 7;
+        const MM_WORKBIT_FMSYNTH: i32 = 6;
+        const MM_WORKBIT_JOYSTICK: i32 = 8;
+        const MM_WORKBIT_MIDIIN: i32 = 4;
+        const MM_WORKBIT_MIDIOUT: i32 = 5;
+        const MM_WORKBIT_MIXER: i32 = 1;
+        const MM_WORKBIT_WAVEIN: i32 = 3;
+        const MM_WORKBIT_WAVEOUT: i32 = 2;
+        const MM_WSS_SB16_AUX_CD: i32 = 45;
+        const MM_WSS_SB16_AUX_LINE: i32 = 44;
+        const MM_WSS_SB16_MIDIIN: i32 = 41;
+        const MM_WSS_SB16_MIDIOUT: i32 = 42;
+        const MM_WSS_SB16_MIXER: i32 = 46;
+        const MM_WSS_SB16_SYNTH: i32 = 43;
+        const MM_WSS_SB16_WAVEIN: i32 = 39;
+        const MM_WSS_SB16_WAVEOUT: i32 = 40;
+        const MM_WSS_SBPRO_AUX_CD: i32 = 53;
+        const MM_WSS_SBPRO_AUX_LINE: i32 = 52;
+        const MM_WSS_SBPRO_MIDIIN: i32 = 49;
+        const MM_WSS_SBPRO_MIDIOUT: i32 = 50;
+        const MM_WSS_SBPRO_MIXER: i32 = 54;
+        const MM_WSS_SBPRO_SYNTH: i32 = 51;
+        const MM_WSS_SBPRO_WAVEIN: i32 = 47;
+        const MM_WSS_SBPRO_WAVEOUT: i32 = 48;
+        const MM_XEBEC: i32 = 85;
+        const MM_XIRLINK: i32 = 178;
+        const MM_XIRLINK_VISIONLINK: i32 = 1;
+        const MM_XYZ: i32 = 112;
+        const MM_YAMAHA: i32 = 37;
+        const MM_YAMAHA_ACXG_AUX: i32 = 41;
+        const MM_YAMAHA_ACXG_MIDIOUT: i32 = 39;
+        const MM_YAMAHA_ACXG_MIXER: i32 = 40;
+        const MM_YAMAHA_ACXG_WAVEIN: i32 = 37;
+        const MM_YAMAHA_ACXG_WAVEOUT: i32 = 38;
+        const MM_YAMAHA_GSS_AUX: i32 = 6;
+        const MM_YAMAHA_GSS_MIDIIN: i32 = 5;
+        const MM_YAMAHA_GSS_MIDIOUT: i32 = 4;
+        const MM_YAMAHA_GSS_SYNTH: i32 = 1;
+        const MM_YAMAHA_GSS_WAVEIN: i32 = 3;
+        const MM_YAMAHA_GSS_WAVEOUT: i32 = 2;
+        const MM_YAMAHA_OPL3SA_FMSYNTH: i32 = 18;
+        const MM_YAMAHA_OPL3SA_JOYSTICK: i32 = 24;
+        const MM_YAMAHA_OPL3SA_MIDIIN: i32 = 21;
+        const MM_YAMAHA_OPL3SA_MIDIOUT: i32 = 20;
+        const MM_YAMAHA_OPL3SA_MIXER: i32 = 23;
+        const MM_YAMAHA_OPL3SA_WAVEIN: i32 = 17;
+        const MM_YAMAHA_OPL3SA_WAVEOUT: i32 = 16;
+        const MM_YAMAHA_OPL3SA_YSYNTH: i32 = 19;
+        const MM_YAMAHA_SERIAL_MIDIIN: i32 = 8;
+        const MM_YAMAHA_SERIAL_MIDIOUT: i32 = 7;
+        const MM_YAMAHA_SXG_MIDIOUT: i32 = 34;
+        const MM_YAMAHA_SXG_MIXER: i32 = 36;
+        const MM_YAMAHA_SXG_WAVEOUT: i32 = 35;
+        const MM_YAMAHA_YMF724LEG_FMSYNTH: i32 = 32;
+        const MM_YAMAHA_YMF724LEG_MIDIIN: i32 = 26;
+        const MM_YAMAHA_YMF724LEG_MIDIOUT: i32 = 25;
+        const MM_YAMAHA_YMF724LEG_MIXER: i32 = 33;
+        const MM_YAMAHA_YMF724_AUX: i32 = 30;
+        const MM_YAMAHA_YMF724_MIDIOUT: i32 = 29;
+        const MM_YAMAHA_YMF724_MIXER: i32 = 31;
+        const MM_YAMAHA_YMF724_WAVEIN: i32 = 28;
+        const MM_YAMAHA_YMF724_WAVEOUT: i32 = 27;
+        const MM_YOUCOM: i32 = 256;
+        const MM_ZEFIRO: i32 = 170;
+        const MM_ZEFIRO_ZA2: i32 = 2;
+        const MM_ZYXEL: i32 = 9;
+        const MM_ZYXEL_ACM_ADPCM: i32 = 1;
+        #[packed(1)]
+        struct MPEG1WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            fwHeadLayer: u16,
+            dwHeadBitrate: u32,
+            fwHeadMode: u16,
+            fwHeadModeExt: u16,
+            wHeadEmphasis: u16,
+            fwHeadFlags: u16,
+            dwPTSLow: u32,
+            dwPTSHigh: u32,
+        }
+        #[packed(1)]
+        struct MPEGLAYER3WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wID: u16,
+            fdwFlags: u32,
+            nBlockSize: u16,
+            nFramesPerBlock: u16,
+            nCodecDelay: u16,
+        }
+        const MPEGLAYER3_FLAG_PADDING_ISO: i32 = 0;
+        const MPEGLAYER3_FLAG_PADDING_OFF: i32 = 2;
+        const MPEGLAYER3_FLAG_PADDING_ON: i32 = 1;
+        const MPEGLAYER3_ID_CONSTANTFRAMESIZE: i32 = 2;
+        const MPEGLAYER3_ID_MPEG: i32 = 1;
+        const MPEGLAYER3_ID_UNKNOWN: i32 = 0;
+        const MPEGLAYER3_WFX_EXTRA_BYTES: i32 = 12;
+        #[packed(1)]
+        struct MSAUDIO1WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+            wEncodeOptions: u16,
+        }
+        const MSAUDIO1_BITS_PER_SAMPLE: i32 = 16;
+        const MSAUDIO1_MAX_CHANNELS: i32 = 2;
+        #[arch(X64 | Arm64)]
+        const MSAUDIO1_WFX_EXTRA_BYTES: u64 = 4;
+        #[arch(X86)]
+        const MSAUDIO1_WFX_EXTRA_BYTES: u32 = 4;
+        #[packed(1)]
+        struct NMS_VBXADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wSamplesPerBlock: u16,
+        }
+        type NPADPCMCOEFSET = *mut ADPCMCOEFSET;
+        type NPADPCMEWAVEFORMAT = *mut ADPCMEWAVEFORMAT;
+        type NPADPCMWAVEFORMAT = *mut ADPCMWAVEFORMAT;
+        type NPAPTXWAVEFORMAT = *mut APTXWAVEFORMAT;
+        type NPAUDIOFILE_AF10WAVEFORMAT = *mut AUDIOFILE_AF10WAVEFORMAT;
+        type NPAUDIOFILE_AF36WAVEFORMAT = *mut AUDIOFILE_AF36WAVEFORMAT;
+        type NPCONTRESCR10WAVEFORMAT = *mut CONTRESCR10WAVEFORMAT;
+        type NPCONTRESVQLPCWAVEFORMAT = *mut CONTRESVQLPCWAVEFORMAT;
+        type NPCREATIVEADPCMWAVEFORMAT = *mut CREATIVEADPCMWAVEFORMAT;
+        type NPCREATIVEFASTSPEECH10WAVEFORMAT = *mut CREATIVEFASTSPEECH10WAVEFORMAT;
+        type NPCREATIVEFASTSPEECH8WAVEFORMAT = *mut CREATIVEFASTSPEECH8WAVEFORMAT;
+        type NPCSIMAADPCMWAVEFORMAT = *mut CSIMAADPCMWAVEFORMAT;
+        type NPDIALOGICOKIADPCMWAVEFORMAT = *mut DIALOGICOKIADPCMWAVEFORMAT;
+        type NPDIGIADPCMWAVEFORMAT = *mut DIGIADPCMWAVEFORMAT;
+        type NPDIGIFIXWAVEFORMAT = *mut DIGIFIXWAVEFORMAT;
+        type NPDIGIREALWAVEFORMAT = *mut DIGIREALWAVEFORMAT;
+        type NPDIGISTDWAVEFORMAT = *mut DIGISTDWAVEFORMAT;
+        type NPDRMWAVEFORMAT = *mut DRMWAVEFORMAT;
+        type NPDVIADPCMWAVEFORMAT = *mut DVIADPCMWAVEFORMAT;
+        type NPECHOSC1WAVEFORMAT = *mut ECHOSC1WAVEFORMAT;
+        type NPECHOWAVEFILTER = *mut ECHOWAVEFILTER;
+        type NPFMTOWNS_SND_WAVEFORMAT = *mut FMTOWNS_SND_WAVEFORMAT;
+        type NPG721_ADPCMWAVEFORMAT = *mut G721_ADPCMWAVEFORMAT;
+        type NPG723_ADPCMWAVEFORMAT = *mut G723_ADPCMWAVEFORMAT;
+        type NPGSM610WAVEFORMAT = *mut GSM610WAVEFORMAT;
+        type NPHEAACWAVEFORMAT = *mut HEAACWAVEFORMAT;
+        type NPHEAACWAVEINFO = *mut HEAACWAVEINFO;
+        type NPIMAADPCMWAVEFORMAT = *mut IMAADPCMWAVEFORMAT;
+        type NPMEDIASPACEADPCMWAVEFORMAT = *mut MEDIASPACEADPCMWAVEFORMAT;
+        type NPMPEG1WAVEFORMAT = *mut MPEG1WAVEFORMAT;
+        type NPMPEGLAYER3WAVEFORMAT = *mut MPEGLAYER3WAVEFORMAT;
+        type NPNMS_VBXADPCMWAVEFORMAT = *mut NMS_VBXADPCMWAVEFORMAT;
+        type NPOLIADPCMWAVEFORMAT = *mut OLIADPCMWAVEFORMAT;
+        type NPOLICELPWAVEFORMAT = *mut OLICELPWAVEFORMAT;
+        type NPOLIGSMWAVEFORMAT = *mut OLIGSMWAVEFORMAT;
+        type NPOLIOPRWAVEFORMAT = *mut OLIOPRWAVEFORMAT;
+        type NPOLISBCWAVEFORMAT = *mut OLISBCWAVEFORMAT;
+        type NPSIERRAADPCMWAVEFORMAT = *mut SIERRAADPCMWAVEFORMAT;
+        type NPSONARCWAVEFORMAT = *mut SONARCWAVEFORMAT;
+        type NPTRUESPEECHWAVEFORMAT = *mut TRUESPEECHWAVEFORMAT;
+        type NPVOLUMEWAVEFILTER = *mut VOLUMEWAVEFILTER;
+        type NPWAVEFILTER = *mut WAVEFILTER;
+        type NPWAVEFORMATIEEEFLOATEX = *mut WAVEFORMATIEEEFLOATEX;
+        type NPWAVEFORMATPCMEX = *mut WAVEFORMATPCMEX;
+        type NPYAMAHA_ADPCMWAVEFORMAT = *mut YAMAHA_ADPCMWAVEFORMAT;
+        struct OLIADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct OLICELPWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct OLIGSMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct OLIOPRWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        struct OLISBCWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        type PADPCMCOEFSET = *mut ADPCMCOEFSET;
+        type PADPCMEWAVEFORMAT = *mut ADPCMEWAVEFORMAT;
+        type PADPCMWAVEFORMAT = *mut ADPCMWAVEFORMAT;
+        type PAPTXWAVEFORMAT = *mut APTXWAVEFORMAT;
+        type PAUDIOFILE_AF10WAVEFORMAT = *mut AUDIOFILE_AF10WAVEFORMAT;
+        type PAUDIOFILE_AF36WAVEFORMAT = *mut AUDIOFILE_AF36WAVEFORMAT;
+        type PCONTRESCR10WAVEFORMAT = *mut CONTRESCR10WAVEFORMAT;
+        type PCONTRESVQLPCWAVEFORMAT = *mut CONTRESVQLPCWAVEFORMAT;
+        type PCREATIVEADPCMWAVEFORMAT = *mut CREATIVEADPCMWAVEFORMAT;
+        type PCREATIVEFASTSPEECH10WAVEFORMAT = *mut CREATIVEFASTSPEECH10WAVEFORMAT;
+        type PCREATIVEFASTSPEECH8WAVEFORMAT = *mut CREATIVEFASTSPEECH8WAVEFORMAT;
+        type PCSIMAADPCMWAVEFORMAT = *mut CSIMAADPCMWAVEFORMAT;
+        type PDIALOGICOKIADPCMWAVEFORMAT = *mut DIALOGICOKIADPCMWAVEFORMAT;
+        type PDIGIADPCMWAVEFORMAT = *mut DIGIADPCMWAVEFORMAT;
+        type PDIGIFIXWAVEFORMAT = *mut DIGIFIXWAVEFORMAT;
+        type PDIGIREALWAVEFORMAT = *mut DIGIREALWAVEFORMAT;
+        type PDIGISTDWAVEFORMAT = *mut DIGISTDWAVEFORMAT;
+        type PDRMWAVEFORMAT = *mut DRMWAVEFORMAT;
+        type PDVIADPCMWAVEFORMAT = *mut DVIADPCMWAVEFORMAT;
+        type PECHOSC1WAVEFORMAT = *mut ECHOSC1WAVEFORMAT;
+        type PECHOWAVEFILTER = *mut ECHOWAVEFILTER;
+        type PFMTOWNS_SND_WAVEFORMAT = *mut FMTOWNS_SND_WAVEFORMAT;
+        type PG721_ADPCMWAVEFORMAT = *mut G721_ADPCMWAVEFORMAT;
+        type PG723_ADPCMWAVEFORMAT = *mut G723_ADPCMWAVEFORMAT;
+        type PGSM610WAVEFORMAT = *mut GSM610WAVEFORMAT;
+        type PHEAACWAVEFORMAT = *mut HEAACWAVEFORMAT;
+        type PHEAACWAVEINFO = *mut HEAACWAVEINFO;
+        type PIMAADPCMWAVEFORMAT = *mut IMAADPCMWAVEFORMAT;
+        type PMEDIASPACEADPCMWAVEFORMAT = *mut MEDIASPACEADPCMWAVEFORMAT;
+        type PMPEG1WAVEFORMAT = *mut MPEG1WAVEFORMAT;
+        type PMPEGLAYER3WAVEFORMAT = *mut MPEGLAYER3WAVEFORMAT;
+        type PNMS_VBXADPCMWAVEFORMAT = *mut NMS_VBXADPCMWAVEFORMAT;
+        type POLIADPCMWAVEFORMAT = *mut OLIADPCMWAVEFORMAT;
+        type POLICELPWAVEFORMAT = *mut OLICELPWAVEFORMAT;
+        type POLIGSMWAVEFORMAT = *mut OLIGSMWAVEFORMAT;
+        type POLIOPRWAVEFORMAT = *mut OLIOPRWAVEFORMAT;
+        type POLISBCWAVEFORMAT = *mut OLISBCWAVEFORMAT;
+        type PSIERRAADPCMWAVEFORMAT = *mut SIERRAADPCMWAVEFORMAT;
+        type PSONARCWAVEFORMAT = *mut SONARCWAVEFORMAT;
+        type PTRUESPEECHWAVEFORMAT = *mut TRUESPEECHWAVEFORMAT;
+        type PVOLUMEWAVEFILTER = *mut VOLUMEWAVEFILTER;
+        type PWAVEFILTER = *mut WAVEFILTER;
+        type PWAVEFORMATEXTENSIBLE = *mut WAVEFORMATEXTENSIBLE;
+        type PWAVEFORMATIEEEFLOATEX = *mut WAVEFORMATIEEEFLOATEX;
+        type PWAVEFORMATPCMEX = *mut WAVEFORMATPCMEX;
+        type PYAMAHA_ADPCMWAVEFORMAT = *mut YAMAHA_ADPCMWAVEFORMAT;
+        const RIFFCPPO: u32 = 1330663491;
+        const RIFFCPPO_byte: u32 = 1702132066;
+        const RIFFCPPO_char: u32 = 1918986339;
+        const RIFFCPPO_clsi: u32 = 1769172067;
+        const RIFFCPPO_clsr: u32 = 1920167011;
+        const RIFFCPPO_dbl: u32 = 543973988;
+        const RIFFCPPO_dwrd: u32 = 1685223268;
+        const RIFFCPPO_flt: u32 = 544500838;
+        const RIFFCPPO_int: u32 = 544501353;
+        const RIFFCPPO_long: u32 = 1735290732;
+        const RIFFCPPO_mbr: u32 = 544367213;
+        const RIFFCPPO_obji: u32 = 1768579695;
+        const RIFFCPPO_objr: u32 = 1919574639;
+        const RIFFCPPO_str: u32 = 544371827;
+        const RIFFCPPO_word: u32 = 1685221239;
+        const RIFFINFO_IARL: u32 = 1280459081;
+        const RIFFINFO_IART: u32 = 1414676809;
+        const RIFFINFO_ICMS: u32 = 1397572425;
+        const RIFFINFO_ICMT: u32 = 1414349641;
+        const RIFFINFO_ICOP: u32 = 1347371849;
+        const RIFFINFO_ICRD: u32 = 1146241865;
+        const RIFFINFO_ICRP: u32 = 1347568457;
+        const RIFFINFO_IDIM: u32 = 1296647241;
+        const RIFFINFO_IDIT: u32 = 1414087753;
+        const RIFFINFO_IDPI: u32 = 1229997129;
+        const RIFFINFO_IENG: u32 = 1196311881;
+        const RIFFINFO_IGNR: u32 = 1380861769;
+        const RIFFINFO_IKEY: u32 = 1497713481;
+        const RIFFINFO_ILGT: u32 = 1413958729;
+        const RIFFINFO_IMED: u32 = 1145392457;
+        const RIFFINFO_INAM: u32 = 1296125513;
+        const RIFFINFO_IPLT: u32 = 1414287433;
+        const RIFFINFO_IPRD: u32 = 1146245193;
+        const RIFFINFO_ISBJ: u32 = 1245860681;
+        const RIFFINFO_ISFT: u32 = 1413894985;
+        const RIFFINFO_ISHP: u32 = 1346917193;
+        const RIFFINFO_ISMP: u32 = 1347244873;
+        const RIFFINFO_ISRC: u32 = 1129468745;
+        const RIFFINFO_ISRF: u32 = 1179800393;
+        const RIFFINFO_ITCH: u32 = 1212372041;
+        const RIFFINFO_ITOC: u32 = 1129272393;
+        const RIFFINFO_ITRK: u32 = 1263686729;
+        const RIFFWAVE_inst: u32 = 1953721961;
+        const ROCKWELL_WA1_MIXER: i32 = 103;
+        const ROCKWELL_WA1_MPU401_IN: i32 = 104;
+        const ROCKWELL_WA1_MPU401_OUT: i32 = 105;
+        const ROCKWELL_WA1_SYNTH: i32 = 102;
+        const ROCKWELL_WA1_WAVEIN: i32 = 100;
+        const ROCKWELL_WA1_WAVEOUT: i32 = 101;
+        const ROCKWELL_WA2_MIXER: i32 = 203;
+        const ROCKWELL_WA2_MPU401_IN: i32 = 204;
+        const ROCKWELL_WA2_MPU401_OUT: i32 = 205;
+        const ROCKWELL_WA2_SYNTH: i32 = 202;
+        const ROCKWELL_WA2_WAVEIN: i32 = 200;
+        const ROCKWELL_WA2_WAVEOUT: i32 = 201;
+        #[packed(1)]
+        struct SIERRAADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+        }
+        #[packed(1)]
+        struct SONARCWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wCompType: u16,
+        }
+        const SPEAKER_ALL: u32 = 2147483648;
+        const SPEAKER_BACK_CENTER: i32 = 256;
+        const SPEAKER_BACK_LEFT: i32 = 16;
+        const SPEAKER_BACK_RIGHT: i32 = 32;
+        const SPEAKER_FRONT_CENTER: i32 = 4;
+        const SPEAKER_FRONT_LEFT: i32 = 1;
+        const SPEAKER_FRONT_LEFT_OF_CENTER: i32 = 64;
+        const SPEAKER_FRONT_RIGHT: i32 = 2;
+        const SPEAKER_FRONT_RIGHT_OF_CENTER: i32 = 128;
+        const SPEAKER_LOW_FREQUENCY: i32 = 8;
+        const SPEAKER_RESERVED: i32 = 2147221504;
+        const SPEAKER_SIDE_LEFT: i32 = 512;
+        const SPEAKER_SIDE_RIGHT: i32 = 1024;
+        const SPEAKER_TOP_BACK_CENTER: i32 = 65536;
+        const SPEAKER_TOP_BACK_LEFT: i32 = 32768;
+        const SPEAKER_TOP_BACK_RIGHT: i32 = 131072;
+        const SPEAKER_TOP_CENTER: i32 = 2048;
+        const SPEAKER_TOP_FRONT_CENTER: i32 = 8192;
+        const SPEAKER_TOP_FRONT_LEFT: i32 = 4096;
+        const SPEAKER_TOP_FRONT_RIGHT: i32 = 16384;
+        #[packed(1)]
+        struct TRUESPEECHWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wRevision: u16,
+            nSamplesPerBlock: u16,
+            abReserved: [u8; 28],
+        }
+        #[packed(1)]
+        struct VOLUMEWAVEFILTER {
+            wfltr: WAVEFILTER,
+            dwVolume: u32,
+        }
+        #[packed(1)]
+        struct WAVEFILTER {
+            cbStruct: u32,
+            dwFilterTag: u32,
+            fdwFilter: u32,
+            dwReserved: [u32; 5],
+        }
+        #[packed(1)]
+        struct WAVEFORMATEXTENSIBLE {
+            Format: WAVEFORMATEX,
+            Samples: #[packed(1)] union {
+                wValidBitsPerSample: u16,
+                wSamplesPerBlock: u16,
+                wReserved: u16,
+            },
+            dwChannelMask: u32,
+            SubFormat: GUID,
+        }
+        type WAVEFORMATIEEEFLOATEX = WAVEFORMATEXTENSIBLE;
+        type WAVEFORMATPCMEX = WAVEFORMATEXTENSIBLE;
+        const WAVE_FILTER_DEVELOPMENT: i32 = 65535;
+        const WAVE_FILTER_ECHO: i32 = 2;
+        const WAVE_FILTER_UNKNOWN: i32 = 0;
+        const WAVE_FILTER_VOLUME: i32 = 1;
+        const WAVE_FORMAT_3COM_NBX: i32 = 28672;
+        const WAVE_FORMAT_ADPCM: i32 = 2;
+        const WAVE_FORMAT_ALAC: i32 = 27745;
+        const WAVE_FORMAT_ALAW: i32 = 6;
+        const WAVE_FORMAT_AMR_NB: i32 = 29537;
+        const WAVE_FORMAT_AMR_WB: i32 = 29538;
+        const WAVE_FORMAT_AMR_WP: i32 = 29539;
+        const WAVE_FORMAT_ANTEX_ADPCME: i32 = 51;
+        const WAVE_FORMAT_APTX: i32 = 37;
+        const WAVE_FORMAT_AUDIOFILE_AF10: i32 = 38;
+        const WAVE_FORMAT_AUDIOFILE_AF36: i32 = 36;
+        const WAVE_FORMAT_BTV_DIGITAL: i32 = 1024;
+        const WAVE_FORMAT_CANOPUS_ATRAC: i32 = 99;
+        const WAVE_FORMAT_CIRRUS: i32 = 96;
+        const WAVE_FORMAT_CODIAN: i32 = 41252;
+        const WAVE_FORMAT_COMVERSE_INFOSYS_AVQSBC: i32 = 41217;
+        const WAVE_FORMAT_COMVERSE_INFOSYS_G723_1: i32 = 41216;
+        const WAVE_FORMAT_COMVERSE_INFOSYS_SBC: i32 = 41218;
+        const WAVE_FORMAT_CONGRUENCY: i32 = 141;
+        const WAVE_FORMAT_CONTROL_RES_CR10: i32 = 55;
+        const WAVE_FORMAT_CONTROL_RES_VQLPC: i32 = 52;
+        const WAVE_FORMAT_CONVEDIA_G729: i32 = 140;
+        const WAVE_FORMAT_CREATIVE_ADPCM: i32 = 512;
+        const WAVE_FORMAT_CREATIVE_FASTSPEECH10: i32 = 515;
+        const WAVE_FORMAT_CREATIVE_FASTSPEECH8: i32 = 514;
+        const WAVE_FORMAT_CS2: i32 = 608;
+        const WAVE_FORMAT_CS_IMAADPCM: i32 = 57;
+        const WAVE_FORMAT_CUSEEME: i32 = 7939;
+        const WAVE_FORMAT_CU_CODEC: i32 = 25;
+        const WAVE_FORMAT_DEVELOPMENT: i32 = 65535;
+        const WAVE_FORMAT_DF_G726: i32 = 133;
+        const WAVE_FORMAT_DF_GSM610: i32 = 134;
+        const WAVE_FORMAT_DIALOGIC_OKI_ADPCM: i32 = 23;
+        const WAVE_FORMAT_DICTAPHONE_CELP54: i32 = 322;
+        const WAVE_FORMAT_DICTAPHONE_CELP68: i32 = 321;
+        const WAVE_FORMAT_DIGIADPCM: i32 = 54;
+        const WAVE_FORMAT_DIGIFIX: i32 = 22;
+        const WAVE_FORMAT_DIGIREAL: i32 = 53;
+        const WAVE_FORMAT_DIGISTD: i32 = 21;
+        const WAVE_FORMAT_DIGITAL_G723: i32 = 291;
+        const WAVE_FORMAT_DIVIO_G726: i32 = 16963;
+        const WAVE_FORMAT_DIVIO_MPEG4_AAC: i32 = 16707;
+        const WAVE_FORMAT_DOLBY_AC2: i32 = 48;
+        const WAVE_FORMAT_DOLBY_AC3_SPDIF: i32 = 146;
+        const WAVE_FORMAT_DOLBY_AC4: i32 = 44096;
+        const WAVE_FORMAT_DRM: i32 = 9;
+        const WAVE_FORMAT_DSAT: i32 = 102;
+        const WAVE_FORMAT_DSAT_DISPLAY: i32 = 103;
+        const WAVE_FORMAT_DSPGROUP_TRUESPEECH: i32 = 34;
+        const WAVE_FORMAT_DTS: i32 = 8;
+        const WAVE_FORMAT_DTS2: i32 = 8193;
+        const WAVE_FORMAT_DTS_DS: i32 = 400;
+        const WAVE_FORMAT_DVI_ADPCM: i32 = 17;
+        const WAVE_FORMAT_DVM: i32 = 8192;
+        const WAVE_FORMAT_ECHOSC1: i32 = 35;
+        const WAVE_FORMAT_ECHOSC3: i32 = 58;
+        const WAVE_FORMAT_ENCORE_G726: i32 = 41223;
+        const WAVE_FORMAT_ESPCM: i32 = 97;
+        const WAVE_FORMAT_ESST_AC3: i32 = 577;
+        const WAVE_FORMAT_EXTENSIBLE: i32 = 65534;
+        const WAVE_FORMAT_FAAD_AAC: i32 = 28781;
+        const WAVE_FORMAT_FLAC: i32 = 61868;
+        const WAVE_FORMAT_FM_TOWNS_SND: i32 = 768;
+        const WAVE_FORMAT_FRACE_TELECOM_G729: i32 = 41251;
+        const WAVE_FORMAT_FRAUNHOFER_IIS_MPEG2_AAC: i32 = 384;
+        const WAVE_FORMAT_G721_ADPCM: i32 = 64;
+        const WAVE_FORMAT_G722_ADPCM: i32 = 101;
+        const WAVE_FORMAT_G723_ADPCM: i32 = 20;
+        const WAVE_FORMAT_G726ADPCM: i32 = 320;
+        const WAVE_FORMAT_G726_ADPCM: i32 = 100;
+        const WAVE_FORMAT_G728_CELP: i32 = 65;
+        const WAVE_FORMAT_G729A: i32 = 131;
+        const WAVE_FORMAT_GENERIC_PASSTHRU: i32 = 585;
+        const WAVE_FORMAT_GLOBAL_IP_ILBC: i32 = 41238;
+        const WAVE_FORMAT_GSM610: i32 = 49;
+        const WAVE_FORMAT_GSM_610: i32 = 41229;
+        const WAVE_FORMAT_GSM_620: i32 = 41230;
+        const WAVE_FORMAT_GSM_660: i32 = 41231;
+        const WAVE_FORMAT_GSM_690: i32 = 41232;
+        const WAVE_FORMAT_GSM_ADAPTIVE_MULTIRATE_WB: i32 = 41233;
+        const WAVE_FORMAT_GSM_AMR_CBR: i32 = 31265;
+        const WAVE_FORMAT_GSM_AMR_VBR_SID: i32 = 31266;
+        const WAVE_FORMAT_HP_DYN_VOICE: i32 = 26;
+        const WAVE_FORMAT_IBM_CVSD: i32 = 5;
+        const WAVE_FORMAT_IEEE_FLOAT: i32 = 3;
+        const WAVE_FORMAT_ILINK_VC: i32 = 560;
+        const WAVE_FORMAT_IMA_ADPCM: i32 = 17;
+        const WAVE_FORMAT_INDEO_AUDIO: i32 = 1026;
+        const WAVE_FORMAT_INFOCOM_ITS_G721_ADPCM: i32 = 139;
+        const WAVE_FORMAT_INGENIENT_G726: i32 = 41221;
+        const WAVE_FORMAT_INNINGS_TELECOM_ADPCM: i32 = 6521;
+        const WAVE_FORMAT_INTEL_G723_1: i32 = 67;
+        const WAVE_FORMAT_INTEL_G729: i32 = 68;
+        const WAVE_FORMAT_INTEL_MUSIC_CODER: i32 = 1025;
+        const WAVE_FORMAT_IPI_HSX: i32 = 592;
+        const WAVE_FORMAT_IPI_RPELP: i32 = 593;
+        const WAVE_FORMAT_IRAT: i32 = 257;
+        const WAVE_FORMAT_ISIAUDIO: i32 = 136;
+        const WAVE_FORMAT_ISIAUDIO_2: i32 = 5121;
+        const WAVE_FORMAT_KNOWLEDGE_ADVENTURE_ADPCM: i32 = 376;
+        const WAVE_FORMAT_LEAD_SPEECH: i32 = 17228;
+        const WAVE_FORMAT_LEAD_VORBIS: i32 = 22092;
+        const WAVE_FORMAT_LH_CODEC: i32 = 4352;
+        const WAVE_FORMAT_LH_CODEC_CELP: i32 = 4353;
+        const WAVE_FORMAT_LH_CODEC_SBC12: i32 = 4355;
+        const WAVE_FORMAT_LH_CODEC_SBC16: i32 = 4356;
+        const WAVE_FORMAT_LH_CODEC_SBC8: i32 = 4354;
+        const WAVE_FORMAT_LIGHTWAVE_LOSSLESS: i32 = 2222;
+        const WAVE_FORMAT_LRC: i32 = 40;
+        const WAVE_FORMAT_LUCENT_G723: i32 = 89;
+        const WAVE_FORMAT_LUCENT_SX5363S: i32 = 7180;
+        const WAVE_FORMAT_LUCENT_SX8300P: i32 = 7175;
+        const WAVE_FORMAT_MAKEAVIS: i32 = 13075;
+        const WAVE_FORMAT_MALDEN_PHONYTALK: i32 = 160;
+        const WAVE_FORMAT_MEDIASONIC_G723: i32 = 147;
+        const WAVE_FORMAT_MEDIASPACE_ADPCM: i32 = 18;
+        const WAVE_FORMAT_MEDIAVISION_ADPCM: i32 = 24;
+        const WAVE_FORMAT_MICRONAS: i32 = 848;
+        const WAVE_FORMAT_MICRONAS_CELP833: i32 = 849;
+        const WAVE_FORMAT_MPEG: i32 = 80;
+        const WAVE_FORMAT_MPEG4_AAC: i32 = 41222;
+        const WAVE_FORMAT_MPEGLAYER3: i32 = 85;
+        const WAVE_FORMAT_MPEG_ADTS_AAC: i32 = 5632;
+        const WAVE_FORMAT_MPEG_HEAAC: i32 = 5648;
+        const WAVE_FORMAT_MPEG_LOAS: i32 = 5634;
+        const WAVE_FORMAT_MPEG_RAW_AAC: i32 = 5633;
+        const WAVE_FORMAT_MSAUDIO1: i32 = 352;
+        const WAVE_FORMAT_MSG723: i32 = 66;
+        const WAVE_FORMAT_MSNAUDIO: i32 = 50;
+        const WAVE_FORMAT_MSRT24: i32 = 130;
+        const WAVE_FORMAT_MULAW: i32 = 7;
+        const WAVE_FORMAT_MULTITUDE_FT_SX20: i32 = 138;
+        const WAVE_FORMAT_MVI_MVI2: i32 = 132;
+        const WAVE_FORMAT_NEC_AAC: i32 = 176;
+        const WAVE_FORMAT_NICE_ACA: i32 = 41240;
+        const WAVE_FORMAT_NICE_ADPCM: i32 = 41241;
+        const WAVE_FORMAT_NICE_G728: i32 = 41250;
+        const WAVE_FORMAT_NMS_VBXADPCM: i32 = 56;
+        const WAVE_FORMAT_NOKIA_ADAPTIVE_MULTIRATE: i32 = 16897;
+        const WAVE_FORMAT_NOKIA_MPEG_ADTS_AAC: i32 = 5640;
+        const WAVE_FORMAT_NOKIA_MPEG_RAW_AAC: i32 = 5641;
+        const WAVE_FORMAT_NORCOM_VOICE_SYSTEMS_ADPCM: i32 = 645;
+        const WAVE_FORMAT_NORRIS: i32 = 5120;
+        const WAVE_FORMAT_NTCSOFT_ALF2CM_ACM: i32 = 8132;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_1: i32 = 26447;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_1_PLUS: i32 = 26479;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_2: i32 = 26448;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_2_PLUS: i32 = 26480;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_3: i32 = 26449;
+        const WAVE_FORMAT_OGG_VORBIS_MODE_3_PLUS: i32 = 26481;
+        const WAVE_FORMAT_OKI_ADPCM: i32 = 16;
+        const WAVE_FORMAT_OLIADPCM: i32 = 4097;
+        const WAVE_FORMAT_OLICELP: i32 = 4098;
+        const WAVE_FORMAT_OLIGSM: i32 = 4096;
+        const WAVE_FORMAT_OLIOPR: i32 = 4100;
+        const WAVE_FORMAT_OLISBC: i32 = 4099;
+        const WAVE_FORMAT_ON2_VP6_AUDIO: i32 = 1281;
+        const WAVE_FORMAT_ON2_VP7_AUDIO: i32 = 1280;
+        const WAVE_FORMAT_ONLIVE: i32 = 137;
+        const WAVE_FORMAT_OPUS: i32 = 28751;
+        const WAVE_FORMAT_PAC: i32 = 83;
+        const WAVE_FORMAT_PACKED: i32 = 153;
+        const WAVE_FORMAT_PHILIPS_CELP: i32 = 288;
+        const WAVE_FORMAT_PHILIPS_GRUNDIG: i32 = 289;
+        const WAVE_FORMAT_PHILIPS_LPCBB: i32 = 152;
+        const WAVE_FORMAT_POLYCOM_G722: i32 = 41234;
+        const WAVE_FORMAT_POLYCOM_G728: i32 = 41235;
+        const WAVE_FORMAT_POLYCOM_G729_A: i32 = 41236;
+        const WAVE_FORMAT_POLYCOM_SIREN: i32 = 41237;
+        const WAVE_FORMAT_PROSODY_1612: i32 = 39;
+        const WAVE_FORMAT_PROSODY_8KBPS: i32 = 148;
+        const WAVE_FORMAT_QDESIGN_MUSIC: i32 = 1104;
+        const WAVE_FORMAT_QUALCOMM_HALFRATE: i32 = 337;
+        const WAVE_FORMAT_QUALCOMM_PUREVOICE: i32 = 336;
+        const WAVE_FORMAT_QUARTERDECK: i32 = 544;
+        const WAVE_FORMAT_RACAL_RECORDER_G720_A: i32 = 162;
+        const WAVE_FORMAT_RACAL_RECORDER_G723_1: i32 = 163;
+        const WAVE_FORMAT_RACAL_RECORDER_GSM: i32 = 161;
+        const WAVE_FORMAT_RACAL_RECORDER_TETRA_ACELP: i32 = 164;
+        const WAVE_FORMAT_RADIOTIME_TIME_SHIFT_RADIO: i32 = 41239;
+        const WAVE_FORMAT_RAW_AAC1: i32 = 255;
+        const WAVE_FORMAT_RAW_SPORT: i32 = 576;
+        const WAVE_FORMAT_RHETOREX_ADPCM: i32 = 256;
+        const WAVE_FORMAT_ROCKWELL_ADPCM: i32 = 59;
+        const WAVE_FORMAT_ROCKWELL_DIGITALK: i32 = 60;
+        const WAVE_FORMAT_RT24: i32 = 82;
+        const WAVE_FORMAT_SANYO_LD_ADPCM: i32 = 293;
+        const WAVE_FORMAT_SBC24: i32 = 145;
+        const WAVE_FORMAT_SHARP_G726: i32 = 69;
+        const WAVE_FORMAT_SIERRA_ADPCM: i32 = 19;
+        const WAVE_FORMAT_SIPROLAB_ACELP4800: i32 = 305;
+        const WAVE_FORMAT_SIPROLAB_ACELP8V3: i32 = 306;
+        const WAVE_FORMAT_SIPROLAB_ACEPLNET: i32 = 304;
+        const WAVE_FORMAT_SIPROLAB_G729: i32 = 307;
+        const WAVE_FORMAT_SIPROLAB_G729A: i32 = 308;
+        const WAVE_FORMAT_SIPROLAB_KELVIN: i32 = 309;
+        const WAVE_FORMAT_SOFTSOUND: i32 = 128;
+        const WAVE_FORMAT_SONARC: i32 = 33;
+        const WAVE_FORMAT_SONICFOUNDRY_LOSSLESS: i32 = 6513;
+        const WAVE_FORMAT_SONY_ATRAC3: i32 = 626;
+        const WAVE_FORMAT_SONY_SCX: i32 = 624;
+        const WAVE_FORMAT_SONY_SCY: i32 = 625;
+        const WAVE_FORMAT_SONY_SPC: i32 = 627;
+        const WAVE_FORMAT_SOUNDSPACE_MUSICOMPRESS: i32 = 5376;
+        const WAVE_FORMAT_SPEEX_VOICE: i32 = 41225;
+        const WAVE_FORMAT_SYCOM_ACM_SYC008: i32 = 372;
+        const WAVE_FORMAT_SYCOM_ACM_SYC701_CELP54: i32 = 374;
+        const WAVE_FORMAT_SYCOM_ACM_SYC701_CELP68: i32 = 375;
+        const WAVE_FORMAT_SYCOM_ACM_SYC701_G726L: i32 = 373;
+        const WAVE_FORMAT_SYMBOL_G729_A: i32 = 41219;
+        const WAVE_FORMAT_TELUM_AUDIO: i32 = 640;
+        const WAVE_FORMAT_TELUM_IA_AUDIO: i32 = 641;
+        const WAVE_FORMAT_TPC: i32 = 1665;
+        const WAVE_FORMAT_TUBGSM: i32 = 341;
+        const WAVE_FORMAT_UHER_ADPCM: i32 = 528;
+        const WAVE_FORMAT_ULEAD_DV_AUDIO: i32 = 533;
+        const WAVE_FORMAT_ULEAD_DV_AUDIO_1: i32 = 534;
+        const WAVE_FORMAT_UNISYS_NAP_16K: i32 = 371;
+        const WAVE_FORMAT_UNISYS_NAP_ADPCM: i32 = 368;
+        const WAVE_FORMAT_UNISYS_NAP_ALAW: i32 = 370;
+        const WAVE_FORMAT_UNISYS_NAP_ULAW: i32 = 369;
+        const WAVE_FORMAT_UNKNOWN: i32 = 0;
+        const WAVE_FORMAT_VIANIX_MASC: i32 = 41226;
+        const WAVE_FORMAT_VIVO_G723: i32 = 273;
+        const WAVE_FORMAT_VIVO_SIREN: i32 = 274;
+        const WAVE_FORMAT_VME_VMPCM: i32 = 1664;
+        const WAVE_FORMAT_VOCORD_G721: i32 = 41242;
+        const WAVE_FORMAT_VOCORD_G722_1: i32 = 41244;
+        const WAVE_FORMAT_VOCORD_G723_1: i32 = 41248;
+        const WAVE_FORMAT_VOCORD_G726: i32 = 41243;
+        const WAVE_FORMAT_VOCORD_G728: i32 = 41245;
+        const WAVE_FORMAT_VOCORD_G729: i32 = 41246;
+        const WAVE_FORMAT_VOCORD_G729_A: i32 = 41247;
+        const WAVE_FORMAT_VOCORD_LBC: i32 = 41249;
+        const WAVE_FORMAT_VODAFONE_MPEG_ADTS_AAC: i32 = 5642;
+        const WAVE_FORMAT_VODAFONE_MPEG_RAW_AAC: i32 = 5643;
+        const WAVE_FORMAT_VOICEAGE_AMR: i32 = 310;
+        const WAVE_FORMAT_VOICEAGE_AMR_WB: i32 = 41220;
+        const WAVE_FORMAT_VOXWARE: i32 = 98;
+        const WAVE_FORMAT_VOXWARE_AC10: i32 = 113;
+        const WAVE_FORMAT_VOXWARE_AC16: i32 = 114;
+        const WAVE_FORMAT_VOXWARE_AC20: i32 = 115;
+        const WAVE_FORMAT_VOXWARE_AC8: i32 = 112;
+        const WAVE_FORMAT_VOXWARE_BYTE_ALIGNED: i32 = 105;
+        const WAVE_FORMAT_VOXWARE_RT24: i32 = 116;
+        const WAVE_FORMAT_VOXWARE_RT24_SPEECH: i32 = 6172;
+        const WAVE_FORMAT_VOXWARE_RT29: i32 = 117;
+        const WAVE_FORMAT_VOXWARE_RT29HW: i32 = 118;
+        const WAVE_FORMAT_VOXWARE_SC3: i32 = 122;
+        const WAVE_FORMAT_VOXWARE_SC3_1: i32 = 123;
+        const WAVE_FORMAT_VOXWARE_TQ40: i32 = 121;
+        const WAVE_FORMAT_VOXWARE_TQ60: i32 = 129;
+        const WAVE_FORMAT_VOXWARE_VR12: i32 = 119;
+        const WAVE_FORMAT_VOXWARE_VR18: i32 = 120;
+        const WAVE_FORMAT_VSELP: i32 = 4;
+        const WAVE_FORMAT_WAVPACK_AUDIO: i32 = 22358;
+        const WAVE_FORMAT_WM9_SPECTRUM_ANALYZER: i32 = 41227;
+        const WAVE_FORMAT_WMASPDIF: i32 = 356;
+        const WAVE_FORMAT_WMAUDIO2: i32 = 353;
+        const WAVE_FORMAT_WMAUDIO3: i32 = 354;
+        const WAVE_FORMAT_WMAUDIO_LOSSLESS: i32 = 355;
+        const WAVE_FORMAT_WMAVOICE10: i32 = 11;
+        const WAVE_FORMAT_WMAVOICE9: i32 = 10;
+        const WAVE_FORMAT_WMF_SPECTRUM_ANAYZER: i32 = 41228;
+        const WAVE_FORMAT_XEBEC: i32 = 61;
+        const WAVE_FORMAT_YAMAHA_ADPCM: i32 = 32;
+        const WAVE_FORMAT_ZOLL_ASAO: i32 = 41224;
+        const WAVE_FORMAT_ZYXEL_ADPCM: i32 = 151;
+        #[packed(1)]
+        struct WMAUDIO2WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            dwSamplesPerBlock: u32,
+            wEncodeOptions: u16,
+            dwSuperBlockAlign: u32,
+        }
+        const WMAUDIO2_BITS_PER_SAMPLE: i32 = 16;
+        const WMAUDIO2_MAX_CHANNELS: i32 = 2;
+        #[arch(X64 | Arm64)]
+        const WMAUDIO2_WFX_EXTRA_BYTES: u64 = 10;
+        #[arch(X86)]
+        const WMAUDIO2_WFX_EXTRA_BYTES: u32 = 10;
+        #[packed(1)]
+        struct WMAUDIO3WAVEFORMAT {
+            wfx: WAVEFORMATEX,
+            wValidBitsPerSample: u16,
+            dwChannelMask: u32,
+            dwReserved1: u32,
+            dwReserved2: u32,
+            wEncodeOptions: u16,
+            wReserved3: u16,
+        }
+        #[arch(X64 | Arm64)]
+        const WMAUDIO3_WFX_EXTRA_BYTES: u64 = 18;
+        #[arch(X86)]
+        const WMAUDIO3_WFX_EXTRA_BYTES: u32 = 18;
+        const WMAUDIO_BITS_PER_SAMPLE: i32 = 16;
+        const WMAUDIO_MAX_CHANNELS: i32 = 2;
+        struct YAMAHA_ADPCMWAVEFORMAT {
+            wfx: WAVEFORMATEX,
+        }
+        const _INC_MMREG: i32 = 158;
+        type s_RIFFWAVE_inst = tag_s_RIFFWAVE_INST;
+        struct tag_s_RIFFWAVE_INST {}
+        struct tag_s_RIFFWAVE_inst {
+            bUnshiftedNote: u8,
+            chFineTune: i8,
+            chGain: i8,
+            bLowNote: u8,
+            bHighNote: u8,
+            bLowVelocity: u8,
+            bHighVelocity: u8,
+        }
+    }
+}

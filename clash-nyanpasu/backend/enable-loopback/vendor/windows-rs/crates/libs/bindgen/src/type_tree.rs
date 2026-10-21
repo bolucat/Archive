@@ -1,0 +1,97 @@
+use super::*;
+
+// BTree collections preserve output order.
+#[derive(Debug)]
+pub struct TypeTree {
+    pub namespace: &'static str,
+    pub nested: BTreeMap<&'static str, Self>,
+    pub types: BTreeSet<Type>,
+}
+
+impl TypeTree {
+    pub fn new(dependencies: &TypeMap) -> Self {
+        let mut tree = Self::with_namespace("");
+
+        for (tn, types) in dependencies.iter() {
+            let tree = tree.insert_namespace(tn.namespace());
+            // Insert in a deterministic total order so that when two distinct
+            // types share a `sort_key` (same-name collisions in `--flat` layouts),
+            // the `BTreeSet` keeps a stable winner (first insert wins on ties).
+            let mut sorted: Vec<&Type> = types.iter().collect();
+            sorted.sort_by(|a, b| a.dedup_cmp(b));
+            sorted.into_iter().for_each(|ty| {
+                tree.types.insert(ty.clone());
+            });
+        }
+
+        tree
+    }
+
+    /// Returns namespace trees in output order.
+    pub fn flatten_trees(&self) -> Vec<&Self> {
+        let mut flatten = if self.namespace.is_empty() {
+            vec![]
+        } else {
+            vec![self]
+        };
+        flatten.extend(self.nested.values().flat_map(|tree| tree.flatten_trees()));
+        flatten
+    }
+
+    /// Flattens all namespace types into output order.
+    pub fn flatten_types(mut self) -> BTreeSet<Type> {
+        fn flatten(set: &mut BTreeSet<Type>, tree: &mut TypeTree) {
+            set.append(&mut tree.types);
+
+            for tree in tree.nested.values_mut() {
+                flatten(set, tree);
+            }
+        }
+
+        let mut types = BTreeSet::new();
+        flatten(&mut types, &mut self);
+        types
+    }
+
+    pub fn feature(&self) -> String {
+        namespace_feature(self.namespace)
+    }
+
+    fn with_namespace(namespace: &'static str) -> Self {
+        Self {
+            namespace,
+            nested: BTreeMap::new(),
+            types: BTreeSet::new(),
+        }
+    }
+
+    fn insert_namespace(&mut self, namespace: &'static str) -> &mut Self {
+        fn insert_namespace<'a>(
+            parent: &'a mut TypeTree,
+            namespace: &'static str,
+            pos: usize,
+        ) -> &'a mut TypeTree {
+            if let Some(next) = namespace[pos..].find('.') {
+                let next = pos + next;
+
+                let parent = parent
+                    .nested
+                    .entry(&namespace[pos..next])
+                    .or_insert_with(|| TypeTree::with_namespace(&namespace[..next]));
+
+                insert_namespace(parent, namespace, next + 1)
+            } else {
+                parent
+                    .nested
+                    .entry(&namespace[pos..])
+                    .or_insert_with(|| TypeTree::with_namespace(namespace))
+            }
+        }
+
+        if namespace.is_empty() {
+            self
+        } else {
+            insert_namespace(self, namespace, 0)
+        }
+    }
+}

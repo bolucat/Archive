@@ -1,0 +1,727 @@
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Direct3D11CaptureFrame(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(Direct3D11CaptureFrame, windows_core::IUnknown, windows_core::IInspectable);
+windows_core::imp::required_hierarchy!(Direct3D11CaptureFrame, super::super::Foundation::IClosable);
+impl Direct3D11CaptureFrame {
+    pub fn Close(&self) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<super::super::Foundation::IClosable>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).Close)(windows_core::Interface::as_raw(this)).ok() }
+    }
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub fn Surface(&self) -> windows_core::Result<super::DirectX::Direct3D11::IDirect3DSurface> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Surface)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn SystemRelativeTime(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SystemRelativeTime)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ContentSize(&self) -> windows_core::Result<super::SizeInt32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ContentSize)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn DirtyRegions(&self) -> windows_core::Result<windows_collections::IVectorView<super::RectInt32>> {
+        let this = &windows_core::Interface::cast::<IDirect3D11CaptureFrame2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).DirtyRegions)(windows_core::Interface::as_raw(this), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn DirtyRegionMode(&self) -> windows_core::Result<GraphicsCaptureDirtyRegionMode> {
+        let this = &windows_core::Interface::cast::<IDirect3D11CaptureFrame2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).DirtyRegionMode)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn ConfigurationIteration(&self) -> windows_core::Result<u64> {
+        let this = &windows_core::Interface::cast::<IDirect3D11CaptureFrame3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).ConfigurationIteration)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+}
+impl windows_core::RuntimeType for Direct3D11CaptureFrame {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDirect3D11CaptureFrame>();
+}
+unsafe impl windows_core::Interface for Direct3D11CaptureFrame {
+    type Vtable = <IDirect3D11CaptureFrame as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDirect3D11CaptureFrame as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for Direct3D11CaptureFrame {
+    const NAME: &'static str = "Windows.Graphics.Capture.Direct3D11CaptureFrame";
+}
+unsafe impl Send for Direct3D11CaptureFrame {}
+unsafe impl Sync for Direct3D11CaptureFrame {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Direct3D11CaptureFramePool(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(Direct3D11CaptureFramePool, windows_core::IUnknown, windows_core::IInspectable);
+windows_core::imp::required_hierarchy!(Direct3D11CaptureFramePool, super::super::Foundation::IClosable);
+impl Direct3D11CaptureFramePool {
+    pub fn Close(&self) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<super::super::Foundation::IClosable>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).Close)(windows_core::Interface::as_raw(this)).ok() }
+    }
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub fn Recreate<P0>(&self, device: P0, pixelformat: super::DirectX::DirectXPixelFormat, numberofbuffers: i32, size: super::SizeInt32) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<super::DirectX::Direct3D11::IDirect3DDevice>,
+    {
+        unsafe { (windows_core::Interface::vtable(self).Recreate)(windows_core::Interface::as_raw(self), device.param().abi(), pixelformat, numberofbuffers, size).ok() }
+    }
+    pub fn TryGetNextFrame(&self) -> windows_core::Result<Direct3D11CaptureFrame> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).TryGetNextFrame)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub fn FrameArrived<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).FrameArrived)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveFrameArrived))
+        }
+    }
+    pub fn CreateCaptureSession<P0>(&self, item: P0) -> windows_core::Result<GraphicsCaptureSession>
+    where
+        P0: windows_core::Param<GraphicsCaptureItem>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CreateCaptureSession)(windows_core::Interface::as_raw(self), item.param().abi(), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "System")]
+    pub fn DispatcherQueue(&self) -> windows_core::Result<super::super::System::DispatcherQueue> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DispatcherQueue)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub fn Create<P0>(device: P0, pixelformat: super::DirectX::DirectXPixelFormat, numberofbuffers: i32, size: super::SizeInt32) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::DirectX::Direct3D11::IDirect3DDevice>,
+    {
+        Self::IDirect3D11CaptureFramePoolStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Create)(windows_core::Interface::as_raw(this), device.param().abi(), pixelformat, numberofbuffers, size, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub fn CreateFreeThreaded<P0>(device: P0, pixelformat: super::DirectX::DirectXPixelFormat, numberofbuffers: i32, size: super::SizeInt32) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<super::DirectX::Direct3D11::IDirect3DDevice>,
+    {
+        Self::IDirect3D11CaptureFramePoolStatics2(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreateFreeThreaded)(windows_core::Interface::as_raw(this), device.param().abi(), pixelformat, numberofbuffers, size, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IDirect3D11CaptureFramePoolStatics<R, F: FnOnce(&IDirect3D11CaptureFramePoolStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<Direct3D11CaptureFramePool, IDirect3D11CaptureFramePoolStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    fn IDirect3D11CaptureFramePoolStatics2<R, F: FnOnce(&IDirect3D11CaptureFramePoolStatics2) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<Direct3D11CaptureFramePool, IDirect3D11CaptureFramePoolStatics2> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for Direct3D11CaptureFramePool {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IDirect3D11CaptureFramePool>();
+}
+unsafe impl windows_core::Interface for Direct3D11CaptureFramePool {
+    type Vtable = <IDirect3D11CaptureFramePool as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IDirect3D11CaptureFramePool as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for Direct3D11CaptureFramePool {
+    const NAME: &'static str = "Windows.Graphics.Capture.Direct3D11CaptureFramePool";
+}
+unsafe impl Send for Direct3D11CaptureFramePool {}
+unsafe impl Sync for Direct3D11CaptureFramePool {}
+pub struct GraphicsCaptureAccess;
+impl GraphicsCaptureAccess {
+    #[cfg(feature = "Security_Authorization_AppCapabilityAccess")]
+    pub fn RequestAccessAsync(request: GraphicsCaptureAccessKind) -> windows_core::Result<windows_future::IAsyncOperation<super::super::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus>> {
+        Self::IGraphicsCaptureAccessStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).RequestAccessAsync)(windows_core::Interface::as_raw(this), request, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IGraphicsCaptureAccessStatics<R, F: FnOnce(&IGraphicsCaptureAccessStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GraphicsCaptureAccess, IGraphicsCaptureAccessStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeName for GraphicsCaptureAccess {
+    const NAME: &'static str = "Windows.Graphics.Capture.GraphicsCaptureAccess";
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GraphicsCaptureAccessKind(pub i32);
+impl GraphicsCaptureAccessKind {
+    pub const Borderless: Self = Self(0);
+    pub const Programmatic: Self = Self(1);
+}
+impl windows_core::imp::TypeKind for GraphicsCaptureAccessKind {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for GraphicsCaptureAccessKind {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Graphics.Capture.GraphicsCaptureAccessKind;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.GraphicsCaptureAccessKind");
+}
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GraphicsCaptureDirtyRegionMode(pub i32);
+impl GraphicsCaptureDirtyRegionMode {
+    pub const ReportOnly: Self = Self(0);
+    pub const ReportAndRender: Self = Self(1);
+}
+impl windows_core::imp::TypeKind for GraphicsCaptureDirtyRegionMode {
+    type TypeKind = windows_core::imp::CopyType;
+}
+impl windows_core::RuntimeType for GraphicsCaptureDirtyRegionMode {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"enum(Windows.Graphics.Capture.GraphicsCaptureDirtyRegionMode;i4)");
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.GraphicsCaptureDirtyRegionMode");
+}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphicsCaptureItem(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(GraphicsCaptureItem, windows_core::IUnknown, windows_core::IInspectable);
+impl GraphicsCaptureItem {
+    pub fn DisplayName(&self) -> windows_core::Result<windows_core::HSTRING> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).DisplayName)(windows_core::Interface::as_raw(self), &mut result__).map(|| core::mem::transmute(result__))
+        }
+    }
+    pub fn Size(&self) -> windows_core::Result<super::SizeInt32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Size)(windows_core::Interface::as_raw(self), &mut result__).map(|| result__)
+        }
+    }
+    pub fn Closed<F>(&self, handler: F) -> windows_core::Result<windows_core::EventRevoker>
+    where
+        F: Fn(windows_core::Ref<Self>, windows_core::Ref<windows_core::IInspectable>) + Send + 'static,
+    {
+        let handler = <super::super::Foundation::TypedEventHandler<Self, windows_core::IInspectable>>::new(move |a0, a1| {
+            handler(a0, a1);
+            Ok(())
+        });
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            let token__ = (windows_core::Interface::vtable(self).Closed)(windows_core::Interface::as_raw(self), windows_core::Interface::as_raw(&handler), &mut result__).map(|| result__)?;
+            Ok(windows_core::EventRevoker::new(self.clone(), token__, windows_core::Interface::vtable(self).RemoveClosed))
+        }
+    }
+    #[cfg(feature = "UI")]
+    pub fn TryCreateFromWindowId(windowid: super::super::UI::WindowId) -> windows_core::Result<Self> {
+        Self::IGraphicsCaptureItemStatics2(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TryCreateFromWindowId)(windows_core::Interface::as_raw(this), windowid, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    pub fn TryCreateFromDisplayId(displayid: super::DisplayId) -> windows_core::Result<Self> {
+        Self::IGraphicsCaptureItemStatics2(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TryCreateFromDisplayId)(windows_core::Interface::as_raw(this), displayid, &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn IGraphicsCaptureItemStatics<R, F: FnOnce(&IGraphicsCaptureItemStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GraphicsCaptureItem, IGraphicsCaptureItemStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    fn IGraphicsCaptureItemStatics2<R, F: FnOnce(&IGraphicsCaptureItemStatics2) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GraphicsCaptureItem, IGraphicsCaptureItemStatics2> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for GraphicsCaptureItem {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGraphicsCaptureItem>();
+}
+unsafe impl windows_core::Interface for GraphicsCaptureItem {
+    type Vtable = <IGraphicsCaptureItem as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGraphicsCaptureItem as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for GraphicsCaptureItem {
+    const NAME: &'static str = "Windows.Graphics.Capture.GraphicsCaptureItem";
+}
+unsafe impl Send for GraphicsCaptureItem {}
+unsafe impl Sync for GraphicsCaptureItem {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphicsCapturePicker(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(GraphicsCapturePicker, windows_core::IUnknown, windows_core::IInspectable);
+impl GraphicsCapturePicker {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::IActivationFactory(|f| f.ActivateInstance::<Self>())
+    }
+    fn IActivationFactory<R, F: FnOnce(&windows_core::imp::IGenericFactory) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GraphicsCapturePicker, windows_core::imp::IGenericFactory> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+    pub fn PickSingleItemAsync(&self) -> windows_core::Result<windows_future::IAsyncOperation<GraphicsCaptureItem>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).PickSingleItemAsync)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+impl windows_core::RuntimeType for GraphicsCapturePicker {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGraphicsCapturePicker>();
+}
+unsafe impl windows_core::Interface for GraphicsCapturePicker {
+    type Vtable = <IGraphicsCapturePicker as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGraphicsCapturePicker as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for GraphicsCapturePicker {
+    const NAME: &'static str = "Windows.Graphics.Capture.GraphicsCapturePicker";
+}
+unsafe impl Send for GraphicsCapturePicker {}
+unsafe impl Sync for GraphicsCapturePicker {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphicsCaptureSession(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(GraphicsCaptureSession, windows_core::IUnknown, windows_core::IInspectable);
+windows_core::imp::required_hierarchy!(GraphicsCaptureSession, super::super::Foundation::IClosable);
+impl GraphicsCaptureSession {
+    pub fn Close(&self) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<super::super::Foundation::IClosable>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).Close)(windows_core::Interface::as_raw(this)).ok() }
+    }
+    pub fn StartCapture(&self) -> windows_core::Result<()> {
+        unsafe { (windows_core::Interface::vtable(self).StartCapture)(windows_core::Interface::as_raw(self)).ok() }
+    }
+    pub fn IsCursorCaptureEnabled(&self) -> windows_core::Result<bool> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IsCursorCaptureEnabled)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetIsCursorCaptureEnabled(&self, value: bool) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession2>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).SetIsCursorCaptureEnabled)(windows_core::Interface::as_raw(this), value).ok() }
+    }
+    pub fn IsBorderRequired(&self) -> windows_core::Result<bool> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession3>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IsBorderRequired)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetIsBorderRequired(&self, value: bool) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession3>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).SetIsBorderRequired)(windows_core::Interface::as_raw(this), value).ok() }
+    }
+    pub fn DirtyRegionMode(&self) -> windows_core::Result<GraphicsCaptureDirtyRegionMode> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession4>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).DirtyRegionMode)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetDirtyRegionMode(&self, value: GraphicsCaptureDirtyRegionMode) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession4>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).SetDirtyRegionMode)(windows_core::Interface::as_raw(this), value).ok() }
+    }
+    pub fn MinUpdateInterval(&self) -> windows_core::Result<windows_time::TimeSpan> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession5>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).MinUpdateInterval)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetMinUpdateInterval(&self, value: windows_time::TimeSpan) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession5>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).SetMinUpdateInterval)(windows_core::Interface::as_raw(this), value).ok() }
+    }
+    pub fn IncludeSecondaryWindows(&self) -> windows_core::Result<bool> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession6>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IncludeSecondaryWindows)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn SetIncludeSecondaryWindows(&self, value: bool) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession6>(self)?;
+        unsafe { (windows_core::Interface::vtable(this).SetIncludeSecondaryWindows)(windows_core::Interface::as_raw(this), value).ok() }
+    }
+    pub fn ConfigurationIteration(&self) -> windows_core::Result<u64> {
+        let this = &windows_core::Interface::cast::<IGraphicsCaptureSession7>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).ConfigurationIteration)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        }
+    }
+    pub fn IsSupported() -> windows_core::Result<bool> {
+        Self::IGraphicsCaptureSessionStatics(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).IsSupported)(windows_core::Interface::as_raw(this), &mut result__).map(|| result__)
+        })
+    }
+    fn IGraphicsCaptureSessionStatics<R, F: FnOnce(&IGraphicsCaptureSessionStatics) -> windows_core::Result<R>>(callback: F) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<GraphicsCaptureSession, IGraphicsCaptureSessionStatics> = windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for GraphicsCaptureSession {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_class::<Self, IGraphicsCaptureSession>();
+}
+unsafe impl windows_core::Interface for GraphicsCaptureSession {
+    type Vtable = <IGraphicsCaptureSession as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <IGraphicsCaptureSession as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for GraphicsCaptureSession {
+    const NAME: &'static str = "Windows.Graphics.Capture.GraphicsCaptureSession";
+}
+unsafe impl Send for GraphicsCaptureSession {}
+unsafe impl Sync for GraphicsCaptureSession {}
+windows_core::imp::define_interface!(IDirect3D11CaptureFrame, IDirect3D11CaptureFrame_Vtbl, 0xfa50c623_38da_4b32_acf3_fa9734ad800e);
+impl windows_core::RuntimeType for IDirect3D11CaptureFrame {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFrame");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFrame_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub Surface: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Graphics_DirectX_Direct3D11"))]
+    Surface: usize,
+    pub SystemRelativeTime: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub ContentSize: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::SizeInt32) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDirect3D11CaptureFrame2, IDirect3D11CaptureFrame2_Vtbl, 0x37869cfa_2b48_5ebf_9afb_dffd805defdb);
+impl windows_core::RuntimeType for IDirect3D11CaptureFrame2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFrame2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFrame2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub DirtyRegions: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub DirtyRegionMode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut GraphicsCaptureDirtyRegionMode) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDirect3D11CaptureFrame3, IDirect3D11CaptureFrame3_Vtbl, 0x71616dc8_fea5_5741_a3d8_591acc39a9ee);
+impl windows_core::RuntimeType for IDirect3D11CaptureFrame3 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFrame3");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFrame3_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ConfigurationIteration: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IDirect3D11CaptureFramePool, IDirect3D11CaptureFramePool_Vtbl, 0x24eb6d22_1975_422e_82e7_780dbd8ddf24);
+impl windows_core::RuntimeType for IDirect3D11CaptureFramePool {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFramePool");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFramePool_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub Recreate: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, super::DirectX::DirectXPixelFormat, i32, super::SizeInt32) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Graphics_DirectX_Direct3D11"))]
+    Recreate: usize,
+    pub TryGetNextFrame: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub FrameArrived: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveFrameArrived: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+    pub CreateCaptureSession: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(feature = "System")]
+    pub DispatcherQueue: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "System"))]
+    DispatcherQueue: usize,
+}
+windows_core::imp::define_interface!(IDirect3D11CaptureFramePoolStatics, IDirect3D11CaptureFramePoolStatics_Vtbl, 0x7784056a_67aa_4d53_ae54_1088d5a8ca21);
+impl windows_core::RuntimeType for IDirect3D11CaptureFramePoolStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFramePoolStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFramePoolStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub Create: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, super::DirectX::DirectXPixelFormat, i32, super::SizeInt32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Graphics_DirectX_Direct3D11"))]
+    Create: usize,
+}
+windows_core::imp::define_interface!(IDirect3D11CaptureFramePoolStatics2, IDirect3D11CaptureFramePoolStatics2_Vtbl, 0x589b103f_6bbc_5df5_a991_02e28b3b66d5);
+impl windows_core::RuntimeType for IDirect3D11CaptureFramePoolStatics2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDirect3D11CaptureFramePoolStatics2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDirect3D11CaptureFramePoolStatics2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Graphics_DirectX_Direct3D11")]
+    pub CreateFreeThreaded: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, super::DirectX::DirectXPixelFormat, i32, super::SizeInt32, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Graphics_DirectX_Direct3D11"))]
+    CreateFreeThreaded: usize,
+}
+windows_core::imp::define_interface!(IDisplayGraphicsCaptureSession, IDisplayGraphicsCaptureSession_Vtbl, 0xbb91f61b_218a_587d_8580_2701a74c0525);
+impl windows_core::RuntimeType for IDisplayGraphicsCaptureSession {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IDisplayGraphicsCaptureSession");
+}
+windows_core::imp::interface_hierarchy!(IDisplayGraphicsCaptureSession, windows_core::IUnknown, windows_core::IInspectable);
+impl IDisplayGraphicsCaptureSession {
+    #[cfg(feature = "UI")]
+    pub fn SetWindowExclusionList<P0>(&self, excludedwindows: P0) -> windows_core::Result<u64>
+    where
+        P0: windows_core::Param<windows_collections::IIterable<super::super::UI::WindowId>>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).SetWindowExclusionList)(windows_core::Interface::as_raw(self), excludedwindows.param().abi(), &mut result__).map(|| result__)
+        }
+    }
+    #[cfg(feature = "UI")]
+    pub fn GetWindowExclusionList(&self) -> windows_core::Result<windows_collections::IVectorView<super::super::UI::WindowId>> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetWindowExclusionList)(windows_core::Interface::as_raw(self), &mut result__).and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+}
+#[cfg(feature = "UI")]
+impl windows_core::RuntimeName for IDisplayGraphicsCaptureSession {
+    const NAME: &'static str = "Windows.Graphics.Capture.IDisplayGraphicsCaptureSession";
+}
+#[cfg(feature = "UI")]
+pub trait IDisplayGraphicsCaptureSession_Impl: windows_core::IUnknownImpl {
+    fn SetWindowExclusionList(&self, excludedWindows: windows_core::Ref<windows_collections::IIterable<super::super::UI::WindowId>>) -> windows_core::Result<u64>;
+    fn GetWindowExclusionList(&self) -> windows_core::Result<windows_collections::IVectorView<super::super::UI::WindowId>>;
+}
+#[cfg(feature = "UI")]
+impl IDisplayGraphicsCaptureSession_Vtbl {
+    pub const fn new<Identity: IDisplayGraphicsCaptureSession_Impl, const OFFSET: isize>() -> Self {
+        unsafe extern "system" fn SetWindowExclusionList<Identity: IDisplayGraphicsCaptureSession_Impl, const OFFSET: isize>(this: *mut core::ffi::c_void, excludedwindows: *mut core::ffi::c_void, result__: *mut u64) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity = &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                match IDisplayGraphicsCaptureSession_Impl::SetWindowExclusionList(this, core::mem::transmute_copy(&excludedwindows)) {
+                    Ok(ok__) => {
+                        result__.write(ok__);
+                        windows_core::HRESULT(0)
+                    }
+                    Err(err) => err.into(),
+                }
+            }
+        }
+        unsafe extern "system" fn GetWindowExclusionList<Identity: IDisplayGraphicsCaptureSession_Impl, const OFFSET: isize>(this: *mut core::ffi::c_void, result__: *mut *mut core::ffi::c_void) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity = &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                match IDisplayGraphicsCaptureSession_Impl::GetWindowExclusionList(this) {
+                    Ok(ok__) => {
+                        result__.write(core::mem::transmute_copy(&ok__));
+                        core::mem::forget(ok__);
+                        windows_core::HRESULT(0)
+                    }
+                    Err(err) => err.into(),
+                }
+            }
+        }
+        Self {
+            base__: windows_core::IInspectable_Vtbl::new::<Identity, IDisplayGraphicsCaptureSession, OFFSET>(),
+            SetWindowExclusionList: SetWindowExclusionList::<Identity, OFFSET>,
+            GetWindowExclusionList: GetWindowExclusionList::<Identity, OFFSET>,
+        }
+    }
+    pub fn matches(iid: &windows_core::GUID) -> bool {
+        iid == &<IDisplayGraphicsCaptureSession as windows_core::Interface>::IID
+    }
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IDisplayGraphicsCaptureSession_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "UI")]
+    pub SetWindowExclusionList: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut u64) -> windows_core::HRESULT,
+    #[cfg(not(feature = "UI"))]
+    SetWindowExclusionList: usize,
+    #[cfg(feature = "UI")]
+    pub GetWindowExclusionList: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "UI"))]
+    GetWindowExclusionList: usize,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureAccessStatics, IGraphicsCaptureAccessStatics_Vtbl, 0x743ed370_06ec_5040_a58a_901f0f757095);
+impl windows_core::RuntimeType for IGraphicsCaptureAccessStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureAccessStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureAccessStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "Security_Authorization_AppCapabilityAccess")]
+    pub RequestAccessAsync: unsafe extern "system" fn(*mut core::ffi::c_void, GraphicsCaptureAccessKind, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "Security_Authorization_AppCapabilityAccess"))]
+    RequestAccessAsync: usize,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureItem, IGraphicsCaptureItem_Vtbl, 0x79c3f95b_31f7_4ec2_a464_632ef5d30760);
+impl windows_core::RuntimeType for IGraphicsCaptureItem {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureItem");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureItem_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub DisplayName: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Size: unsafe extern "system" fn(*mut core::ffi::c_void, *mut super::SizeInt32) -> windows_core::HRESULT,
+    pub Closed: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void, *mut i64) -> windows_core::HRESULT,
+    pub RemoveClosed: unsafe extern "system" fn(*mut core::ffi::c_void, i64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureItemStatics, IGraphicsCaptureItemStatics_Vtbl, 0xa87ebea5_457c_5788_ab47_0cf1d3637e74);
+impl windows_core::RuntimeType for IGraphicsCaptureItemStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureItemStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureItemStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureItemStatics2, IGraphicsCaptureItemStatics2_Vtbl, 0x3b92acc9_e584_5862_bf5c_9c316c6d2dbb);
+impl windows_core::RuntimeType for IGraphicsCaptureItemStatics2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureItemStatics2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureItemStatics2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    #[cfg(feature = "UI")]
+    pub TryCreateFromWindowId: unsafe extern "system" fn(*mut core::ffi::c_void, super::super::UI::WindowId, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+    #[cfg(not(feature = "UI"))]
+    TryCreateFromWindowId: usize,
+    pub TryCreateFromDisplayId: unsafe extern "system" fn(*mut core::ffi::c_void, super::DisplayId, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCapturePicker, IGraphicsCapturePicker_Vtbl, 0x5a1711b3_ad79_4b4a_9336_1318fdde3539);
+impl windows_core::RuntimeType for IGraphicsCapturePicker {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCapturePicker");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCapturePicker_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub PickSingleItemAsync: unsafe extern "system" fn(*mut core::ffi::c_void, *mut *mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession, IGraphicsCaptureSession_Vtbl, 0x814e42a9_f70f_4ad7_939b_fddcc6eb880d);
+impl windows_core::RuntimeType for IGraphicsCaptureSession {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub StartCapture: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession2, IGraphicsCaptureSession2_Vtbl, 0x2c39ae40_7d2e_5044_804e_8b6799d4cf9e);
+impl windows_core::RuntimeType for IGraphicsCaptureSession2 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession2");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession2_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsCursorCaptureEnabled: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SetIsCursorCaptureEnabled: unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession3, IGraphicsCaptureSession3_Vtbl, 0xf2cdd966_22ae_5ea1_9596_3a289344c3be);
+impl windows_core::RuntimeType for IGraphicsCaptureSession3 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession3");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession3_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsBorderRequired: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SetIsBorderRequired: unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession4, IGraphicsCaptureSession4_Vtbl, 0xae99813c_c257_5759_8ed0_668c9b557ed4);
+impl windows_core::RuntimeType for IGraphicsCaptureSession4 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession4");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession4_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub DirtyRegionMode: unsafe extern "system" fn(*mut core::ffi::c_void, *mut GraphicsCaptureDirtyRegionMode) -> windows_core::HRESULT,
+    pub SetDirtyRegionMode: unsafe extern "system" fn(*mut core::ffi::c_void, GraphicsCaptureDirtyRegionMode) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession5, IGraphicsCaptureSession5_Vtbl, 0x67c0ea62_1f85_5061_925a_239be0ac09cb);
+impl windows_core::RuntimeType for IGraphicsCaptureSession5 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession5");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession5_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub MinUpdateInterval: unsafe extern "system" fn(*mut core::ffi::c_void, *mut windows_time::TimeSpan) -> windows_core::HRESULT,
+    pub SetMinUpdateInterval: unsafe extern "system" fn(*mut core::ffi::c_void, windows_time::TimeSpan) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession6, IGraphicsCaptureSession6_Vtbl, 0xd7419236_be20_5e9f_bcd6_c4e98fd6afdc);
+impl windows_core::RuntimeType for IGraphicsCaptureSession6 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession6");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession6_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IncludeSecondaryWindows: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+    pub SetIncludeSecondaryWindows: unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSession7, IGraphicsCaptureSession7_Vtbl, 0x82d1aa4d_4366_543e_a6d0_a4805e6bcf2c);
+impl windows_core::RuntimeType for IGraphicsCaptureSession7 {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSession7");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSession7_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub ConfigurationIteration: unsafe extern "system" fn(*mut core::ffi::c_void, *mut u64) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(IGraphicsCaptureSessionStatics, IGraphicsCaptureSessionStatics_Vtbl, 0x2224a540_5974_49aa_b232_0882536f4cb5);
+impl windows_core::RuntimeType for IGraphicsCaptureSessionStatics {
+    const SIGNATURE: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.Capture.IGraphicsCaptureSessionStatics");
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IGraphicsCaptureSessionStatics_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub IsSupported: unsafe extern "system" fn(*mut core::ffi::c_void, *mut bool) -> windows_core::HRESULT,
+}

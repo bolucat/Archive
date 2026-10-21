@@ -1,0 +1,51 @@
+name: clippy
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+  push:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'crates/libs/rdl/rdl.md'
+      - 'docs/**'
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  clippy:
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Update toolchain
+        run: rustup update --no-self-update nightly && rustup default nightly-x86_64-pc-windows-msvc
+      - name: Add toolchain target
+        run: rustup target add x86_64-pc-windows-msvc
+      - name: Install clippy
+        run: rustup component add clippy
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+      - name: Fix environment
+        uses: ./.github/actions/fix-environment
+        with:
+          target: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        # Exclusions (both due to --all-targets feature-unification across the workspace):
+        #   test_no_std - unification pulls std into its no_std graph (duplicate panic_impl).
+        #   windows-composition and its `system` consumers, including canvas-standalone - Reactor
+        #     consumers select the incompatible lifted Composition stack in the unified workspace
+        #     build. The system Composition graph is linted in a separate pass.
+        run:  cargo clippy --workspace --all-targets --exclude test_no_std --exclude windows-composition --exclude canvas-standalone --exclude test_composition --exclude composition-standalone --exclude composition-minesweeper --exclude composition-canvas -- -D warnings
+      - name: Check system Composition stack
+        run:  cargo clippy -p windows-canvas -p windows-composition -p canvas-standalone -p test_composition -p composition-standalone -p composition-minesweeper -p composition-canvas --features windows-canvas/system --all-targets -- -D warnings

@@ -59,7 +59,9 @@ pub struct Connection {
 /// the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
 /// here via `#[serde(from = "ConnectionWire")]` so serialization can use a
 /// different, named shape for `extra` (see [`Connection::extra`]).
-#[derive(serde::Deserialize, specta::Type)]
+// Serialize registers the serde attributes that Specta needs for the wire schema;
+// the application serializes Connection instead. DeserializeMap bypasses flatten buffering.
+#[derive(serde::Serialize, nyanpasu_serde::DeserializeMap, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct ConnectionWire {
     id: Uuid,
@@ -73,6 +75,7 @@ struct ConnectionWire {
     rule: String,
     rule_payload: String,
     #[serde(flatten)]
+    #[nyanpasu_serde(extra)]
     #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
     extra: indexmap::IndexMap<String, serde_json::Value>,
 }
@@ -153,7 +156,16 @@ pub enum DnsMode {
 /// Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
 /// (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
 /// defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(
+    nyanpasu_serde::DeserializeFields,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    serde::Serialize,
+    specta::Type,
+)]
 pub struct ConnectionMetadataFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<crate::ConfigEnum<ConnectionNetwork>>,
@@ -242,11 +254,13 @@ pub struct ConnectionMetadata {
 }
 
 /// Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`].
-#[derive(serde::Deserialize, specta::Type)]
+// Keep the flattened Specta wire schema while decoding directly into known fields.
+#[derive(serde::Serialize, nyanpasu_serde::DeserializeMap, specta::Type)]
 struct ConnectionMetadataWire {
     #[serde(flatten)]
     known: ConnectionMetadataFields,
     #[serde(flatten)]
+    #[nyanpasu_serde(extra)]
     #[specta(type = indexmap::IndexMap<String, Option<JsonValue>>)]
     extra: indexmap::IndexMap<String, serde_json::Value>,
 }
@@ -345,25 +359,28 @@ impl Client {
 }
 
 mod optional_port {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+    use serde::{Deserializer, Serialize, Serializer};
+
     pub fn serialize<S: Serializer>(value: &Option<u16>, serializer: S) -> Result<S::Ok, S::Error> {
         value.map(|port| port.to_string()).serialize(serializer)
     }
+
     pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<u16>, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(nyanpasu_serde::DeserializeUntagged)]
         #[serde(untagged)]
         enum Port {
-            Text(String),
+            Null,
             Number(u16),
+            #[nyanpasu_serde(kind = "string")]
+            Text(#[serde(deserialize_with = "nyanpasu_serde::from_str")] u16),
         }
-        Option::<Port>::deserialize(deserializer)?
-            .map(|port| match port {
-                Port::Text(text) => text.parse().map_err(D::Error::custom),
-                Port::Number(port) => Ok(port),
-            })
-            .transpose()
+        use serde::Deserialize;
+        Ok(match Port::deserialize(deserializer)? {
+            Port::Null => None,
+            Port::Number(value) | Port::Text(value) => Some(value),
+        })
     }
 }
 

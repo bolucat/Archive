@@ -1,0 +1,18 @@
+#[win32]
+mod Windows {
+    mod Win32 {
+        struct GUID {
+            Data1: u32,
+            Data2: u16,
+            Data3: u16,
+            Data4: [u8; 8],
+        }
+        #[library("ole32.dll")]
+        extern "C" fn IsEqualGUID(rguid1: *const GUID, rguid2: *const GUID) -> i32;
+        type LPCGUID = *const GUID;
+        type LPCLSID = *mut GUID;
+        type LPFMTID = *mut GUID;
+        type LPGUID = *mut GUID;
+        type LPIID = *mut GUID;
+    }
+}
