@@ -12,7 +12,7 @@ use crate::runtime;
 
 use super::CommandEvent;
 
-#[instrument]
+#[instrument(skip(log), fields(log = %nyanpasu_log_preview::text(&log)))]
 pub fn parse_check_output(log: String) -> String {
     let t = log.find("time=");
     let m = log.find("msg=");

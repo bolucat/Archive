@@ -1,4 +1,45 @@
 
+## [2.0.1] - 2026-10-21
+
+
+### ⚡ Performance Improvements
+
+- **clash-api:** Decode native websocket text without copying by @greenhat616 
+
+- **clash-api:** Decode connections without flatten buffering by @greenhat616 
+
+- **config:** Share committed effective documents across snapshots by @greenhat616 
+
+- **config:** Borrow root mappings during document diffing by @greenhat616 
+
+
+### ✨ Features
+
+- **serde:** Derive direct untagged scalar decoding by @greenhat616 
+
+- **serde:** Derive direct map decoders from field schemas by @greenhat616 
+
+
+### 🐛 Bug Fixes
+
+- **core-manager:** Patch Meow TUN enable before falling back to restart by @greenhat616 
+
+- **core-manager:** Stop Windows cores with Ctrl+C through the service helper by @greenhat616 
+
+
+### 🧹 Miscellaneous Tasks
+
+- **submodule:** Bump nyanpasu-utils to cap runtime worker threads by @greenhat616 
+
+-----------------
+
+
+
+**Full Changelog**: https://github.com/libnyanpasu/nyanpasu-runtime/compare/v2.0.0...v2.0.1
+
+
+
+
 ## [2.0.0] - 2026-10-15
 
 ### 💥 Breaking Changes

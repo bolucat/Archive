@@ -31,6 +31,7 @@ pub(crate) struct ProcessRuntimeBackend {
     probes: ProbePlan,
     cancel_token: CancellationToken,
     native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
+    windows_shutdown_helper: Option<std::path::PathBuf>,
 }
 
 impl ProcessRuntimeBackend {
@@ -38,11 +39,13 @@ impl ProcessRuntimeBackend {
         probes: ProbePlan,
         cancel_token: CancellationToken,
         native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
+        windows_shutdown_helper: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             probes,
             cancel_token,
             native_store,
+            windows_shutdown_helper,
         }
     }
 }
@@ -95,6 +98,7 @@ impl RuntimeBackend for ProcessRuntimeBackend {
                     .as_ref()
                     .map(|store| store.data_dir().to_owned()),
             );
+            builder = builder.windows_shutdown_helper(self.windows_shutdown_helper.clone());
             if let Some(access) = &self.probes.controller_access {
                 let readiness = match self.probes.readiness.clone() {
                     Some(probe) => probe,

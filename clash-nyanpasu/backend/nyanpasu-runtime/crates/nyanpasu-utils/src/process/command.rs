@@ -24,6 +24,8 @@ pub struct Command {
     pub(crate) timeout: Option<Duration>,
     pub(crate) pipe_stdin: bool,
     pub(crate) pid_file: Option<PidFile>,
+    #[cfg(windows)]
+    pub(crate) windows_shutdown_helper: Option<PathBuf>,
 }
 
 impl Command {
@@ -41,6 +43,8 @@ impl Command {
             timeout: None,
             pipe_stdin: false,
             pid_file: None,
+            #[cfg(windows)]
+            windows_shutdown_helper: None,
         }
     }
 
@@ -89,6 +93,20 @@ impl Command {
     /// Sets the grace period between graceful termination and a hard kill.
     pub fn kill_grace(mut self, d: Duration) -> Self {
         self.kill_grace = d;
+        self
+    }
+
+    /// Uses an executable that dispatches `windows_shutdown_helper_entry` to
+    /// request Ctrl+C without changing the host's console association.
+    /// Missing or unsuccessful helpers fall back to killing the process tree.
+    /// Ignored on Unix, where graceful stops send SIGTERM.
+    pub fn windows_shutdown_helper(mut self, path: impl Into<PathBuf>) -> Self {
+        #[cfg(windows)]
+        {
+            self.windows_shutdown_helper = Some(path.into());
+        }
+        #[cfg(not(windows))]
+        let _ = path;
         self
     }
 

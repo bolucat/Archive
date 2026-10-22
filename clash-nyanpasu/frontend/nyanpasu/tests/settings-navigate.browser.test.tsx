@@ -10,7 +10,21 @@ import {
 } from '@tanstack/react-router'
 import SettingsNavigate from '../src/pages/(main)/main/settings/_modules/settings-navigate'
 
+const state = vi.hoisted(() => ({ core: 'mihomo' }))
+
+// The skills each core ships, as the backend lists them.
+const agentSkills: Record<string, { name: string }[]> = {
+  mihomo: [],
+  meow: [{ name: 'meow-cli' }],
+  'meow-alpha': [{ name: 'meow-cli' }],
+}
+
 vi.mock('@/assets/image/logo.svg?react', () => ({ default: () => null }))
+vi.mock('@nyanpasu/query', async (original) => ({
+  ...(await original<typeof import('@nyanpasu/query')>()),
+  useSetting: () => ({ value: state.core }),
+  useCoreAgentSkills: (core: string) => ({ data: agentSkills[core] }),
+}))
 
 const renderAt = async (path: string) => {
   const rootRoute = createRootRoute({ component: SettingsNavigate })
@@ -71,4 +85,23 @@ test('the licenses page selects only the licenses item', async () => {
   await expect
     .element(item(view, /^Clash Nyanpasu/))
     .toHaveAttribute('data-active', 'false')
+})
+
+test('the AI item is listed only while the core ships agent skills', async () => {
+  for (const [core, listed] of [
+    ['mihomo', false],
+    ['meow', true],
+    ['meow-alpha', true],
+  ] as const) {
+    state.core = core
+    const view = await renderAt('/main/settings/debug')
+
+    await expect
+      .element(view.getByRole('heading', { name: m.settings_group_clash() }))
+      .toBeInTheDocument()
+    const ai = item(view, m.settings_label_ai_description()).query()
+    expect(ai !== null, core).toBe(listed)
+
+    await view.unmount()
+  }
 })

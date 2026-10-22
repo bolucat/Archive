@@ -21,7 +21,7 @@ jobs:
           repository: caddyserver/caddy
           ref: ${{ env.CADDY_VERSION }}
           path: .caddy-bbr
-      - run: git -C .caddy-bbr apply "$GITHUB_WORKSPACE/caddy-sing-quic-bbrv1.patch"
+      - run: git -C .caddy-bbr apply "$GITHUB_WORKSPACE/caddy-sing-quic-bbrv1.patch" "$GITHUB_WORKSPACE/caddy-read-idle-timeout.patch"
       - uses: actions/setup-go@v5
         with:
           go-version: ^1.26.x

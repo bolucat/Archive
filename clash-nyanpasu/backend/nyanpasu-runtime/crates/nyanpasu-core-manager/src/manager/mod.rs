@@ -379,6 +379,7 @@ impl CoreManager {
                 probes,
                 options.cancel_token.clone(),
                 native_store.clone(),
+                options.windows_shutdown_helper.clone(),
             ))
         });
         Ok(Self {

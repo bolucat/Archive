@@ -42,6 +42,11 @@ mod event;
 mod handle;
 mod pid_file;
 mod supervisor;
+#[cfg(windows)]
+mod windows_shutdown;
+
+#[cfg(windows)]
+pub use windows_shutdown::windows_shutdown_helper_entry;
 
 pub use command::Command;
 pub use error::{ProcessError, ProcessOutput};

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed payload loss after fragmented VLESS response headers, WebSocket framing after nonempty Ping frames, and preread-byte loss in ShadowTLS authentication fallback. Added deterministic regressions and handler-level AnyTLS authentication and fallback coverage.
+- Added server-first TCP half-close and same-name kernel TUN reload coverage, hardened isolated-test selection checks, and enabled macOS process-watcher unit tests.
+- Replaced REALITY's custom TLS state machine and record crypto with a pinned `cfal/rustls` fork. Authentication, ML-DSA policy, transparent forwarding and Vision remain in Shoes. Outbound ClientHello now uses rustls's native fingerprint, not Chrome/uTLS emulation; clients still fail closed on non-REALITY certificates.
+- REALITY servers preserve admitted target ServerHello bytes except the key share and follow the target's cipher within the configured allowlist. Every synthetic handshake record must fit its target length. Unsupported layouts, cipher conflicts and insufficient capacity forward transparently before synthetic output; targets that previously worked only because Shoes enlarged records may now fail outbound REALITY authentication. Combined flights with observed trailing records or partial data are not synthesized; separate flights require capacity for rustls's server-name acknowledgement.
+- REALITY now reports TCP EOF without TLS `close_notify` as `UnexpectedEof`, matching ordinary rustls TLS connections rather than treating truncation as a clean close.
 - Fixed Naive HTTP/2 writes stalling on already available flow-control credit after a pending write is cancelled and retried with a smaller buffer. The historical sing-box interoperability timeout remains unconfirmed; its test now reports per-stream progress and carrier-forwarder failures.
 - Switched Mihomo REALITY/TLS 1.2 interoperability coverage to reply-first sequencing while retaining early half-close as an opt-in regression for the pinned peer's full-close limitation. No Shoes TLS errors are suppressed and no peer patch is applied.
 - Fixed TUN startup resets for queued TCP connections, rejected SYN admission, and stale passive listeners after handshake resets. TUN and WireGuard now defer inbound routing and hostname sniffing until TCP establishment; half-open TUN connections expire after 30 seconds instead of retaining the established-connection timeout.
@@ -10,6 +15,12 @@
 - Bound each iOS service's socket-protection callback to its own protector so stopping an older service cannot clear a replacement callback.
 - Expanded deterministic TUN lifecycle and dual-stack handshake tests, added kernel half-close and active-shutdown coverage, and enabled kernel TUN checks on pull requests and master pushes.
 - Released Fake DNS snapshot locks explicitly on owner teardown so concurrently starting subprocesses cannot delay reopening the state file.
+- Updated Rust dependencies, including GotaTun 0.10.2, Tokio 1.54.0, LRU 0.19.0, and ML-KEM 0.3.3, which removes secret-dependent table lookups. Existing Web PKI compromise protections are retained.
+- Refreshed the BLAKE3 fork with upstream buffer-alignment and AVX-512 soundness fixes while retaining the binary-context key derivation API.
+- Updated CI build dependencies.
+- Removed the standalone Android Kotlin/Gradle wrapper, AAR and iOS XCFramework packaging, and mobile SDK release artifacts from this repository. Mobile embedding remains supported through the Rust JNI/C interfaces and native libraries; Android and iOS cross-compilation checks remain in CI.
+- XHTTP server `matching_headers` values may now be lists. A request must still send exactly one value, which may match any listed value, so secrets can rotate without downtime. XHTTP client `headers` now reject names that differ only in case, which previously sent every value and always failed a server's `matching_headers`, and values with leading or trailing whitespace, which receivers strip or reject.
+- Removed XHTTP server `close_on_http1_error`; configurations that still set it fail to load. HTTP/1 header and path mismatches now return the same plain 404 as HTTP/2 and HTTP/3. All XHTTP error responses now omit XHTTP padding, caching, and CORS headers, not only 400 and 404; successful responses are unchanged.
 
 ## v0.3.4
 

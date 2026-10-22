@@ -12,8 +12,8 @@ android {
         applicationId = "com.bmshi.router.mobile"
         minSdk = 24
         targetSdk = 34
-        versionCode = 180
-        versionName = "0.18.0"
+        versionCode = 182
+        versionName = "0.18.2"
     }
     buildTypes {
         getByName("debug") {

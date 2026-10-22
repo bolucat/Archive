@@ -398,6 +398,34 @@ dns_tmr(void)
   dns_check_entries();
 }
 
+/**
+ * Remove the DNS pcbs and forget pending requests and dynamic local host
+ * entries. Called by lwip_fini().
+ */
+void
+dns_fini(void)
+{
+  u8_t i;
+#if DNS_LOCAL_HOSTLIST && DNS_LOCAL_HOSTLIST_IS_DYNAMIC
+  struct local_hostlist_entry *entry;
+#endif /* DNS_LOCAL_HOSTLIST && DNS_LOCAL_HOSTLIST_IS_DYNAMIC */
+
+  for (i = 0; i < DNS_MAX_SOURCE_PORTS; i++) {
+    if (dns_pcbs[i] != NULL) {
+      udp_remove(dns_pcbs[i]);
+      dns_pcbs[i] = NULL;
+    }
+  }
+  memset(dns_table, 0, sizeof(dns_table));
+  memset(dns_requests, 0, sizeof(dns_requests));
+#if DNS_LOCAL_HOSTLIST && DNS_LOCAL_HOSTLIST_IS_DYNAMIC
+  while ((entry = local_hostlist_dynamic) != NULL) {
+    local_hostlist_dynamic = entry->next;
+    memp_free(MEMP_LOCALHOSTLIST, entry);
+  }
+#endif /* DNS_LOCAL_HOSTLIST && DNS_LOCAL_HOSTLIST_IS_DYNAMIC */
+}
+
 #if DNS_LOCAL_HOSTLIST
 static void
 dns_init_local(void)

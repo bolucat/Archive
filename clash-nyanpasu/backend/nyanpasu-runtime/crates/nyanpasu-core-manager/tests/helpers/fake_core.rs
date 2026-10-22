@@ -41,6 +41,9 @@ struct Behavior {
     reject_patch: bool,
     patch_delay_ms: u64,
     patch_no_effect: bool,
+    patch_error_after_apply: bool,
+    meow_configs: bool,
+    omit_tun_enable: bool,
     reject_put: bool,
     check_delay_ms: u64,
     check_started_file: Option<String>,
@@ -107,6 +110,9 @@ fn parse(config: &str) -> Behavior {
         reject_patch: b(&x, "reject-patch"),
         patch_delay_ms: u(&x, "patch-delay-ms"),
         patch_no_effect: b(&x, "patch-no-effect"),
+        patch_error_after_apply: b(&x, "patch-error-after-apply"),
+        meow_configs: b(&x, "meow-configs"),
+        omit_tun_enable: b(&x, "omit-tun-enable"),
         reject_put: b(&x, "reject-put"),
         check_delay_ms: u(&x, "check-delay-ms"),
         check_started_file: s(&x, "check-started-file"),
@@ -413,7 +419,20 @@ where
             }
         }
         ("GET", "/configs") => {
-            let body = runtime_config_json(&ctx.runtime.lock());
+            let body = if ctx.behavior.meow_configs {
+                let mut tun = ctx
+                    .runtime
+                    .lock()
+                    .get("tun")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                if ctx.behavior.omit_tun_enable {
+                    tun.as_mapping_mut().expect("tun mapping").remove("enable");
+                }
+                serde_json::json!({"tun": tun}).to_string()
+            } else {
+                runtime_config_json(&ctx.runtime.lock())
+            };
             respond(&mut stream, 200, &body).await;
         }
         ("PUT", "/configs") => {
@@ -456,6 +475,15 @@ where
             }
             if ctx.behavior.patch_delay_ms > 0 {
                 tokio::time::sleep(Duration::from_millis(ctx.behavior.patch_delay_ms)).await;
+            }
+            if ctx.behavior.patch_error_after_apply {
+                respond(
+                    &mut stream,
+                    500,
+                    r#"{"message":"applied but reply failed"}"#,
+                )
+                .await;
+                return;
             }
             respond(&mut stream, 204, "").await;
         }

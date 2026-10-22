@@ -25,8 +25,9 @@ encoding_rs = { version = "0.8", optional = true }
 kill_tree = { version = "0.2.4", features = ["tokio"], optional = true }
 log = { version = "0.4", optional = true }
 memchr = "2.7"
+nyanpasu-log-preview = { path = "log-preview" }
 os_pipe = { version = "1.2.0", optional = true }
-parking_lot = "0.12.3"
+parking_lot = "0.13.0"
 processkit = {
   git = "https://github.com/ZelAnton/ProcessKit-rs",
   rev = "2adad322f1e3d7c471f3b9c8c625e44f356e416b",

@@ -168,6 +168,7 @@ pub struct InstanceBuilder {
     pipe_security_descriptor: Option<String>,
     native_store: Option<Arc<dyn crate::native_store::StoreLease>>,
     source_data_dir: Option<camino::Utf8PathBuf>,
+    windows_shutdown_helper: Option<std::path::PathBuf>,
 }
 
 impl Instance {
@@ -189,6 +190,7 @@ impl Instance {
             pipe_security_descriptor: None,
             native_store: None,
             source_data_dir: None,
+            windows_shutdown_helper: None,
         }
     }
 
@@ -214,6 +216,7 @@ impl Instance {
             pipe_security_descriptor,
             native_store,
             source_data_dir,
+            windows_shutdown_helper,
         } = builder;
         if tokio::fs::metadata(&spec.config_path).await.is_err() {
             return Err(Error::ConfigNotFound(spec.config_path.clone()));
@@ -270,6 +273,7 @@ impl Instance {
                     &controller,
                     pipe_security_descriptor.as_deref(),
                     source_data_dir.as_deref(),
+                    windows_shutdown_helper.as_deref(),
                 )
             }
         })
@@ -543,6 +547,11 @@ impl Instance {
 }
 
 impl InstanceBuilder {
+    pub fn windows_shutdown_helper(mut self, helper: Option<std::path::PathBuf>) -> Self {
+        self.windows_shutdown_helper = helper;
+        self
+    }
+
     pub(crate) fn native_store(
         mut self,
         lease: Option<Arc<dyn crate::native_store::StoreLease>>,
@@ -603,6 +612,7 @@ fn build_command(
     controller: &ResolvedController,
     pipe_security_descriptor: Option<&str>,
     source_data_dir: Option<&camino::Utf8Path>,
+    windows_shutdown_helper: Option<&std::path::Path>,
 ) -> Command {
     let mut args = kind::run_args(spec.core.kind, spec.core_paths())
         .expect("kind validated in Instance::spawn");
@@ -621,6 +631,9 @@ fn build_command(
         .current_dir(spec.working_dir.as_str());
     if let Some(sddl) = pipe_security_descriptor {
         command = command.env("LISTEN_NAMEDPIPE_SDDL", sddl);
+    }
+    if let Some(helper) = windows_shutdown_helper {
+        command = command.windows_shutdown_helper(helper);
     }
     if let Some(pid_file) = &spec.pid_file {
         command = if epoch_pid_path(spec, epoch).is_some() {

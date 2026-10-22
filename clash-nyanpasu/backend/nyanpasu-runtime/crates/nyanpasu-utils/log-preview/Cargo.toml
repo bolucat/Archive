@@ -1,0 +1,10 @@
+[package]
+name = "nyanpasu-log-preview"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded log previews of byte and text payloads."
+repository = "https://github.com/LibNyanpasu/nyanpasu-utils"
+license = "GPL-3.0"
+
+[dependencies]
+crc32fast = "1"

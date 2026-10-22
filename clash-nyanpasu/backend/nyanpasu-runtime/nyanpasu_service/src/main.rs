@@ -13,6 +13,16 @@ use nyanpasu_service::{
 use nyanpasu_utils::runtime::block_on;
 
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    if let Some(result) = nyanpasu_utils::process::windows_shutdown_helper_entry() {
+        return match result {
+            Ok(()) => ExitCode::Normal,
+            Err(error) => {
+                eprintln!("console shutdown helper: {error}");
+                ExitCode::Other
+            }
+        };
+    }
     let mut rx = register_ctrlc_handler();
     register_panic_hook();
     #[cfg(windows)]

@@ -22,6 +22,7 @@ ifeq ($(filter $(modules-get-list),lwip),)
     include $(TOP_PATH)/third-part/lwip/Android.mk
 endif
 ifeq ($(filter $(modules-get-list),hev-task-system),)
+    ENABLE_MEMALLOC_SLICE := 0
     include $(TOP_PATH)/third-part/hev-task-system/Android.mk
 endif
 
@@ -48,7 +49,7 @@ LOCAL_MODULE := hev-socks5-tunnel
 LOCAL_SRC_FILES := $(HEV_SOCKS5_TUNNEL_SRC)
 LOCAL_C_INCLUDES := $(HEV_SOCKS5_TUNNEL_INCLUDES)
 LOCAL_CFLAGS += -DFD_SET_DEFINED -DSOCKLEN_T_DEFINED -DENABLE_LIBRARY
-LOCAL_CFLAGS += $(VERSION_CFLAGS)
+LOCAL_CFLAGS += -fno-stack-clash-protection $(VERSION_CFLAGS)
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 LOCAL_CFLAGS += -mfpu=neon
 endif
@@ -62,7 +63,7 @@ LOCAL_MODULE := hev-socks5-tunnel-bin
 LOCAL_SRC_FILES := $(HEV_SOCKS5_TUNNEL_SRC)
 LOCAL_C_INCLUDES := $(HEV_SOCKS5_TUNNEL_INCLUDES)
 LOCAL_CFLAGS += -DFD_SET_DEFINED -DSOCKLEN_T_DEFINED
-LOCAL_CFLAGS += $(VERSION_CFLAGS)
+LOCAL_CFLAGS += -fno-stack-clash-protection $(VERSION_CFLAGS)
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 LOCAL_CFLAGS += -mfpu=neon
 endif

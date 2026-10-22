@@ -92,6 +92,20 @@ udp_init(void)
 }
 
 /**
+ * Free all pcbs without calling any callbacks.
+ */
+void
+udp_fini(void)
+{
+  struct udp_pcb *pcb;
+
+  while ((pcb = udp_pcbs) != NULL) {
+    udp_pcbs = pcb->next;
+    memp_free(MEMP_UDP_PCB, pcb);
+  }
+}
+
+/**
  * Allocate a new local UDP port.
  *
  * @return a new (free) local UDP port number

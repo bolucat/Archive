@@ -410,6 +410,7 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
   u16_t concat_chksum = 0;
   u8_t concat_chksum_swapped = 0;
   u16_t concat_chksummed = 0;
+  u8_t chksum_nocopy = 1;
 #endif /* TCP_CHECKSUM_ON_COPY */
   err_t err;
   u16_t mss_local;
@@ -419,6 +420,12 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
   /* don't allocate segments bigger than half the maximum window we ever received */
   mss_local = LWIP_MIN(pcb->mss, TCPWND_MIN16(pcb->snd_wnd_max / 2));
   mss_local = mss_local ? mss_local : pcb->mss;
+
+#if TCP_CHECKSUM_ON_COPY && LWIP_CHECKSUM_CTRL_PER_NETIF
+  /* don't checksum nocopy-data if the netif doesn't generate TCP checksums */
+  chksum_nocopy = NETIF_CHECKSUM_ENABLED(netif_get_by_index(pcb->netif_idx),
+                                         NETIF_CHECKSUM_GEN_TCP);
+#endif /* TCP_CHECKSUM_ON_COPY && LWIP_CHECKSUM_CTRL_PER_NETIF */
 
   LWIP_ASSERT_CORE_LOCKED();
 
@@ -574,10 +581,12 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
           queuelen += pbuf_clen(concat_p);
         }
 #if TCP_CHECKSUM_ON_COPY
-        /* calculate the checksum of nocopy-data */
-        tcp_seg_add_chksum(~inet_chksum((const u8_t *)arg + pos, seglen), seglen,
-                           &concat_chksum, &concat_chksum_swapped);
-        concat_chksummed += seglen;
+        if (chksum_nocopy) {
+          /* calculate the checksum of nocopy-data */
+          tcp_seg_add_chksum(~inet_chksum((const u8_t *)arg + pos, seglen), seglen,
+                             &concat_chksum, &concat_chksum_swapped);
+          concat_chksummed += seglen;
+        }
 #endif /* TCP_CHECKSUM_ON_COPY */
       }
 
@@ -632,11 +641,13 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
         goto memerr;
       }
 #if TCP_CHECKSUM_ON_COPY
-      /* calculate the checksum of nocopy-data */
-      chksum = ~inet_chksum((const u8_t *)arg + pos, seglen);
-      if (seglen & 1) {
-        chksum_swapped = 1;
-        chksum = SWAP_BYTES_IN_WORD(chksum);
+      if (chksum_nocopy) {
+        /* calculate the checksum of nocopy-data */
+        chksum = ~inet_chksum((const u8_t *)arg + pos, seglen);
+        if (seglen & 1) {
+          chksum_swapped = 1;
+          chksum = SWAP_BYTES_IN_WORD(chksum);
+        }
       }
 #endif /* TCP_CHECKSUM_ON_COPY */
       /* reference the non-volatile payload data */
@@ -935,7 +946,7 @@ tcp_split_unsent_seg(struct tcp_pcb *pcb, u16_t split)
   successfully because we are modifying the original segment */
   pbuf_realloc(useg->p, useg->p->tot_len - remainder);
   useg->len -= remainder;
-  TCPH_SET_FLAG(useg->tcphdr, split_flags);
+  TCPH_FLAGS_SET(useg->tcphdr, split_flags);
 #if TCP_OVERSIZE_DBGCHECK
   /* By trimming, realloc may have actually shrunk the pbuf, so clear oversize_left */
   useg->oversize_left = 0;
@@ -1229,6 +1240,45 @@ tcp_build_wnd_scale_option(u32_t *opts)
 }
 #endif
 
+/* A GSO segment can exceed the peer's current window even when several
+ * wire-sized segments fit. Split those off now instead of waiting for persist.
+ * An RTO may have requeued a partially acknowledged segment, so measure
+ * from its sequence number to the window edge, including the ACKed prefix.
+ * Data in flight does not matter: waiting for it to be acknowledged would
+ * leave the window idle for a round trip.
+ */
+static void
+tcp_output_gso_split(struct tcp_pcb *pcb, struct tcp_seg *seg, u32_t wnd)
+{
+  if (pcb->gso_mss != 0 &&
+      lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len > wnd) {
+    u32_t seq = lwip_ntohl(seg->tcphdr->seqno);
+    u32_t edge = pcb->lastack + wnd;
+
+    if (TCP_SEQ_GT(edge, seq)) {
+      u32_t split = edge - seq;
+      u32_t whole = split - split % pcb->gso_mss;
+
+      /* A peer with a small receive buffer may never offer a whole wire
+       * segment, and would then only advance on persist timer ticks. Once
+       * at least half a wire segment (or half the largest window it ever
+       * offered) is open, send the window as it is; smaller windows still
+       * wait for persist, so a nearly closed window gets no tiny segments.
+       */
+      if (whole == 0 && pcb->unacked == NULL && wnd == pcb->snd_wnd &&
+          (split >= pcb->gso_mss / 2 || split >= pcb->snd_wnd_max / 2)) {
+        whole = split;
+      }
+      split = whole;
+      if (split > 0 && split < seg->len &&
+          TCP_SEQ_GT(seq + split, pcb->lastack)) {
+        /* A failed allocation leaves the queue unchanged for the check below. */
+        tcp_split_unsent_seg(pcb, (u16_t)split);
+      }
+    }
+  }
+}
+
 /**
  * @ingroup tcp_raw
  * Find out what we can send and send it
@@ -1304,6 +1354,8 @@ tcp_output(struct tcp_pcb *pcb)
     }
     ip_addr_copy(pcb->local_ip, *local_ip);
   }
+
+  tcp_output_gso_split(pcb, seg, wnd);
 
   /* Handle the current segment not fitting within the window */
   if (lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len > wnd) {
@@ -1410,6 +1462,10 @@ tcp_output(struct tcp_pcb *pcb)
       tcp_seg_free(seg);
     }
     seg = pcb->unsent;
+    if (seg != NULL) {
+      /* The next GSO segment may only partly fit the window. */
+      tcp_output_gso_split(pcb, seg, wnd);
+    }
   }
 #if TCP_OVERSIZE
   if (pcb->unsent == NULL) {

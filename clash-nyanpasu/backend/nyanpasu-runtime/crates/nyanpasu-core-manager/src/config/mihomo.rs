@@ -3,9 +3,7 @@
 //!
 //! Every field table here mirrors Mihomo's own config schema and its Clash
 //! RESTful API surface, so nothing in this module generalizes to another core:
-//! [`classify`] degrades every non-Mihomo kind to [`ConfigChange::Switch`]
-//! (an identical config is still [`ConfigChange::Noop`]).
-//! Other cores get their own sibling module on top of [`super::diff`].
+//! Other cores use sibling classifiers on top of [`super::diff`].
 
 use std::collections::BTreeSet;
 
@@ -172,11 +170,12 @@ pub(crate) enum ConfigChange {
 
 #[derive(Debug)]
 pub(crate) struct RuntimeProjection {
-    expected: Vec<(Vec<String>, Value)>,
+    pub(super) expected: Vec<(Vec<String>, Value)>,
 }
 
 impl RuntimeProjection {
-    pub(crate) fn verify(&self, actual: &clash_api::RuntimeConfig) -> Result<bool, Error> {
+    /// `actual` is the `GET /configs` response, typed or raw.
+    pub(crate) fn verify(&self, actual: &impl serde::Serialize) -> Result<bool, Error> {
         let actual = serde_yaml_ng::to_value(actual)?;
         Ok(self.expected.iter().all(|(path, expected)| {
             value_at(&actual, path).is_some_and(|actual| actual == expected)
@@ -222,6 +221,9 @@ pub(crate) fn classify(
         return Ok(ConfigChange::Switch);
     }
 
+    if desired.spec.core.kind == CoreKind::Meow {
+        return Ok(super::meow::classify(current, desired));
+    }
     let source_diff = diff(current.source, desired.source);
     if desired.spec.core.kind != CoreKind::Mihomo {
         // Non-mihomo kinds degrade to Switch. An identical config is still a
@@ -583,6 +585,7 @@ mod tests {
             CoreKind::Mihomo,
             CoreKind::ClashRust,
             CoreKind::ClashPremium,
+            CoreKind::Meow,
         ] {
             let spec = spec(kind, "core");
             assert!(
@@ -605,6 +608,71 @@ mod tests {
                 "{kind:?} should noop on an identical config"
             );
         }
+    }
+
+    #[test]
+    fn meow_patches_only_enable_and_checks_both_documents_and_process_spec() {
+        let spec = spec(CoreKind::Meow, "meow");
+        let old = mapping(
+            "tun: {enable: true, auto-route: {enable: true}, inet4-address: '192.0.2.1/30'}",
+        );
+        let new = mapping(
+            "tun: {enable: false, auto-route: {enable: true}, inet4-address: '192.0.2.1/30'}",
+        );
+        let classify_meow = |source: &Mapping, effective: &Mapping, desired_spec: &InstanceSpec| {
+            classify(
+                ConfigClassificationView {
+                    source: &old,
+                    effective: &old,
+                    spec: &spec,
+                },
+                ConfigClassificationView {
+                    source,
+                    effective,
+                    spec: desired_spec,
+                },
+            )
+            .unwrap()
+        };
+        let ConfigChange::Patch { patch, .. } = classify_meow(&new, &new, &spec) else {
+            panic!("expected Meow enable patch");
+        };
+        assert_eq!(
+            serde_json::to_value(patch).unwrap(),
+            serde_json::json!({"tun": {"enable": false}})
+        );
+        for yaml in [
+            "tun: {auto-route: {enable: true}, inet4-address: '192.0.2.1/30'}",
+            "tun: {enable: null}",
+            "tun: {enable: 'false'}",
+            "tun: {enable: false, mtu: 1500}",
+            "tun: {enable: false}\ndns: {enable: true}",
+            "tun: {enable: false}\nunknown: true",
+        ] {
+            let invalid = mapping(yaml);
+            assert!(
+                matches!(classify_meow(&invalid, &new, &spec), ConfigChange::Switch),
+                "source {yaml}"
+            );
+            assert!(
+                matches!(classify_meow(&new, &invalid, &spec), ConfigChange::Switch),
+                "effective {yaml}"
+            );
+        }
+        let mut other = spec.clone();
+        other.core.binary_path = "other-meow".into();
+        assert!(matches!(
+            classify_meow(&new, &new, &other),
+            ConfigChange::Switch
+        ));
+        assert!(matches!(
+            classify_meow(
+                &old,
+                &mapping("tun: {enable: true}\nexternal-controller: new"),
+                &spec
+            ),
+            ConfigChange::Switch
+        ));
     }
 
     #[test]

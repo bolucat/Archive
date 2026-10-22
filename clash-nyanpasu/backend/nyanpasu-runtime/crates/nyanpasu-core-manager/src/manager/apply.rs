@@ -262,15 +262,25 @@ impl CoreManager {
         if let Err(error) = client.patch_config(patch).await {
             tracing::warn!("config PATCH returned an uncertain result: {error}");
         }
-        match client.configs().await {
-            Ok(runtime) => match projection.verify(&runtime) {
-                Ok(true) => {}
-                Ok(false) => return false,
-                Err(error) => {
-                    tracing::warn!("failed to verify config projection: {error}");
-                    return false;
-                }
-            },
+        // Meow's `GET /configs` does not fit Mihomo's typed RuntimeConfig.
+        let verified = if instance.spec().core.kind == crate::CoreKind::Meow {
+            client
+                .configs_value()
+                .await
+                .map(|runtime| projection.verify(&runtime))
+        } else {
+            client
+                .configs()
+                .await
+                .map(|runtime| projection.verify(&runtime))
+        };
+        match verified {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => return false,
+            Ok(Err(error)) => {
+                tracing::warn!("failed to verify config projection: {error}");
+                return false;
+            }
             Err(error) => {
                 tracing::warn!("GET /configs verification failed: {error}");
                 return false;

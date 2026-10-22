@@ -131,6 +131,9 @@ pub struct ManagerOptions {
     pub control_timeout: Duration,
     pub reconcile_timeout: Duration,
     pub stop_timeout: Duration,
+    /// Executable dispatching the utils console-shutdown helper entry. Without
+    /// one, Windows retains the hard-kill fallback; Unix ignores it.
+    pub windows_shutdown_helper: Option<std::path::PathBuf>,
     /// Bound on one injected [`DnsController`](crate::dns::DnsController) call.
     /// The converge tail runs under the control lock, so an unbounded platform
     /// command would freeze every other transaction; a timeout is treated as
@@ -163,6 +166,7 @@ impl Default for ManagerOptions {
             control_timeout: Duration::from_secs(10),
             reconcile_timeout: Duration::from_secs(30),
             stop_timeout: Duration::from_secs(10),
+            windows_shutdown_helper: None,
             dns_timeout: Duration::from_secs(10),
             cancel_token: CancellationToken::new(),
             log_sink_enabled: true,

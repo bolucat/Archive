@@ -1,11 +1,15 @@
 use std::{
-    path::PathBuf,
+    ffi::OsStr,
+    io::Read,
+    path::{Component, Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use anyhow::Context as _;
 use async_trait::async_trait;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -18,11 +22,12 @@ use super::{
     shared::{self, CoreTypeMeta},
 };
 use crate::{
-    client::core_lifecycle::ports::PreparedCoreBinary,
+    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
     core::download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -47,16 +52,20 @@ pub struct UpdaterSummary {
 pub(crate) struct HttpUpdaterBackend {
     proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     destination_dir: PathBuf,
+    /// Resolves where the agent skills a core archive ships go.
+    paths: PathResolver,
 }
 
 impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
+        paths: PathResolver,
         proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     ) -> Self {
         Self {
             proxy_port,
             destination_dir,
+            paths,
         }
     }
 
@@ -139,6 +148,11 @@ impl UpdaterBackend for HttpUpdaterBackend {
             _ => None,
         };
         url.set_path(&shared::get_download_path(tag, &artifact));
+        // Meow publishes `<artifact>.sha256` beside each archive.
+        let checksum_url = meow_version
+            .is_some()
+            .then(|| parse_gh_url(&mirror, &format!("{url}.sha256")))
+            .transpose()?;
         let url = parse_gh_url(&mirror, url.as_str())?;
         let session =
             DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact));
@@ -162,6 +176,15 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
             }
         }
+        let checksum = match checksum_url {
+            Some(url) => Some(tokio::select! {
+                checksum = fetch_text(self.http_client()?, url) => {
+                    checksum.context("could not fetch the archive's published SHA-256")?
+                }
+                () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
+            }),
+            None => None,
+        };
         progress.report(UpdaterState::Decompressing, None);
         let filename = format!(
             "{}{}",
@@ -179,12 +202,17 @@ impl UpdaterBackend for HttpUpdaterBackend {
             }
             _ => None,
         };
+        let extraction_artifact = artifact.clone();
         // A blocking extraction cannot be aborted midway. It owns staging until
         // completion, and the shutdown waits for it.
         tokio::task::spawn_blocking(move || {
+            let archive = extraction_staging.path().join(&extraction_artifact);
+            if let Some(checksum) = checksum {
+                verify_sha256(&archive, &extraction_artifact, &checksum)?;
+            }
             extract_core(
-                extraction_staging.path().join(&artifact),
-                &artifact,
+                archive,
+                &extraction_artifact,
                 expected_archive_binary.as_deref(),
                 extraction_source,
             )
@@ -203,6 +231,34 @@ impl UpdaterBackend for HttpUpdaterBackend {
             let banner = String::from_utf8_lossy(&output.stdout);
             verify_meow_version(core, &expected_version, &banner)?;
         }
+        // Staged now and published by the installer once the core binary is in place.
+        // Nothing Nyanpasu runs uses them, so failing to stage them fails no core update.
+        let skills = core_type.agent_skills();
+        let companion = if skills.is_empty() {
+            None
+        } else {
+            let archive = staging.path().join(&artifact);
+            let destination = self
+                .paths
+                .core_data_dir(core_type.binary_name())
+                .into_std_path_buf();
+            let staged = tokio::task::spawn_blocking(move || {
+                stage_companion(&archive, &artifact, skills, destination)
+            })
+            .await
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => error,
+            })?;
+            staged.unwrap_or_else(|error| {
+                tracing::warn!(
+                    error = format!("{error:#}"),
+                    core = %core_type,
+                    "could not stage the agent skills the core archive ships"
+                );
+                None
+            })
+        };
         progress.report(UpdaterState::Replacing, None);
         Ok(PreparedCoreBinary {
             target: core_type,
@@ -210,8 +266,50 @@ impl UpdaterBackend for HttpUpdaterBackend {
             destination: self.destination_dir.join(filename),
             staging,
             progress: Arc::new(progress),
+            companion,
         })
     }
+}
+
+async fn fetch_text(client: reqwest::Client, url: url::Url) -> anyhow::Result<String> {
+    Ok(client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?)
+}
+
+/// Checks `archive` against `checksum`, the contents of a release's
+/// `<artifact>.sha256`: a hex digest, optionally followed by the file name.
+fn verify_sha256(archive: &Path, artifact: &str, checksum: &str) -> anyhow::Result<()> {
+    let mut fields = checksum.split_whitespace();
+    let expected = fields
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("the published SHA-256 of {artifact} is empty"))?;
+    if let Some(name) = fields.next() {
+        // `sha256sum` marks a file it read in binary mode with `*`.
+        let name = name.strip_prefix('*').unwrap_or(name);
+        anyhow::ensure!(
+            name == artifact,
+            "the published SHA-256 is for {name}, not {artifact}"
+        );
+    }
+    let mut hasher = Sha256::new();
+    let mut file = std::fs::File::open(archive)?;
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        match file.read(&mut buffer)? {
+            0 => break,
+            read => hasher.update(&buffer[..read]),
+        }
+    }
+    anyhow::ensure!(
+        hex::encode(hasher.finalize()).eq_ignore_ascii_case(expected),
+        "{artifact} does not match its published SHA-256"
+    );
+    Ok(())
 }
 
 fn extract_core(
@@ -279,6 +377,110 @@ fn extract_core(
     Ok(())
 }
 
+/// Where `path`, a file in a core release archive, belongs among the core's
+/// agent skills: one of the `skills` executables, or a file of one of their
+/// folders under `skills/`. The archive's top-level directory is dropped, and
+/// so is every other file.
+fn companion_member(path: &Path, skills: &[&str]) -> Option<PathBuf> {
+    let names = path
+        .components()
+        .map(|component| match component {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    for skill in skills {
+        let folder = [OsStr::new("skills"), OsStr::new(skill)];
+        if let Some(start) = names.windows(2).position(|pair| pair == folder) {
+            return (names.len() > start + 2).then(|| names[start..].iter().collect());
+        }
+    }
+    let file = names.last()?.to_str()?;
+    skills
+        .iter()
+        .any(|skill| file == format!("{skill}{}", std::env::consts::EXE_SUFFIX))
+        .then(|| PathBuf::from(file))
+}
+
+/// Extracts the agent `skills` and their executables from a core release archive
+/// into `destination`. Returns whether the archive has all of them: releases
+/// before the skills ship the core alone.
+fn extract_companion(
+    archive_path: &Path,
+    artifact: &str,
+    skills: &[&str],
+    destination: &Path,
+) -> anyhow::Result<bool> {
+    let mut found = Vec::new();
+    let mut extract = |path: &Path, contents: &mut dyn Read| -> anyhow::Result<()> {
+        let Some(member) = companion_member(path, skills) else {
+            return Ok(());
+        };
+        let target = destination.join(&member);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::io::copy(contents, &mut std::fs::File::create(&target)?)?;
+        #[cfg(target_family = "unix")]
+        if !member.starts_with("skills") {
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
+        }
+        found.push(member);
+        Ok(())
+    };
+    let source = std::fs::File::open(archive_path)?;
+    if artifact.ends_with(".tar.gz") {
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(source));
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            if entry.header().entry_type().is_file() {
+                let path = entry.path()?.into_owned();
+                extract(&path, &mut entry)?;
+            }
+        }
+    } else if artifact.ends_with(".zip") {
+        let mut archive = zip::ZipArchive::new(source)?;
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index)?;
+            if let Some(path) = file.enclosed_name().filter(|_| file.is_file()) {
+                extract(&path, &mut file)?;
+            }
+        }
+    }
+    Ok(skills.iter().all(|skill| {
+        found.contains(&PathBuf::from(format!(
+            "{skill}{}",
+            std::env::consts::EXE_SUFFIX
+        ))) && found.contains(&Path::new("skills").join(skill).join("SKILL.md"))
+    }))
+}
+
+/// Stages the agent `skills` of a core release archive beside `destination`, for
+/// the installer to publish there. An archive without them stages nothing, which
+/// leaves the installed ones in place.
+fn stage_companion(
+    archive_path: &Path,
+    artifact: &str,
+    skills: &[&str],
+    destination: PathBuf,
+) -> anyhow::Result<Option<PreparedCoreCompanion>> {
+    let (parent, name) = destination
+        .parent()
+        .zip(destination.file_name())
+        .ok_or_else(|| anyhow::anyhow!("the core data directory has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    let mut prefix = name.to_os_string();
+    prefix.push(".staging-");
+    let companion = PreparedCoreCompanion {
+        staging: tempfile::Builder::new()
+            .prefix(&prefix)
+            .tempdir_in(parent)?,
+        destination,
+    };
+    let complete = extract_companion(archive_path, artifact, skills, &companion.staged())?;
+    Ok(complete.then_some(companion))
+}
+
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
     let parsed = crate::client::core_version::parse_version(core, banner)?;
     let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
@@ -310,6 +512,11 @@ mod tests {
     use std::io::Write;
 
     struct ProxyPort(std::sync::atomic::AtomicU16);
+
+    fn test_paths(dir: &TempDir) -> PathResolver {
+        let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        PathResolver::with_base_dirs(root.join("config"), root.join("data"))
+    }
 
     impl crate::service::profile_file::SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
@@ -356,7 +563,8 @@ mod tests {
             first.local_addr().unwrap().port(),
         )));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port.clone());
+        let backend =
+            HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port.clone());
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
                 listener.local_addr().unwrap().port(),
@@ -434,7 +642,7 @@ mod tests {
         let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
         let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port);
+        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port);
         let token = CancellationToken::new();
         let prepare = tokio::spawn({
             let token = token.clone();
@@ -583,6 +791,207 @@ mod tests {
         )
         .unwrap();
         assert_eq!(std::fs::read(destination).unwrap(), b"meow executable");
+    }
+
+    fn write_tar_gz(path: &Path, files: &[(&str, &[u8])]) {
+        let encoder = flate2::write::GzEncoder::new(
+            std::fs::File::create(path).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut archive = tar::Builder::new(encoder);
+        for (name, contents) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive.append_data(&mut header, name, *contents).unwrap();
+        }
+        archive.into_inner().unwrap().finish().unwrap();
+    }
+
+    const MEOW_SKILLS: &[&str] = &["meow-cli"];
+
+    #[test]
+    fn companion_members_keep_the_archive_layout_without_its_top_directory() {
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let member = |path: &str| companion_member(Path::new(path), MEOW_SKILLS);
+
+        assert_eq!(
+            member(&format!("meow-alpha-8793af9/{executable}")),
+            Some(PathBuf::from(&executable))
+        );
+        assert_eq!(
+            member("meow-alpha-8793af9/skills/meow-cli/SKILL.md"),
+            Some(PathBuf::from("skills/meow-cli/SKILL.md"))
+        );
+        assert_eq!(
+            member("meow-alpha-8793af9/skills/meow-cli/references/api.md"),
+            Some(PathBuf::from("skills/meow-cli/references/api.md"))
+        );
+        for other in [
+            "meow-alpha-8793af9/meow",
+            "meow-alpha-8793af9/README.md",
+            "meow-alpha-8793af9/skills/other/SKILL.md",
+            "meow-alpha-8793af9/skills/meow-cli",
+            "../skills/meow-cli/SKILL.md",
+        ] {
+            assert_eq!(member(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn staging_leaves_the_installed_companion_untouched() {
+        let dir = TempDir::new().unwrap();
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let archive = dir.path().join("meow.tar.gz");
+        write_tar_gz(
+            &archive,
+            &[
+                ("meow-alpha/meow", b"meow executable"),
+                (&format!("meow-alpha/{executable}"), b"new meow-cli"),
+                ("meow-alpha/skills/meow-cli/SKILL.md", b"new skill"),
+            ],
+        );
+        let destination = dir.path().join("data/cores/meow-alpha");
+        std::fs::create_dir_all(destination.join("skills/meow-cli")).unwrap();
+        std::fs::write(destination.join("skills/meow-cli/SKILL.md"), "old skill").unwrap();
+
+        let companion = stage_companion(
+            &archive,
+            "meow-alpha-x.tar.gz",
+            MEOW_SKILLS,
+            destination.clone(),
+        )
+        .unwrap()
+        .expect("the archive ships meow-cli");
+
+        // The installer publishes it; until then the installed one stays.
+        assert_eq!(
+            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"old skill"
+        );
+        assert_eq!(companion.destination, destination);
+        let staged = companion.staged();
+        assert_eq!(
+            std::fs::read(staged.join(&executable)).unwrap(),
+            b"new meow-cli"
+        );
+        assert_eq!(
+            std::fs::read(staged.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"new skill"
+        );
+        assert!(!staged.join("meow").exists());
+        // Beside the destination, so that publishing it is a rename on one file system.
+        assert_eq!(companion.staging.path().parent(), destination.parent());
+        #[cfg(target_family = "unix")]
+        assert_eq!(
+            std::fs::metadata(staged.join(&executable))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+        // Dropping it, as a failed core installation does, removes the staged files.
+        drop(companion);
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("data/cores"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_archive_without_the_skills_stages_nothing() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("meow.tar.gz");
+        write_tar_gz(&archive, &[("meow-v0.26.1/meow", b"meow executable")]);
+        let destination = dir.path().join("data/cores/meow");
+
+        let companion = stage_companion(
+            &archive,
+            "meow-v0.26.1.tar.gz",
+            MEOW_SKILLS,
+            destination.clone(),
+        )
+        .unwrap();
+
+        assert!(companion.is_none());
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("data/cores"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn a_companion_stages_from_a_zip_archive() {
+        let dir = TempDir::new().unwrap();
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let archive_path = dir.path().join("meow.zip");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&archive_path).unwrap());
+        archive
+            .add_directory(
+                "meow-alpha/skills/",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        for (name, contents) in [
+            (format!("meow-alpha/{executable}"), "meow-cli"),
+            ("meow-alpha/skills/meow-cli/SKILL.md".to_owned(), "skill"),
+        ] {
+            archive
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(contents.as_bytes()).unwrap();
+        }
+        archive.finish().unwrap();
+
+        let companion = stage_companion(
+            &archive_path,
+            "meow-alpha-x.zip",
+            MEOW_SKILLS,
+            dir.path().join("cores/meow-alpha"),
+        )
+        .unwrap()
+        .expect("the archive ships meow-cli");
+
+        let staged = companion.staged();
+        assert_eq!(
+            std::fs::read(staged.join(&executable)).unwrap(),
+            b"meow-cli"
+        );
+        assert_eq!(
+            std::fs::read(staged.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"skill"
+        );
+    }
+
+    #[test]
+    fn archives_are_checked_against_their_published_sha256() {
+        let dir = TempDir::new().unwrap();
+        let artifact = "meow-alpha-33ec533-x86_64-pc-windows-msvc.zip";
+        let archive = dir.path().join(artifact);
+        std::fs::write(&archive, b"meow archive").unwrap();
+        let digest = hex::encode(Sha256::digest(b"meow archive"));
+
+        // As Meow publishes it, and as `sha256sum` writes it in text mode.
+        verify_sha256(&archive, artifact, &format!("{digest} *{artifact}\n")).unwrap();
+        verify_sha256(&archive, artifact, &format!("{digest}  {artifact}")).unwrap();
+        verify_sha256(&archive, artifact, &digest.to_uppercase()).unwrap();
+
+        let tampered = hex::encode(Sha256::digest(b"another archive"));
+        let error = verify_sha256(&archive, artifact, &tampered).unwrap_err();
+        assert!(error.to_string().contains("does not match"), "{error}");
+        let error =
+            verify_sha256(&archive, artifact, &format!("{digest} *meow-v0.26.1.zip")).unwrap_err();
+        assert!(
+            error.to_string().contains("is for meow-v0.26.1.zip"),
+            "{error}"
+        );
+        verify_sha256(&archive, artifact, " \n").unwrap_err();
     }
 
     #[test]

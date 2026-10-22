@@ -65,6 +65,20 @@
 /** The list of RAW PCBs */
 static struct raw_pcb *raw_pcbs;
 
+/**
+ * Free all pcbs without calling any callbacks.
+ */
+void
+raw_fini(void)
+{
+  struct raw_pcb *pcb;
+
+  while ((pcb = raw_pcbs) != NULL) {
+    raw_pcbs = pcb->next;
+    memp_free(MEMP_RAW_PCB, pcb);
+  }
+}
+
 static u8_t
 raw_input_local_match(struct raw_pcb *pcb, u8_t broadcast)
 {

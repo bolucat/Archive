@@ -272,6 +272,18 @@ void sys_timeouts_init(void)
   }
 }
 
+/** Free all pending timeouts without calling their handlers */
+void
+sys_timeouts_fini(void)
+{
+  struct sys_timeo *t;
+
+  while ((t = next_timeout) != NULL) {
+    next_timeout = t->next;
+    memp_free(MEMP_SYS_TIMEOUT, t);
+  }
+}
+
 /**
  * Create a one-shot timer (aka timeout). Timeouts are processed in the
  * following cases:

@@ -205,6 +205,38 @@ tcp_init(void)
 #endif /* LWIP_RAND */
 }
 
+/**
+ * Free all pcbs without calling any callbacks.
+ */
+void
+tcp_fini(void)
+{
+  struct tcp_pcb *pcb;
+  size_t i;
+
+  for (i = 1; i < LWIP_ARRAYSIZE(tcp_pcb_lists); i++) {
+    while ((pcb = *tcp_pcb_lists[i]) != NULL) {
+      *tcp_pcb_lists[i] = pcb->next;
+      tcp_segs_free(pcb->unsent);
+      tcp_segs_free(pcb->unacked);
+#if TCP_QUEUE_OOSEQ
+      tcp_segs_free(pcb->ooseq);
+#endif /* TCP_QUEUE_OOSEQ */
+      if (pcb->refused_data != NULL) {
+        pbuf_free(pcb->refused_data);
+      }
+      memp_free(MEMP_TCP_PCB, pcb);
+    }
+  }
+
+  while ((pcb = tcp_listen_pcbs.pcbs) != NULL) {
+    tcp_listen_pcbs.pcbs = pcb->next;
+    memp_free(MEMP_TCP_PCB_LISTEN, pcb);
+  }
+
+  tcp_active_pcbs_changed = 0;
+}
+
 /** Free a tcp pcb */
 void
 tcp_free(struct tcp_pcb *pcb)
@@ -1273,7 +1305,24 @@ tcp_slowtmr_start:
               }
               /* snd_wnd not fully closed, split unsent head and fill window */
             } else {
-              if (tcp_split_unsent_seg(pcb, (u16_t)pcb->snd_wnd) == ERR_OK) {
+              if (pcb->gso_mss != 0) {
+                u32_t seq = lwip_ntohl(pcb->unsent->tcphdr->seqno);
+                u32_t edge = pcb->lastack + LWIP_MIN(pcb->snd_wnd, pcb->cwnd);
+
+                /* A requeued GSO segment may still contain an ACKed prefix.
+                 * Keep that prefix plus the available window in the head.
+                 * After the persist delay, a sub-MSS tail may also be sent.
+                 */
+                err = ERR_VAL;
+                if (TCP_SEQ_GT(edge, pcb->lastack) && TCP_SEQ_GT(edge, seq)) {
+                  u32_t split = edge - seq;
+                  err = split < pcb->unsent->len ?
+                        tcp_split_unsent_seg(pcb, (u16_t)split) : ERR_OK;
+                }
+              } else {
+                err = tcp_split_unsent_seg(pcb, (u16_t)pcb->snd_wnd);
+              }
+              if (err == ERR_OK) {
                 if (tcp_output(pcb) == ERR_OK) {
                   /* sending will cancel persist timer, else retry with current slot */
                   next_slot = 0;

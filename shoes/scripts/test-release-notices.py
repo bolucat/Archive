@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercises notice verification without requiring mobile build toolchains."""
+"""Exercises dependency-notice generation and release tarball verification."""
 
 import importlib.util
 import io
@@ -11,7 +11,6 @@ import tarfile
 import tempfile
 import unittest
 from unittest import mock
-import zipfile
 
 SPEC = importlib.util.spec_from_file_location(
     "notices", Path(__file__).with_name("check-release-notices.py")
@@ -87,6 +86,16 @@ class ReleaseNoticesTests(unittest.TestCase):
         metadata = json.loads(subprocess.check_output([
             "cargo", "metadata", *cargo_options, "--format-version", "1",
         ]))
+        gotatun_versions = [p["version"] for p in metadata["packages"] if p["name"] == "gotatun"]
+        self.assertEqual(len(gotatun_versions), 1)
+        version = gotatun_versions[0]
+        source_notice = (NOTICES.ROOT / "THIRD_PARTY_NOTICES.md").read_text()
+        for required in [
+            f"GotaTun {version},",
+            f"https://crates.io/api/v1/crates/gotatun/{version}/download",
+            f"https://github.com/mullvad/gotatun/tree/v{version}",
+        ]:
+            self.assertIn(required, source_notice)
         bundle = (NOTICES.ROOT / "licenses/dependencies.txt").read_text()
         original_notices = {
             "curve25519-dalek": ["LICENSE"], "x25519-dalek": ["LICENSE"],
@@ -114,7 +123,7 @@ class ReleaseNoticesTests(unittest.TestCase):
 
     def test_artifacts_reject_missing_and_modified_notices(self):
         expected = NOTICES.expected_notices()
-        for kind in ["tar", "aar", "xcframework"]:
+        for kind, mode in [("tar", "w"), ("tar.gz", "w:gz")]:
             for mutation in [None, "missing", "modified"]:
                 with self.subTest(kind=kind, mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                     entries = expected.copy()
@@ -124,28 +133,15 @@ class ReleaseNoticesTests(unittest.TestCase):
                     elif mutation == "modified":
                         entries[name] = b"incomplete notice"
                     artifact = Path(tmp) / ("release." + kind)
-                    if kind == "tar":
-                        with tarfile.open(artifact, "w") as archive:
-                            for name, contents in entries.items():
-                                info = tarfile.TarInfo(name)
-                                info.size = len(contents)
-                                archive.addfile(info, io.BytesIO(contents))
-                    elif kind == "aar":
-                        jar = io.BytesIO()
-                        with zipfile.ZipFile(jar, "w") as classes:
-                            for name, contents in entries.items():
-                                classes.writestr("META-INF/shoes/" + name, contents)
-                        with zipfile.ZipFile(artifact, "w") as aar:
-                            aar.writestr("classes.jar", jar.getvalue())
-                    else:
+                    with tarfile.open(artifact, mode) as archive:
                         for name, contents in entries.items():
-                            path = artifact / name
-                            path.parent.mkdir(parents=True, exist_ok=True)
-                            path.write_bytes(contents)
+                            info = tarfile.TarInfo(name)
+                            info.size = len(contents)
+                            archive.addfile(info, io.BytesIO(contents))
                     if mutation is None:
                         NOTICES.check(artifact)
                     else:
-                        with self.assertRaises((KeyError, FileNotFoundError, ValueError)):
+                        with self.assertRaises((KeyError, ValueError)):
                             NOTICES.check(artifact)
 
 

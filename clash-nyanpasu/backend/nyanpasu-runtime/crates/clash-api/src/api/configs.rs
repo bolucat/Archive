@@ -550,6 +550,16 @@ pub struct TuicServerPatch {
 }
 
 impl Client {
+    /// `GET /configs` as returned, for cores whose response does not fit
+    /// [`RuntimeConfig`].
+    pub async fn configs_value(&self) -> Result<serde_json::Value> {
+        self.send_json(
+            RequestMetadata::new("configs_value", Method::GET, true),
+            || self.get("/configs"),
+        )
+        .await
+    }
+
     pub async fn configs(&self) -> Result<RuntimeConfig> {
         self.send_json(RequestMetadata::new("configs", Method::GET, true), || {
             self.get("/configs")

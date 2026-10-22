@@ -92,6 +92,19 @@ jobs:
           echo "" >>release.txt
           echo ":warning: 请将 /path/to/package 替换为实际下载的软件包路径。" >>release.txt
           echo "- Replace /path/to/package with the actual path of the downloaded packages." >>release.txt
+          echo "" >>release.txt
+          echo "---" >>release.txt
+          echo "## :rocket: 配套固件与工具 / Firmwares & Tools" >>release.txt
+          echo "" >>release.txt
+          echo "### :fire: [OpenWrtAction](https://github.com/smallprogram/OpenWrtAction) —— 集成 Passwall 的 CI 固件 / Ready-to-use firmware with Passwall" >>release.txt
+          echo "* 集成官方 OpenWrt 25.12、ImmortalWrt 25.12、Lean (Snapshot) 固件，支持 x86、R2S、R2C、R4S、R5S、R5C、H66K、H68K、H69K、R66S、R68S 等设备，刷入即用。" >>release.txt
+          echo "  Firmware built on official OpenWrt 25.12, ImmortalWrt 25.12 and Lean (Snapshot), supporting x86, R2S, R2C, R4S, R5S, R5C, H66K, H68K, H69K, R66S, R68S and more." >>release.txt
+          echo "* 支持 GitHub 一键更新：直接从 GitHub Releases 在线升级固件，无需手动下载和刷写。" >>release.txt
+          echo "  Supports one-click GitHub update: upgrade the firmware online straight from GitHub Releases, no manual download or flashing needed." >>release.txt
+          echo "" >>release.txt
+          echo "### :package: [Are-u-ok](https://github.com/bcseputetto/Are-u-ok) —— iStoreOS .run 更新包 / iStoreOS .run update packages" >>release.txt
+          echo "* 为 iStoreOS 提供 .run 格式更新包，无需重刷固件，上传执行即可安装/升级。" >>release.txt
+          echo "  Provides .run update packages for iStoreOS — no reflashing needed, just upload and run." >>release.txt
           touch release.txt
 
       - name: Generate new tag & release
@@ -165,3 +178,18 @@ jobs:
         with:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           files: ${{ github.workspace }}/upload/*
+
+  job_trigger_packages:
+    name: Trigger packages cache workflow
+    needs: [job_check, job_build_passwall]
+    if: needs.job_check.outputs.has_update == 'true' && needs.job_build_passwall.result == 'success'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Trigger Auto Cache Software Release JSONs
+        env:
+          # PAT with "Actions: write" permission on the packages repository
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+        run: |
+          gh workflow run "Auto cache software release jsons.yml" \
+            --repo "${{ env.packages }}" \
+            --ref main

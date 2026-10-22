@@ -5,9 +5,39 @@ use std::{io::Write, time::Duration};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    #[cfg(windows)]
+    if std::env::current_exe().unwrap().file_stem().unwrap() == "nyanpasu-hung-shutdown-helper" {
+        let pid_file = std::env::current_exe().unwrap().with_extension("pid");
+        std::fs::write(pid_file, std::process::id().to_string()).unwrap();
+        sleep_forever().await;
+    }
+    #[cfg(all(windows, feature = "process"))]
+    if let Some(result) = nyanpasu_utils::process::windows_shutdown_helper_entry() {
+        std::process::exit(if result.is_ok() { 0 } else { 1 });
+    }
     let mut args = std::env::args().skip(1);
     let mode = args.next().unwrap_or_default();
     match mode.as_str() {
+        #[cfg(windows)]
+        "trap-ctrlc" | "ignore-ctrlc" => {
+            struct Cleanup(std::path::PathBuf);
+            impl Drop for Cleanup {
+                fn drop(&mut self) {
+                    std::fs::write(&self.0, "dropped").expect("cleanup marker");
+                }
+            }
+            let _cleanup = Cleanup(args.next().expect("cleanup path").into());
+            let mut signal = tokio::signal::windows::ctrl_c().expect("install Ctrl+C handler");
+            println!("ready");
+            signal.recv().await;
+            println!("got-ctrlc");
+            if mode == "ignore-ctrlc" {
+                loop {
+                    signal.recv().await;
+                    println!("got-ctrlc");
+                }
+            }
+        }
         "exit-with" => {
             let code: i32 = args.next().expect("code").parse().expect("i32");
             std::process::exit(code);

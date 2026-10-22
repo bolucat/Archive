@@ -155,6 +155,14 @@ impl PathResolver {
         self.0.data_dir.join("scripts")
     }
 
+    /// What a core's release archive ships beside the core, such as an agent skill and the
+    /// executable it drives, laid out as in the archive. One directory per core, named by
+    /// its binary name. It lives in the data dir, not beside the core: agents link the skill,
+    /// and this path stays the same across application updates.
+    pub fn core_data_dir(&self, core_binary_name: &str) -> Utf8PathBuf {
+        self.0.data_dir.join("cores").join(core_binary_name)
+    }
+
     /// Create the config dir, then the data dir, failing on either. The profiles, logs and
     /// cache dirs are created best-effort: they are recreated by whoever uses them.
     pub fn create_base_dirs(&self) -> Result<(), CreateDirError> {

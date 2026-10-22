@@ -147,6 +147,22 @@ export function createRpcClient(
       typedError<ProfileDocument_Serialize, IpcError>(
         __RPC_INVOKE('get_profiles'),
       ),
+    /**
+     *  Downloads a profile URL and suggests how to import it, for the user to
+     *  confirm. Desktop-only: it sends a request to any URL the caller names.
+     */
+    probeProfileUrl: (
+      url: string,
+      option: {
+        user_agent?: string | null
+        with_proxy: boolean | null
+        self_proxy: boolean | null
+        update_interval_minutes: RemoteSyncInterval | null
+      } | null,
+    ) =>
+      typedError<ProfileUrlProbe, IpcError>(
+        __RPC_INVOKE('probe_profile_url', { url, option }),
+      ),
     getProfileSyncStatus: (uid: ProfileId) =>
       typedError<ProfileSyncStatus, IpcError>(
         __RPC_INVOKE('get_profile_sync_status', { uid }),
@@ -219,6 +235,14 @@ export function createRpcClient(
       typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
     getCoreDir: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
+    /**
+     *  The agent skills a core ships. Their folders are on the host that runs
+     *  Nyanpasu, which is also where an agent driving the core has to run.
+     */
+    getCoreAgentSkills: (coreType: ClashCore_Deserialize) =>
+      typedError<CoreAgentSkill[], IpcError>(
+        __RPC_INVOKE('get_core_agent_skills', { coreType }),
+      ),
     getClashWsSnapshot: () =>
       typedError<ClashWsSnapshot, IpcError>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
@@ -1519,6 +1543,19 @@ export type ConvergenceHealth =
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
 /**
+ *  An agent skill a core's release archive ships. The core updater keeps it in the
+ *  core's data directory, beside the executable it drives.
+ */
+export type CoreAgentSkill = {
+  /**  The skill's name, which is also the name of its folder and of its executable. */
+  name: string
+  /**  The skill's folder, which agents link so that core updates refresh it in place. */
+  dir: string
+  /**  Whether a core update has installed the skill. */
+  installed: boolean
+}
+
+/**
  *  The core's control endpoint, as the manager resolved it.
  *
  *  A deliberately separate type from `clash_api::Host`: clash-api is an
@@ -2327,6 +2364,37 @@ export type I18nLanguage_Serialize =
 export type IconData = {
   data_url: string
 }
+
+export type ImportClassification = {
+  /**  None when the signals do not settle on a kind. */
+  suggested: ProfileImportKind | null
+  /**  Every signal found, whether or not it decided the suggestion. */
+  evidence: ImportEvidence[]
+}
+
+export type ImportEvidence = {
+  kind: ProfileImportKind
+  signal: ImportSignal
+}
+
+/**  A signal that a downloaded profile is of some kind. */
+export type ImportSignal =
+  /**  `subscription-userinfo` carries the traffic quota of a subscription. */
+  | 'subscription_quota'
+  /**  `profile-title` names a subscription. */
+  | 'profile_title'
+  /**  `profile-update-interval` asks a subscription to be refreshed. */
+  | 'update_interval'
+  /**  The extension of the file name in `Content-Disposition` or the URL path. */
+  | 'file_extension'
+  /**  The media type in `Content-Type`. */
+  | 'content_type'
+  /**  A YAML mapping with `proxies` or `proxy-providers`. */
+  | 'proxies_key'
+  /**  A YAML mapping with `prepend-`, `append-`, `override__` or `filter__` keys. */
+  | 'overlay_directives'
+  /**  Lines that read as the script language. */
+  | 'script_syntax'
 
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =
@@ -3269,6 +3337,15 @@ export type ProfileFileError =
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
 
+/**  What a downloaded profile can be imported as. */
+export type ProfileImportKind =
+  /**  A Clash config file. */
+  | 'config'
+  /**  A merge: a YAML overlay applied to a config. */
+  | 'overlay'
+  | 'javascript'
+  | 'lua'
+
 /**  One named profile item. */
 export type ProfileItem = ProfileItem_Serialize | ProfileItem_Deserialize
 
@@ -3414,6 +3491,22 @@ export type ProfileSyncStatus = {
   journal_degraded: boolean
   registration_error: string | null
   history_limit: number
+}
+
+/**  A profile URL downloaded once so the user can confirm how to import it. */
+export type ProfileUrlProbe = {
+  classification: ImportClassification
+  /**  The kinds whose import validation accepts the content. */
+  accepted: ProfileImportKind[]
+  /**  `profile-title`, else the name the import would derive from the URL. */
+  suggested_name: string
+  subscription: ProfileSubscriptionInfo
+  suggested_update_interval_minutes: number | null
+  /**
+   *  Imported as is when the user picks a local import, so it is not
+   *  downloaded twice.
+   */
+  content: string
 }
 
 export type ProfileValidationError =
@@ -3703,7 +3796,14 @@ export type ProfilesError =
       source: ProfileFileError
     }
   | { kind: 'version_conflict'; expected: number; actual: number }
-  | { kind: 'commit'; source: CommitAborted }
+  | {
+      kind: 'commit'
+      /**  The profile the change was about, when it was about one. */
+      uid: ProfileId | null
+      /**  That profile's file. */
+      path: ManagedProfilePath | null
+      source: CommitAborted
+    }
   | { kind: 'workflow_not_ready' }
   | { kind: 'profiles_actor_stopped' }
   | { kind: 'profiles_reply_dropped' }

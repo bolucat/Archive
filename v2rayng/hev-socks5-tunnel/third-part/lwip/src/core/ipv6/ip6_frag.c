@@ -138,6 +138,28 @@ ip6_reass_tmr(void)
 }
 
 /**
+ * Free all datagrams and their pbufs without sending ICMP.
+ */
+void
+ip6_reass_fini(void)
+{
+  struct ip6_reassdata *ipr;
+  struct pbuf *p, *pcur;
+
+  while ((ipr = reassdatagrams) != NULL) {
+    p = ipr->p;
+    while (p != NULL) {
+      pcur = p;
+      p = ((struct ip6_reass_helper *)p->payload)->next_pbuf;
+      pbuf_free(pcur);
+    }
+    reassdatagrams = ipr->next;
+    memp_free(MEMP_IP6_REASSDATA, ipr);
+  }
+  ip6_reass_pbufcount = 0;
+}
+
+/**
  * Free a datagram (struct ip6_reassdata) and all its pbufs.
  * Updates the total count of enqueued pbufs (ip6_reass_pbufcount),
  * sends an ICMP time exceeded packet.

@@ -3,10 +3,11 @@
 //! This module owns the schema-agnostic pipeline — read, canonicalize, hash,
 //! serialize. Every rule that names a YAML key lives in a per-core module:
 //! [`clash`] for the controller vocabulary shared by all supported kinds, and
-//! [`mihomo`] for the Mihomo-only capabilities layered on top.
+//! [`mihomo`] and [`meow`] for their per-core mutation capabilities.
 
 mod clash;
 mod diff;
+mod meow;
 pub(crate) mod mihomo;
 pub mod runtime_store;
 

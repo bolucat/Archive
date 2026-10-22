@@ -48,6 +48,109 @@ fn http_controller_yaml(port: u16, extra: &str) -> String {
 }
 
 #[tokio::test]
+async fn meow_tun_patch_uses_readback_and_health_before_preserving_the_process() {
+    for (behavior, healthy, patched) in [
+        ("", true, true),
+        ("  patch-error-after-apply: true\n", true, true),
+        ("  patch-no-effect: true\n", true, false),
+        ("  reject-patch: true\n", true, false),
+        ("  omit-tun-enable: true\n", true, false),
+        ("", false, false),
+    ] {
+        let (_guard, dir) = common::utf8_tempdir();
+        let port = common::free_port();
+        let patch_log = dir.join("patch.jsonl");
+        let body = |enabled| {
+            http_controller_yaml(
+                port,
+                &format!(
+                    "tun:\n  enable: {enabled}\n  auto-route: {{enable: true}}\n  inet4-address: 192.0.2.1/30\nx-fake-core:\n  meow-configs: true\n  patch-log: '{}'\n{behavior}",
+                    patch_log
+                ),
+            )
+        };
+        let old = write_named(&dir, "old.yaml", &body(true));
+        let desired = write_named(&dir, "desired.yaml", &body(false));
+        let meow_spec = |path| {
+            let mut spec = spec(&dir, path);
+            spec.core.kind = nyanpasu_core_manager::CoreKind::Meow;
+            spec.core.version = Some("v0.26.0".into());
+            spec
+        };
+        let manager = CoreManager::builder(ManagerOptions {
+            runtime_dir: Some(dir.join("runtime")),
+            ..ManagerOptions::default()
+        })
+        .readiness_probe(ProbeHandle::from_fn(
+            "meow-reconcile",
+            move |context| async move {
+                if !healthy && context.phase == ProbePhase::Reconcile {
+                    ProbeResult::Unhealthy {
+                        detail: Some("reject reconcile".into()),
+                    }
+                } else {
+                    ControllerVersionProbe::new(context.controller.as_ref())
+                        .unwrap()
+                        .check(context)
+                        .await
+                }
+            },
+        ))
+        .build()
+        .await
+        .unwrap();
+        manager.start(meow_spec(old)).await.unwrap();
+        let before = running(&manager);
+        let result = manager
+            .apply_config(meow_spec(desired), None)
+            .await
+            .unwrap();
+        if patched {
+            assert!(
+                matches!(result, ApplyOutcome::Patched { .. }),
+                "{behavior}: {result:?}"
+            );
+            assert_eq!(running(&manager), before);
+        } else {
+            assert!(
+                matches!(result, ApplyOutcome::Restarted { .. }),
+                "{behavior}: {result:?}"
+            );
+            assert_ne!(running(&manager), before);
+        }
+        if !behavior.contains("reject-patch") {
+            let sent: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&patch_log).unwrap()).unwrap();
+            assert_eq!(sent, serde_json::json!({"tun": {"enable": false}}));
+        }
+        assert_eq!(
+            common::assert_shared_effective_config(&manager)
+                .await
+                .config["tun"]["enable"]
+                .as_bool(),
+            Some(false)
+        );
+        if patched {
+            let enabled = write_named(&dir, "enabled.yaml", &body(true));
+            let result = manager
+                .apply_config(meow_spec(enabled), None)
+                .await
+                .unwrap();
+            assert!(matches!(result, ApplyOutcome::Patched { .. }));
+            assert_eq!(running(&manager), before);
+            assert_eq!(
+                common::assert_shared_effective_config(&manager)
+                    .await
+                    .config["tun"]["enable"]
+                    .as_bool(),
+                Some(true)
+            );
+        }
+        manager.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn custom_probe_plan_reaches_desired_replacement_and_rollback() {
     let (_guard, dir) = common::utf8_tempdir();
     let port = common::free_port();

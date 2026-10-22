@@ -11,6 +11,8 @@ pub mod io;
 
 pub mod runtime;
 
+pub use nyanpasu_log_preview as log_preview;
+
 #[cfg(feature = "reqwest")]
 pub mod reqwest_ext;
 

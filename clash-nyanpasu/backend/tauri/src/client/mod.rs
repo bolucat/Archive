@@ -1,4 +1,5 @@
 use nyanpasu_paths::PathResolver;
+pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
 mod application;
@@ -514,6 +515,7 @@ impl NyanpasuClient {
                     .parent()
                     .context("executable has no parent directory")?
                     .to_path_buf(),
+                paths.clone(),
                 ports.clone(),
             )),
             Arc::new(application_workflow.clone()),
@@ -786,6 +788,15 @@ impl NyanpasuClient {
         let dir = self.inner.paths.backups_dir().into_std_path_buf();
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
+    }
+
+    /// The agent skills `core`'s release archive ships, which the core updater keeps
+    /// in the core's data directory for agents to link.
+    pub async fn core_agent_skills(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Vec<agent_skills::CoreAgentSkill> {
+        agent_skills::core_agent_skills(&self.inner.paths, core).await
     }
 
     pub fn is_portable(&self) -> bool {
@@ -1139,6 +1150,21 @@ impl NyanpasuClient {
             outcome = outcome.append_commit_result(self.try_auto_activate_if_none(uid).await);
         }
         Ok(outcome)
+    }
+
+    /// Downloads a profile URL with the import's options and suggests how to
+    /// import it. The user confirms the kind and whether to keep the URL;
+    /// nothing is written here.
+    pub async fn probe_profile_url(
+        &self,
+        url: url::Url,
+        options: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<profiles::ProfileUrlProbe> {
+        let mut option = RemoteProfileOptions::default();
+        if let Some(patch) = options {
+            option.apply(patch);
+        }
+        Ok(self.inner.profiles.probe(url, option).await?)
     }
 
     /// Import a remote subscription via actor-owned fetch-before-commit. A
@@ -4143,6 +4169,8 @@ pub(crate) mod tests {
                 // No server name: exercises the url last-segment fallback below.
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4192,6 +4220,8 @@ pub(crate) mod tests {
                     subscription: SubscriptionInfo::default(),
                     filename: None,
                     suggested_update_interval_minutes: None,
+                    content_type: None,
+                    file_name: None,
                 })
             } else {
                 Err(SubscriptionFetchError::mock())
@@ -4257,6 +4287,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4292,6 +4324,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4614,6 +4648,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4767,6 +4803,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
             })
         });
         fetcher

@@ -84,6 +84,12 @@ idle cancellation probes. The workspace patches cover direct and transitive
 dependencies, including DNS over HTTP/3. The experimental zero-copy change in
 [h3 #368](https://github.com/hyperium/h3/pull/368) is not included.
 
+The `blake3` patch pins our [binary-context fork](https://github.com/cfal/BLAKE3/tree/cd98c1c4112ed3b2cf2140e1844f266b3d665b53),
+rebased onto upstream buffer-alignment and AVX-512 soundness fixes. VLESS Encryption
+requires `derive_key_bytes` for contexts that are not valid UTF-8. Retain the patch
+until a registry release provides equivalent binary-context derivation; validate
+updates against the fork's tests and Shoes' Go-derived VLESS vectors.
+
 The `nix` patch pins an [upstream commit](https://github.com/nix-rust/nix/commit/3eae6d68ec6382fef7b38cd58f97458e59a71af9)
 containing [nix #2821](https://github.com/nix-rust/nix/pull/2821) for iOS socket
 compatibility. Retain it until adopting a registry release containing that fix.
@@ -110,6 +116,49 @@ After updating the H3 pins, run the empty-DATA and idle-stream regressions:
 ```sh
 CARGO_BUILD_JOBS=1 cargo test --locked --lib --features ffi h3_ -- --test-threads=1
 ```
+
+### Mobile Embedding
+
+Android and iOS embedding remains supported through the Rust JNI/C interfaces.
+This repository does not ship Kotlin wrappers, AARs, or XCFrameworks. Applications
+own their platform glue and packaging, including Android `VpnService` or iOS
+Network Extension setup.
+
+For Android, install `cargo-ndk`, set `ANDROID_NDK_HOME` to an installed Android
+NDK, and build the native libraries:
+
+```sh
+rustup target add aarch64-linux-android armv7-linux-androideabi
+CARGO_BUILD_JOBS=1 cargo ndk -t arm64-v8a -t armeabi-v7a -P 21 -- build --release --lib --locked
+```
+
+The resulting `target/<target>/release/libshoes.so` files expose the JNI methods
+in `src/ffi/android.rs`. The app supplies the matching
+`com.shoesproxy.ShoesNative` declarations and socket-protection callback.
+The callback object must expose `protect(fd: Int): Boolean`, delegating to
+`VpnService.protect`; a plain Kotlin lambda does not satisfy this JNI contract.
+
+For iOS, build on macOS with Xcode installed. These commands match CI's deployment
+target; set it to match the consuming app when integrating:
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+export IPHONEOS_DEPLOYMENT_TARGET=16.0
+CARGO_BUILD_JOBS=1 cargo build --release --lib --locked --target aarch64-apple-ios
+CARGO_BUILD_JOBS=1 cargo build --release --lib --locked --target aarch64-apple-ios-sim
+```
+
+Link `target/<target>/release/libshoes.a` using `include/shoes.h` through the app's
+bridging header or module map. After changing the C interface, use cbindgen 0.29.4
+to regenerate the header with
+`cbindgen --config cbindgen.toml --output include/shoes.h`. CI verifies the header
+matches the Rust interface.
+
+On both platforms, the app supplies `device_fd` in the TUN configuration and
+retains ownership of that descriptor until the native service has stopped.
+Distribute [the dependency notices and source information](THIRD_PARTY_NOTICES.md)
+with the app. CI cross-compiles the native libraries without packaging or
+publishing a mobile SDK.
 
 ### WireGuard Kernel Interoperability
 
@@ -425,37 +474,20 @@ covering all three modes and HTTP versions. `type: splithttp` is an alias for
 - H1/H2 preserve selected upstream proxy chains. H3 must be the first proxy hop;
   it reuses the existing QUIC/H3 dependencies, not Hysteria2 framing.
 - Server `matching_headers` requires every configured header on every request,
-  including OPTIONS. Names are case-insensitive; values must match exactly and
-  occur only once. Missing, wrong, or repeated values return a plain HTTP 404
-  before session admission or body processing, unless H1 silent rejection is
-  enabled with `close_on_http1_error`. Other requests sharing an H2/H3
-  connection are unaffected. Request-admission limits take precedence over
-  header validation: exhausted H2/H3 request slots refuse the individual stream,
-  while H1 returns a plain 503 and closes that connection. H1 silent rejection,
-  when enabled, checks both headers and paths before request admission.
-  Configure the client's `headers` with the same values, for example
+  including OPTIONS, so browser preflights without them are rejected. Names are
+  case-insensitive; values must match exactly and occur only once, and an empty
+  value requires a present, empty header. Requests that fail the check get a
+  plain 404 on every HTTP version, without session admission or body reads;
+  other requests sharing an H2/H3 connection are unaffected. Configure the
+  client's `headers` with the same values, for example
   `matching_headers: { X-Tunnel-Key: "replace-me" }` on the server and
-  `headers: { X-Tunnel-Key: "replace-me" }` on the client. An empty map (default)
-  adds no requirements; an empty value requires a present, empty header.
-  Use `host`, not `matching_headers`, to match Host/`:authority` across versions.
-  Transport-managed headers and values with leading/trailing spaces or tabs
-  are rejected at startup.
-  Browser preflights without the required headers are also rejected.
-- Server `close_on_http1_error: true` silently closes an H1 connection for
-  required-header mismatches or URLs outside the configured XHTTP path prefix.
-  It has no effect on H2/H3: those requests return plain 404s, subject to
-  request-admission limits, without terminating sibling streams. The actual
-  carrier version determines the behavior, including with `http_version: auto`.
-  Prefix matching uses the same percent-decoding and trailing slash
-  normalization as XHTTP routing; malformed suffixes within a recognized prefix
-  do not trigger silent closure. Other errors retain normal HTTP responses and
-  stream refusals, including wrong hosts, invalid methods or padding, conflicts,
-  timeouts, oversized bodies, and resource exhaustion. Routine XHTTP session
-  teardown and late packets do not trigger this option.
-  The default is `false`, returning HTTP errors for header and path mismatches
-  on H1 too. 400 and 404 responses omit XHTTP-specific and CORS headers.
-  HTTP-library parsing/protocol errors before XHTTP receives a request, and body
-  failures after a successful response has started, retain their existing handling.
+  `headers: { X-Tunnel-Key: "replace-me" }` on the client. Xray clients that
+  set `extra` must put `headers` inside `extra`; Xray ignores top-level
+  `headers` when `extra` is present. A value may also be a list, such as
+  `X-Tunnel-Key: [old, new]`, to accept any one of them while rotating
+  secrets. Use `host`, not `matching_headers`, to match Host/`:authority`.
+- XHTTP error responses are plain: a status code and an empty body, without
+  padding, caching, or CORS headers.
 - `host` overrides HTTP authority independently of TLS SNI. Default Referer
   padding, path/query handling, packet sizing/pacing, and stream-up keepalives
   follow modern Xray. `limits` can bound sessions, buffered bytes and requests;

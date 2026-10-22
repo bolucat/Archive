@@ -1,7 +1,8 @@
 use crate::{
     client::{
         ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
-        effects::error::EffectsError, system_proxy::ports::OsProxyError,
+        agent_skills::CoreAgentSkill, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
     },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -402,6 +403,23 @@ pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
     client.reconcile_core().await?;
     Ok(())
+}
+
+/// Downloads a profile URL and suggests how to import it, for the user to
+/// confirm. Desktop-only: it sends a request to any URL the caller names.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn probe_profile_url(
+    client: State<'_, NyanpasuClient>,
+    url: String,
+    option: Option<RemoteProfileOptionsPatch>,
+) -> Result<crate::client::profiles::ProfileUrlProbe> {
+    let url = snafu::ResultExt::context(
+        url::Url::parse(&url),
+        InvalidSubscriptionUrlSnafu { url: &url },
+    )?;
+    Ok(client.probe_profile_url(url, option).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -951,6 +969,18 @@ pub fn get_core_dir() -> Result<String> {
         .ok_or("failed to get core dir".to_string())?;
     let core_dir = dunce::canonicalize(core_dir)?;
     Ok(core_dir.to_string_lossy().to_string())
+}
+
+/// The agent skills a core ships. Their folders are on the host that runs
+/// Nyanpasu, which is also where an agent driving the core has to run.
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_core_agent_skills(
+    client: State<'_, NyanpasuClient>,
+    core_type: ClashCore,
+) -> Result<Vec<CoreAgentSkill>> {
+    Ok(client.core_agent_skills(core_type).await)
 }
 
 #[nyanpasu_macro::rpc]
@@ -2109,7 +2139,7 @@ pub fn retry_configuration_effect(
 #[cfg(test)]
 mod tests {
     use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
-    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
@@ -2290,6 +2320,8 @@ mod tests {
         assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
 
         let wire = wire(ProfilesError::Commit {
+            uid: Some(ProfileId("r1".into())),
+            path: Some(ManagedProfilePath::new("r1.yaml").unwrap()),
             source: aborted,
             cleanup_failures: Vec::new(),
         });
@@ -2297,6 +2329,8 @@ mod tests {
             wire["kind"]["error"],
             json!({
                 "kind": "commit",
+                "uid": "r1",
+                "path": "r1.yaml",
                 "source": {
                     "kind": "write_config",
                     "runtime": {

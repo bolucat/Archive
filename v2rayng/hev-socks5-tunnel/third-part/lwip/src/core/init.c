@@ -47,6 +47,7 @@
 #include "lwip/sockets.h"
 #include "lwip/ip.h"
 #include "lwip/raw.h"
+#include "lwip/priv/raw_priv.h"
 #include "lwip/udp.h"
 #include "lwip/priv/tcp_priv.h"
 #include "lwip/igmp.h"
@@ -54,6 +55,8 @@
 #include "lwip/timeouts.h"
 #include "lwip/etharp.h"
 #include "lwip/ip6.h"
+#include "lwip/ip4_frag.h"
+#include "lwip/ip6_frag.h"
 #include "lwip/nd6.h"
 #include "lwip/mld6.h"
 #include "lwip/api.h"
@@ -387,4 +390,48 @@ lwip_init(void)
 #if LWIP_TIMERS
   sys_timeouts_init();
 #endif /* LWIP_TIMERS */
+}
+
+/**
+ * @ingroup lwip_nosys
+ * Release the global state of all modules, so that lwip_init() can be
+ * called again in the same process.
+ *
+ * Before calling it, remove all netifs with netif_remove() and close or
+ * remove the application's own pcbs. Call it only when the stack is no
+ * longer running (NO_SYS=1, or the tcpip thread has stopped) and never
+ * from an lwIP callback.
+ *
+ * Remaining pcbs, pending timeouts, IP reassembly buffers and DNS requests
+ * are freed without calling application callbacks (tcp ext_args destroy
+ * callbacks included) and without sending anything.
+ */
+void
+lwip_fini(void)
+{
+#if LWIP_TIMERS && !LWIP_TIMERS_CUSTOM
+  sys_timeouts_fini();
+#endif /* LWIP_TIMERS && !LWIP_TIMERS_CUSTOM */
+#if LWIP_TCP
+  tcp_fini();
+#endif /* LWIP_TCP */
+#if LWIP_DNS
+  dns_fini();
+#endif /* LWIP_DNS */
+#if LWIP_UDP
+  udp_fini();
+#endif /* LWIP_UDP */
+#if LWIP_RAW
+  raw_fini();
+#endif /* LWIP_RAW */
+#if LWIP_IPV4 && IP_REASSEMBLY
+  ip_reass_fini();
+#endif /* LWIP_IPV4 && IP_REASSEMBLY */
+#if LWIP_IPV6 && LWIP_IPV6_REASS
+  ip6_reass_fini();
+#endif /* LWIP_IPV6 && LWIP_IPV6_REASS */
+#if !LWIP_SINGLE_NETIF
+  netif_list = NULL;
+#endif /* !LWIP_SINGLE_NETIF */
+  netif_default = NULL;
 }

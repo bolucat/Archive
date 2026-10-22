@@ -206,6 +206,7 @@ impl CoreManagerService {
             #[cfg(windows)]
             controller_template: Some(format!(r"\\.\pipe\nyanpasu-service-{namespace}-{{epoch}}")),
             runtime_dir: Some(runtime_dir),
+            windows_shutdown_helper: Some(std::env::current_exe()?),
             local_ipc_policy,
             ..ManagerOptions::default()
         })

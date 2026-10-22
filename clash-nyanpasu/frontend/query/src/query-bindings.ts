@@ -177,6 +177,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProfiles', ...args],
         queryFn: () => commands.getProfiles(...args),
       }),
+    probeProfileUrl: (...args: Parameters<typeof commands.probeProfileUrl>) =>
+      queryOptions({
+        queryKey: ['probeProfileUrl', ...args],
+        queryFn: () => commands.probeProfileUrl(...args),
+      }),
     getProfileSyncStatus: (
       ...args: Parameters<typeof commands.getProfileSyncStatus>
     ) =>
@@ -301,6 +306,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getCoreDir', ...args],
         queryFn: () => commands.getCoreDir(...args),
+      }),
+    getCoreAgentSkills: (
+      ...args: Parameters<typeof commands.getCoreAgentSkills>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreAgentSkills', ...args],
+        queryFn: () => commands.getCoreAgentSkills(...args),
       }),
     getClashWsSnapshot: (
       ...args: Parameters<typeof commands.getClashWsSnapshot>

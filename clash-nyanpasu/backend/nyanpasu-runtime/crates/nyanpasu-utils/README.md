@@ -25,3 +25,12 @@ from that interval is deliberately not killed without authoritative identity.
 
 Default features preserve the existing public API. Consumers that need a smaller dependency surface
 can disable default features and enable only the modules they use.
+
+## `nyanpasu-log-preview`
+
+`log-preview/` holds a second, dependency-light crate that formats a byte or text payload — an
+image, a profile, a script — as its length, CRC-32 and first and last bytes, so it can be logged
+without printing it whole. It depends only on `crc32fast`, so crates that must not pull in Tokio,
+such as the statistic widget's protocol, can use it directly. `nyanpasu-utils` re-exports it as
+`log_preview`. It is a path dependency rather than a workspace member, which keeps this repository
+free of a nested workspace.
