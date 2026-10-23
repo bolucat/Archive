@@ -2,6 +2,7 @@ package io.nekohasekai.sfa.compose.screen.profileoverride
 
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.os.BadParcelableException
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
@@ -210,7 +211,9 @@ fun PerAppProxyScreen(
                         scanPackages.map { packageCache ->
                             async {
                                 if (PerAppProxyScanner.scanChinaPackage(packageCache.info)) {
-                                    found[packageCache.packageName] = packageCache
+                                    synchronized(found) {
+                                        found[packageCache.packageName] = packageCache
+                                    }
                                 }
                                 val nextValue = progressInt.incrementAndGet()
                                 withContext(Dispatchers.Main) {
@@ -233,22 +236,12 @@ fun PerAppProxyScreen(
         isLoading = true
         val packageManagerFlags =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                PackageManager.GET_PERMISSIONS or PackageManager.MATCH_UNINSTALLED_PACKAGES or
-                    PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
-                    PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+                PackageManager.GET_PERMISSIONS or PackageManager.MATCH_UNINSTALLED_PACKAGES
             } else {
                 @Suppress("DEPRECATION")
-                PackageManager.GET_PERMISSIONS or PackageManager.GET_UNINSTALLED_PACKAGES or
-                    PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
-                    PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+                PackageManager.GET_PERMISSIONS or PackageManager.GET_UNINSTALLED_PACKAGES
             }
-        val retryFlags =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.GET_PERMISSIONS
-            } else {
-                @Suppress("DEPRECATION")
-                PackageManager.GET_UNINSTALLED_PACKAGES or PackageManager.GET_PERMISSIONS
-            }
+        var loadError: String? = null
         val loadResult =
             withContext(Dispatchers.IO) {
                 try {
@@ -258,7 +251,7 @@ fun PerAppProxyScreen(
                         } else {
                             Settings.PER_APP_PROXY_EXCLUDE
                         }
-                    val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags, retryFlags)
+                    val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags)
                     val packageManager = context.packageManager
                     val packageCaches =
                         installedPackages.mapNotNull { packageInfo ->
@@ -277,13 +270,17 @@ fun PerAppProxyScreen(
                         }.toSet()
                     LoadResult(mode, packageCaches, selectedUidSet)
                 } catch (_: PrivilegedAccessRequiredException) {
+                    loadError = context.getString(R.string.privileged_access_required)
+                    null
+                } catch (e: BadParcelableException) {
+                    loadError = e.message
                     null
                 }
             }
         if (loadResult == null) {
             Toast.makeText(
                 context,
-                R.string.privileged_access_required,
+                loadError,
                 Toast.LENGTH_LONG,
             ).show()
             onBack()
@@ -1296,22 +1293,12 @@ object PerAppProxyScanner {
 
     suspend fun scanAllChinaApps(): Set<String> = withContext(Dispatchers.Default) {
         val packageManagerFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            PackageManager.MATCH_UNINSTALLED_PACKAGES or
-                PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
-                PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+            PackageManager.MATCH_UNINSTALLED_PACKAGES
         } else {
             @Suppress("DEPRECATION")
-            PackageManager.GET_UNINSTALLED_PACKAGES or
-                PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
-                PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+            PackageManager.GET_UNINSTALLED_PACKAGES
         }
-        val retryFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.GET_PERMISSIONS
-        } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_UNINSTALLED_PACKAGES or PackageManager.GET_PERMISSIONS
-        }
-        val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags, retryFlags)
+        val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags)
         val chinaApps = mutableSetOf<String>()
         installedPackages.map { packageInfo ->
             async {
@@ -1338,25 +1325,43 @@ object PerAppProxyScanner {
         }
         try {
             val appInfo = packageInfo.applicationInfo ?: return false
-            packageInfo.services?.forEach {
+            val componentFlags = PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
+                PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+            val archivePath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                !appInfo.splitPublicSourceDirs.isNullOrEmpty()
+            ) {
+                File(appInfo.publicSourceDir).parent
+            } else {
+                appInfo.publicSourceDir
+            }
+            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Application.packageManager.getPackageArchiveInfo(
+                    archivePath,
+                    PackageManager.PackageInfoFlags.of(componentFlags.toLong()),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                Application.packageManager.getPackageArchiveInfo(archivePath, componentFlags)
+            }
+            archiveInfo?.services?.forEach {
                 if (it.name.matches(chinaAppRegex)) {
                     Log.d("PerAppProxyScanner", "Match service ${it.name} in $packageName")
                     return true
                 }
             }
-            packageInfo.activities?.forEach {
+            archiveInfo?.activities?.forEach {
                 if (it.name.matches(chinaAppRegex)) {
                     Log.d("PerAppProxyScanner", "Match activity ${it.name} in $packageName")
                     return true
                 }
             }
-            packageInfo.receivers?.forEach {
+            archiveInfo?.receivers?.forEach {
                 if (it.name.matches(chinaAppRegex)) {
                     Log.d("PerAppProxyScanner", "Match receiver ${it.name} in $packageName")
                     return true
                 }
             }
-            packageInfo.providers?.forEach {
+            archiveInfo?.providers?.forEach {
                 if (it.name.matches(chinaAppRegex)) {
                     Log.d("PerAppProxyScanner", "Match provider ${it.name} in $packageName")
                     return true

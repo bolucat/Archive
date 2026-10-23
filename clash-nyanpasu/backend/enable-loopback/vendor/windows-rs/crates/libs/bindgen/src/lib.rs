@@ -626,7 +626,8 @@ impl Bindgen {
             filter.validate_implements(implements);
         }
 
-        let event_only_delegates = compute_event_only_delegates(&types, reader);
+        let event_only_delegates =
+            compute_event_only_delegates(&types, reader, &filter, implements.as_ref());
 
         let config = Config {
             bindgen: self,
@@ -785,22 +786,32 @@ fn expand_input(input: &[Input], input_default: bool) -> Vec<File> {
 }
 
 /// Finds delegates used only as event-handler parameters.
-fn compute_event_only_delegates(types: &TypeMap, reader: &Reader) -> HashSet<TypeName> {
+fn compute_event_only_delegates(
+    types: &TypeMap,
+    reader: &Reader,
+    filter: &Filter,
+    implements: Option<&Implements>,
+) -> HashSet<TypeName> {
     let mut event_delegates: HashSet<TypeName> = HashSet::new();
     let mut non_event_delegates: HashSet<TypeName> = HashSet::new();
 
     for type_set in types.values() {
         for ty in type_set {
-            let (methods, generics): (Box<dyn Iterator<Item = MethodDef>>, &[Type]) = match ty {
-                Type::Interface(i) => (Box::new(i.def.methods()), &i.generics),
-                _ => continue,
+            let Type::Interface(i) = ty else {
+                continue;
             };
+            let type_name = i.type_name();
+            let all_methods = implements.is_some_and(|implements| implements.matches(type_name));
 
-            for method in methods {
+            for method in i.def.methods() {
+                // A demoted method is an opaque vtable slot that never constructs its delegate.
+                if !all_methods && !filter.includes_method(type_name, method) {
+                    continue;
+                }
                 let is_event_add = method.flags().contains(MethodAttributes::SpecialName)
                     && method.name().starts_with("add_");
 
-                let sig = method.method_signature(generics, reader);
+                let sig = method.method_signature(&i.generics, reader);
                 for param in &sig.params {
                     if let Type::Delegate(d) = &param.ty {
                         if is_event_add {

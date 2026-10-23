@@ -787,6 +787,18 @@ impl WinUiAdapter {
                         .then(|| event.callback.clone().map(EventValue::StringList))
                         .flatten()
                 }
+                (Some(Handle::ListView(list)), EventId::HorizontalOffsetChanged) => {
+                    let event = list.horizontal_offset_changed.borrow();
+                    (event.revision == queued.revision)
+                        .then(|| event.callback.clone().map(EventValue::F64))
+                        .flatten()
+                }
+                (Some(Handle::ListView(list)), EventId::VerticalOffsetChanged) => {
+                    let event = list.vertical_offset_changed.borrow();
+                    (event.revision == queued.revision)
+                        .then(|| event.callback.clone().map(EventValue::F64))
+                        .flatten()
+                }
                 (Some(Handle::Generated(handle)), event) => {
                     handle.event_callback(event, queued.revision)
                 }

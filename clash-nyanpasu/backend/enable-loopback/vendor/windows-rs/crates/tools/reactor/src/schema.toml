@@ -635,6 +635,11 @@ name = "ListView"
 enabled = true
 reference = true
 handwritten = true
+virtual_items = true
+
+[[objects.properties]]
+name = "HorizontalScroll"
+adapter = "horizontal_scroll"
 
 [[objects.properties]]
 name = "ItemContainerStyle"
@@ -667,6 +672,12 @@ identity = "Keyed"
 realization = "Container"
 item = "DataItem"
 
+[[objects.relations]]
+name = "VirtualItems"
+cardinality = "Many"
+identity = "Keyed"
+realization = "Container"
+
 [[objects.events]]
 name = "SelectionChanged"
 observes = "SelectedIndex"
@@ -675,6 +686,14 @@ observes = "SelectedIndex"
 name = "DragItemsCompleted"
 field = "on_reordered"
 adapter = "string_list"
+
+[[objects.events]]
+name = "HorizontalOffsetChanged"
+value = "F64"
+
+[[objects.events]]
+name = "VerticalOffsetChanged"
+value = "F64"
 
 [[objects]]
 name = "DataItem"

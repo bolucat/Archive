@@ -497,6 +497,21 @@ func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 	r.router.ResetNetwork()
 }
 
+func (r *NetworkManager) FlushSystemDNSCache() {
+	r.interfaceUpdateAccess.Lock()
+	started := r.startedCtx != nil
+	r.interfaceUpdateAccess.Unlock()
+	if !started {
+		return
+	}
+	for _, inbound := range r.inbound.Inbounds() {
+		flusher, isFlusher := inbound.(adapter.SystemDNSCacheFlusher)
+		if isFlusher {
+			flusher.FlushSystemDNSCache()
+		}
+	}
+}
+
 func (r *NetworkManager) ReleaseMemory(ctx context.Context) {
 	r.ResetNetwork(ctx)
 	for _, outbound := range r.outbound.Outbounds() {

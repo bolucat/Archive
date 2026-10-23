@@ -1,192 +1,135 @@
-import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
-import DocumentSearchOutlineRounded from '~icons/material-symbols/document-search-outline-rounded'
+import AddRounded from '~icons/material-symbols/add-rounded'
+import DescriptionRounded from '~icons/material-symbols/description-rounded'
+import DocumentSearchRounded from '~icons/material-symbols/document-search-rounded'
 import JavascriptRounded from '~icons/material-symbols/javascript-rounded'
-import LanguageRounded from '~icons/material-symbols/language-rounded'
+import MergeRounded from '~icons/material-symbols/merge-rounded'
+import PublicIcon from '~icons/material-symbols/public'
 import LuaIcon from '~icons/mdi/language-lua'
-import ChipLine from '~icons/mingcute/chip-line'
-import YamlIcon from '~icons/nonicons/yaml-16'
-import ScriptIcon from '~icons/streamline-plump/script-2-remix'
-import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Separator } from '@nyanpasu/ui/separator'
+import {
+  NavigationList,
+  NavigationListGroup,
+} from '@nyanpasu/ui/navigation-list'
 import { m } from '@/paraglide/messages'
+import { useDroppable } from '@dnd-kit/react'
 import { useProfile } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
-import { Link, useMatchRoute } from '@tanstack/react-router'
-import { categoryProfiles } from '../$type/_modules/utils'
 import { ProfileType } from './consts'
+import FolderNavItem from './folder-nav-item'
+import ProfilesNavigationItem from './profiles-navigation-item'
+import { NAV_ALL_ID, PROFILE_DRAG_TYPE } from './resolve-profile-drop'
+import { useProfileLayout } from './use-profile-layout'
+import { categoryProfiles } from './utils'
 
-const LinkButton = ({
-  href,
-  exact = false,
-  children,
-}: PropsWithChildren<{ href: string; exact?: boolean }>) => {
-  const matchRoute = useMatchRoute()
-
-  const isActive = !!matchRoute({
-    to: href,
-    fuzzy: !exact,
-  })
-
-  return (
-    <Button variant="fab" data-active={String(isActive)} asChild>
-      <Link
-        className={cn(
-          'h-14',
-          'flex items-center gap-2',
-          'data-[active=true]:bg-surface-variant/80',
-          'data-[active=false]:bg-transparent',
-          'data-[active=false]:shadow-none',
-          'data-[active=false]:hover:shadow-none',
-          'data-[active=false]:hover:bg-surface-variant/30',
-        )}
-        to={href}
-      >
-        {children}
-      </Link>
-    </Button>
-  )
-}
-
-const ROUTES = {
-  [ProfileType.Profile]: {
-    label: m.profile_profile_label(),
-    href: '/main/profiles/profile',
-    icon: () => (
-      <div className="relative">
-        <DescriptionOutlineRounded className="size-8" />
-
-        <ChipLine className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-gray-300 p-0.5 dark:bg-gray-500" />
-      </div>
-    ),
-  },
-  [ProfileType.JavaScript]: {
-    label: m.profile_javascript_label(),
-    href: '/main/profiles/javascript',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <JavascriptRounded className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-amber-400 dark:bg-amber-700" />
-      </div>
-    ),
-  },
-  [ProfileType.Lua]: {
-    label: m.profile_lua_label(),
-    href: '/main/profiles/lua',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <LuaIcon className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-blue-300 p-0.5 dark:bg-blue-700" />
-      </div>
-    ),
-  },
-  [ProfileType.Merge]: {
-    label: m.profile_merge_label(),
-    href: '/main/profiles/merge',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <YamlIcon className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-orange-400 p-0.75 dark:bg-orange-700" />
-      </div>
-    ),
-  },
-} satisfies Record<
-  ProfileType,
-  {
-    label: string
-    href: string
-    icon: () => ReactNode
-  }
->
-
-const GROUPS = [
-  {
-    label: () => m.profile_group_config(),
-    types: [ProfileType.Profile],
-  },
-  {
-    label: () => m.profile_group_transform(),
-    types: [ProfileType.JavaScript, ProfileType.Lua, ProfileType.Merge],
-  },
-]
-
-export default function ProfilesNavigate({
-  className,
-  ...props
-}: Omit<ComponentProps<'div'>, 'children'>) {
+export default function ProfilesNavigate() {
   const {
     query: { data: profiles },
   } = useProfile()
 
-  const counts = useMemo<Record<ProfileType, number>>(() => {
-    const categorized = categoryProfiles(profiles?.items)
-    return {
-      [ProfileType.Profile]: categorized[ProfileType.Profile].length,
-      [ProfileType.JavaScript]: categorized[ProfileType.JavaScript].length,
-      [ProfileType.Lua]: categorized[ProfileType.Lua].length,
-      [ProfileType.Merge]: categorized[ProfileType.Merge].length,
-    }
-  }, [profiles?.items])
+  const { layout, openCreateFolder } = useProfileLayout()
+
+  const categorized = categoryProfiles(profiles?.items)
+
+  const folders = layout?.folders ?? []
+
+  // A card dropped on All profiles leaves its folder.
+  const { ref: allProfilesRef, isDropTarget: isAllProfilesDropTarget } =
+    useDroppable({ id: NAV_ALL_ID, accept: PROFILE_DRAG_TYPE })
 
   return (
-    <div className={cn('flex flex-col gap-2', className)} {...props}>
-      {GROUPS.map((group) => (
-        <div key={group.types[0]} className="flex flex-col gap-1">
-          <p className="text-on-surface-variant px-4 pt-2 pb-1 text-xs font-medium">
-            {group.label()}
-          </p>
-
-          {group.types.map((profileType) => {
-            const route = ROUTES[profileType]
-
-            return (
-              <LinkButton key={route.href} href={route.href}>
-                <div className="size-8">{route.icon()}</div>
-
-                <div className="text-sm font-medium">
-                  <p>{route.label}</p>
-
-                  <p className="text-xs text-zinc-500">
-                    {m.profile_profile_label_count({
-                      count: counts[profileType],
-                    })}
-                  </p>
-                </div>
-              </LinkButton>
-            )
+    <NavigationList aria-label={m.profile_nav_label()}>
+      <NavigationListGroup
+        label={m.profile_group_config()}
+        action={
+          <Button
+            icon
+            className="mr-2 size-8"
+            aria-label={m.profile_folder_new_title()}
+            data-slot="profiles-folder-add"
+            onClick={() => openCreateFolder()}
+          >
+            <AddRounded className="size-5" />
+          </Button>
+        }
+      >
+        <ProfilesNavigationItem
+          ref={allProfilesRef}
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Profile }}
+          color="blue"
+          icon={<DescriptionRounded />}
+          label={m.profile_nav_all_profiles()}
+          description={m.profile_nav_count_profiles({
+            count: categorized[ProfileType.Profile].length,
           })}
-        </div>
-      ))}
+          data-slot="profiles-all-nav-item"
+          data-drop-target={isAllProfilesDropTarget || undefined}
+        />
 
-      <Separator />
+        {folders.map((folder, index) => (
+          <FolderNavItem
+            key={folder.id}
+            folder={folder}
+            index={index}
+            count={folders.length}
+          />
+        ))}
+      </NavigationListGroup>
+
+      <NavigationListGroup label={m.profile_group_transform()}>
+        <ProfilesNavigationItem
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.JavaScript }}
+          color="yellow"
+          icon={<JavascriptRounded />}
+          label={m.profile_nav_javascript()}
+          description={m.profile_nav_count_scripts({
+            count: categorized[ProfileType.JavaScript].length,
+          })}
+        />
+
+        <ProfilesNavigationItem
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Lua }}
+          color="cyan"
+          icon={<LuaIcon />}
+          label={m.profile_nav_lua()}
+          description={m.profile_nav_count_scripts({
+            count: categorized[ProfileType.Lua].length,
+          })}
+        />
+
+        <ProfilesNavigationItem
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Merge }}
+          color="orange"
+          icon={<MergeRounded />}
+          label={m.profile_nav_merge()}
+          description={m.profile_nav_count_overlays({
+            count: categorized[ProfileType.Merge].length,
+          })}
+        />
+      </NavigationListGroup>
 
       {/* Both act on the active config's pipeline rather than on one profile. */}
-      <LinkButton href="/main/profiles/global">
-        <div className="flex size-8 items-center justify-center">
-          <LanguageRounded className="size-6" />
-        </div>
+      <NavigationListGroup label={m.profile_group_pipeline()}>
+        <ProfilesNavigationItem
+          to="/main/profiles/global"
+          color="purple"
+          icon={<PublicIcon />}
+          label={m.profile_global_transform_title()}
+          description={m.profile_nav_count_enabled({
+            count: profiles?.global_transforms?.length ?? 0,
+          })}
+        />
 
-        <div className="text-sm font-medium">
-          <p>{m.profile_global_transform_title()}</p>
-
-          <p className="text-xs text-zinc-500">
-            {m.profile_profile_label_count({
-              count: profiles?.global_transforms?.length ?? 0,
-            })}
-          </p>
-        </div>
-      </LinkButton>
-
-      <LinkButton href="/main/profiles/inspect">
-        <div className="flex size-8 items-center justify-center">
-          <DocumentSearchOutlineRounded className="size-6" />
-        </div>
-
-        <p className="text-sm font-medium">{m.inspect_title()}</p>
-      </LinkButton>
-    </div>
+        <ProfilesNavigationItem
+          to="/main/profiles/inspect"
+          color="green"
+          icon={<DocumentSearchRounded />}
+          label={m.inspect_title()}
+          description={m.profile_nav_inspect_description()}
+        />
+      </NavigationListGroup>
+    </NavigationList>
   )
 }

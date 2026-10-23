@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"slices"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -58,6 +59,11 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	if len(outbound.tags) == 0 {
 		return nil, E.New("missing tags")
+	}
+	for i, tag := range outbound.tags {
+		if slices.Contains(outbound.tags[:i], tag) {
+			return nil, E.New("duplicate tag: ", tag)
+		}
 	}
 	return outbound, nil
 }

@@ -777,3 +777,56 @@ fn recycle_before_dispatch_cancels_realization_and_allows_token_reuse() {
     assert!(runtime.update(ItemsRepeater::new()).is_ok());
     assert_eq!(runtime.graph().full_reference_scan_count(), 0);
 }
+
+#[test]
+fn list_view_items_are_virtual_only_with_a_virtual_source() {
+    let source = || {
+        VirtualSource::new(0, 2, Key::from, |index| {
+            TextBlock::new().text(index.to_string())
+        })
+    };
+    let sets_source = |mutations: UpdateStats| {
+        mutations
+            .into_iter()
+            .any(|mutation| matches!(mutation, Mutation::SetVirtualSource { .. }))
+    };
+
+    let mut runtime = Runtime::new(RecordingAdapter::new());
+    let mutations = runtime
+        .update(ListView::new().items([DataItem::new("row", "Row").content("Row")]))
+        .unwrap();
+    assert!(!sets_source(mutations));
+    assert_eq!(runtime.graph().object_count(), 3);
+
+    let mut runtime = Runtime::new(RecordingAdapter::new());
+    let mutations = runtime
+        .update(ListView::new().virtual_source(source()))
+        .unwrap();
+    assert!(sets_source(mutations));
+    // Rows wait for the native list to prepare their containers.
+    assert_eq!(runtime.graph().object_count(), 1);
+    let list = runtime.graph().root().unwrap();
+    assert_eq!(runtime.graph().virtual_item_count(list), Some(2));
+
+    // The item mode is fixed when the list mounts; a key replaces the list instead.
+    let mut runtime = Runtime::new(RecordingAdapter::new());
+    runtime.update(ListView::new()).unwrap();
+    assert!(matches!(
+        runtime.update(ListView::new().virtual_source(source())),
+        Err(UpdateError::Graph(GraphError::InvalidRelation(
+            ObjectType::ListView,
+            RelationId::VirtualItems
+        )))
+    ));
+    let mut runtime = Runtime::new(RecordingAdapter::new());
+    runtime
+        .update(ListView::new().virtual_source(source()))
+        .unwrap();
+    assert!(matches!(
+        runtime.update(ListView::new()),
+        Err(UpdateError::Graph(GraphError::InvalidRelation(
+            ObjectType::ListView,
+            RelationId::VirtualItems
+        )))
+    ));
+}

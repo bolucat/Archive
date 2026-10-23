@@ -653,6 +653,16 @@ impl WinUiAdapter {
                             native_event.revision = native_event.revision.wrapping_add(1);
                             native_event.callback = None;
                         }
+                        EventId::HorizontalOffsetChanged => {
+                            let mut native_event = value.horizontal_offset_changed.borrow_mut();
+                            native_event.revision = native_event.revision.wrapping_add(1);
+                            native_event.callback = None;
+                        }
+                        EventId::VerticalOffsetChanged => {
+                            let mut native_event = value.vertical_offset_changed.borrow_mut();
+                            native_event.revision = native_event.revision.wrapping_add(1);
+                            native_event.callback = None;
+                        }
                         _ => return Err(WinUiError::InvalidEvent(object, *event)),
                     }
                 }
@@ -665,6 +675,16 @@ impl WinUiAdapter {
                         }
                         (EventId::DragItemsCompleted, EventValue::StringList(callback)) => {
                             let mut native_event = value.drag_items_completed.borrow_mut();
+                            native_event.revision = native_event.revision.wrapping_add(1);
+                            native_event.callback = Some(callback.clone());
+                        }
+                        (EventId::HorizontalOffsetChanged, EventValue::F64(callback)) => {
+                            let mut native_event = value.horizontal_offset_changed.borrow_mut();
+                            native_event.revision = native_event.revision.wrapping_add(1);
+                            native_event.callback = Some(callback.clone());
+                        }
+                        (EventId::VerticalOffsetChanged, EventValue::F64(callback)) => {
+                            let mut native_event = value.vertical_offset_changed.borrow_mut();
                             native_event.revision = native_event.revision.wrapping_add(1);
                             native_event.callback = Some(callback.clone());
                         }

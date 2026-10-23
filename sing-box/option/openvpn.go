@@ -196,7 +196,7 @@ type OpenVPNPushOptions struct {
 }
 
 type OpenVPNPushDNSServerOptions struct {
-	Priority       int                    `json:"priority"`
+	Priority       int                    `json:"priority,omitempty"`
 	Addresses      LegacyListable[string] `json:"addresses"`
 	ResolveDomains LegacyListable[string] `json:"resolve_domains,omitempty"`
 	DNSSEC         string                 `json:"dnssec,omitempty" enum:"yes,optional,no"`

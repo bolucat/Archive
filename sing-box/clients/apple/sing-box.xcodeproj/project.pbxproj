@@ -707,6 +707,7 @@
 		3AF7B0042FF10001000A0001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Info-iOS.plist",
 				Info.plist,
 			);
 			target = 3AF7B0012FF10001000A0001 /* ShareExtension */;
@@ -721,6 +722,7 @@
 		3AF7B1152FF10002000A0001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Info-iOS.plist",
 				Info.plist,
 			);
 			target = 3AF7B1012FF10002000A0001 /* ActionExtension */;
@@ -735,6 +737,7 @@
 		3AF7B2152FF10003000A0001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Info-iOS.plist",
 				Info.plist,
 			);
 			target = 3AF7B2012FF10003000A0001 /* ShareExtension.System */;
@@ -2561,7 +2564,7 @@
 					"$(inherited)",
 					"@executable_path/../../Applications/sing-box.app/Frameworks",
 				);
-				MARKETING_VERSION = "1.13.0-alpha.21";
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).helper";
 				PRODUCT_NAME = "sfajb-roothelper";
 				SDKROOT = iphoneos;
@@ -2586,7 +2589,7 @@
 					"$(inherited)",
 					"@executable_path/../../Applications/sing-box.app/Frameworks",
 				);
-				MARKETING_VERSION = "1.13.0-alpha.21";
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).helper";
 				PRODUCT_NAME = "sfajb-roothelper";
 				SDKROOT = iphoneos;
@@ -2689,7 +2692,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.14.5;
+				MARKETING_VERSION = 1.14.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER)";
 				PRODUCT_NAME = "sing-box";
 				SDKROOT = appletvos;
@@ -2725,7 +2728,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.14.5;
+				MARKETING_VERSION = 1.14.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER)";
 				PRODUCT_NAME = "sing-box";
 				SDKROOT = appletvos;
@@ -2898,7 +2901,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = "1.13.0-alpha.21";
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).helper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -2939,7 +2942,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = "1.13.0-alpha.21";
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).helper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -3097,7 +3100,7 @@
 				CODE_SIGN_ENTITLEMENTS = SFI/SFI.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = P8XK3KHB48;
 				ENABLE_PREVIEWS = YES;
@@ -3119,7 +3122,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.14.7;
+				MARKETING_VERSION = 1.14.8;
 				OTHER_CODE_SIGN_FLAGS = "--deep";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER)";
 				PRODUCT_NAME = "sing-box";
@@ -3140,7 +3143,7 @@
 				CODE_SIGN_ENTITLEMENTS = SFI/SFI.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = P8XK3KHB48;
 				ENABLE_PREVIEWS = YES;
@@ -3162,7 +3165,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.14.7;
+				MARKETING_VERSION = 1.14.8;
 				OTHER_CODE_SIGN_FLAGS = "--deep";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER)";
 				PRODUCT_NAME = "sing-box";
@@ -3356,7 +3359,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = P8XK3KHB48;
 				ENABLE_APP_SANDBOX = YES;
@@ -3383,7 +3386,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.14.3;
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).system";
 				PRODUCT_NAME = "$(inherited)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -3404,7 +3407,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = P8XK3KHB48;
 				ENABLE_APP_SANDBOX = YES;
@@ -3431,7 +3434,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.14.3;
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).system";
 				PRODUCT_NAME = "$(inherited)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -3456,7 +3459,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = P8XK3KHB48;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -3474,7 +3477,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.14.3;
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).standalone";
 				PRODUCT_NAME = SFM;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -3498,7 +3501,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = P8XK3KHB48;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -3516,7 +3519,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.14.3;
+				MARKETING_VERSION = 1.14.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_PACKAGE_IDENTIFIER).standalone";
 				PRODUCT_NAME = SFM;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -3617,6 +3620,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
+				"INFOPLIST_FILE[sdk=iphone*]" = "ShareExtension/Info-iOS.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "sing-box";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -3656,6 +3660,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
+				"INFOPLIST_FILE[sdk=iphone*]" = "ShareExtension/Info-iOS.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "sing-box";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;

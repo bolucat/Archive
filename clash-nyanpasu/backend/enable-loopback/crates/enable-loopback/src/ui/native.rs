@@ -130,6 +130,66 @@ pub(super) fn screen_point(
     Ok(windows_reactor::ScreenPoint::new(point.x, point.y))
 }
 
+/// Top-left that centers a window with this DIP client size in the work area of the
+/// monitor under the cursor, where the user launched it. ScreenPoint is in physical pixels.
+pub(super) fn centered_position(
+    client_width: f64,
+    client_height: f64,
+) -> Result<windows_reactor::ScreenPoint, Error> {
+    use windows::Win32::{
+        POINT, RECT,
+        shellscalingapi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
+        winuser::{
+            AdjustWindowRectExForDpi, GetCursorPos, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST,
+            MONITORINFO, MonitorFromPoint, WS_OVERLAPPEDWINDOW,
+        },
+    };
+    let mut cursor = POINT::default();
+    // SAFETY: writable POINT.
+    if !unsafe { GetCursorPos(&mut cursor) }.as_bool() {
+        return Err(failure("GetCursorPos"));
+    }
+    // SAFETY: NEAREST always returns a monitor.
+    let monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST as u32) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: live monitor handle and a sized MONITORINFO.
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return Err(failure("GetMonitorInfoW"));
+    }
+    let (mut dpi, mut unused) = (0, 0);
+    // SAFETY: live monitor handle and writable outputs.
+    unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi, &mut unused) }
+        .ok()
+        .map_err(|source| Error::Native {
+            operation: "GetDpiForMonitor",
+            source,
+        })?;
+    let scale = f64::from(dpi) / 96.0;
+    let mut outer = RECT {
+        left: 0,
+        top: 0,
+        right: (client_width * scale).round() as i32,
+        bottom: (client_height * scale).round() as i32,
+    };
+    // SAFETY: writable RECT; the style matches WinUI's overlapped window frame.
+    if !unsafe { AdjustWindowRectExForDpi(&mut outer, WS_OVERLAPPEDWINDOW as u32, false, 0, dpi) }
+        .as_bool()
+    {
+        return Err(failure("AdjustWindowRectExForDpi"));
+    }
+    let work = info.rcWork;
+    let width = outer.right - outer.left;
+    let height = outer.bottom - outer.top;
+    Ok(windows_reactor::ScreenPoint::new(
+        work.left + (work.right - work.left - width) / 2,
+        // A window taller than the work area keeps its caption reachable.
+        (work.top + (work.bottom - work.top - height) / 2).max(work.top),
+    ))
+}
+
 /// All four flags are shared only by UI-thread code. Rc makes accidental Send impossible.
 #[derive(Clone, Default)]
 pub(super) struct CloseState {

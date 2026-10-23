@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sagernet/sing-box/adapter"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/pipe"
@@ -24,7 +25,7 @@ func (c *Client) acquireHTTP2(ctx context.Context) (*http2ClientConn, net.Conn, 
 			return clientConn, nil, nil
 		}
 	}
-	conn, err := c.tlsDialer.DialTLSContext(ctx, c.server)
+	conn, err := c.tlsDialer.DialTLSContext(adapter.ContextForMultiplexSession(ctx), c.server)
 	if err != nil {
 		return nil, nil, err
 	}

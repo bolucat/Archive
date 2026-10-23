@@ -1,0 +1,37 @@
+# git-cliff configuration: https://git-cliff.org/docs/configuration
+# Regenerate CHANGELOG.md with `git cliff -o CHANGELOG.md` (add `--tag vX.Y.Z` before tagging).
+
+[changelog]
+header = """
+# Changelog
+
+Generated from the commit history by [git-cliff](https://git-cliff.org).
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/libnyanpasu/enable-loopback/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}
+{% for commit in commits %}\
+- {{ commit.message | split(pat="\n") | first | trim }} \
+([{{ commit.id | truncate(length=7, end="") }}](https://github.com/libnyanpasu/enable-loopback/commit/{{ commit.id }}))
+{% endfor %}
+"""
+trim = false
+postprocessors = [
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/libnyanpasu/enable-loopback/pull/${1}))" },
+]
+
+[git]
+# Subjects are imperative sentences, not Conventional Commits.
+conventional_commits = false
+filter_unconventional = false
+commit_parsers = [
+  { message = "^Release \\d", skip = true },
+  { message = "^Merge (pull request|branch)", skip = true },
+  # The application commits that use a fork change describe it.
+  { message = "^Bump windows-rs fork", skip = true },
+]
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"

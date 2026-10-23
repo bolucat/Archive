@@ -252,6 +252,21 @@ impl ElementRef<ListView> {
             },
         )
     }
+
+    /// Enqueues a jump to these DIP offsets without animation; `None` keeps an axis.
+    /// A list that has not loaded applies it once loaded. Offsets clamp to the extent.
+    #[must_use]
+    pub fn request_scroll_to(&self, horizontal: Option<f64>, vertical: Option<f64>) -> bool {
+        assert!(
+            horizontal.is_none_or(f64::is_finite) && vertical.is_none_or(f64::is_finite),
+            "scroll offsets must be finite"
+        );
+        self.enqueue(move |object, _, _| ImperativeRequest::ScrollTo {
+            object,
+            horizontal,
+            vertical,
+        })
+    }
 }
 
 impl ElementRef<WebView2> {
@@ -672,6 +687,11 @@ pub enum ImperativeRequest {
         index: usize,
         alignment: ScrollIntoViewAlignment,
         completion: Callback<Result<bool, IntegrationError>>,
+    },
+    ScrollTo {
+        object: ObjectId,
+        horizontal: Option<f64>,
+        vertical: Option<f64>,
     },
     Focus {
         object: ObjectId,

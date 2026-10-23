@@ -16,8 +16,33 @@ struct NativeListView {
     value: native::ListView,
     selection_changed: Rc<RefCell<NativeSelectionIndexEvent>>,
     drag_items_completed: Rc<RefCell<NativeStringListEvent>>,
+    horizontal_offset_changed: Rc<RefCell<NativeF64Event>>,
+    vertical_offset_changed: Rc<RefCell<NativeF64Event>>,
+    /// A ScrollTo that arrived before the template ScrollViewer existed.
+    pending_scroll: Rc<Cell<Option<(Option<f64>, Option<f64>)>>>,
     _selection_changed: windows_core::EventRevoker,
     _drag_items_completed: windows_core::EventRevoker,
+    /// Subscribes to the template ScrollViewer, which exists only once the list loads.
+    _loaded: windows_core::EventRevoker,
+    _view_changed: Rc<RefCell<Option<windows_core::EventRevoker>>>,
+}
+
+/// The ListView template's ScrollViewer, found breadth-first; None before the template
+/// is applied.
+fn template_scroll_viewer(
+    root: &native::DependencyObject,
+) -> windows_core::Result<Option<native::ScrollViewer>> {
+    let mut pending = VecDeque::from([root.clone()]);
+    while let Some(parent) = pending.pop_front() {
+        for index in 0..native::VisualTreeHelper::GetChildrenCount(&parent)? {
+            let child = native::VisualTreeHelper::GetChild(&parent, index)?;
+            if let Ok(viewer) = child.cast::<native::ScrollViewer>() {
+                return Ok(Some(viewer));
+            }
+            pending.push_back(child);
+        }
+    }
+    Ok(None)
 }
 
 struct NativeTreeView {
@@ -598,10 +623,15 @@ struct NativeElementFactory {
 }
 
 struct NativeVirtualItems {
-    _factory: IElementFactory,
+    /// The ItemsRepeater's element factory.
+    _factory: Option<IElementFactory>,
+    /// The ListView's container subscription.
+    _container_content_changing: Option<windows_core::EventRevoker>,
     source: ComObject<NativeVirtualSource>,
     source_revision: Rc<Cell<u64>>,
     shells: Rc<RealizedShells>,
+    /// The ListView's item container for each realized shell.
+    list_containers: Rc<RefCell<HashMap<RealizedContainer, native::UIElement>>>,
 }
 
 impl NativeVirtualItems {
@@ -626,10 +656,93 @@ impl NativeVirtualItems {
         repeater.SetItemTemplate(&factory)?;
         repeater.SetItemsSource(&source_interface)?;
         Ok(Self {
-            _factory: factory,
+            _factory: Some(factory),
+            _container_content_changing: None,
             source,
             source_revision,
             shells,
+            list_containers: Rc::default(),
+        })
+    }
+
+    /// Virtualizes a ListView's item content: the ListView realizes and recycles its own
+    /// containers, and each container's template root is the shell for the item's view.
+    fn new_list(
+        list: &native::ListView,
+        collection: ObjectId,
+        item_count: usize,
+        source_revision: u64,
+        queue: Rc<NativeEventQueue>,
+    ) -> Result<Self, windows_core::Error> {
+        let shells = Rc::new(RealizedShells::default());
+        let source_revision = Rc::new(Cell::new(source_revision));
+        let list_containers = Rc::<RefCell<HashMap<_, _>>>::default();
+        let changing = {
+            let shells = Rc::clone(&shells);
+            let source_revision = Rc::clone(&source_revision);
+            let list_containers = Rc::clone(&list_containers);
+            list.cast::<native::IListViewBase>()?
+                .ContainerContentChanging(move |_, args| {
+                    let result = (|| {
+                        let args = args.ok()?;
+                        let container = args.ItemContainer()?;
+                        let shell = container
+                            .cast::<native::ContentControl>()?
+                            .ContentTemplateRoot()?
+                            .cast::<native::ContentControl>()?;
+                        // A container is recycled, or prepared again for another item
+                        // without being recycled first.
+                        if let Some(realized) = shells.release(&shell.cast()?)? {
+                            list_containers.borrow_mut().remove(&realized);
+                            native::AutomationProperties::SetName(&container, "")?;
+                            queue.queue_realization(RealizationRequest::Recycle {
+                                collection,
+                                container: realized,
+                                source_revision: source_revision.get(),
+                            });
+                        }
+                        if !args.InRecycleQueue()? {
+                            let index = usize::try_from(args.ItemIndex()?).map_err(|_| {
+                                windows_core::Error::new(native::E_FAIL, "negative item index")
+                            })?;
+                            let realized = shells.adopt(shell)?;
+                            list_containers
+                                .borrow_mut()
+                                .insert(realized, container.cast()?);
+                            queue.queue_realization(RealizationRequest::Realize {
+                                collection,
+                                container: realized,
+                                index,
+                                source_revision: source_revision.get(),
+                            });
+                        }
+                        args.SetHandled(true)
+                    })();
+                    if let Err(error) = result {
+                        report_error(error);
+                    }
+                })?
+        };
+        let items = list.cast::<native::IItemsControl>()?;
+        items.SetItemTemplate(
+            &native::XamlReader::Load(
+                "<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>\
+                 <ContentControl IsTabStop='False' HorizontalContentAlignment='Stretch' \
+                 VerticalContentAlignment='Stretch'/>\
+                 </DataTemplate>",
+            )?
+            .cast::<native::DataTemplate>()?,
+        )?;
+        let source = ComObject::new(NativeVirtualSource::new(item_count)?);
+        let source_interface: IObservableVector<IInspectable> = source.to_interface();
+        items.SetItemsSource(&source_interface)?;
+        Ok(Self {
+            _factory: None,
+            _container_content_changing: Some(changing),
+            source,
+            source_revision,
+            shells,
+            list_containers,
         })
     }
 
@@ -921,14 +1034,19 @@ impl<T> Default for ShellPool<T> {
 }
 
 impl<T: Clone> ShellPool<T> {
-    fn take(
-        &mut self,
-        create: impl FnOnce() -> Result<T, windows_core::Error>,
-    ) -> Result<(RealizedContainer, T), windows_core::Error> {
+    fn next_container(&mut self) -> Result<RealizedContainer, windows_core::Error> {
         let container = RealizedContainer(self.next);
         self.next = self.next.checked_add(1).ok_or_else(|| {
             windows_core::Error::new(native::E_FAIL, "container identity exhausted")
         })?;
+        Ok(container)
+    }
+
+    fn take(
+        &mut self,
+        create: impl FnOnce() -> Result<T, windows_core::Error>,
+    ) -> Result<(RealizedContainer, T), windows_core::Error> {
+        let container = self.next_container()?;
         let shell = if let Some(shell) = self.available.pop() {
             shell
         } else {
@@ -938,11 +1056,20 @@ impl<T: Clone> ShellPool<T> {
         Ok((container, shell))
     }
 
-    fn retire(&mut self, container: RealizedContainer) -> bool {
+    /// Tracks a shell owned by a native container, which never returns to the pool.
+    fn adopt(&mut self, shell: T) -> Result<RealizedContainer, windows_core::Error> {
+        let container = self.next_container()?;
+        self.shells.insert(container, shell);
+        Ok(container)
+    }
+
+    fn retire(&mut self, container: RealizedContainer, pooled: bool) -> bool {
         let Some(shell) = self.shells.remove(&container) else {
             return false;
         };
-        self.available.push(shell);
+        if pooled {
+            self.available.push(shell);
+        }
         self.retired.insert(container);
         true
     }
@@ -956,6 +1083,7 @@ impl ShellPool<native::ContentControl> {
     fn recycle(
         &mut self,
         element: &native::UIElement,
+        pooled: bool,
     ) -> Result<Option<RealizedContainer>, windows_core::Error> {
         let Some((container, shell)) = self.shells.iter().find_map(|(container, shell)| {
             (shell.cast::<native::UIElement>().as_ref() == Ok(element))
@@ -964,7 +1092,7 @@ impl ShellPool<native::ContentControl> {
             return Ok(None);
         };
         shell.SetContent(None::<&IInspectable>)?;
-        if !self.retire(container) {
+        if !self.retire(container, pooled) {
             return Err(windows_core::Error::new(
                 native::E_FAIL,
                 "realized container retired twice",
@@ -984,7 +1112,22 @@ impl RealizedShells {
         &self,
         element: &native::UIElement,
     ) -> Result<Option<RealizedContainer>, windows_core::Error> {
-        self.pool.borrow_mut().recycle(element)
+        self.pool.borrow_mut().recycle(element, true)
+    }
+
+    fn adopt(
+        &self,
+        shell: native::ContentControl,
+    ) -> Result<RealizedContainer, windows_core::Error> {
+        self.pool.borrow_mut().adopt(shell)
+    }
+
+    /// Recycles an adopted shell, which stays with its native container.
+    fn release(
+        &self,
+        element: &native::UIElement,
+    ) -> Result<Option<RealizedContainer>, windows_core::Error> {
+        self.pool.borrow_mut().recycle(element, false)
     }
 
     fn set_content(

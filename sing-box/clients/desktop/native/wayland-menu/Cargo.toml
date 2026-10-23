@@ -1,0 +1,26 @@
+[package]
+name = "sing-box-wayland-menu"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "wayland_menu"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "=3.14.2", default-features = false, features = ["dyn-symbols", "napi6"] }
+napi-derive = "=3.6.12"
+rustix = { version = "=1.1.5", features = ["event", "fs", "mm"] }
+wayland-client = "=0.31.15"
+wayland-cursor = "=0.31.14"
+wayland-protocols = { version = "=0.32.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "=0.3.12", features = ["client"] }
+
+[build-dependencies]
+napi-build = "=2.6.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = "symbols"

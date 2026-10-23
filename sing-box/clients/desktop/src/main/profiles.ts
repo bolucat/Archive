@@ -27,6 +27,7 @@ const DEFAULT_UPDATE_INTERVAL_MINUTES = 60;
 const REMOTE_REQUEST_TIMEOUT_MILLISECONDS = 30_000;
 const MAXIMUM_REMOTE_PROFILE_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_REMOTE_ERROR_BYTES = 64 * 1024;
+const MAXIMUM_TIMER_DELAY_MILLISECONDS = 2 ** 31 - 1;
 
 interface ProfileRow {
   id: string;
@@ -407,6 +408,14 @@ export async function startSelectedProfile(): Promise<void> {
 }
 
 let updateTimer: NodeJS.Timeout | null = null;
+const lastUpdateAttempts = new Map<string, number>();
+
+function nextUpdateTime(profile: ProfileMetadata): number {
+  return (
+    Math.max(profile.lastUpdated ?? 0, lastUpdateAttempts.get(profile.id) ?? 0) +
+    intervalOrDefault(profile) * 60 * 1000
+  );
+}
 
 async function runDueProfileUpdates(): Promise<void> {
   const now = Date.now();
@@ -414,11 +423,11 @@ async function runDueProfileUpdates(): Promise<void> {
     if (profile.type !== "remote" || !profile.autoUpdate) {
       return false;
     }
-    const intervalMs = intervalOrDefault(profile) * 60 * 1000;
-    return profile.lastUpdated === undefined || profile.lastUpdated <= now - intervalMs;
+    return nextUpdateTime(profile) <= now;
   });
   await Promise.all(
     dueProfiles.map(async (profile) => {
+      lastUpdateAttempts.set(profile.id, now);
       try {
         await updateRemoteProfile(profile.id);
       } catch (error) {
@@ -439,18 +448,12 @@ function reconfigureAutoUpdate(): void {
   if (enabled.length === 0) {
     return;
   }
-  const intervalMs = Math.min(...enabled.map(intervalOrDefault)) * 60 * 1000;
-  const earliest = Math.max(
-    Date.now(),
-    Math.min(
-      ...enabled.map((profile) => (profile.lastUpdated ?? 0) + intervalMs),
-    ),
-  );
+  const delay = Math.min(...enabled.map(nextUpdateTime)) - Date.now();
   updateTimer = setTimeout(() => {
     void runDueProfileUpdates().finally(() => {
       reconfigureAutoUpdate();
     });
-  }, earliest - Date.now());
+  }, Math.min(Math.max(delay, 0), MAXIMUM_TIMER_DELAY_MILLISECONDS));
 }
 
 const handlers: Record<

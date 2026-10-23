@@ -33,6 +33,8 @@ use windows::{
 use windows_reactor::*;
 
 const PAGE_MARGIN: f64 = 24.0;
+const WINDOW_WIDTH: f64 = 960.0;
+const WINDOW_HEIGHT: f64 = 600.0;
 const SECTION_SPACING: f64 = 12.0;
 const SEARCH_WIDTH: f64 = 280.0;
 const TOOLBAR_WRAP_WIDTH: f64 = 900.0;
@@ -83,6 +85,8 @@ struct MainWindow {
     search_focused: bool,
     selection: Selection,
     hwnd: usize,
+    /// Read only from the first declaration; None keeps the system default.
+    initial_position: Option<ScreenPoint>,
     close: native::CloseState,
     hovering_help: bool,
     version: String,
@@ -312,7 +316,7 @@ impl MainWindow {
             "column.users",
             "column.binaries",
         ];
-        let widths = [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 48.0];
+        let widths = [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 200.0];
         component::<table::TableView>(
             "table",
             table::Input {
@@ -534,7 +538,7 @@ impl Component for MainWindow {
             dialog_timer: None,
             menu_timer: None,
             list_generation: 0,
-            viewport_width: 960.0 - 2.0 * PAGE_MARGIN,
+            viewport_width: WINDOW_WIDTH - 2.0 * PAGE_MARGIN,
             table_rows: Rc::new(Vec::new()),
             keyboard_focus: false,
             app: input.app.clone(),
@@ -543,6 +547,9 @@ impl Component for MainWindow {
             search_focused: false,
             selection: Selection::default(),
             hwnd: 0,
+            initial_position: native::centered_position(WINDOW_WIDTH, WINDOW_HEIGHT)
+                .inspect_err(|error| crate::debug(&error.to_string()))
+                .ok(),
             close,
             hovering_help: false,
             version: native::version().unwrap_or_else(|error| {
@@ -824,16 +831,18 @@ impl Component for MainWindow {
     }
     fn view(&self, _: &Startup, cx: &mut ViewContext<Self>) -> View {
         cx.window_title(rust_i18n::t!("window.title"));
-        cx.window_visuals(
-            WindowVisuals::new()
-                .backdrop(WindowBackdrop::Mica)
-                .client_size(960.0, 600.0)
-                .constraints(WindowConstraints {
-                    min_width: Some(640.0),
-                    min_height: Some(400.0),
-                    ..Default::default()
-                }),
-        );
+        let mut visuals = WindowVisuals::new()
+            .backdrop(WindowBackdrop::Mica)
+            .client_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+            .constraints(WindowConstraints {
+                min_width: Some(640.0),
+                min_height: Some(400.0),
+                ..Default::default()
+            });
+        if let Some(position) = self.initial_position {
+            visuals = visuals.initial_position(position);
+        }
+        cx.window_visuals(visuals);
         cx.on_window_size(cx.callback(Message::Size));
         let mut status: Vec<View> = Vec::new();
         if self.list.refreshing {

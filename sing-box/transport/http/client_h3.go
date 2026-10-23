@@ -14,6 +14,7 @@ import (
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
+	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-quic"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -83,7 +84,7 @@ func (c *http3ClientImpl) acquire(ctx context.Context) (*http3.ClientConn, error
 		c.rawConn.Close()
 		c.rawConn = nil
 	}
-	rawConn, err := c.dialer.DialContext(ctx, N.NetworkUDP, c.server)
+	rawConn, err := c.dialer.DialContext(adapter.ContextForMultiplexSession(ctx), N.NetworkUDP, c.server)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

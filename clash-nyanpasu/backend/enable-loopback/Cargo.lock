@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "enable-loopback"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "embed-resource",
  "ico",

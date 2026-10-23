@@ -7,11 +7,12 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../_modules/settings-card'
+} from '../../_modules/settings-card'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import ChangelogPreview from './_modules/changelog-preview'
 import ConfigurationStatus from './_modules/configuration-status'
+import CrashSimulation from './_modules/crash-simulation'
 import { useDebugContext } from './_modules/debug-provider'
 import ErrorReportingDebug from './_modules/error-reporting-debug'
 import HttpServer from './_modules/http-server'
@@ -55,6 +56,8 @@ const AdvanceToolsSettings = () => {
               <WindowDebug />
 
               <ErrorReportingDebug />
+
+              <CrashSimulation />
 
               <BlockTaskViewer />
 

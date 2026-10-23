@@ -82,6 +82,11 @@ func (c *serverConn) serveForward(ctx context.Context, request *http.Request, so
 		request.Header["User-Agent"] = nil
 	}
 	request.Close = false
+	// Request.Write and Response.Write close the body, and net/http's (*body).Close
+	// drains an unread body to EOF from the connection reader.
+	if request.Body != http.NoBody {
+		request.Body = io.NopCloser(request.Body)
+	}
 
 	upstream := c.openUpstream(ctx, source, destination)
 	writeDone := make(chan error, 1)
@@ -147,14 +152,13 @@ func (c *serverConn) serveForward(ctx context.Context, request *http.Request, so
 		response.Header.Set("Connection", "keep-alive")
 		response.Header.Set("Proxy-Connection", "keep-alive")
 	}
+	response.Body = io.NopCloser(response.Body)
 	err := response.Write(c.conn)
 	if err != nil {
 		c.closeUpstream()
-		response.Body.Close()
 		c.finishRequestWrite(writeDone)
 		return requestClose, E.Cause(err, "write response")
 	}
-	response.Body.Close()
 	writeErr := c.finishRequestWrite(writeDone)
 	if writeErr != nil {
 		c.closeUpstream()

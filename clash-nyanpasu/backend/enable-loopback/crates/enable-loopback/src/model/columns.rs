@@ -13,7 +13,7 @@ pub struct ColumnWidths {
 impl Default for ColumnWidths {
     fn default() -> Self {
         Self::new(
-            [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, MIN_COLUMN_WIDTH],
+            [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 200.0],
             [MIN_COLUMN_WIDTH; 7],
         )
     }
@@ -112,12 +112,12 @@ mod tests {
     }
 
     #[test]
-    fn total_and_fill_preserve_fixed_columns_and_binaries_minimum() {
+    fn total_and_fill_preserve_stored_widths() {
         let widths = ColumnWidths::default();
-        assert_eq!(widths.total(), 1168.0);
+        assert_eq!(widths.total(), 1320.0);
         assert_eq!(
             widths.resolved(900.0),
-            [40.0, 220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 48.0]
+            [40.0, 220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 200.0]
         );
         assert_eq!(widths.resolved(1400.0)[7], 280.0);
         let mut resized = widths;

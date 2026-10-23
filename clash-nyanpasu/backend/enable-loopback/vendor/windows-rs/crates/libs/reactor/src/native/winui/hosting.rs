@@ -29,6 +29,21 @@ fn set_pointer_cursor(
     Ok(())
 }
 
+/// The ListView template binds its ScrollViewer to these attached properties.
+fn set_list_horizontal_scroll(
+    element: &native::UIElement,
+    enabled: bool,
+) -> Result<(), WinUiError> {
+    let (mode, visibility) = if enabled {
+        (native::ScrollMode::Enabled, native::ScrollBarVisibility::Auto)
+    } else {
+        (native::ScrollMode::Disabled, native::ScrollBarVisibility::Disabled)
+    };
+    native::ScrollViewer::SetHorizontalScrollMode(element, mode)?;
+    native::ScrollViewer::SetHorizontalScrollBarVisibility(element, visibility)?;
+    Ok(())
+}
+
 fn set_list_item_container(
     element: &native::UIElement,
     value: Option<&ItemContainerOptions>,

@@ -58,7 +58,6 @@ type Transport struct {
 	updateCancel      context.CancelFunc
 	refreshAccess     sync.Mutex
 	savedState        atomic.Pointer[transportState]
-	ndots             int
 	attempts          int
 	optional          bool
 }
@@ -85,7 +84,6 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 		networkManager:    service.FromContext[adapter.NetworkManager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
 		interfaceName:     options.Interface,
-		ndots:             1,
 		attempts:          2,
 	}, nil
 }
@@ -98,7 +96,6 @@ func NewRawTransport(transportAdapter dns.TransportAdapter, ctx context.Context,
 		logger:            logger,
 		networkManager:    service.FromContext[adapter.NetworkManager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
-		ndots:             1,
 		attempts:          2,
 		optional:          true,
 	}

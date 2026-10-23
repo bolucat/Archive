@@ -90,6 +90,266 @@ fn list_scroll_realizes_offscreen_items_with_custom_containers_and_no_selection(
 
 #[test]
 #[ignore = "initializes WinUI; run alone on a Windows desktop (no injected input)"]
+fn list_horizontal_scroll_reports_offsets_and_clears() {
+    App::run_with(|app| {
+        let offsets = Rc::new(RefCell::new(Vec::new()));
+        let recorded = Rc::clone(&offsets);
+        let view = move |scroll: bool| {
+            let offsets = Rc::clone(&recorded);
+            ListView::new()
+                .height(160.0)
+                .horizontal_scroll(scroll)
+                .on_horizontal_offset_changed(move |offset| offsets.borrow_mut().push(offset))
+                .items((0usize..30).map(|i| {
+                    DataItem::new(i, i.to_string()).content(
+                        TextBlock::new()
+                            .text(i.to_string())
+                            .width(600.0)
+                            .height(40.0),
+                    )
+                }))
+        };
+        let mut runtime = Runtime::new(WinUiAdapter::default());
+        runtime.update(view(true)).unwrap();
+        let root = runtime.graph().root().unwrap();
+        let window = runtime
+            .adapter_mut()
+            .create_window_with_policy(root, &WindowPolicy::new().client_size(300.0, 200.0))?;
+        window.activate()?;
+        let element = runtime.adapter().ui_element(root)?;
+        let runtime = RefCell::new(runtime);
+        let app = app.clone();
+        let step = Cell::new(0);
+        let timer = native::DispatcherQueue::GetForCurrentThread()?.CreateTimer()?;
+        timer.SetInterval(TimeSpan::try_from(Duration::from_millis(50)).unwrap())?;
+        let tick = timer.Tick(move |sender, _| {
+            // The template applies on a layout pass after the window shows.
+            let Some(viewer) = template_scroll_viewer(&element.cast().unwrap()).unwrap() else {
+                return;
+            };
+            let mut runtime = runtime.borrow_mut();
+            if step.replace(1) == 0 {
+                assert!(
+                    viewer
+                        .ChangeViewWithOptionalAnimation(Some(100.0), None, None, true)
+                        .unwrap()
+                );
+                return;
+            }
+            sender.as_ref().unwrap().Stop().unwrap();
+            runtime.dispatch_native_events().unwrap();
+            assert_eq!(*offsets.borrow(), [100.0]);
+            runtime.update(view(false)).unwrap();
+            element.UpdateLayout().unwrap();
+            // Disabled horizontal scrolling constrains content to the viewport.
+            assert_eq!(viewer.HorizontalOffset().unwrap(), 0.0);
+            window.close().unwrap();
+            app.exit().unwrap();
+        })?;
+        timer.Start()?;
+        Ok((timer, tick))
+    })
+    .unwrap();
+}
+
+#[test]
+#[ignore = "initializes WinUI; run alone on a Windows desktop (no injected input)"]
+fn list_scroll_to_before_load_applies_both_axes_and_reports_offsets() {
+    App::run_with(|app| {
+        let reference = ElementRef::<ListView>::new();
+        let vertical = Rc::new(RefCell::new(Vec::new()));
+        let recorded = Rc::clone(&vertical);
+        let mut runtime = Runtime::new(WinUiAdapter::default());
+        runtime
+            .update(
+                ListView::new()
+                    .height(160.0)
+                    .element_ref(&reference)
+                    .horizontal_scroll(true)
+                    .on_horizontal_offset_changed(|_| {})
+                    .on_vertical_offset_changed(move |offset| recorded.borrow_mut().push(offset))
+                    .items((0usize..100).map(|i| {
+                        DataItem::new(i, i.to_string()).content(
+                            TextBlock::new()
+                                .text(i.to_string())
+                                .width(600.0)
+                                .height(40.0),
+                        )
+                    })),
+            )
+            .unwrap();
+        // Queued before the list has a template or an extent.
+        assert!(reference.request_scroll_to(Some(100.0), Some(800.0)));
+        runtime.dispatch_native_events().unwrap();
+        let root = runtime.graph().root().unwrap();
+        let window = runtime
+            .adapter_mut()
+            .create_window_with_policy(root, &WindowPolicy::new().client_size(300.0, 200.0))?;
+        window.activate()?;
+        let element = runtime.adapter().ui_element(root)?;
+        let runtime = RefCell::new(runtime);
+        let app = app.clone();
+        let step = Cell::new(0);
+        let timer = native::DispatcherQueue::GetForCurrentThread()?.CreateTimer()?;
+        timer.SetInterval(TimeSpan::try_from(Duration::from_millis(50)).unwrap())?;
+        let tick = timer.Tick(move |sender, _| {
+            // The template applies on a layout pass after the window shows.
+            let Some(viewer) = template_scroll_viewer(&element.cast().unwrap()).unwrap() else {
+                return;
+            };
+            let mut runtime = runtime.borrow_mut();
+            if step.replace(step.get() + 1) == 0 {
+                return;
+            }
+            sender.as_ref().unwrap().Stop().unwrap();
+            assert_eq!(viewer.HorizontalOffset().unwrap(), 100.0);
+            assert_eq!(viewer.VerticalOffset().unwrap(), 800.0);
+            runtime.dispatch_native_events().unwrap();
+            assert_eq!(*vertical.borrow(), [800.0]);
+            window.close().unwrap();
+            app.exit().unwrap();
+        })?;
+        timer.Start()?;
+        Ok((timer, tick))
+    })
+    .unwrap();
+}
+
+#[test]
+#[ignore = "initializes WinUI; run alone on a Windows desktop (no injected input)"]
+fn list_virtual_source_realizes_only_prepared_containers() {
+    App::run_with(|app| {
+        let reference = ElementRef::<ListView>::new();
+        let created = Rc::new(Cell::new(0usize));
+        let view = {
+            let created = Rc::clone(&created);
+            let reference = reference.clone();
+            move |revision: u64, len: usize| {
+                let created = Rc::clone(&created);
+                ListView::new()
+                    .height(160.0)
+                    .element_ref(&reference)
+                    .item_container(ItemContainerOptions {
+                        padding: Some(Thickness::uniform(0.0)),
+                        min_height: Some(40.0),
+                        horizontal_content_alignment: Some(HorizontalAlignment::Stretch),
+                        suppress_selection_visuals: true,
+                    })
+                    .virtual_source(VirtualSource::new(
+                        revision,
+                        len,
+                        move |index| format!("{revision}:{index}"),
+                        move |index| {
+                            created.set(created.get() + 1);
+                            TextBlock::new()
+                                .text(format!("{revision}:{index}"))
+                                .automation_name(format!("item {revision}:{index}"))
+                                .height(40.0)
+                        },
+                    ))
+            }
+        };
+        let mut runtime = Runtime::new(WinUiAdapter::default());
+        runtime.update(view(0, 1000)).unwrap();
+        let root = runtime.graph().root().unwrap();
+        let window = runtime
+            .adapter_mut()
+            .create_window_with_policy(root, &WindowPolicy::new().client_size(300.0, 200.0))?;
+        window.activate()?;
+        let element = runtime.adapter().ui_element(root)?;
+        let name_at = {
+            let element = element.clone();
+            move |index: i32| {
+                native::AutomationProperties::GetName(
+                    &element
+                        .cast::<native::IItemContainerMapping>()
+                        .unwrap()
+                        .ContainerFromIndex(index)
+                        .unwrap(),
+                )
+                .unwrap()
+            }
+        };
+        // The text of the view in the container the list prepared for an index.
+        let text_at = move |runtime: &Runtime<WinUiAdapter>, index: i32| -> Option<String> {
+            element.UpdateLayout().unwrap();
+            let mut pending = VecDeque::from([element
+                .cast::<native::IItemContainerMapping>()
+                .unwrap()
+                .ContainerFromIndex(index)
+                .ok()?]);
+            while let Some(parent) = pending.pop_front() {
+                if parent.cast::<native::TextBlock>().is_ok() {
+                    let text = parent.cast::<native::UIElement>().unwrap();
+                    let object = runtime.graph().objects().find(|object| {
+                        runtime.adapter().ui_element(*object).ok().as_ref() == Some(&text)
+                    })?;
+                    return runtime
+                        .graph()
+                        .properties(object)?
+                        .iter()
+                        .find_map(|property| match &property.value {
+                            PropertyValue::String(text) if property.id == PropertyId::Text => {
+                                Some(text.to_string())
+                            }
+                            _ => None,
+                        });
+                }
+                for child in 0..native::VisualTreeHelper::GetChildrenCount(&parent).unwrap() {
+                    pending.push_back(native::VisualTreeHelper::GetChild(&parent, child).unwrap());
+                }
+            }
+            None
+        };
+        let runtime = RefCell::new(runtime);
+        let app = app.clone();
+        let step = Cell::new(0);
+        let timer = native::DispatcherQueue::GetForCurrentThread()?.CreateTimer()?;
+        timer.SetInterval(TimeSpan::try_from(Duration::from_millis(50)).unwrap())?;
+        let tick = timer.Tick(move |sender, _| {
+            let mut runtime = runtime.borrow_mut();
+            runtime.dispatch_native_events().unwrap();
+            match step.replace(step.get() + 1) {
+                0 => {}
+                1 => {
+                    assert_eq!(text_at(&runtime, 0).as_deref(), Some("0:0"));
+                    // Items are named by their views, not their indices.
+                    assert_eq!(name_at(0), "item 0:0");
+                    // Only containers the list prepared hold views, not all 1000 items.
+                    assert!(created.get() < 100, "{} views", created.get());
+                    assert!(reference.request_scroll_into_view_result(
+                        900,
+                        ScrollIntoViewAlignment::Leading,
+                        |result| assert_eq!(result, Ok(true))
+                    ));
+                    runtime.dispatch_native_events().unwrap();
+                }
+                2 => {}
+                3 => {
+                    assert_eq!(text_at(&runtime, 900).as_deref(), Some("0:900"));
+                    assert!(created.get() < 200, "{} views", created.get());
+                    // New keys reset the source; prepared containers show the new items.
+                    runtime.update(view(1, 3)).unwrap();
+                }
+                4 => {}
+                _ => {
+                    sender.as_ref().unwrap().Stop().unwrap();
+                    assert_eq!(text_at(&runtime, 0).as_deref(), Some("1:0"));
+                    assert_eq!(text_at(&runtime, 2).as_deref(), Some("1:2"));
+                    assert_eq!(name_at(2), "item 1:2");
+                    window.close().unwrap();
+                    app.exit().unwrap();
+                }
+            }
+        })?;
+        timer.Start()?;
+        Ok((timer, tick))
+    })
+    .unwrap();
+}
+
+#[test]
+#[ignore = "initializes WinUI; run alone on a Windows desktop (no injected input)"]
 fn list_item_container_style_applies_to_realized_items_and_clears() {
     App::run_with(|app| {
         let options = ItemContainerOptions {
@@ -492,7 +752,7 @@ fn recycled_physical_shell_keeps_old_token_until_acknowledged() {
     let mut shells = ShellPool::<usize>::default();
     let (old, physical) = shells.take(|| Ok::<_, windows_core::Error>(42)).unwrap();
 
-    assert!(shells.retire(old));
+    assert!(shells.retire(old, true));
     assert!(shells.retired.contains(&old));
     let (new, reused) = shells
         .take(|| panic!("retired physical shell was not reused"))
@@ -506,6 +766,19 @@ fn recycled_physical_shell_keeps_old_token_until_acknowledged() {
     shells.acknowledge_recycle(old);
     assert!(!shells.retired.contains(&old));
     assert!(shells.shells.contains_key(&new));
+}
+
+#[test]
+fn adopted_shell_stays_with_its_container() {
+    let mut shells = ShellPool::<usize>::default();
+    let old = shells.adopt(7).unwrap();
+
+    assert!(shells.retire(old, false));
+    assert!(shells.retired.contains(&old));
+    assert!(shells.available.is_empty());
+    let new = shells.adopt(7).unwrap();
+    assert_ne!(new, old);
+    assert_eq!(shells.shells.get(&new), Some(&7));
 }
 
 #[test]

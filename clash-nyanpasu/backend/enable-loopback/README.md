@@ -63,3 +63,9 @@ Run tests with `cargo test`; only the GUI executable embeds the elevation manife
 The vendored windows-rs fork is a separate workspace. Check application formatting
 with `cargo fmt -p enable-loopback -- --check`; `cargo fmt --all` recursively visits
 the fork too and can exceed Windows' command-line limit.
+
+To release, set the version in `crates/enable-loopback/Cargo.toml`, regenerate
+[CHANGELOG.md](CHANGELOG.md) with [git-cliff](https://git-cliff.org) as
+`git cliff --tag vX.Y.Z -o CHANGELOG.md`, commit both with `Cargo.lock` as
+`Release X.Y.Z`, and push the `vX.Y.Z` tag. The release workflow builds the
+executables and uses the version's changelog section as the release notes.

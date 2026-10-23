@@ -188,6 +188,10 @@ func ResolveVersion(version int, path string, host string) int {
 	return 2
 }
 
+func (c *Client) MultiplexEnabled() bool {
+	return c.http3Available() || (c.tlsDialer != nil && !c.http2Unsupported.Load())
+}
+
 func (c *Client) http3Available() bool {
 	if c.http3 == nil {
 		return false

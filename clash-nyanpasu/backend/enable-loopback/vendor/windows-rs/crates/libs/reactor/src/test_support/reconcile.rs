@@ -196,6 +196,14 @@ impl RetainedGraph {
             .and_then(|object| object.virtual_items.as_ref())
             .map(|items| items.source_revision)
     }
+
+    /// The number of items a virtual source declares, so tests can realize each of them.
+    #[cfg(feature = "test")]
+    pub fn virtual_item_count(&self, object: ObjectId) -> Option<usize> {
+        self.get(object)
+            .and_then(|object| object.virtual_items.as_ref())
+            .map(|items| items.keys.len())
+    }
 }
 
 #[cfg(feature = "test")]

@@ -79,20 +79,27 @@ impl WinUiAdapter {
                     if let Some(items) = self.virtual_items.get(object) {
                         items.reset(*item_count, *source_revision)?;
                     } else {
-                        let repeater = match self.handles.get(object) {
+                        let queue = Rc::clone(&self.event_queue);
+                        let items = match self.handles.get(object) {
                             Some(Handle::Generated(GeneratedHandle::ItemsRepeater(repeater))) => {
-                                repeater.clone()
+                                NativeVirtualItems::new(
+                                    repeater,
+                                    *object,
+                                    *item_count,
+                                    *source_revision,
+                                    queue,
+                                )?
                             }
+                            Some(Handle::ListView(list)) => NativeVirtualItems::new_list(
+                                &list.value,
+                                *object,
+                                *item_count,
+                                *source_revision,
+                                queue,
+                            )?,
                             Some(_) => return Err(WinUiError::InvalidObject(*object)),
                             None => return Err(WinUiError::MissingObject(*object)),
                         };
-                        let items = NativeVirtualItems::new(
-                            &repeater,
-                            *object,
-                            *item_count,
-                            *source_revision,
-                            Rc::clone(&self.event_queue),
-                        )?;
                         self.virtual_items.insert(*object, items);
                     }
                 }
@@ -109,6 +116,13 @@ impl WinUiAdapter {
                         .get(parent)
                         .ok_or(WinUiError::InvalidObject(*parent))?;
                     items.shells.set_content(*container, Some(&content))?;
+                    // A ListView item's automation name is otherwise its index.
+                    if let Some(item) = items.list_containers.borrow().get(container) {
+                        native::AutomationProperties::SetName(
+                            item,
+                            &native::AutomationProperties::GetName(&content)?,
+                        )?;
+                    }
                     self.owners.insert(*child, (*parent, *relation));
                 }
                 Mutation::Recycle {
@@ -311,6 +325,23 @@ impl Adapter for WinUiAdapter {
                     Ok::<_, windows_core::Error>(true)
                 })();
                 completion.call(result.map_err(integration_error));
+            }
+            ImperativeRequest::ScrollTo {
+                object,
+                horizontal,
+                vertical,
+            } => {
+                let Some(Handle::ListView(list)) = self.handles.get(&object) else {
+                    return Ok(());
+                };
+                match template_scroll_viewer(&list.value.cast()?)? {
+                    Some(viewer) => {
+                        // Measure items declared in this update, so the extent admits the offsets.
+                        list.value.cast::<native::UIElement>()?.UpdateLayout()?;
+                        viewer.ChangeViewWithOptionalAnimation(horizontal, vertical, None, true)?;
+                    }
+                    None => list.pending_scroll.set(Some((horizontal, vertical))),
+                }
             }
             ImperativeRequest::Focus { object, completion } => {
                 completion.call(

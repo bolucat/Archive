@@ -1118,6 +1118,7 @@ impl Adapter for RecordingAdapter {
             ImperativeRequest::Focus { completion, .. } => {
                 completion.call(Ok(true));
             }
+            ImperativeRequest::ScrollTo { .. } => {}
             ImperativeRequest::InitializeWebView2 { completion, .. } => {
                 completion.call(Err(IntegrationError::Unavailable));
             }

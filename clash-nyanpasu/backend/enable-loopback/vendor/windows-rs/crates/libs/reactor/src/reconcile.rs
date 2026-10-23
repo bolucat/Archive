@@ -601,12 +601,25 @@ fn virtual_keys(items: &VirtualItems) -> Result<Vec<Key>, GraphError> {
     Ok(keys)
 }
 
+/// Whether the object's virtual relation is its only container relation, so its items are
+/// always virtual. Otherwise (ListView) only a declared virtual source is.
+fn always_virtual(kind: ObjectType) -> bool {
+    relation_contracts(kind)
+        .iter()
+        .filter(|contract| contract.realization == Realization::Container)
+        .count()
+        == 1
+}
+
 fn retain_virtual_items(
     declaration: &Declaration,
 ) -> Result<Option<Box<RetainedVirtualItems>>, GraphError> {
     let Some(relation) = virtual_relation(declaration.kind) else {
         return Ok(None);
     };
+    if declaration.virtual_items.is_none() && !always_virtual(declaration.kind) {
+        return Ok(None);
+    }
     let declared = declaration
         .virtual_items
         .as_deref()
@@ -1176,7 +1189,11 @@ impl RetainedGraph {
             }
         }
         for contract in contracts {
-            if contract.realization == Realization::Container && current.virtual_items.is_some() {
+            if current
+                .virtual_items
+                .as_ref()
+                .is_some_and(|items| items.relation == contract.id)
+            {
                 continue;
             }
             let declared = declaration
@@ -3301,8 +3318,13 @@ impl Planner<'_, '_> {
         declaration: &Declaration,
         contract: &RelationContract,
     ) -> Result<(), GraphError> {
-        if contract.realization == Realization::Container
-            && self.retained.get(object).unwrap().virtual_items.is_some()
+        if self
+            .retained
+            .get(object)
+            .unwrap()
+            .virtual_items
+            .as_ref()
+            .is_some_and(|items| items.relation == contract.id)
         {
             return Ok(());
         }
@@ -3529,8 +3551,13 @@ impl Planner<'_, '_> {
         declaration: &Declaration,
         contract: &RelationContract,
     ) -> Result<(), GraphError> {
-        if contract.realization == Realization::Container
-            && self.retained.get(object).unwrap().virtual_items.is_some()
+        if self
+            .retained
+            .get(object)
+            .unwrap()
+            .virtual_items
+            .as_ref()
+            .is_some_and(|items| items.relation == contract.id)
         {
             return Ok(());
         }
@@ -3608,8 +3635,21 @@ impl Planner<'_, '_> {
         declaration: &Declaration,
     ) -> Result<(), GraphError> {
         let Some(previous) = self.retained.get(object).unwrap().virtual_items.clone() else {
-            return Ok(());
+            // A ListView keeps the item mode it mounted with; key it to switch.
+            return match &declaration.virtual_items {
+                Some(declared) => Err(GraphError::InvalidRelation(
+                    declaration.kind,
+                    declared.relation,
+                )),
+                None => Ok(()),
+            };
         };
+        if declaration.virtual_items.is_none() && !always_virtual(declaration.kind) {
+            return Err(GraphError::InvalidRelation(
+                declaration.kind,
+                previous.relation,
+            ));
+        }
         let declared =
             declaration
                 .virtual_items

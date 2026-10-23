@@ -9,8 +9,8 @@ name = "windows_share"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "=3.12.2", default-features = false, features = ["dyn-symbols", "napi6"] }
-napi-derive = "=3.6.3"
+napi = { version = "=3.14.2", default-features = false, features = ["dyn-symbols", "napi6"] }
+napi-derive = "=3.6.12"
 windows = { version = "=0.62.2", features = [
   "ApplicationModel_DataTransfer",
   "Foundation",
@@ -25,7 +25,7 @@ windows = { version = "=0.62.2", features = [
 windows-collections = "=0.3.2"
 
 [build-dependencies]
-napi-build = "=2.4.1"
+napi-build = "=2.6.0"
 
 [profile.release]
 codegen-units = 1

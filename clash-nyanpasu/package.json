@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/monorepo",
-  "version": "2.0.0-rc.2",
+  "version": "2.0.0-rc.3",
   "repository": "https://github.com/libnyanpasu/clash-nyanpasu.git",
   "license": "GPL-3.0",
   "type": "module",
@@ -83,7 +83,7 @@
     "npm-run-all2": "9.0.4",
     "oxlint": "1.89.0",
     "playwright": "1.64.1",
-    "postcss": "8.5.28",
+    "postcss": "8.5.31",
     "postcss-html": "2.0.0",
     "prettier": "3.9.10",
     "prettier-plugin-tailwindcss": "0.8.1",
@@ -92,7 +92,7 @@
     "react-dom": "19.3.1",
     "stylelint": "17.16.0",
     "stylelint-config-html": "2.0.0",
-    "stylelint-config-recess-order": "7.8.2",
+    "stylelint-config-recess-order": "7.9.0",
     "stylelint-config-standard": "40.0.0",
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
     "stylelint-order": "8.1.2",
@@ -110,7 +110,7 @@
     "tailwind-merge": "3.7.0",
     "react-use": "17.6.1"
   },
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": "24.22.1"
   }

@@ -1,0 +1,7 @@
+{
+  "name": "@sing-box/wayland-menu",
+  "version": "0.0.0",
+  "private": true,
+  "main": "build/Release/wayland_menu.node",
+  "os": ["linux"]
+}

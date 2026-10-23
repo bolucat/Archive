@@ -3,8 +3,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import CreateProfileModal from '@/pages/(main)/main/profiles/_modules/create-profile-modal'
 import ProfileQuickImport from '@/pages/(main)/main/profiles/_modules/profile-quick-import'
-import CreateProfileModal from '@/pages/(main)/main/profiles/$type/_modules/create-profile-modal'
 import SubscriptionUrlEditor from '@/pages/(main)/main/profiles/$type/detail/_modules/subscription-url-editor'
 import { m } from '@/paraglide/messages'
 import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
@@ -133,7 +133,13 @@ test('quick import submits legal loopback URLs unchanged and rejects invalid sch
       { method: 'probe_profile_url', params: { url, option: null } },
       {
         method: 'import_profile',
-        params: { url, name: null, option: null, transform: null },
+        params: {
+          url,
+          name: null,
+          option: null,
+          transform: null,
+          folder: null,
+        },
       },
     ])
   }
@@ -178,7 +184,7 @@ test('remote profile creation submits legal loopback URLs unchanged', async ({
       { method: 'probe_profile_url', params: { url, option } },
       {
         method: 'import_profile',
-        params: { url, name: null, option, transform: null },
+        params: { url, name: null, option, transform: null, folder: null },
       },
     ])
   }

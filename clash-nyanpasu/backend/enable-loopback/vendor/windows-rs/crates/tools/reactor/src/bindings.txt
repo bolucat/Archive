@@ -31,7 +31,7 @@ Microsoft::UI::Windowing::TitleBarHeightOption::{Standard, Tall}
 Microsoft::UI::Windowing::TitleBarTheme::{Dark, Light, UseDefaultAppMode}
 Microsoft::UI::Xaml::Application::{CreateInstance, Current, Exit, Start}
 Microsoft::UI::Xaml::ApplicationInitializationCallback
-Microsoft::UI::Xaml::Automation::AutomationProperties::{HeadingLevelProperty, SetAutomationId, SetHeadingLevel, SetName}
+Microsoft::UI::Xaml::Automation::AutomationProperties::{GetName, HeadingLevelProperty, SetAutomationId, SetHeadingLevel, SetName}
 Microsoft::UI::Xaml::Automation::ExpandCollapseState::Expanded
 Microsoft::UI::Xaml::Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement
 Microsoft::UI::Xaml::Automation::Peers::IAutomationPeer::GetPattern
@@ -98,7 +98,8 @@ Microsoft::UI::Xaml::Controls::IComboBox::{put_Header, put_IsEditable, put_Place
 Microsoft::UI::Xaml::Controls::IComboBoxStatics::{get_IsEditableProperty, get_PlaceholderTextProperty}
 Microsoft::UI::Xaml::Controls::ICommandBar::{get_PrimaryCommands, get_SecondaryCommands}
 Microsoft::UI::Xaml::Controls::ICommandBarFlyout::{get_PrimaryCommands, get_SecondaryCommands}
-Microsoft::UI::Xaml::Controls::IContentControl::put_Content
+Microsoft::UI::Xaml::Controls::IContainerContentChangingEventArgs::{get_InRecycleQueue, get_ItemContainer, get_ItemIndex, put_Handled}
+Microsoft::UI::Xaml::Controls::IContentControl::{get_ContentTemplateRoot, put_Content}
 Microsoft::UI::Xaml::Controls::IContentDialog::{add_Closed, Hide, put_CloseButtonText, put_DefaultButton, put_IsPrimaryButtonEnabled, put_IsSecondaryButtonEnabled, put_PrimaryButtonText, put_SecondaryButtonText, put_Title, remove_Closed, ShowAsync}
 Microsoft::UI::Xaml::Controls::IContentDialogClosedEventArgs::get_Result
 Microsoft::UI::Xaml::Controls::IContentDialogStatics::{get_CloseButtonTextProperty, get_DefaultButtonProperty, get_IsPrimaryButtonEnabledProperty, get_IsSecondaryButtonEnabledProperty, get_PrimaryButtonTextProperty, get_SecondaryButtonTextProperty, get_TitleProperty}
@@ -132,7 +133,7 @@ Microsoft::UI::Xaml::Controls::IItemContainerStatics::get_IsSelectedProperty
 Microsoft::UI::Xaml::Controls::IItemsControl::{get_Items, put_ItemsSource, put_ItemTemplate}
 Microsoft::UI::Xaml::Controls::IItemsControlStatics::get_ItemsSourceProperty
 Microsoft::UI::Xaml::Controls::IItemsRepeater::{GetOrCreateElement, put_ItemsSource, put_ItemTemplate}
-Microsoft::UI::Xaml::Controls::IListViewBase::{add_DragItemsCompleted, put_CanDragItems, put_CanReorderItems, put_SelectionMode, remove_DragItemsCompleted}
+Microsoft::UI::Xaml::Controls::IListViewBase::{add_ContainerContentChanging, add_DragItemsCompleted, put_CanDragItems, put_CanReorderItems, put_SelectionMode, remove_ContainerContentChanging, remove_DragItemsCompleted}
 Microsoft::UI::Xaml::Controls::IListViewBaseStatics::{get_CanDragItemsProperty, get_CanReorderItemsProperty, get_SelectionModeProperty}
 Microsoft::UI::Xaml::Controls::Image::CreateInstance
 Microsoft::UI::Xaml::Controls::ImageIcon::CreateInstance
@@ -505,3 +506,7 @@ Microsoft::UI::Xaml::Controls::IControl::{get_Padding, get_HorizontalContentAlig
 Microsoft::UI::Xaml::IFrameworkElement::get_MinHeight
 Microsoft::UI::Xaml::Controls::IListViewBase::ScrollIntoViewWithAlignment
 Microsoft::UI::Xaml::Controls::ScrollIntoViewAlignment
+Microsoft::UI::Xaml::Controls::IScrollViewer::{add_ViewChanged, ChangeViewWithOptionalAnimation, get_HorizontalOffset, get_VerticalOffset, remove_ViewChanged}
+Microsoft::UI::Xaml::Controls::IScrollViewerStatics::{SetHorizontalScrollBarVisibility, SetHorizontalScrollMode}
+Microsoft::UI::Xaml::Controls::ScrollMode::{Disabled, Enabled}
+Microsoft::UI::Xaml::Media::VisualTreeHelper::{GetChild, GetChildrenCount}

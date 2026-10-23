@@ -3129,6 +3129,13 @@ impl ListView {
         let declaration = Declaration::new(ObjectType::ListView);
         Self(declaration)
     }
+    pub fn horizontal_scroll(mut self, horizontal_scroll: bool) -> Self {
+        self.0 = self.0.property(
+            PropertyId::HorizontalScroll,
+            PropertyValue::Bool(horizontal_scroll),
+        );
+        self
+    }
     pub fn item_container(mut self, item_container: ItemContainerOptions) -> Self {
         assert!(
             item_container.is_finite_non_negative(),
@@ -3176,6 +3183,12 @@ impl ListView {
     enabled_methods!();
     reference_methods!(ListView);
     visual_methods!();
+    pub fn virtual_source(mut self, source: VirtualSource) -> Self {
+        self.0 = self
+            .0
+            .virtual_items(RelationId::VirtualItems, VirtualItems::Lazy(source));
+        self
+    }
     /// Rejects values outside this relation's generated type contract.
     ///
     /// ```compile_fail
@@ -3208,6 +3221,20 @@ impl ListView {
         self.0 = self.0.event(
             EventId::DragItemsCompleted,
             EventValue::StringList(callback.into_payload_callback()),
+        );
+        self
+    }
+    pub fn on_horizontal_offset_changed(mut self, callback: impl IntoPayloadCallback<f64>) -> Self {
+        self.0 = self.0.event(
+            EventId::HorizontalOffsetChanged,
+            EventValue::F64(callback.into_payload_callback()),
+        );
+        self
+    }
+    pub fn on_vertical_offset_changed(mut self, callback: impl IntoPayloadCallback<f64>) -> Self {
+        self.0 = self.0.event(
+            EventId::VerticalOffsetChanged,
+            EventValue::F64(callback.into_payload_callback()),
         );
         self
     }

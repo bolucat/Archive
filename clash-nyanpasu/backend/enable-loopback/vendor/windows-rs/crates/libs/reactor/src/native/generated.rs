@@ -3492,6 +3492,14 @@ impl GeneratedHandle {
                             .map_err(Into::into)
                     }),
             ),
+            (ObjectType::ListView, PropertyId::HorizontalScroll, None) => {
+                Some(set_list_horizontal_scroll(element, false))
+            }
+            (
+                ObjectType::ListView,
+                PropertyId::HorizontalScroll,
+                Some(PropertyValue::Bool(value)),
+            ) => Some(set_list_horizontal_scroll(element, *value)),
             (ObjectType::ListView, PropertyId::ItemContainerStyle, None) => {
                 Some(set_list_item_container(element, None))
             }

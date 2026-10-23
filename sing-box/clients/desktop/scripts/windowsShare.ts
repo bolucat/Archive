@@ -2,7 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { sync as spawnSync } from "cross-spawn";
+import {
+  commandOutput,
+  copyBuildOutput,
+  ensureCargoTool,
+  ensureRustTarget,
+  runChecked,
+  rustSysroot,
+} from "./rust";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -37,56 +44,6 @@ const architectures = {
 
 type WindowsArchitecture = keyof typeof architectures;
 
-function runChecked(
-  command: string,
-  commandArguments: string[],
-  environment: NodeJS.ProcessEnv = process.env,
-) {
-  const result = spawnSync(command, commandArguments, {
-    cwd: repositoryRoot,
-    env: environment,
-    stdio: "inherit",
-  });
-  if (result.error) {
-    throw new Error(`${command}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`${command} exited with code ${result.status ?? 1}`);
-  }
-}
-
-function commandOutput(command: string, commandArguments: string[]): string {
-  const result = spawnSync(command, commandArguments, {
-    cwd: repositoryRoot,
-    encoding: "utf-8",
-  });
-  if (result.error) {
-    throw new Error(`${command}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`${command} exited with code ${result.status ?? 1}`);
-  }
-  return result.stdout.trim();
-}
-
-function rustSysroot(): string {
-  return commandOutput("rustc", ["--print", "sysroot"]);
-}
-
-function ensureRustTarget(target: string) {
-  const targetLibraryDirectory = path.join(
-    rustSysroot(),
-    "lib",
-    "rustlib",
-    target,
-    "lib",
-  );
-  if (fs.existsSync(targetLibraryDirectory)) {
-    return;
-  }
-  runChecked("rustup", ["target", "add", target]);
-}
-
 function cargoVariable(target: string, name: string): string {
   return `CARGO_TARGET_${target.replaceAll("-", "_").toUpperCase()}_${name}`;
 }
@@ -107,35 +64,12 @@ function cargoEnvironment(
   return environment;
 }
 
-function xwinExecutablePath(): string {
-  return path.join(toolchainDirectory, "xwin", "bin", "xwin");
-}
-
-function ensureXwin() {
-  const executablePath = xwinExecutablePath();
-  if (fs.existsSync(executablePath)) {
-    const installedVersion = commandOutput(executablePath, ["--version"]);
-    if (installedVersion === `xwin ${xwinVersion}`) {
-      return;
-    }
-    fs.rmSync(path.dirname(path.dirname(executablePath)), {
-      recursive: true,
-      force: true,
-    });
-  }
-  runChecked("cargo", [
-    "install",
-    "xwin",
-    "--locked",
-    "--version",
-    xwinVersion,
-    "--root",
-    path.join(toolchainDirectory, "xwin"),
-  ]);
-}
-
 function ensureWindowsSdk(): string {
-  ensureXwin();
+  const xwinPath = ensureCargoTool(
+    "xwin",
+    xwinVersion,
+    path.join(toolchainDirectory, "xwin"),
+  );
   const outputPath = path.join(toolchainDirectory, "sdk");
   const versionPath = path.join(outputPath, ".versions.json");
   const expectedPaths = Object.values(architectures).map((architecture) =>
@@ -160,7 +94,7 @@ function ensureWindowsSdk(): string {
     return outputPath;
   }
   fs.rmSync(outputPath, { recursive: true, force: true });
-  runChecked(xwinExecutablePath(), [
+  runChecked(xwinPath, [
     "--accept-license",
     "--arch",
     "x86,x86_64,aarch64",
@@ -228,12 +162,7 @@ function buildWithCargo(
     ],
     environment,
   );
-  const builtPath = cargoOutputPath(target);
-  if (!fs.existsSync(builtPath)) {
-    throw new Error(`Windows sharing module does not exist: ${builtPath}`);
-  }
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.copyFileSync(builtPath, outputPath);
+  copyBuildOutput(cargoOutputPath(target), outputPath);
 }
 
 function crossCompile(

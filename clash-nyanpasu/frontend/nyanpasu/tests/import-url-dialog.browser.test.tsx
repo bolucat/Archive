@@ -177,6 +177,7 @@ test('the suggested kind is preselected, with its reasons, and only accepted kin
         name: null,
         option: null,
         transform: { type: 'script', runtime: 'lua' },
+        folder: null,
       },
     },
   ])
@@ -213,6 +214,7 @@ test('a local import creates the downloaded content without downloading again', 
           },
         },
       },
+      folder: null,
     },
     fileData: LUA,
   })

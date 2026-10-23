@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,15 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-const resolvConfPath = "/etc/resolv.conf"
+const (
+	resolvConfPath           = "/etc/resolv.conf"
+	resolvedUplinkConfigPath = "/run/systemd/resolve/resolv.conf"
+)
+
+var resolvedListenAddresses = []netip.Addr{
+	netip.AddrFrom4([4]byte{127, 0, 0, 53}),
+	netip.AddrFrom4([4]byte{127, 0, 0, 54}),
+}
 
 type Source struct {
 	updateAccess sync.Mutex
@@ -84,7 +93,6 @@ func (s *Source) Close() error {
 
 func readResolvConfig(path string) *resolvConfig {
 	config := &Config{
-		Ndots:    1,
 		Timeout:  5 * time.Second,
 		Attempts: 2,
 	}
@@ -137,11 +145,6 @@ func readResolvConfig(path string) *resolvConfig {
 		case "options":
 			for _, option := range fields[1:] {
 				switch {
-				case strings.HasPrefix(option, "ndots:"):
-					value, parseErr := strconv.Atoi(option[len("ndots:"):])
-					if parseErr == nil {
-						config.Ndots = min(max(value, 0), 15)
-					}
 				case strings.HasPrefix(option, "timeout:"):
 					value, parseErr := strconv.Atoi(option[len("timeout:"):])
 					if parseErr == nil {
@@ -172,5 +175,9 @@ func readResolvConfig(path string) *resolvConfig {
 	if len(config.Search) == 0 {
 		config.Search = defaultSearch()
 	}
+	uplinkFileInfo, err := os.Stat(resolvedUplinkConfigPath)
+	config.SystemdResolved = err == nil && os.SameFile(fileInfo, uplinkFileInfo) || slices.ContainsFunc(config.Servers, func(server M.Socksaddr) bool {
+		return slices.Contains(resolvedListenAddresses, server.Addr)
+	})
 	return result
 }

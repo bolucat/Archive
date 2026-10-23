@@ -127,6 +127,7 @@ type adaptiveTimer struct {
 	lastGoroutines  int
 	lastConnections int
 	lastGCCycles    uint64
+	releaseGCCycles uint64
 	lastRelease     time.Time
 	timerState
 }
@@ -271,7 +272,7 @@ func (t *adaptiveTimer) releaseIdleMemory(sample memorySample, connections int) 
 	now := time.Now()
 	t.access.Lock()
 	shrank := hasMeaningfulDrop(t.lastGoroutines, goroutines) || hasMeaningfulDrop(t.lastConnections, connections)
-	idleGC := gcCycles == t.lastGCCycles
+	idleGC := gcCycles == t.lastGCCycles && gcCycles != t.releaseGCCycles
 	t.lastGoroutines = goroutines
 	t.lastConnections = connections
 	t.lastGCCycles = gcCycles
@@ -284,6 +285,7 @@ func (t *adaptiveTimer) releaseIdleMemory(sample memorySample, connections int) 
 	runtimeDebug.FreeOSMemory()
 	t.access.Lock()
 	t.lastGCCycles = readGCCycles()
+	t.releaseGCCycles = t.lastGCCycles
 	t.access.Unlock()
 	t.logger.Trace("released idle memory, usage: ", byteformats.FormatMemoryBytes(sample.usage), " -> ", byteformats.FormatMemoryBytes(memory.Total()))
 }
@@ -333,6 +335,9 @@ func (t *adaptiveTimer) releaseMemory() {
 	t.pressure.Store(uint32(tun.MemoryPressureCritical))
 	badCleanup()
 	runtimeDebug.FreeOSMemory()
+	t.access.Lock()
+	t.releaseGCCycles = readGCCycles()
+	t.access.Unlock()
 }
 
 func (s pressureState) memoryPressure() tun.MemoryPressure {
@@ -352,7 +357,6 @@ func (t *adaptiveTimer) nextState(sample memorySample) pressureState {
 		return nextPressureState(t.state,
 			sample.usage >= t.limitThresholds.trigger,
 			sample.usage >= t.limitThresholds.armed,
-			sample.usage >= t.limitThresholds.resume,
 		)
 	case policyModeAvailable:
 		if !sample.availableKnown {
@@ -362,7 +366,6 @@ func (t *adaptiveTimer) nextState(sample memorySample) pressureState {
 		return nextPressureState(t.state,
 			sample.available <= thresholds.trigger,
 			sample.available <= thresholds.armed,
-			sample.available <= thresholds.resume,
 		)
 	default:
 		return pressureStateNormal
@@ -430,9 +433,9 @@ func (t *adaptiveTimer) logDetails(sample memorySample) string {
 	return ""
 }
 
-func nextPressureState(current pressureState, shouldTrigger, shouldArm, shouldStayTriggered bool) pressureState {
+func nextPressureState(current pressureState, shouldTrigger, shouldArm bool) pressureState {
 	if current == pressureStateTriggered {
-		if shouldStayTriggered {
+		if shouldArm {
 			return pressureStateTriggered
 		}
 		return pressureStateNormal

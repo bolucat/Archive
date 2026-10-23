@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { findBoxDirectory } from "./sing-box";
+import { buildHostWaylandMenuModule, waylandMenuSourcePaths } from "./waylandMenu";
 import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -71,6 +72,11 @@ function ensureGenerated() {
   }
 }
 
+function moduleIsCurrent(outputPath: string, sourcePaths: string[]): boolean {
+  const outputModifiedAt = fs.existsSync(outputPath) ? fs.statSync(outputPath).mtimeMs : 0;
+  return sourcePaths.every((sourcePath) => fs.statSync(sourcePath).mtimeMs <= outputModifiedAt);
+}
+
 async function ensureWindowsShareModule() {
   const moduleDirectory = path.join(repositoryRoot, "native", "windows-share");
   const outputPath = path.join(moduleDirectory, "build", "Release", "windows_share.node");
@@ -80,13 +86,26 @@ async function ensureWindowsShareModule() {
     path.join(moduleDirectory, "build.rs"),
     path.join(moduleDirectory, "src", "lib.rs"),
   ];
-  const outputModifiedAt = fs.existsSync(outputPath) ? fs.statSync(outputPath).mtimeMs : 0;
-  if (sourcePaths.every((sourcePath) => fs.statSync(sourcePath).mtimeMs <= outputModifiedAt)) {
+  if (moduleIsCurrent(outputPath, sourcePaths)) {
     return;
   }
   await buildWindowsShareModule(process.arch, outputPath);
   if (!fs.existsSync(outputPath)) {
     throw new Error(`Windows sharing module does not exist: ${outputPath}`);
+  }
+}
+
+function ensureWaylandMenuModule() {
+  const outputPath = path.join(repositoryRoot, "native", "wayland-menu", "build", "Release", "wayland_menu.node");
+  if (moduleIsCurrent(outputPath, waylandMenuSourcePaths)) {
+    return;
+  }
+  try {
+    buildHostWaylandMenuModule(outputPath);
+  } catch (error) {
+    console.warn(
+      `failed to build the Wayland menu module, the tray menu falls back to XWayland: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -159,6 +178,9 @@ function applicationExitCode(application: ChildProcess): Promise<number> {
 
 async function main(): Promise<number> {
   ensureGenerated();
+  if (process.platform === "linux") {
+    ensureWaylandMenuModule();
+  }
   if (commandLine["daemon-socket"]) {
     if (process.platform === "win32") {
       await ensureWindowsShareModule();

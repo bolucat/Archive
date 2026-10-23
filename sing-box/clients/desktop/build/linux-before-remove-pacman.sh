@@ -1,5 +1,6 @@
 #!/bin/bash
 
+systemctl disable sing-box-daemon.service || true
 if [ -d /run/systemd/system ]; then
-    systemctl disable --now sing-box-daemon.service || true
+    systemctl stop sing-box-daemon.service || true
 fi

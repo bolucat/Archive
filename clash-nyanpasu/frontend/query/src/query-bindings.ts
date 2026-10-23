@@ -228,11 +228,6 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProxies', ...args],
         queryFn: () => commands.getProxies(...args),
       }),
-    collectEnvs: (...args: Parameters<typeof commands.collectEnvs>) =>
-      queryOptions({
-        queryKey: ['collectEnvs', ...args],
-        queryFn: () => commands.collectEnvs(...args),
-      }),
     getCachedIcon: (...args: Parameters<typeof commands.getCachedIcon>) =>
       queryOptions({
         queryKey: ['getCachedIcon', ...args],
@@ -607,6 +602,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
         commands.collectLogs(...input),
     }),
+    reportIssue: mutationOptions({
+      mutationKey: ['reportIssue'],
+      mutationFn: (input: Parameters<typeof commands.reportIssue>) =>
+        commands.reportIssue(...input),
+    }),
     setTrayIconFromBytes: mutationOptions({
       mutationKey: ['setTrayIconFromBytes'],
       mutationFn: (input: Parameters<typeof commands.setTrayIconFromBytes>) =>
@@ -646,6 +646,26 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['reorderProfilesByList'],
       mutationFn: (input: Parameters<typeof commands.reorderProfilesByList>) =>
         commands.reorderProfilesByList(...input),
+    }),
+    setProfileLayout: mutationOptions({
+      mutationKey: ['setProfileLayout'],
+      mutationFn: (input: Parameters<typeof commands.setProfileLayout>) =>
+        commands.setProfileLayout(...input),
+    }),
+    createProfileFolder: mutationOptions({
+      mutationKey: ['createProfileFolder'],
+      mutationFn: (input: Parameters<typeof commands.createProfileFolder>) =>
+        commands.createProfileFolder(...input),
+    }),
+    setProxyGroupLayout: mutationOptions({
+      mutationKey: ['setProxyGroupLayout'],
+      mutationFn: (input: Parameters<typeof commands.setProxyGroupLayout>) =>
+        commands.setProxyGroupLayout(...input),
+    }),
+    createProxyGroupFolder: mutationOptions({
+      mutationKey: ['createProxyGroupFolder'],
+      mutationFn: (input: Parameters<typeof commands.createProxyGroupFolder>) =>
+        commands.createProxyGroupFolder(...input),
     }),
     updateProfile: mutationOptions({
       mutationKey: ['updateProfile'],
@@ -820,6 +840,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (
         input: Parameters<typeof commands.createDebugTrayMenuWindow>,
       ) => commands.createDebugTrayMenuWindow(...input),
+    }),
+    simulateCrash: mutationOptions({
+      mutationKey: ['simulateCrash'],
+      mutationFn: (input: Parameters<typeof commands.simulateCrash>) =>
+        commands.simulateCrash(...input),
     }),
     createEditorWindow: mutationOptions({
       mutationKey: ['createEditorWindow'],

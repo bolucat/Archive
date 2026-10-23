@@ -8,8 +8,9 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
-    ManagedProfilePath, ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch,
-    Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
+    FolderId, ManagedProfilePath, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
+    ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
+    RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
 use nyanpasu_core::{
     profile_import::{self, ImportClassification, ImportFacts, ProfileImportKind},
@@ -78,7 +79,7 @@ impl ProfilesClient {
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path)
             .assemble();
-        let manager = if should_load {
+        let mut manager = if should_load {
             setup
                 .load()
                 .await
@@ -89,6 +90,27 @@ impl ProfilesClient {
                 .await
                 .context("failed to initialize profiles persistent state manager")?
         };
+
+        // A hand-edited or downgraded document may carry malformed folders or
+        // proxy group layouts. Both are display state, so they are repaired and
+        // the repair is saved rather than refusing to start over them.
+        let mut loaded = manager.snapshot().as_ref().clone();
+        let repair = loaded.repair_folders();
+        let layout_repair = loaded.repair_proxy_group_layouts();
+        if !repair.is_empty() || !layout_repair.is_empty() {
+            tracing::warn!(
+                ?repair,
+                ?layout_repair,
+                "repaired malformed profile arrangements"
+            );
+            loaded
+                .bump_revision()
+                .context("failed to advance the profiles revision after repairing arrangements")?;
+            manager
+                .upsert(loaded)
+                .await
+                .context("failed to save the repaired profile arrangements")?;
+        }
 
         let snapshot = manager.snapshot_handle();
         snapshot
@@ -301,6 +323,68 @@ impl ProfilesClient {
             .await
     }
 
+    /// Replace the folders and the display order in one commit.
+    pub async fn set_layout(&self, layout: ProfileLayout) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetLayout { layout, reply },
+            None,
+        )
+        .await
+    }
+
+    /// Replace how `profile`'s proxy groups are arranged; an empty layout removes it.
+    pub async fn set_proxy_group_layout(
+        &self,
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetProxyGroupLayout {
+                profile,
+                layout,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
+    /// Create a proxy group folder around `members`, which leave the places they were in.
+    pub async fn create_proxy_group_folder(
+        &self,
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+    ) -> Result<(CommitReport, FolderId), ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::CreateProxyGroupFolder {
+                profile,
+                name,
+                members,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
+    /// Create a folder holding `members`; they leave the folders they were in.
+    pub async fn create_folder(
+        &self,
+        name: String,
+        members: Vec<ProfileId>,
+    ) -> Result<(CommitReport, FolderId), ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::CreateFolder {
+                name,
+                members,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
     pub async fn patch_metadata(
         &self,
         uid: ProfileId,
@@ -399,6 +483,7 @@ impl ProfilesClient {
         metadata: ProfileMetadata,
         option: RemoteProfileOptions,
         update_interval_explicit: bool,
+        folder: Option<FolderId>,
     ) -> Result<CommitReport, ProfilesError> {
         self.call(
             |reply| ProfilesActorMessage::ImportRemote {
@@ -407,6 +492,7 @@ impl ProfilesClient {
                 metadata,
                 option,
                 update_interval_explicit,
+                folder,
                 reply,
             },
             None,
@@ -472,9 +558,10 @@ mod tests {
         },
     };
     use nyanpasu_config::profile::{
-        ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
-        ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId,
-        ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, RemoteSyncInterval,
+        ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
+        ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileFolder,
+        ProfileId, ProfileLayout, ProfileMetadata, ProfileSource, ProfileValidationError, Profiles,
+        ProxyGroupFolder, ProxyGroupLayout, RemoteProfileOptions, RemoteSyncInterval,
         ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use nyanpasu_core::state::ReplaceIfVersionError;
@@ -558,6 +645,7 @@ mod tests {
         NewProfileRequest {
             metadata: file_config_item("placeholder").metadata,
             definition: file_config_item("placeholder").definition,
+            folder: None,
         }
     }
 
@@ -1115,6 +1203,7 @@ mod tests {
                 },
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .unwrap();
@@ -1208,6 +1297,7 @@ mod tests {
                     },
                     RemoteProfileOptions::default(),
                     false,
+                    None,
                 )
                 .await
                 .is_err()
@@ -1962,6 +2052,7 @@ mod tests {
                         custom_name: true,
                     },
                     definition: file_config_item("placeholder").definition,
+                    folder: None,
                 },
                 Some("proxies: []\n".to_string()),
             )
@@ -2012,6 +2103,7 @@ mod tests {
                 NewProfileRequest {
                     metadata: file_config_item("placeholder").metadata,
                     definition: file_config_item("placeholder").definition,
+                    folder: None,
                 },
                 Some("proxies: []\n".to_string()),
             )
@@ -2871,6 +2963,7 @@ mod tests {
                 NewProfileRequest {
                     metadata: item.metadata.clone(),
                     definition: item.definition,
+                    folder: None,
                 },
                 Some("-- lua".to_string()),
             )
@@ -3009,6 +3102,466 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::ReorderListDuplicate { .. }));
+    }
+
+    fn folder(id: &str, name: &str, members: &[&str]) -> ProfileFolder {
+        ProfileFolder {
+            id: FolderId(id.into()),
+            name: name.into(),
+            members: members.iter().map(|uid| ProfileId((*uid).into())).collect(),
+        }
+    }
+
+    fn uids(profiles: &Profiles) -> Vec<&str> {
+        profiles.items.keys().map(|uid| uid.0.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn set_layout_commits_the_folders_and_the_order_once() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot().revision();
+
+        let report = client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Work", &["cfg2", "cfg1"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(report.snapshot.revision(), before + 1);
+        assert_eq!(
+            report.snapshot.folders,
+            vec![folder("f1", "Work", &["cfg2", "cfg1"])]
+        );
+        assert_eq!(uids(&report.snapshot), vec!["cfg2", "cfg1", "ovl1"]);
+        assert_eq!(client.snapshot().revision(), report.snapshot.revision());
+    }
+
+    #[tokio::test]
+    async fn set_layout_moves_a_profile_between_folders_in_one_commit() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "A", &["cfg1"]), folder("f2", "B", &["cfg2"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+        let before = client.snapshot().revision();
+
+        let report = client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "A", &[]), folder("f2", "B", &["cfg2", "cfg1"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(report.snapshot.revision(), before + 1);
+        assert_eq!(
+            report.snapshot.folders,
+            vec![folder("f1", "A", &[]), folder("f2", "B", &["cfg2", "cfg1"])]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_incomplete_layout_fails_validation_and_changes_nothing() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot();
+
+        let err = client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Work", &["cfg1"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap_err();
+
+        let ProfilesError::ValidationFailed { errors } = err else {
+            panic!("expected ValidationFailed, got {err:?}");
+        };
+        assert!(
+            errors.contains(&ProfileValidationError::LayoutMissingProfile {
+                profile: ProfileId("cfg2".into()),
+            })
+        );
+        let after = client.snapshot();
+        assert_eq!(after.revision(), before.revision());
+        assert_eq!(after.folders, before.folders);
+        assert_eq!(uids(&after), uids(&before));
+    }
+
+    #[tokio::test]
+    async fn create_folder_moves_its_members_out_of_their_folders() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Old", &["cfg1", "cfg2"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+        let before = client.snapshot().revision();
+
+        let (report, id) = client
+            .create_folder("New".into(), vec![ProfileId("cfg2".into())])
+            .await
+            .unwrap();
+
+        assert_eq!(report.snapshot.revision(), before + 1);
+        assert_eq!(
+            report.snapshot.folders,
+            vec![
+                folder("f1", "Old", &["cfg1"]),
+                folder(&id.0, "New", &["cfg2"])
+            ]
+        );
+        assert_eq!(uids(&report.snapshot), vec!["cfg1", "cfg2", "ovl1"]);
+    }
+
+    #[tokio::test]
+    async fn create_folder_rejects_a_transform_member() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot();
+
+        let err = client
+            .create_folder("New".into(), vec![ProfileId("ovl1".into())])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, ProfilesError::ValidationFailed { .. }),
+            "{err:?}"
+        );
+        let after = client.snapshot();
+        assert_eq!(after.revision(), before.revision());
+        assert_eq!(after.folders, before.folders);
+        assert_eq!(uids(&after), uids(&before));
+    }
+
+    #[tokio::test]
+    async fn deleting_a_profile_removes_it_from_its_folder() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Work", &["cfg1", "cfg2"])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+
+        let report = client.delete(ProfileId("cfg1".into())).await.unwrap();
+
+        assert_eq!(
+            report.snapshot.folders,
+            vec![folder("f1", "Work", &["cfg2"])]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_keeps_the_folders_of_the_new_document() {
+        let (client, _dir) = seeded_client().await;
+        let mut profiles = seeded_profiles();
+        profiles.folders = vec![folder("f1", "Work", &["cfg1"])];
+
+        let report = client.replace(profiles).await.unwrap();
+
+        assert_eq!(
+            report.snapshot.folders,
+            vec![folder("f1", "Work", &["cfg1"])]
+        );
+    }
+
+    #[tokio::test]
+    async fn add_joins_the_requested_folder() {
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Work", &[])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+        let item = remote_config_item("placeholder");
+
+        let report = client
+            .add(
+                NewProfileRequest {
+                    metadata: item.metadata,
+                    definition: item.definition,
+                    folder: Some(FolderId("f1".into())),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let uid = report.created.expect("add reports the created uid");
+        assert_eq!(report.snapshot.folders[0].members, vec![uid]);
+    }
+
+    #[tokio::test]
+    async fn add_into_an_unknown_folder_fails_and_adds_nothing() {
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let item = remote_config_item("placeholder");
+
+        let err = client
+            .add(
+                NewProfileRequest {
+                    metadata: item.metadata,
+                    definition: item.definition,
+                    folder: Some(FolderId("ghost".into())),
+                },
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, ProfilesError::ValidationFailed { .. }),
+            "{err:?}"
+        );
+        assert!(client.snapshot().items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn startup_repairs_malformed_folders_and_saves_the_repair() {
+        let dir = tempdir().unwrap();
+        let path = temp_profiles_path(&dir);
+        std::fs::write(
+            &path,
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\nrevision: 7\nfolders:\n- id: f1\n  name: ''\n  members:\n  - a\n  - ghost\n- id: f1\n  name: Again\n  members:\n  - a\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+        )
+        .unwrap();
+
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            path.clone(),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("malformed folders are repaired, not fatal");
+
+        let snapshot = client.snapshot();
+        assert_eq!(snapshot.folders, vec![folder("f1", "Folder", &["a"])]);
+        assert_eq!(snapshot.revision(), 8);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("ghost"), "{raw}");
+        assert!(!raw.contains("Again"), "{raw}");
+    }
+
+    fn group_folder(id: &str, name: &str, members: &[&str]) -> ProxyGroupFolder {
+        ProxyGroupFolder {
+            id: FolderId(id.into()),
+            name: name.into(),
+            members: members.iter().map(|name| (*name).to_owned()).collect(),
+        }
+    }
+
+    fn group_layout(ungrouped: &[&str], folders: Vec<ProxyGroupFolder>) -> ProxyGroupLayout {
+        ProxyGroupLayout {
+            folders,
+            ungrouped: ungrouped.iter().map(|name| (*name).to_owned()).collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn set_proxy_group_layout_commits_once_and_stores_it_for_the_profile() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot().revision();
+        let layout = group_layout(
+            &["Proxy"],
+            vec![group_folder("f1", "Streaming", &["Netflix"])],
+        );
+
+        let report = client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), layout.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(report.snapshot.revision(), before + 1);
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&ProfileId("cfg1".into())],
+            layout
+        );
+        assert!(
+            !report
+                .snapshot
+                .proxy_group_layouts
+                .contains_key(&ProfileId("cfg2".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_proxy_group_layout_removes_the_arrangement() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), group_layout(&["Proxy"], vec![]))
+            .await
+            .unwrap();
+
+        let report = client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), ProxyGroupLayout::default())
+            .await
+            .unwrap();
+
+        assert!(report.snapshot.proxy_group_layouts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_invalid_proxy_group_layout_fails_and_changes_nothing() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot();
+
+        let duplicate = client
+            .set_proxy_group_layout(
+                ProfileId("cfg1".into()),
+                group_layout(&["Proxy", "Proxy"], vec![]),
+            )
+            .await
+            .unwrap_err();
+        let not_a_config = client
+            .set_proxy_group_layout(ProfileId("ovl1".into()), group_layout(&["Proxy"], vec![]))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(duplicate, ProfilesError::ValidationFailed { .. }));
+        assert!(matches!(
+            not_a_config,
+            ProfilesError::ValidationFailed { .. }
+        ));
+        let after = client.snapshot();
+        assert_eq!(after.revision(), before.revision());
+        assert!(after.proxy_group_layouts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_proxy_group_folder_moves_the_members_into_a_new_folder() {
+        let (client, _dir) = seeded_client().await;
+        let profile = ProfileId("cfg1".into());
+        client
+            .set_proxy_group_layout(
+                profile.clone(),
+                group_layout(
+                    &["Proxy", "Netflix"],
+                    vec![group_folder("f1", "Old", &["YouTube", "Disney"])],
+                ),
+            )
+            .await
+            .unwrap();
+
+        let (report, folder) = client
+            .create_proxy_group_folder(
+                profile.clone(),
+                "Streaming".into(),
+                vec!["Netflix".into(), "YouTube".into()],
+            )
+            .await
+            .unwrap();
+
+        let layout = &report.snapshot.proxy_group_layouts[&profile];
+        assert_eq!(layout.ungrouped, vec!["Proxy".to_owned()]);
+        assert_eq!(layout.folders[0], group_folder("f1", "Old", &["Disney"]));
+        assert_eq!(
+            layout.folders[1],
+            group_folder(&folder.0, "Streaming", &["Netflix", "YouTube"])
+        );
+        assert_ne!(folder, FolderId("f1".into()));
+    }
+
+    #[tokio::test]
+    async fn create_proxy_group_folder_works_on_a_profile_without_a_layout() {
+        let (client, _dir) = seeded_client().await;
+        let profile = ProfileId("cfg2".into());
+
+        let (report, folder) = client
+            .create_proxy_group_folder(profile.clone(), "Regions".into(), vec!["HK".into()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&profile],
+            group_layout(&[], vec![group_folder(&folder.0, "Regions", &["HK"])])
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_profile_removes_its_proxy_group_layout() {
+        let (client, _dir) = seeded_client().await;
+        for uid in ["cfg1", "cfg2"] {
+            client
+                .set_proxy_group_layout(ProfileId(uid.into()), group_layout(&["Proxy"], vec![]))
+                .await
+                .unwrap();
+        }
+
+        let report = client.delete(ProfileId("cfg1".into())).await.unwrap();
+
+        assert_eq!(
+            report
+                .snapshot
+                .proxy_group_layouts
+                .keys()
+                .collect::<Vec<_>>(),
+            vec![&ProfileId("cfg2".into())]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_keeps_the_proxy_group_layouts_of_the_new_document() {
+        let (client, _dir) = seeded_client().await;
+        let mut profiles = seeded_profiles();
+        profiles
+            .proxy_group_layouts
+            .insert(ProfileId("cfg1".into()), group_layout(&["Proxy"], vec![]));
+
+        let report = client.replace(profiles).await.unwrap();
+
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&ProfileId("cfg1".into())],
+            group_layout(&["Proxy"], vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_repairs_a_malformed_proxy_group_layout_and_saves_the_repair() {
+        let dir = tempdir().unwrap();
+        let path = temp_profiles_path(&dir);
+        std::fs::write(
+            &path,
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\nrevision: 7\nproxy_group_layouts:\n  a:\n    folders:\n    - id: f1\n      name: ''\n      members:\n      - Netflix\n      - Proxy\n    ungrouped:\n    - Proxy\n  ghost:\n    folders: []\n    ungrouped:\n    - Proxy\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+        )
+        .unwrap();
+
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            path.clone(),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("a malformed layout is repaired, not fatal");
+
+        let snapshot = client.snapshot();
+        assert_eq!(
+            snapshot.proxy_group_layouts.keys().collect::<Vec<_>>(),
+            vec![&ProfileId("a".into())]
+        );
+        assert_eq!(
+            snapshot.proxy_group_layouts[&ProfileId("a".into())],
+            group_layout(&["Proxy"], vec![group_folder("f1", "Folder", &["Netflix"])])
+        );
+        assert_eq!(snapshot.revision(), 8);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("ghost"), "{raw}");
     }
 
     #[tokio::test]
@@ -3273,6 +3826,7 @@ mod tests {
                 NewProfileRequest {
                     metadata: item.metadata.clone(),
                     definition: item.definition,
+                    folder: None,
                 },
                 None,
             )
@@ -3441,6 +3995,7 @@ mod tests {
                 import_metadata("url-name", false),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .expect("import");
@@ -3466,6 +4021,91 @@ mod tests {
         assert_eq!(subscription.download, Some(3));
         assert!(materialized.updated_at.is_some());
         assert_eq!(materialized.file.as_str(), format!("{uid}.yaml"));
+    }
+
+    #[tokio::test]
+    async fn import_joins_the_requested_folder_in_the_same_commit() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
+            })
+        });
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        client
+            .set_layout(ProfileLayout {
+                folders: vec![folder("f1", "Work", &[])],
+                ungrouped: vec![],
+            })
+            .await
+            .unwrap();
+
+        let report = client
+            .import(
+                url::Url::parse("https://example.com/sub").unwrap(),
+                None,
+                import_metadata("imported", true),
+                RemoteProfileOptions::default(),
+                false,
+                Some(FolderId("f1".into())),
+            )
+            .await
+            .expect("import");
+
+        let uid = report.created.expect("import reports the created uid");
+        assert_eq!(report.snapshot.folders[0].members, vec![uid]);
+    }
+
+    #[tokio::test]
+    async fn import_into_an_unknown_folder_fails_before_fetching() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().never();
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+
+        let err = client
+            .import(
+                url::Url::parse("https://example.com/sub").unwrap(),
+                None,
+                import_metadata("imported", true),
+                RemoteProfileOptions::default(),
+                false,
+                Some(FolderId("ghost".into())),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, ProfilesError::ValidationFailed { .. }),
+            "{err:?}"
+        );
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -3500,6 +4140,7 @@ mod tests {
                 import_metadata("x", true),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .expect_err("fetch failure");
@@ -3712,6 +4353,7 @@ mod tests {
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
+                    None,
                 )
                 .await
         });
@@ -3728,6 +4370,7 @@ mod tests {
                 import_metadata("y", true),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .expect("second import after abort");
@@ -3783,6 +4426,7 @@ mod tests {
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
+                    None,
                 )
                 .await
         });
@@ -3822,6 +4466,7 @@ mod tests {
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
+                    None,
                 )
                 .await
         });
@@ -3885,6 +4530,7 @@ mod tests {
                 import_metadata("Pinned Name", true),
                 option,
                 true,
+                None,
             )
             .await
             .expect("import");
@@ -3933,6 +4579,7 @@ mod tests {
                 import_metadata("x", true),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .expect("import");
@@ -3984,6 +4631,7 @@ mod tests {
                 import_metadata("x", true),
                 option,
                 true,
+                None,
             )
             .await
             .expect("import");
@@ -4308,6 +4956,7 @@ mod tests {
                 import_metadata("held", true),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             )
             .await
             .expect("import while held");
@@ -4346,6 +4995,7 @@ mod tests {
                     import_metadata("stopped", true),
                     RemoteProfileOptions::default(),
                     false,
+                    None,
                 )
                 .await
         });
@@ -4454,6 +5104,7 @@ mod tests {
                 import_metadata("late", true),
                 RemoteProfileOptions::default(),
                 false,
+                None,
             ),
             client.replace(Profiles::default()),
         );

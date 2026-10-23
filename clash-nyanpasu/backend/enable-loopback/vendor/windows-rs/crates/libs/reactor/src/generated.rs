@@ -139,6 +139,7 @@ pub enum PropertyId {
     Height,
     HorizontalAlignment,
     HorizontalContentAlignment,
+    HorizontalScroll,
     HorizontalScrollBarVisibility,
     Icon,
     IconSource,
@@ -282,6 +283,7 @@ pub enum RelationId {
     Roots,
     SecondaryCommands,
     TabItems,
+    VirtualItems,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum EventId {
@@ -302,6 +304,7 @@ pub enum EventId {
     DragOver,
     Drop,
     GotFocus,
+    HorizontalOffsetChanged,
     ImageFailed,
     ImageOpened,
     IsCheckedChanged,
@@ -333,6 +336,7 @@ pub enum EventId {
     TextChanged,
     Toggled,
     ValueChanged,
+    VerticalOffsetChanged,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectCategory {
@@ -688,6 +692,14 @@ pub fn event_contracts(kind: ObjectType) -> &'static [EventContract] {
             EventContract {
                 id: EventId::DragItemsCompleted,
                 value: ValueType::StringList,
+            },
+            EventContract {
+                id: EventId::HorizontalOffsetChanged,
+                value: ValueType::F64,
+            },
+            EventContract {
+                id: EventId::VerticalOffsetChanged,
+                value: ValueType::F64,
             },
         ],
         ObjectType::DataItem => &[],
@@ -1450,6 +1462,10 @@ pub fn property_contract(kind: ObjectType, id: PropertyId) -> Option<PropertyCon
             value: ValueType::String,
         }),
         (ObjectType::TreeNode, PropertyId::Expanded) => Some(PropertyContract {
+            id,
+            value: ValueType::Bool,
+        }),
+        (ObjectType::ListView, PropertyId::HorizontalScroll) => Some(PropertyContract {
             id,
             value: ValueType::Bool,
         }),
@@ -2518,13 +2534,14 @@ pub(crate) fn property_order(kind: ObjectType, id: PropertyId) -> usize {
         (ObjectType::TreeView, PropertyId::IsEnabled) => 28,
         (ObjectType::TreeNode, PropertyId::Text) => 27,
         (ObjectType::TreeNode, PropertyId::Expanded) => 28,
-        (ObjectType::ListView, PropertyId::ItemContainerStyle) => 27,
-        (ObjectType::ListView, PropertyId::SelectionMode) => 28,
-        (ObjectType::ListView, PropertyId::CanDragItems) => 29,
-        (ObjectType::ListView, PropertyId::CanReorderItems) => 30,
-        (ObjectType::ListView, PropertyId::AllowDrop) => 31,
-        (ObjectType::ListView, PropertyId::SelectedIndex) => 32,
-        (ObjectType::ListView, PropertyId::IsEnabled) => 33,
+        (ObjectType::ListView, PropertyId::HorizontalScroll) => 27,
+        (ObjectType::ListView, PropertyId::ItemContainerStyle) => 28,
+        (ObjectType::ListView, PropertyId::SelectionMode) => 29,
+        (ObjectType::ListView, PropertyId::CanDragItems) => 30,
+        (ObjectType::ListView, PropertyId::CanReorderItems) => 31,
+        (ObjectType::ListView, PropertyId::AllowDrop) => 32,
+        (ObjectType::ListView, PropertyId::SelectedIndex) => 33,
+        (ObjectType::ListView, PropertyId::IsEnabled) => 34,
         (ObjectType::DataItem, PropertyId::Text) => 27,
         (ObjectType::HyperlinkButton, PropertyId::NavigateUri) => 27,
         (ObjectType::HyperlinkButton, PropertyId::IsEnabled) => 28,
@@ -2858,6 +2875,7 @@ pub(crate) const ALL_PROPERTY_IDS: &[PropertyId] = &[
     PropertyId::Height,
     PropertyId::HorizontalAlignment,
     PropertyId::HorizontalContentAlignment,
+    PropertyId::HorizontalScroll,
     PropertyId::HorizontalScrollBarVisibility,
     PropertyId::Icon,
     PropertyId::IconSource,
@@ -3256,14 +3274,24 @@ pub fn relation_contracts(kind: ObjectType) -> &'static [RelationContract] {
                 realization: Realization::Structural,
             },
         ],
-        ObjectType::ListView => &[RelationContract {
-            id: RelationId::Items,
-            child: ObjectCategory::Data,
-            allowed_objects: &[],
-            cardinality: Cardinality::Many,
-            identity: Identity::Keyed,
-            realization: Realization::Container,
-        }],
+        ObjectType::ListView => &[
+            RelationContract {
+                id: RelationId::Items,
+                child: ObjectCategory::Data,
+                allowed_objects: &[],
+                cardinality: Cardinality::Many,
+                identity: Identity::Keyed,
+                realization: Realization::Container,
+            },
+            RelationContract {
+                id: RelationId::VirtualItems,
+                child: ObjectCategory::Visual,
+                allowed_objects: &[],
+                cardinality: Cardinality::Many,
+                identity: Identity::Keyed,
+                realization: Realization::Container,
+            },
+        ],
         ObjectType::DataItem => &[RelationContract {
             id: RelationId::Content,
             child: ObjectCategory::Visual,

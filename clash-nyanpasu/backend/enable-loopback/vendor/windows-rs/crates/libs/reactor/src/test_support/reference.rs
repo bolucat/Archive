@@ -11,6 +11,7 @@ impl ImperativeRequest {
         match self {
             Self::Focus { object, .. }
             | Self::ScrollIntoView { object, .. }
+            | Self::ScrollTo { object, .. }
             | Self::InitializeWebView2 { object, .. }
             | Self::ObserveSwapChainPanel { object, .. }
             | Self::RequestSwapChainPanelFrame { object, .. }

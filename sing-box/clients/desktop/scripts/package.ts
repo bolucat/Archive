@@ -12,6 +12,7 @@ import {
 import { findBoxDirectory } from "./sing-box";
 import { configureReproducibleBuild } from "./reproducibility";
 import { readApplicationVersion, readGoVersion } from "./version";
+import { buildWaylandMenuModule } from "./waylandMenu";
 import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(
@@ -558,6 +559,16 @@ async function packageLinux() {
       "linux",
       architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "sing-box-daemon"),
+    );
+    buildWaylandMenuModule(
+      architecture.artifactArchitecture,
+      path.join(
+        repositoryRoot,
+        "bin",
+        "linux",
+        architecture.artifactArchitecture,
+        "wayland_menu.node",
+      ),
     );
     const argumentsList = [
       "--linux",

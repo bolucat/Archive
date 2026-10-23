@@ -167,12 +167,97 @@ impl WinUiAdapter {
                             ),
                             Err(error) => report_error(error.into()),
                         })?;
+                    let horizontal_offset_changed =
+                        Rc::new(RefCell::new(NativeF64Event::default()));
+                    let vertical_offset_changed =
+                        Rc::new(RefCell::new(NativeF64Event::default()));
+                    let pending_scroll = Rc::new(Cell::new(None));
+                    let _view_changed = Rc::new(RefCell::new(None));
+                    let offset_events = (
+                        Rc::clone(&horizontal_offset_changed),
+                        Rc::clone(&vertical_offset_changed),
+                    );
+                    let offset_queue = Rc::clone(&self.event_queue);
+                    let loaded_scroll = Rc::clone(&pending_scroll);
+                    let view_changed = Rc::clone(&_view_changed);
+                    let root = value.cast::<native::DependencyObject>()?;
+                    let _loaded = value.cast::<native::IFrameworkElement>()?.Loaded(
+                        move |_, _| {
+                            if view_changed.borrow().is_some() {
+                                return;
+                            }
+                            let subscribed = template_scroll_viewer(&root).and_then(|viewer| {
+                                let Some(viewer) = viewer else {
+                                    return Ok(None);
+                                };
+                                let (horizontal_event, vertical_event) = offset_events.clone();
+                                let offset_queue = Rc::clone(&offset_queue);
+                                let last = Cell::new((
+                                    viewer.HorizontalOffset()?,
+                                    viewer.VerticalOffset()?,
+                                ));
+                                let revoker = viewer.ViewChanged(move |sender, _| {
+                                    let offsets = sender
+                                        .as_ref()
+                                        .ok_or_else(windows_core::Error::empty)
+                                        .and_then(|sender| sender.cast::<native::ScrollViewer>())
+                                        .and_then(|viewer| {
+                                            Ok((viewer.HorizontalOffset()?, viewer.VerticalOffset()?))
+                                        });
+                                    let offsets = match offsets {
+                                        Ok(offsets) => offsets,
+                                        Err(error) => return report_error(error),
+                                    };
+                                    let (horizontal, vertical) = last.replace(offsets);
+                                    // Queued events carry their handler revision. Queue the
+                                    // vertical offset first: commonly a passive record, it is
+                                    // then delivered before a horizontal handler re-renders
+                                    // and replaces both handlers.
+                                    if offsets.1 != vertical {
+                                        Self::dispatch(
+                                            &vertical_event,
+                                            &offset_queue,
+                                            object,
+                                            EventId::VerticalOffsetChanged,
+                                            None,
+                                            offsets.1,
+                                        );
+                                    }
+                                    if offsets.0 != horizontal {
+                                        Self::dispatch(
+                                            &horizontal_event,
+                                            &offset_queue,
+                                            object,
+                                            EventId::HorizontalOffsetChanged,
+                                            None,
+                                            offsets.0,
+                                        );
+                                    }
+                                })?;
+                                if let Some((horizontal, vertical)) = loaded_scroll.take() {
+                                    viewer.ChangeViewWithOptionalAnimation(
+                                        horizontal, vertical, None, true,
+                                    )?;
+                                }
+                                Ok(Some(revoker))
+                            });
+                            match subscribed {
+                                Ok(revoker) => *view_changed.borrow_mut() = revoker,
+                                Err(error) => report_error(error),
+                            }
+                        },
+                    )?;
                     Handle::ListView(NativeListView {
                         value,
                         selection_changed,
                         drag_items_completed,
+                        horizontal_offset_changed,
+                        vertical_offset_changed,
+                        pending_scroll,
                         _selection_changed,
                         _drag_items_completed,
+                        _loaded,
+                        _view_changed,
                     })
                 }
                 ObjectType::DataItem => {

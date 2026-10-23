@@ -120,6 +120,8 @@ linux:
       to: trayStopped@2x.png
     - from: bin/sing-box-daemon
       to: daemon/sing-box-daemon
+    - from: bin/linux/${arch}/wayland_menu.node
+      to: native/wayland_menu.node
   desktop:
     entry:
       StartupWMClass: sing-box
@@ -138,6 +140,7 @@ deb:
     - --deb-compression-level=9
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
+    - build/sing-box-daemon.preset=/usr/lib/systemd/system-preset/80-sing-box-daemon.preset
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
     - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
 rpm:
@@ -153,6 +156,7 @@ rpm:
     - --rpm-rpmbuild-define=clamp_mtime_to_source_date_epoch 1
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
+    - build/sing-box-daemon.preset=/usr/lib/systemd/system-preset/80-sing-box-daemon.preset
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
     - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
 pacman:
@@ -181,5 +185,6 @@ pacman:
     - --before-remove=build/linux-before-remove-pacman.sh
     - --after-upgrade=build/linux-after-install-pacman.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
+    - build/sing-box-daemon.preset=/usr/lib/systemd/system-preset/80-sing-box-daemon.preset
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
     - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml

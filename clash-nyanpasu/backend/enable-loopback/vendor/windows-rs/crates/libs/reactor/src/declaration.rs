@@ -767,8 +767,14 @@ pub struct Tooltip {
 }
 
 impl Tooltip {
+    /// Wraps like WinUI string tooltip content, so text wider than the ToolTip MaxWidth
+    /// is not clipped.
     pub fn text(value: impl AsRef<str>) -> Self {
-        Self::rich(TextBlock::new().text(value))
+        Self::rich(
+            TextBlock::new()
+                .text(value)
+                .text_wrapping(TextWrapping::Wrap),
+        )
     }
 
     pub fn rich(content: impl Into<View>) -> Self {

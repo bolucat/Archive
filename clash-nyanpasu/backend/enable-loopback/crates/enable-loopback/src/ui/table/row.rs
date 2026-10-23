@@ -141,13 +141,16 @@ impl Component for TableRow {
             } else {
                 label.into()
             };
-            cells.push(
-                Border::new()
-                    .grid_column(index as i32 + 1)
-                    .padding(Thickness::xy(12.0, 0.0))
-                    .content(content)
-                    .tooltip(text),
-            );
+            let cell = Border::new()
+                .grid_column(index as i32 + 1)
+                .padding(Thickness::xy(12.0, 0.0))
+                .content(content);
+            // Only the hovered row carries tooltips, so rows do not each hold seven.
+            cells.push(if self.hovered {
+                cell.tooltip(text)
+            } else {
+                cell.into()
+            });
         }
         let fill: Brush = if input.selected {
             ThemeBrush::SubtleFillTertiary.into()
@@ -163,8 +166,10 @@ impl Component for TableRow {
             .is_tab_stop(true)
             .focus_on_pointer_release(true)
             .automation_id(format!("row_{}", input.row.key))
+            // The list names its item after the row's view.
+            .automation_name(&input.row.cells[0])
             .width(input.width)
-            .height(40.0)
+            .height(super::ROW_HEIGHT)
             .background(Color::transparent())
             .border_brush(ThemeBrush::DividerStroke)
             .border_thickness(Thickness::new(0.0, 0.0, 0.0, 1.0))

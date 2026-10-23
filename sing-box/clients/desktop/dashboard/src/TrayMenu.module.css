@@ -42,6 +42,10 @@
   padding: var(--space-14) var(--space-40) var(--space-40);
 }
 
+:global(html[data-tray-vertical-alignment="top"]) .cascade {
+  align-items: flex-start;
+}
+
 :global(html[data-tray-vertical-alignment="center"]) .content {
   --tray-offset-y: 0;
 

@@ -59,6 +59,11 @@ export function createRpcClient(
           revision: string
           target_core: string
           root_id: number
+          /**
+           *  The built final node. The core's effective view, when present, is a
+           *  later node and never this one.
+           */
+          final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
         IpcError
@@ -73,6 +78,11 @@ export function createRpcClient(
           revision: string
           target_core: string
           root_id: number
+          /**
+           *  The built final node. The core's effective view, when present, is a
+           *  later node and never this one.
+           */
+          final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
         IpcError
@@ -193,8 +203,6 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    collectEnvs: () =>
-      typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
     getCachedIcon: (url: string) =>
       typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
     getTrayIcon: (mode: TrayIcon) =>
@@ -467,6 +475,8 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+    reportIssue: (page: PageCapabilities) =>
+      typedError<null, IpcError>(__RPC_INVOKE('report_issue', { page })),
     setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
@@ -492,9 +502,16 @@ export function createRpcClient(
       } | null,
       transform:
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
+      folder: string | null,
     ) =>
       typedError<MutationOutcome<ProfileId>, IpcError>(
-        __RPC_INVOKE('import_profile', { url, name, option, transform }),
+        __RPC_INVOKE('import_profile', {
+          url,
+          name,
+          option,
+          transform,
+          folder,
+        }),
       ),
     /**
      *  Take and clear the queued deep links, oldest first. The frontend calls it
@@ -518,6 +535,26 @@ export function createRpcClient(
     reorderProfilesByList: (list: ProfileId[]) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('reorder_profiles_by_list', { list }),
+      ),
+    setProfileLayout: (layout: ProfileLayout) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_profile_layout', { layout }),
+      ),
+    createProfileFolder: (name: string, members: ProfileId[]) =>
+      typedError<MutationOutcome<FolderId>, IpcError>(
+        __RPC_INVOKE('create_profile_folder', { name, members }),
+      ),
+    setProxyGroupLayout: (profile: ProfileId, layout: ProxyGroupLayout) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_proxy_group_layout', { profile, layout }),
+      ),
+    createProxyGroupFolder: (
+      profile: ProfileId,
+      name: string,
+      members: string[],
+    ) =>
+      typedError<MutationOutcome<FolderId>, IpcError>(
+        __RPC_INVOKE('create_proxy_group_folder', { profile, name, members }),
       ),
     updateProfile: (
       uid: ProfileId,
@@ -649,6 +686,14 @@ export function createRpcClient(
       typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
     createDebugTrayMenuWindow: () =>
       typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+    /**
+     *  Panics on purpose, so the crash reporter can be tested. The panic hook
+     *  exits differently when the main thread panics, hence the choice.
+     */
+    simulateCrash: (mainThread: boolean) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('simulate_crash', { mainThread }),
+      ),
     createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
@@ -766,6 +811,11 @@ export type AppUpdateSnapshot = {
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
 
+export type BrandVersion = {
+  brand: string
+  version: string
+}
+
 export type BreakConnectionStrategy = {
   /**  切换代理时中断连接 */
   on_proxy_change: ProxyChangeBreakMode
@@ -789,20 +839,6 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_proxy_change?: ProxyChangeBreakMode | null
   on_profile_change?: boolean | null
   on_mode_change?: boolean | null
-}
-
-export type BuildInfo = {
-  app_name: string
-  app_version: string
-  pkg_version: string
-  commit_hash: string
-  commit_author: string
-  commit_date: string
-  build_date: string
-  build_profile: string
-  build_platform: string
-  rustc_version: string
-  llvm_version: string
 }
 
 /**  Built-in post-processing steps applied to the selected config. */
@@ -1938,16 +1974,6 @@ export type DelayHistory = {
   delay: number
 }
 
-export type DeviceInfo = {
-  /**  Device name, such as "Intel Core i5-8250U CPU @ 1.60GHz x 8" */
-  cpu: string[]
-  /**
-   *  GPU name, such as "Intel UHD Graphics 620 (Kabylake GT2)"
-   *  Memory size in bytes
-   */
-  memory: string
-}
-
 /**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
 export type Dimension =
   /**  Derived: the process when known, else the source. */
@@ -2097,26 +2123,6 @@ export type EndpointConnectivity =
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
 
-export type EnvInfo = {
-  os: string
-  arch: string
-  core: { [key in string]: string }
-  device: DeviceInfo
-  build_info: {
-    app_name: string
-    app_version: string
-    pkg_version: string
-    commit_hash: string
-    commit_author: string
-    commit_date: string
-    build_date: string
-    build_profile: string
-    build_platform: string
-    rustc_version: string
-    llvm_version: string
-  }
-}
-
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
  *  serializable when the path is not valid UTF-8.
@@ -2223,6 +2229,12 @@ export type Filter = {
   to_ms: number | null
   text: string | null
 }
+
+/**
+ *  Stable identifier of a profile folder. It is minted by the profiles actor and
+ *  never reused, so a folder keeps its identity across renames and reorders.
+ */
+export type FolderId = string
 
 export type FrontendErrorCause = {
   name: string | null
@@ -2753,12 +2765,16 @@ export type NewProfileRequest_Deserialize = {
   metadata: ProfileMetadata_Deserialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Deserialize
+  /**  Folder the new Config profile joins in the same commit. */
+  folder?: FolderId | null
 }
 
 export type NewProfileRequest_Serialize = {
   metadata: ProfileMetadata_Serialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Serialize
+  /**  Folder the new Config profile joins in the same commit. */
+  folder: FolderId | null
 }
 
 /**  ### `verge.yaml` schema */
@@ -3186,6 +3202,15 @@ export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
 }
 
+export type PageCapabilities = {
+  userAgent?: string | null
+  fullVersionList?: BrandVersion[] | null
+  platformVersion?: string | null
+  webgl?: WebGl | null
+  webgpu?: WebGpu | null
+  devicePixelRatio?: number | null
+}
+
 export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
@@ -3271,6 +3296,8 @@ export type ProfileDocument_Deserialize = {
   current?: ProfileId | null
   global_transforms?: ProfileId[]
   valid: string[]
+  folders?: ProfileFolder[]
+  proxy_group_layouts?: { [key in ProfileId]: ProxyGroupLayout }
   items: ProfileItem_Deserialize[]
 }
 
@@ -3278,6 +3305,8 @@ export type ProfileDocument_Serialize = {
   current?: ProfileId | null
   global_transforms?: ProfileId[]
   valid: string[]
+  folders?: ProfileFolder[]
+  proxy_group_layouts?: { [key in ProfileId]: ProxyGroupLayout }
   items: ProfileItem_Serialize[]
 }
 
@@ -3334,6 +3363,17 @@ export type ProfileFileError =
   | { kind: 'cleanup_already_activated' }
   | { kind: 'diverged_before_recovery' }
 
+/**
+ *  A user-named group of Config profiles. A Config profile belongs to at most
+ *  one folder; transforms are never members.
+ */
+export type ProfileFolder = {
+  id: FolderId
+  name: string
+  /**  Display order inside the folder. */
+  members: ProfileId[]
+}
+
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
 
@@ -3360,6 +3400,15 @@ export type ProfileItem_Serialize = {
   uid: ProfileId
 } & ProfileMetadata_Serialize &
   ProfileDefinition_Serialize
+
+/**
+ *  The complete arrangement of Config profiles: every Config profile appears
+ *  exactly once, either inside a folder or in `ungrouped`.
+ */
+export type ProfileLayout = {
+  folders: ProfileFolder[]
+  ungrouped: ProfileId[]
+}
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
@@ -3525,6 +3574,19 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3538,7 +3600,20 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3552,7 +3627,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3572,7 +3660,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3591,7 +3692,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3608,7 +3722,20 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3627,7 +3754,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3647,7 +3787,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3667,7 +3820,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3686,7 +3852,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3705,7 +3884,20 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3725,7 +3917,20 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       CurrentNotFound?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3745,9 +3950,430 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
+    })
+  | ({
+      FolderDuplicateId: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderNameEmpty: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberNotFound: {
+        folder: FolderId
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberNotConfig: {
+        folder: FolderId
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberDuplicate: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderNotFound: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      LayoutMissingProfile: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      LayoutUnknownProfile: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupLayoutProfileNotConfig: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupFolderDuplicateId: {
+        profile: ProfileId
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupFolderNameEmpty: {
+        profile: ProfileId
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupNameEmpty: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupDuplicate: {
+        profile: ProfileId
+        name: string
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
     })
 
 /**  What a profile command failed with. */
@@ -3887,6 +4513,17 @@ export type ProxyGroupCapabilities = {
   clearFixed: boolean
 }
 
+/**
+ *  A user-named group of proxy groups in the Proxies sidebar. Clash identifies a
+ *  proxy group only by its name, so members are names.
+ */
+export type ProxyGroupFolder = {
+  id: FolderId
+  name: string
+  /**  Display order inside the folder. */
+  members: string[]
+}
+
 /**  A group's `type`, as the core reports it. */
 export type ProxyGroupKind =
   | 'Selector'
@@ -3897,6 +4534,20 @@ export type ProxyGroupKind =
   | 'Smart'
   /**  A type this build does not know, kept verbatim. */
   | string
+
+/**
+ *  How a Config profile's proxy groups are arranged in the sidebar: the groups
+ *  in no folder, then the folders.
+ *
+ *  The groups come from the running core, not from the profile document, so a
+ *  layout may name groups that no longer exist and may not name new ones. It is
+ *  presentation only: [`ProxyGroupLayout::resolve`] reconciles it with the live
+ *  groups, and nothing here touches the runtime config.
+ */
+export type ProxyGroupLayout = {
+  folders: ProxyGroupFolder[]
+  ungrouped: string[]
+}
 
 export type ProxyName = string
 
@@ -4288,6 +4939,11 @@ export type RuntimeInspection = {
   revision: string
   target_core: string
   root_id: number
+  /**
+   *  The built final node. The core's effective view, when present, is a
+   *  later node and never this one.
+   */
+  final_id: number
   nodes: RuntimeInspectionNode[]
 }
 
@@ -4307,6 +4963,8 @@ export type RuntimeInspectionNode = {
   tag: OperatorTag
   next: number[]
   has_logs: boolean
+  /**  The highest level among this node's step logs; `None` when it has none. */
+  max_log_level: StepLogLevel | null
   /**  None means unchanged or no comparison baseline (including independent roots). */
   changed_fields: string[] | null
 }
@@ -4593,7 +5251,11 @@ export type StepLogEntry = {
   message: string
 }
 
-/**  1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25). */
+/**
+ *  1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25).
+ *
+ *  Declaration order is severity (`Log` lowest, `Error` highest); `Ord` relies on it.
+ */
 export type StepLogLevel = 'log' | 'info' | 'warn' | 'error'
 
 export type StorageEntry = {
@@ -4886,6 +5548,23 @@ export type UsagePage = {
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
+
+export type WebGl = {
+  vendor?: string | null
+  renderer?: string | null
+}
+
+export type WebGpu = {
+  available: boolean
+  adapter?: WebGpuAdapter | null
+}
+
+export type WebGpuAdapter = {
+  vendor?: string | null
+  architecture?: string | null
+  device?: string | null
+  description?: string | null
+}
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =
