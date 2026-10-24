@@ -97,9 +97,7 @@ make
 ## Contributors
 
 * **hev** - https://hev.cc
-* **mike wang** - https://github.com/mikewang000000
-* **sergey larin** - https://github.com/cerg2010cerg2010
-* **yujinpan** - https://github.com/yujinpan
+* **Mike Wang** - https://github.com/MikeWang000000
 
 ## License
 

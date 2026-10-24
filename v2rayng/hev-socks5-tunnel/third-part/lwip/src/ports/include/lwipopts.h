@@ -108,15 +108,6 @@ void *hev_malloc (size_t size);
 void *hev_calloc (size_t nmemb, size_t size);
 #define MEM_CUSTOM_CALLOC hev_calloc
 
-/**
- * MEMP_MEM_MALLOC==1: Use mem_malloc/mem_free instead of the lwip pool allocator.
- * Especially useful with MEM_LIBC_MALLOC but handle with care regarding execution
- * speed (heap alloc can be much slower than pool alloc) and usage from interrupts
- * (especially if your netif driver allocates PBUF_POOL pbufs for received frames
- * from interrupt)!
- */
-#define MEMP_MEM_MALLOC                 1
-
 /*
    ------------------------------------------------
    ---------- Internal Memory Pool Sizes ----------
@@ -404,29 +395,13 @@ void *hev_calloc (size_t nmemb, size_t size);
  * with scaling applied. Maximum window value in the TCP header
  * will be TCP_WND >> TCP_RCV_SCALE
  */
-#define TCP_WND                         (16 * TCP_MSS)
-
-/**
- * LWIP_WND_SCALE and TCP_RCV_SCALE:
- * Set LWIP_WND_SCALE to 1 to enable window scaling.
- * Set TCP_RCV_SCALE to the desired scaling factor (shift count in the
- * range of [0..14]).
- */
-#define LWIP_WND_SCALE                  1
-#define TCP_RCV_SCALE                   3
+#define TCP_WND                         (8 * TCP_MSS)
 
 /**
  * TCP_SND_BUF: TCP sender buffer space (bytes).
  * To achieve good performance, this should be at least 2 * TCP_MSS.
  */
-#define TCP_SND_BUF                     (32 * TCP_MSS)
-
-/**
- * TCP_SNDLOWAT: TCP writable space (bytes). This must be less than
- * TCP_SND_BUF. It is the amount of space which must be available in the
- * TCP snd_buf for select to return writable (combined with TCP_SNDQUEUELOWAT).
- */
-#define TCP_SNDLOWAT                    (2 * TCP_MSS + 1)
+#define TCP_SND_BUF                     (8 * TCP_MSS)
 
 /**
  * TCP_SND_QUEUELEN: TCP sender buffer space (pbufs). This must be at least
@@ -453,13 +428,6 @@ void *hev_calloc (size_t nmemb, size_t size);
 *
  */
 #define PBUF_POOL_BUFSIZE               LWIP_MEM_ALIGN_SIZE(TCP_MSS+40+PBUF_LINK_HLEN)
-
-/**
- * LWIP_PBUF_CUSTOM_DATA: Store private data on pbufs.
- * gso_size: segmentation size of an outgoing TCP packet (0: none).
- */
-#define LWIP_PBUF_CUSTOM_DATA           u16_t gso_size;
-#define LWIP_PBUF_CUSTOM_DATA_INIT(p)   (p)->gso_size = 0
 
 /*
    ------------------------------------
@@ -544,12 +512,6 @@ void *hev_calloc (size_t nmemb, size_t size);
  */
 #define LWIP_CHECKSUM_ON_COPY           1
 
-/**
- * LWIP_CHECKSUM_CTRL_PER_NETIF==1: Checksum generation/check can be
- * enabled/disabled per netif.
- */
-#define LWIP_CHECKSUM_CTRL_PER_NETIF    1
-
 /*
    ---------------------------------------
    ---------- Threading options ----------
@@ -557,19 +519,6 @@ void *hev_calloc (size_t nmemb, size_t size);
 */
 
 #define LWIP_TCPIP_CORE_LOCKING    1
-
-/*
-   ---------------------------------------
-   ---------- Hook options ---------------
-   ---------------------------------------
-*/
-
-/**
- * LWIP_HOOK_TCP_OUT_ADD_TCPOPTS: Hook for adding custom options to outgoing
- * tcp segments. Used to tag outgoing packets with the GSO size of the pcb.
- */
-#define LWIP_HOOK_TCP_OUT_ADD_TCPOPTS(p, hdr, pcb, opts) \
-    ((p)->gso_size = (pcb) ? (pcb)->gso_mss : 0, (opts))
 
 #if !NO_SYS
 void sys_check_core_locking(void);

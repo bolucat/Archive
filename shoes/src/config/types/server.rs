@@ -158,6 +158,8 @@ pub fn direct_allow_rule() -> NoneOrSome<ConfigSelection<RuleConfig>> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub sniff: bool,
     #[serde(flatten)]
@@ -198,6 +200,7 @@ impl<'de> serde::de::Deserialize<'de> for ServerConfig {
             .ok_or_else(|| Error::custom("ServerConfig must be a YAML mapping"))?;
 
         const VALID_FIELDS: &[&str] = &[
+            "name",
             "address",
             "addresses",
             "path", // BindLocation (flattened)
@@ -329,6 +332,11 @@ impl<'de> serde::de::Deserialize<'de> for ServerConfig {
             .unwrap_or(false);
 
         Ok(ServerConfig {
+            name: map
+                .get("name")
+                .map(|v| serde_yaml::from_value(v.clone()))
+                .transpose()
+                .map_err(Error::custom)?,
             sniff,
             bind_location,
             protocol,
@@ -394,12 +402,18 @@ pub struct RealityServerConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TlsServerConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub certificate_source: Option<String>,
+    #[serde(skip)]
+    pub certificate_binding: Option<std::sync::Arc<crate::certificates::Source>>,
     #[serde(
         default,
         skip_serializing_if = "super::tls::TlsKeyExchangeGroups::is_default"
     )]
     pub key_exchange_groups: super::tls::TlsKeyExchangeGroups,
+    #[serde(default)]
     pub cert: String,
+    #[serde(default)]
     pub key: String,
     #[serde(alias = "alpn_protocol", default)]
     pub alpn_protocols: NoneOrSome<String>,
@@ -956,6 +970,7 @@ mod tests {
 
     fn create_test_server_config_http() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080)
                 .into(),
@@ -973,6 +988,7 @@ mod tests {
 
     fn create_test_server_config_socks() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 1080)
                 .into(),
@@ -991,6 +1007,7 @@ mod tests {
 
     fn create_test_server_config_shadowsocks() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: BindLocation::Path(PathBuf::from("/tmp/ss.sock")),
             protocol: ServerProxyConfig::Shadowsocks {
@@ -1010,6 +1027,7 @@ mod tests {
 
     fn create_test_server_config_vless() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(
                 IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
@@ -1028,6 +1046,8 @@ mod tests {
             transport: Transport::Quic,
             tcp_settings: None,
             quic_settings: Some(ServerQuicConfig {
+                certificate_source: None,
+                certificate_binding: None,
                 key_exchange_groups: Default::default(),
                 cert: "server.crt".to_string(),
                 key: "server.key".to_string(),
@@ -1043,6 +1063,7 @@ mod tests {
 
     fn create_test_server_config_trojan() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(
                 IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
@@ -1069,6 +1090,8 @@ mod tests {
         tls_targets.insert(
             "example.com".to_string(),
             TlsServerConfig {
+                certificate_source: None,
+                certificate_binding: None,
                 key_exchange_groups: Default::default(),
                 cert: "example.crt".to_string(),
                 key: "example.key".to_string(),
@@ -1087,10 +1110,13 @@ mod tests {
         ServerConfig {
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 8443)
                 .into(),
+            name: None,
             sniff: false,
             protocol: ServerProxyConfig::Tls {
                 tls_targets,
                 default_tls_target: Some(Box::new(TlsServerConfig {
+                    certificate_source: None,
+                    certificate_binding: None,
                     key_exchange_groups: Default::default(),
                     cert: "default.crt".to_string(),
                     key: "default.key".to_string(),
@@ -1118,6 +1144,7 @@ mod tests {
 
     fn create_test_server_config_vmess() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(
                 IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1)),
@@ -1139,6 +1166,7 @@ mod tests {
 
     fn create_test_server_config_websocket() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080)
                 .into(),
@@ -1164,6 +1192,7 @@ mod tests {
 
     fn create_test_server_config_port_forward() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9090)
                 .into(),
@@ -1183,6 +1212,7 @@ mod tests {
 
     fn create_test_server_config_hysteria2() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 443)
                 .into(),
@@ -1193,6 +1223,8 @@ mod tests {
             transport: Transport::Quic,
             tcp_settings: None,
             quic_settings: Some(ServerQuicConfig {
+                certificate_source: None,
+                certificate_binding: None,
                 key_exchange_groups: Default::default(),
                 cert: "hysteria.crt".to_string(),
                 key: "hysteria.key".to_string(),
@@ -1208,6 +1240,7 @@ mod tests {
 
     fn create_test_server_config_tuic() -> ServerConfig {
         ServerConfig {
+            name: None,
             sniff: false,
             bind_location: NetLocation::from_ip_addr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8443)
                 .into(),
@@ -1219,6 +1252,8 @@ mod tests {
             transport: Transport::Quic,
             tcp_settings: None,
             quic_settings: Some(ServerQuicConfig {
+                certificate_source: None,
+                certificate_binding: None,
                 key_exchange_groups: Default::default(),
                 cert: "tuic.crt".to_string(),
                 key: "tuic.key".to_string(),

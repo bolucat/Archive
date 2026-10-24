@@ -59,7 +59,6 @@ extern "C" {
 
 /* Lower layer interface to TCP: */
 void             tcp_init    (void);  /* Initialize this module. */
-void             tcp_fini    (void);  /* Free all pcbs. */
 void             tcp_tmr     (void);  /* Must be called every
                                          TCP_TMR_INTERVAL
                                          ms. (Typically 250 ms). */
@@ -98,12 +97,10 @@ err_t            tcp_process_refused_data(struct tcp_pcb *pcb);
  *   than one unsent segment - with lwIP, this can happen although unsent->len < mss)
  * - or if we are in fast-retransmit (TF_INFR)
  */
-/* Nagle works on real segments, even when sending GSO super segments. */
-#define tcp_nagle_mss(tpcb) ((tpcb)->gso_mss ? (tpcb)->gso_mss : (tpcb)->mss)
 #define tcp_do_output_nagle(tpcb) ((((tpcb)->unacked == NULL) || \
                             ((tpcb)->flags & (TF_NODELAY | TF_INFR)) || \
                             (((tpcb)->unsent != NULL) && (((tpcb)->unsent->next != NULL) || \
-                              ((tpcb)->unsent->len >= tcp_nagle_mss(tpcb)))) || \
+                              ((tpcb)->unsent->len >= (tpcb)->mss))) || \
                             ((tcp_sndbuf(tpcb) == 0) || (tcp_sndqueuelen(tpcb) >= TCP_SND_QUEUELEN)) \
                             ) ? 1 : 0)
 #define tcp_output_nagle(tpcb) (tcp_do_output_nagle(tpcb) ? tcp_output(tpcb) : ERR_OK)

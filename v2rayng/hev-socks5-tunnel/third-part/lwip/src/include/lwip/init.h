@@ -93,8 +93,6 @@ extern "C" {
 /* Modules initialization */
 void lwip_init(void);
 
-void lwip_fini(void);
-
 #ifdef __cplusplus
 }
 #endif

@@ -69,7 +69,6 @@ struct ip_reassdata {
 
 void ip_reass_init(void);
 void ip_reass_tmr(void);
-void ip_reass_fini(void);
 struct pbuf * ip4_reass(struct pbuf *p);
 #endif /* IP_REASSEMBLY */
 

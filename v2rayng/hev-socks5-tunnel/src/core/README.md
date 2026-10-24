@@ -180,14 +180,14 @@ defined as follows:
 
 ```
     +--------+--------+------+----------+----------+----------+
-    | DATLEN | HDRLEN | ATYP | DST.ADDR | DST.PORT |   DATA   |
+    | MSGLEN | HDRLEN | ATYP | DST.ADDR | DST.PORT |   DATA   |
     +--------+--------+------+----------+----------+----------+
     |   2    |   1    |  1   | Variable |    2     | Variable |
     +--------+--------+------+----------+----------+----------+
 ```
 
-- DATLEN: The data length of the UDP relay message. `[DATA]`
-- HDRLEN: The header length of the UDP relay message. `[DATLEN ... DST.PORT]`
+- MSGLEN: The total length of the UDP relay message. `[MSGLEN, DATA]`
+- HDRLEN: The header length of the UDP relay message. `[MSGLEN, DST.PORT]`
 - ATYPE/DST.ADDR/DST.PORT: Fields follow the definitions specified in RFC 1928.
 
 ## Users
@@ -197,10 +197,7 @@ defined as follows:
 * **HevSocks5Tunnel** - https://github.com/heiher/hev-socks5-tunnel
 
 ## Contributors
-
-* **egavr** - https://github.com/egavr
 * **hev** - https://hev.cc
-* **sergey larin** - https://github.com/cerg2010cerg2010
 * **spider84** - https://github.com/spider84
 
 ## License

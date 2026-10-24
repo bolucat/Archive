@@ -12,11 +12,8 @@
 #include <sys/socket.h>
 #include <lwip/tcp.h>
 #include <yaml.h>
-#include <hev-task.h>
-#include <hev-task-io.h>
 
 #include "hev-logger.h"
-#include "hev-tunnel.h"
 #include "hev-config.h"
 #include "hev-config-const.h"
 
@@ -24,7 +21,6 @@ static char tun_name[64];
 static char tun_guid[64];
 static unsigned int tun_mtu;
 static int multi_queue;
-static int offload;
 static int icmp;
 
 static char tun_ipv4_address[16];
@@ -121,49 +117,6 @@ hev_config_parse_tunnel_ipv6 (yaml_document_t *doc, yaml_node_t *base)
 }
 
 static int
-hev_config_parse_tunnel_offload (yaml_document_t *doc, yaml_node_t *base)
-{
-    yaml_node_pair_t *pair;
-
-    if (!base || YAML_MAPPING_NODE != base->type)
-        return -1;
-
-    for (pair = base->data.mapping.pairs.start;
-         pair < base->data.mapping.pairs.top; pair++) {
-        yaml_node_t *node;
-        const char *key, *value;
-        int flag = 0;
-
-        if (!pair->key || !pair->value)
-            continue;
-
-        node = yaml_document_get_node (doc, pair->key);
-        if (!node || YAML_SCALAR_NODE != node->type)
-            break;
-        key = (const char *)node->data.scalar.value;
-
-        node = yaml_document_get_node (doc, pair->value);
-        if (!node || YAML_SCALAR_NODE != node->type)
-            break;
-        value = (const char *)node->data.scalar.value;
-
-        if (0 == strcmp (key, "tso"))
-            flag = HEV_TUNNEL_OFFLOAD_TCP;
-        else if (0 == strcmp (key, "uso"))
-            flag = HEV_TUNNEL_OFFLOAD_UDP;
-        else if (0 == strcmp (key, "jumbo"))
-            flag = HEV_TUNNEL_OFFLOAD_JUMBO;
-
-        if (strcasecmp (value, "false"))
-            offload |= flag;
-        else
-            offload &= ~flag;
-    }
-
-    return 0;
-}
-
-static int
 hev_config_parse_tunnel (yaml_document_t *doc, yaml_node_t *base)
 {
     yaml_node_pair_t *pair;
@@ -214,8 +167,6 @@ hev_config_parse_tunnel (yaml_document_t *doc, yaml_node_t *base)
                 hev_config_parse_tunnel_ipv4 (doc, node);
             else if (0 == strcmp (key, "ipv6"))
                 hev_config_parse_tunnel_ipv6 (doc, node);
-            else if (0 == strcmp (key, "offload"))
-                hev_config_parse_tunnel_offload (doc, node);
         }
     }
 
@@ -493,10 +444,6 @@ hev_config_parse_doc (yaml_document_t *doc)
     if (tcp_buffer_size > TCP_SND_BUF)
         tcp_buffer_size = TCP_SND_BUF;
 
-    /* Keep segments from straddling the end of the ring buffer. */
-    if (tcp_buffer_size > TCP_MSS)
-        tcp_buffer_size -= tcp_buffer_size % TCP_MSS;
-
     udp_buffer_size = UDP_BUF_SIZE * udp_copy_buffer_nums;
 
     if (tcp_buffer_size > udp_buffer_size)
@@ -525,8 +472,6 @@ hev_config_reset (void)
 
     tun_mtu = 8500;
     multi_queue = 0;
-    offload = HEV_TUNNEL_OFFLOAD_TCP | HEV_TUNNEL_OFFLOAD_UDP |
-              HEV_TUNNEL_OFFLOAD_JUMBO;
     icmp = 0;
 
     mapdns_address = 0;
@@ -639,12 +584,6 @@ int
 hev_config_get_tunnel_multi_queue (void)
 {
     return multi_queue;
-}
-
-int
-hev_config_get_tunnel_offload (void)
-{
-    return offload;
 }
 
 int

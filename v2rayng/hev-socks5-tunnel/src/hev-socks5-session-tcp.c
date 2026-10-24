@@ -69,14 +69,9 @@ tcp_splice_f (HevSocks5SessionTCP *self)
                 res = -1;
         } else {
             hev_task_mutex_lock (self->mutex);
-            while (s > 0) {
-                u16_t n = (s > 0xffff) ? 0xffff : s;
-
-                self->queue = pbuf_free_header (self->queue, n);
-                if (self->pcb)
-                    tcp_recved (self->pcb, n);
-                s -= n;
-            }
+            self->queue = pbuf_free_header (self->queue, s);
+            if (self->pcb)
+                tcp_recved (self->pcb, s);
             hev_task_mutex_unlock (self->mutex);
             res = 1;
         }
@@ -116,15 +111,10 @@ tcp_splice_b (HevSocks5SessionTCP *self)
             ssize_t s = 0;
             int i;
             for (i = 0; i < iovc; i++) {
-                u8_t *ptr = iov[i].iov_base;
+                void *ptr = iov[i].iov_base;
                 size_t len = iov[i].iov_len;
+                err |= tcp_write (self->pcb, ptr, len, 0);
                 s += len;
-                while (len > 0) {
-                    u16_t n = (len > 0xffff) ? 0xffff : len;
-                    err |= tcp_write (self->pcb, ptr, n, 0);
-                    ptr += n;
-                    len -= n;
-                }
             }
             hev_ring_buffer_read_finish (self->buffer, s);
             err |= tcp_output (self->pcb);
@@ -212,10 +202,7 @@ hev_socks5_session_tcp_splice (HevSocks5Session *base)
     if (!self->pcb)
         return;
 
-    /* Hold whole (super) segments, a full buffer is sent in full packets. */
     tcp_buffer_size = hev_config_get_misc_tcp_buffer_size ();
-    if (tcp_buffer_size > self->pcb->mss)
-        tcp_buffer_size -= tcp_buffer_size % self->pcb->mss;
     self->buffer = hev_ring_buffer_alloca (tcp_buffer_size);
     if (!self->buffer)
         return;

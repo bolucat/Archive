@@ -26,7 +26,10 @@ const MIN_TLS_BUFFER_SIZE: usize = 16 * 1024;
 /// Result of config validation containing server configs and expanded DNS groups.
 /// DNS resolvers are built at runtime from the expanded groups.
 pub struct ValidatedConfigs {
-    pub rule_files: Vec<std::path::PathBuf>,
+    pub catalog: Option<crate::control::catalog::Catalog>,
+    pub control: super::ControlConfig,
+    pub certificates: Vec<std::sync::Arc<crate::certificates::Source>>,
+    pub reload_files: Vec<std::path::PathBuf>,
     pub global_limits: GlobalLimits,
     pub configs: Vec<Config>,
     /// Expanded DNS groups in topological order (bootstrap deps first).
@@ -44,17 +47,29 @@ pub struct ValidatedConfigs {
 /// - Validates all ServerConfigs and TunConfigs against the groups and PEMs
 /// - Returns ValidatedConfigs containing configs and expanded DNS groups
 pub fn create_server_configs(mut all_configs: Vec<Config>) -> std::io::Result<ValidatedConfigs> {
+    let certificates = crate::certificates::configure(&mut all_configs)?;
+    let catalog = crate::control::catalog::Catalog::capture(&mut all_configs)?;
+    let mut control = super::ControlConfig::default();
     let mut compiler = crate::rules::Compiler::default();
-    let rule_files = crate::rule_set::dependencies(&mut all_configs)?;
+    let mut reload_files = crate::rule_set::dependencies(&mut all_configs)?;
+    reload_files.extend(super::pem_reload_dependencies(&mut all_configs)?);
     crate::rule_set::load(&mut all_configs, &mut compiler)?;
     super::rule_visit::compile(&mut all_configs, &mut compiler)?;
     let mut global_limits = None;
     // First pass: collect raw groups with unresolved references
     let mut raw_client_groups: HashMap<String, OneOrSome<ConfigSelection<ClientConfig>>> =
         HashMap::new();
+    let mut direct = ClientConfig::default();
+    if let Some(catalog) = &catalog {
+        direct.control = Some(crate::control::catalog::MemberOrigin {
+            name: std::sync::Arc::from("DIRECT"),
+            path: Vec::new(),
+            selection: catalog.selection.clone(),
+        });
+    }
     raw_client_groups.insert(
         String::from("direct"),
-        OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
+        OneOrSome::One(ConfigSelection::Config(direct)),
     );
 
     let mut rule_groups: HashMap<String, Vec<RuleConfig>> = HashMap::new();
@@ -83,6 +98,20 @@ pub fn create_server_configs(mut all_configs: Vec<Config>) -> std::io::Result<Va
 
     for config in all_configs.into_iter() {
         match config {
+            Config::ClashApi(config) => control.listeners.push(config),
+            Config::CacheFile(config) => {
+                if control
+                    .cache_file_path
+                    .replace(config.cache_file_path)
+                    .is_some()
+                {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "cache_file_path may only be specified once across all config files",
+                    ));
+                }
+            }
+            Config::CertificateSource(_) => {}
             Config::GlobalLimits(limits) => {
                 if global_limits.replace(limits).is_some() {
                     return Err(std::io::Error::new(
@@ -312,7 +341,10 @@ pub fn create_server_configs(mut all_configs: Vec<Config>) -> std::io::Result<Va
     result.extend(tun_configs.into_iter().map(Config::TunServer));
 
     let mut validated = ValidatedConfigs {
-        rule_files,
+        catalog,
+        control,
+        certificates,
+        reload_files,
         global_limits,
         configs: result,
         dns_groups: final_dns_groups,
@@ -322,7 +354,29 @@ pub fn create_server_configs(mut all_configs: Vec<Config>) -> std::io::Result<Va
     #[cfg(unix)]
     super::wireguard_devices::collect_devices(&mut validated, &mut client_groups)?;
     super::fake_dns::validate(&mut validated)?;
+    refresh_catalog_clients(&mut validated, &client_groups)?;
+    if let Some(catalog) = &mut validated.catalog {
+        // Unused definitions are still probeable, but must not activate WireGuard devices.
+        for node in catalog.nodes.values_mut() {
+            if let crate::control::catalog::CatalogNode::Leaf(client) = node {
+                expand_peer_chains(client, &client_groups)?;
+                validate_client_config(client, &named_pems, global_limits)?;
+            }
+        }
+    }
     Ok(validated)
+}
+
+pub(super) fn refresh_catalog_clients(
+    validated: &mut ValidatedConfigs,
+    groups: &HashMap<String, Vec<ClientConfig>>,
+) -> std::io::Result<()> {
+    if let Some(catalog) = &mut validated.catalog {
+        for client in groups.values().flatten() {
+            catalog.update_client(client);
+        }
+    }
+    validated.refresh_catalog()
 }
 
 fn validate_wireguard_dns(validated: &ValidatedConfigs) -> std::io::Result<()> {
@@ -402,6 +456,13 @@ fn resolve_client_groups_topologically(
                 ConfigSelection::Config(config) => {
                     let mut config = config.clone();
                     expand_peer_chains(&mut config, &resolved)?;
+                    if group_name != "direct"
+                        && let Some(origin) = &mut config.control
+                    {
+                        origin
+                            .path
+                            .insert(0, (group_name.clone(), origin.name.to_string()));
+                    }
                     expanded_configs.push(config);
                 }
                 ConfigSelection::GroupName(ref_name) => {
@@ -415,7 +476,20 @@ fn resolve_client_groups_topologically(
                             ),
                         )
                     })?;
-                    expanded_configs.extend(referenced_configs.clone());
+                    expanded_configs.extend(referenced_configs.iter().cloned().map(
+                        |mut config| {
+                            if let Some(origin) = &mut config.control {
+                                origin.path.insert(
+                                    0,
+                                    (
+                                        group_name.clone(),
+                                        crate::control::catalog::api_group(ref_name).to_owned(),
+                                    ),
+                                );
+                            }
+                            config
+                        },
+                    ));
                 }
             }
         }
@@ -969,6 +1043,7 @@ fn validate_server_config(
             &quic_settings.cert,
             &quic_settings.key,
             &quic_settings.client_ca_certs,
+            quic_settings.certificate_binding.as_ref(),
         )?;
     }
     if server_config.transport != Transport::Tcp && server_config.tcp_settings.is_some() {
@@ -1491,14 +1566,16 @@ fn validate_server_certificates(
     cert: &str,
     key: &str,
     ca: &NoneOrSome<String>,
+    source: Option<&std::sync::Arc<crate::certificates::Source>>,
 ) -> std::io::Result<()> {
-    crate::rustls_config_util::try_create_server_config(
+    crate::rustls_config_util::try_create_server_config_with_source(
         cert.as_bytes(),
         key.as_bytes(),
         ca.iter().map(|pem| pem.as_bytes().to_vec()).collect(),
         &[],
         &[],
         &Default::default(),
+        source,
     )
     .map(|_| ())
 }
@@ -1735,6 +1812,7 @@ fn validate_server_proxy_config(
                     &tls_server_config.cert,
                     &tls_server_config.key,
                     &tls_server_config.client_ca_certs,
+                    tls_server_config.certificate_binding.as_ref(),
                 )?;
 
                 let TlsServerConfig {
@@ -1780,6 +1858,7 @@ fn validate_server_proxy_config(
                     &tls_server_config.cert,
                     &tls_server_config.key,
                     &tls_server_config.client_ca_certs,
+                    tls_server_config.certificate_binding.as_ref(),
                 )?;
                 validate_client_fingerprints(&mut tls_server_config.client_fingerprints)?;
 
@@ -1835,6 +1914,7 @@ fn validate_server_proxy_config(
                         &local_handshake.cert,
                         &local_handshake.key,
                         &local_handshake.client_ca_certs,
+                        None,
                     )?;
                     validate_client_fingerprints(&mut local_handshake.client_fingerprints)?;
                 } else if let ShadowTlsServerHandshakeConfig::Remote(remote_handshake) = handshake {
@@ -2881,6 +2961,8 @@ mod tests {
                 ))),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-group".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -2896,10 +2978,14 @@ mod tests {
         // group-b has no dependencies, group-a references group-b
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-a".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::GroupName("group-b".to_string())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-b".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -2914,10 +3000,14 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-a".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::GroupName("group-b".to_string())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-b".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::GroupName("group-a".to_string())),
             }),
@@ -2937,6 +3027,8 @@ mod tests {
         use crate::config::types::ClientConfigGroup;
 
         let configs = vec![Config::ClientConfigGroup(ClientConfigGroup {
+            strategy: Default::default(),
+            default: None,
             client_group: "group-a".to_string(),
             client_proxies: OneOrSome::One(ConfigSelection::GroupName("nonexistent".to_string())),
         })];
@@ -2957,18 +3049,26 @@ mod tests {
         // Diamond: a -> b, a -> c, b -> d, c -> d
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-d".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-c".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::GroupName("group-d".to_string())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-b".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::GroupName("group-d".to_string())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "group-a".to_string(),
                 client_proxies: OneOrSome::Some(vec![
                     ConfigSelection::GroupName("group-b".to_string()),
@@ -2986,14 +3086,20 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "us-proxies".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "eu-proxies".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "all-proxies".to_string(),
                 client_proxies: OneOrSome::Some(vec![
                     ConfigSelection::GroupName("us-proxies".to_string()),
@@ -3402,6 +3508,7 @@ mod tests {
     async fn test_tun_icmp_requires_tcp() {
         // ICMP requires TCP to be enabled
         let tun_config = TunConfig {
+            name: None,
             sniff: false,
             segmentation_offload: None,
             resource_limits: Default::default(),
@@ -3470,6 +3577,8 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-proxy".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(socks_config)),
             }),
@@ -3507,6 +3616,8 @@ mod tests {
         // Create a direct chain - should be allowed for UDP (for bind_interface).
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "direct-chain".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -3546,6 +3657,8 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-proxy".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(socks_config)),
             }),
@@ -3583,6 +3696,8 @@ mod tests {
         // Create a direct chain - should be allowed for H3 (for bind_interface).
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "direct-chain".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -3613,6 +3728,8 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-proxy".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -3644,6 +3761,8 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-proxy".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -3675,6 +3794,8 @@ mod tests {
 
         let configs = vec![
             Config::ClientConfigGroup(ClientConfigGroup {
+                strategy: Default::default(),
+                default: None,
                 client_group: "test-proxy".to_string(),
                 client_proxies: OneOrSome::One(ConfigSelection::Config(ClientConfig::default())),
             }),
@@ -3886,6 +4007,7 @@ mod tests {
                 dns_servers: NoneOrSome::One(DnsServerSpec::Simple("udp://8.8.8.8".to_string())),
             }),
             Config::Server(ServerConfig {
+                name: None,
                 sniff: false,
                 bind_location: BindLocation::Address(OneOrSome::One(
                     NetLocationPortRange::new(
@@ -3937,6 +4059,7 @@ mod tests {
                 dns_servers: NoneOrSome::One(DnsServerSpec::Simple("udp://8.8.8.8".to_string())),
             }),
             Config::Server(ServerConfig {
+                name: None,
                 sniff: false,
                 bind_location: BindLocation::Address(OneOrSome::One(
                     NetLocationPortRange::new(
@@ -4001,6 +4124,7 @@ mod tests {
                 dns_servers: NoneOrSome::One(DnsServerSpec::Simple("tcp://1.1.1.1".to_string())),
             }),
             Config::Server(ServerConfig {
+                name: None,
                 sniff: false,
                 bind_location: BindLocation::Address(OneOrSome::One(
                     NetLocationPortRange::new(
@@ -4054,6 +4178,7 @@ mod tests {
 
         // Server config references non-existent dns_group
         let configs = vec![Config::Server(ServerConfig {
+            name: None,
             sniff: false,
             bind_location: BindLocation::Address(OneOrSome::One(
                 NetLocationPortRange::new(

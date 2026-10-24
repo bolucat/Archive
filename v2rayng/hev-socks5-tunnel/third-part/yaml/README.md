@@ -24,5 +24,5 @@ ndk-build
 ## Upstream
 'https://github.com/yaml/libyaml'
 
-[PROJECT_URL]: https://gitlab.com/hev/yaml/commits/main
-[PIPELINE_STATUS]: https://gitlab.com/hev/yaml/badges/main/pipeline.svg
+[PROJECT_URL]: https://gitlab.com/hev/yaml/commits/master
+[PIPELINE_STATUS]: https://gitlab.com/hev/yaml/badges/master/pipeline.svg

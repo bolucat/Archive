@@ -10,8 +10,6 @@
 #ifndef __HEV_TUNNEL_LINUX_H__
 #define __HEV_TUNNEL_LINUX_H__
 
-struct pbuf *hev_tunnel_read (int fd, int mtu, HevTaskIOYielder yielder,
-                              void *yielder_data);
-ssize_t hev_tunnel_write (int fd, struct pbuf *buf);
+#define HEV_TUNNEL_GENERIC
 
 #endif /* __HEV_TUNNEL_LINUX_H__ */

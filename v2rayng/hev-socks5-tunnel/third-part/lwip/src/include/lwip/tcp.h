@@ -296,7 +296,6 @@ struct tcp_pcb {
   s16_t rtime;
 
   u16_t mss;   /* maximum segment size */
-  u16_t gso_mss; /* segmentation size of outgoing GSO packets (0: none) */
 
   /* RTT (round trip time) estimation variables */
   u32_t rttest; /* RTT estimate in 500ms ticks */
