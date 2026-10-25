@@ -21,6 +21,9 @@ LDFLAGS=-L$(THIRDPARTDIR)/yaml/bin -lyaml \
 		-L$(THIRDPARTDIR)/hev-task-system/bin -lhev-task-system \
 		-lpthread $(LFLAGS)
 
+CCFLAGS+=$(shell $(CC) -Werror -fno-stack-clash-protection -E -x c /dev/null \
+           >/dev/null 2>&1 && echo -fno-stack-clash-protection)
+
 SRCDIR=src
 BINDIR=bin
 CONFDIR=conf
@@ -42,7 +45,7 @@ $(SHARED_TARGET) : LDFLAGS+=-shared -pthread
 
 -include build.mk
 CCFLAGS+=$(VERSION_CFLAGS)
-TPFLAGS=ENABLE_STACK_OVERFLOW_DETECTOR=1
+TPFLAGS=ENABLE_MEMALLOC_SLICE=0 ENABLE_STACK_OVERFLOW_DETECTOR=1
 CCSRCS=$(filter %.c,$(SRCFILES))
 ASSRCS=$(filter %.S,$(SRCFILES))
 LDOBJS=$(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(CCSRCS)) \

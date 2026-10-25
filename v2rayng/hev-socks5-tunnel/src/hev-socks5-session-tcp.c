@@ -69,9 +69,14 @@ tcp_splice_f (HevSocks5SessionTCP *self)
                 res = -1;
         } else {
             hev_task_mutex_lock (self->mutex);
-            self->queue = pbuf_free_header (self->queue, s);
-            if (self->pcb)
-                tcp_recved (self->pcb, s);
+            while (s > 0) {
+                u16_t n = (s > 0xffff) ? 0xffff : s;
+
+                self->queue = pbuf_free_header (self->queue, n);
+                if (self->pcb)
+                    tcp_recved (self->pcb, n);
+                s -= n;
+            }
             hev_task_mutex_unlock (self->mutex);
             res = 1;
         }
@@ -111,10 +116,15 @@ tcp_splice_b (HevSocks5SessionTCP *self)
             ssize_t s = 0;
             int i;
             for (i = 0; i < iovc; i++) {
-                void *ptr = iov[i].iov_base;
+                u8_t *ptr = iov[i].iov_base;
                 size_t len = iov[i].iov_len;
-                err |= tcp_write (self->pcb, ptr, len, 0);
                 s += len;
+                while (len > 0) {
+                    u16_t n = (len > 0xffff) ? 0xffff : len;
+                    err |= tcp_write (self->pcb, ptr, n, 0);
+                    ptr += n;
+                    len -= n;
+                }
             }
             hev_ring_buffer_read_finish (self->buffer, s);
             err |= tcp_output (self->pcb);
@@ -153,7 +163,8 @@ tcp_sent_handler (void *arg, struct tcp_pcb *pcb, u16_t len)
 {
     HevSocks5SessionTCP *self = arg;
 
-    hev_ring_buffer_read_release (self->buffer, len);
+    if (self->buffer)
+        hev_ring_buffer_read_release (self->buffer, len);
     hev_task_wakeup (self->data.task);
 
     return ERR_OK;
@@ -189,41 +200,45 @@ hev_socks5_session_tcp_new (struct tcp_pcb *pcb, HevTaskMutex *mutex)
     return self;
 }
 
-static void
-hev_socks5_session_tcp_splice (HevSocks5Session *base)
+/*
+ * Returns -1 when the session is done, otherwise it is idle: 0 if nothing was
+ * transferred, 1 if something was.
+ */
+static __attribute__ ((noinline)) int
+tcp_splice_active (HevSocks5Session *base, int size, int *res_f, int *res_b)
 {
     HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
-    int tcp_buffer_size;
-    int res_f = 1;
-    int res_b = 1;
+    int busy = 0;
 
-    LOG_D ("%p socks5 session tcp splice", self);
-
-    if (!self->pcb)
-        return;
-
-    tcp_buffer_size = hev_config_get_misc_tcp_buffer_size ();
-    self->buffer = hev_ring_buffer_alloca (tcp_buffer_size);
+    self->buffer = hev_ring_buffer_alloca (size);
     if (!self->buffer)
-        return;
+        return -1;
 
     for (;;) {
         HevTaskYieldType type;
 
-        if (res_f >= 0)
-            res_f = tcp_splice_f (self);
-        if (res_b >= 0)
-            res_b = tcp_splice_b (self);
+        if (*res_f >= 0)
+            *res_f = tcp_splice_f (self);
+        if (*res_b >= 0)
+            *res_b = tcp_splice_b (self);
 
-        if (res_f > 0 || res_b > 0)
+        if (*res_f > 0 || *res_b > 0)
             type = HEV_TASK_YIELD;
-        else if ((res_f & res_b) == 0)
+        else if ((*res_f & *res_b) == 0)
             type = HEV_TASK_WAITIO;
         else
             break;
 
+        /* Nothing in flight, leave the frame to let the stack be released. */
+        if (type == HEV_TASK_WAITIO && self->pcb &&
+            hev_ring_buffer_get_use_size (self->buffer) == 0) {
+            self->buffer = NULL;
+            return busy;
+        }
+
         if (task_io_yielder (type, base) < 0)
             break;
+        busy = 1;
     }
 
     while (self->pcb) {
@@ -231,6 +246,42 @@ hev_socks5_session_tcp_splice (HevSocks5Session *base)
             break;
 
         if (task_io_yielder (HEV_TASK_WAITIO, base) < 0)
+            break;
+    }
+
+    self->buffer = NULL;
+    return -1;
+}
+
+static void
+hev_socks5_session_tcp_splice (HevSocks5Session *base)
+{
+    HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
+    int tcp_buffer_size;
+    int released = 0;
+    int res_f = 1;
+    int res_b = 1;
+    int res;
+
+    LOG_D ("%p socks5 session tcp splice", self);
+
+    if (!self->pcb)
+        return;
+
+    /* Hold whole (super) segments, a full buffer is sent in full packets. */
+    tcp_buffer_size = hev_config_get_misc_tcp_buffer_size ();
+    if (tcp_buffer_size > self->pcb->mss)
+        tcp_buffer_size -= tcp_buffer_size % self->pcb->mss;
+
+    for (;;) {
+        res = tcp_splice_active (base, tcp_buffer_size, &res_f, &res_b);
+        if (res < 0)
+            break;
+        if (res > 0)
+            released = 0;
+
+        released = hev_socks5_session_idle_wait (base, released);
+        if (released < 0)
             break;
     }
 }

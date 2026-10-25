@@ -70,10 +70,11 @@ hev_task_stack_new (int size)
 
     size += STACK_OVERFLOW_DETECTION_SIZE;
     self = hev_malloc (sizeof (HevTaskStack) + size);
-    if (self)
+    if (self) {
         self->size = size;
+        hev_task_stack_detection_mark (self);
+    }
 
-    hev_task_stack_detection_mark (self);
     return self;
 }
 
@@ -82,6 +83,15 @@ hev_task_stack_destroy (HevTaskStack *self)
 {
     hev_task_stack_detection_check (self);
     hev_free (self);
+}
+
+void
+hev_task_stack_release (HevTaskStack *self, void *sp)
+{
+    /* Skip the overflow detection tags. */
+    uintptr_t start = (uintptr_t)(self + 1) + STACK_OVERFLOW_DETECTION_SIZE;
+
+    hev_task_stack_discard (start, sp);
 }
 
 void *

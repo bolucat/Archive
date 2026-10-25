@@ -103,6 +103,7 @@ extern const ip_addr_t dns_mquery_v6group;
 typedef void (*dns_found_callback)(const char *name, const ip_addr_t *ipaddr, void *callback_arg);
 
 void             dns_init(void);
+void             dns_fini(void);
 void             dns_tmr(void);
 void             dns_setserver(u8_t numdns, const ip_addr_t *dnsserver);
 const ip_addr_t* dns_getserver(u8_t numdns);

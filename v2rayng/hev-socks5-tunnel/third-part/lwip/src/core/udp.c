@@ -92,6 +92,20 @@ udp_init(void)
 }
 
 /**
+ * Free all pcbs without calling any callbacks.
+ */
+void
+udp_fini(void)
+{
+  struct udp_pcb *pcb;
+
+  while ((pcb = udp_pcbs) != NULL) {
+    udp_pcbs = pcb->next;
+    memp_free(MEMP_UDP_PCB, pcb);
+  }
+}
+
+/**
  * Allocate a new local UDP port.
  *
  * @return a new (free) local UDP port number
@@ -457,6 +471,7 @@ again:
           ip_addr_set_ipaddr(&npcb->remote_ip, ip_current_src_addr());
           npcb->remote_port = src;
           npcb->flags |= UDP_FLAGS_CONNECTED;
+          npcb->netif_idx = pcb->netif_idx;
           npcb->pretend_netif_idx = pcb->pretend_netif_idx;
           npcb->next = udp_pcbs;
           udp_pcbs = npcb;

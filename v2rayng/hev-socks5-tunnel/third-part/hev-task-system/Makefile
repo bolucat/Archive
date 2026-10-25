@@ -10,6 +10,8 @@ AR=$(CROSS_PREFIX)ar
 CCFLAGS=-O3 -pipe -Werror -Wall -I include $(CFLAGS)
 LDFLAGS=$(LFLAGS)
 
+CCFLAGS+=$(shell $(CC) -Werror -fno-stack-clash-protection -E -x c /dev/null \
+           >/dev/null 2>&1 && echo -fno-stack-clash-protection)
 APP_CCFLAGS=$(CCFLAGS)
 APP_LDFLAGS=$(LDFLAGS) -L $(BINDIR) -l $(PROJECT) -pthread
 
@@ -17,6 +19,7 @@ SRCDIR=src
 BINDIR=bin
 APPDIR=apps
 TESTDIR=tests
+BENCHDIR=benches
 BUILDDIR=build
 
 STATIC_TARGET=$(BINDIR)/lib$(PROJECT).a
@@ -39,6 +42,7 @@ BUILDMSG="\e[1;31mBUILD\e[0m %s\n"
 LINKMSG="\e[1;34mLINK\e[0m  \e[1;32m%s\e[0m\n"
 CLEANMSG="\e[1;34mCLEAN\e[0m %s\n"
 TESTMSG="\e[1;34mTEST\e[0m  \e[1;32m%s\e[0m\n"
+BENCHMSG="\e[1;35mBENCH\e[0m \e[1;32m%s\e[0m\n"
 
 ifeq ($(MSYSTEM),MSYS)
 	LDFLAGS+=-lmsys-2.0 -lws2_32
@@ -50,7 +54,7 @@ ifeq ($(V),1)
     undefine ECHO_PREFIX
 endif
 
-.PHONY: static shared clean tests apps
+.PHONY: static shared clean tests benches apps
 
 static : $(STATIC_TARGET)
 
@@ -97,6 +101,13 @@ tests : $(patsubst $(TESTDIR)/%.c,$(BINDIR)/test-%,$(wildcard $(TESTDIR)/*.c))
 	$(ECHO_PREFIX) for test in $^; do printf $(TESTMSG) $$test; $$test; done
 
 $(BINDIR)/test-% : $(TESTDIR)/%.c $(STATIC_TARGET)
+	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
+	@printf $(LINKMSG) $@
+
+benches : $(patsubst $(BENCHDIR)/%.c,$(BINDIR)/bench-%,$(wildcard $(BENCHDIR)/*.c))
+	$(ECHO_PREFIX) for bench in $^; do printf $(BENCHMSG) $$bench; $$bench; done
+
+$(BINDIR)/bench-% : $(BENCHDIR)/%.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 

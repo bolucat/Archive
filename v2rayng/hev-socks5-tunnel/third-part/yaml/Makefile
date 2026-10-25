@@ -10,6 +10,9 @@ AR=$(CROSS_PREFIX)ar
 CCFLAGS=-O3 -pipe $(CFLAGS)
 LDFLAGS=$(LFLAGS)
 
+CCFLAGS+=$(shell $(CC) -Werror -fno-stack-clash-protection -E -x c /dev/null \
+           >/dev/null 2>&1 && echo -fno-stack-clash-protection)
+
 SRCDIR=src
 BINDIR=bin
 BUILDDIR=build

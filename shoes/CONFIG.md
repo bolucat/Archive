@@ -248,11 +248,12 @@ throughput, and available memory rather than increasing buffers unconditionally.
 Periodic logs report endpoint flow/drop counts and each peer's public key,
 handshake age, and byte counters. Private keys and PSKs are redacted.
 
-Preparation failures retain the old configuration. Successful reloads
-disconnect existing tunnel flows and rebuild endpoints; sessions are not
-migrated. Bind failures during activation can still terminate the process
-after the old generation has stopped. Shutdown waits for buffered UDP tasks
-to release their sockets before rebind. No host route cleanup is necessary.
+Preparation failures retain the old configuration. Reload activation stops
+existing tunnel flows and rebuilds endpoints; sessions are not migrated.
+Bind failures during activation trigger rollback to the previous configuration,
+but disconnected tunnel sessions are not restored. If rollback fails, Shoes
+exits with status 1. Shutdown waits for buffered UDP tasks to release their
+sockets before rebind. No host route cleanup is necessary.
 
 ## Configuration Structure
 
@@ -328,7 +329,7 @@ Opt into manual selection explicitly:
 
 ```yaml
 - client_group: outbound
-  strategy: selector
+  type: selector
   default: east
   client_proxies:
     - name: east
@@ -341,13 +342,101 @@ Opt into manual selection explicitly:
 
 Rules continue to use `client_chain: outbound`. A selector chooses an immediate
 named member or referenced group; inline selector members require `name`.
-Other groups default to `strategy: round-robin`. Nested round-robin weights,
+The group discriminant is `type`: `round-robin` (the default), `selector`, or
+`url-test`. The removed `strategy` field and unknown types are errors. Nested round-robin weights,
 duplicate membership, and existing UDP filtering are preserved. A selected
 branch without UDP support fails new UDP flows instead of silently falling back.
 Selection changes affect new flows only; existing streams, UDP destinations,
 DNS connections, and WireGuard associations remain pinned until reopened.
 Optional client and server/TUN `name` fields provide stable dashboard identities.
 Generated anonymous names are stable only for unchanged definition sites.
+
+Automatic selection does not require a controller listener or a cache file:
+
+```yaml
+- client_group: fastest
+  type: url-test
+  url: "https://probe.example.com/generate_204"
+  interval: 300       # seconds, 1..86400
+  timeout: 5000       # milliseconds, 1..60000, no longer than interval
+  tolerance: 50       # milliseconds, 0..65535
+  lazy: true
+  client_proxies:
+    - name: east
+      address: "east.example.com:1080"
+      protocol: {type: socks}
+    - name: west
+      address: "west.example.com:1080"
+      protocol: {type: socks}
+```
+
+Only `url` is required for `url-test`; the values above are the other defaults.
+Literal URL addresses denied by probe policy (including loopback, link-local,
+multicast, unspecified, and synthetic benchmark addresses) are configuration errors.
+Locally resolved hostnames are subject to the same destination policy at probe time.
+Literal URLs overlapping configured or retained fake-IP ranges are also rejected.
+`default` is selector-only. `url`, `interval`, `timeout`, `tolerance`, and `lazy`
+are url-test-only. Members must be nonempty and distinct; references to nested
+groups are supported. Explicit names are recommended for automatic inline members.
+
+Selection uses the fastest fresh healthy result for the configured URL, among
+members eligible for that hop and transport. A healthy incumbent stays selected
+unless another member improves its delay by more than `tolerance`. TCP and UDP
+have separate incumbents; an automatic group can choose a UDP-capable alternative
+even when its fastest TCP member does not support UDP. Nested manual selectors
+still restrict eligibility, and intermediate chain hops only need TCP support.
+Changing selection affects new connections, not established streams or associations.
+
+There is one initial check after activation, including for lazy groups. Thereafter
+`lazy: true` checks only groups used by new forwarding connections during the last
+interval. Probes, dashboard reads, and WireGuard carrier maintenance never count as use.
+New outbound connections through a WireGuard endpoint wake its carrier groups,
+including nested carriers, without changing their existing associations. Inbound-only
+endpoints and long-lived flows need `lazy: false` for continuous checks. `lazy: false` checks idle
+groups too. Samples older than `2 * interval + timeout` are stale and cannot win
+on delay. Without fresh healthy results (startup, all dead, stale, or locally
+unavailable probes), retain the eligible incumbent, or choose the first eligible
+member in configuration order. This is best-effort routing, not fail-closed routing.
+
+Unambiguous remote connection errors request a rate-limited recheck (at most once
+per second); they do not mark the configured URL dead based on a different user
+destination. Local overload and unsupported operations do not penalize health.
+HTTP/2 adapters preserve matching transport-error causes for this classification.
+This is best effort when a protocol replaces a failure with a generic cancellation:
+for example, XHTTP upload cancellation can lose the original cause and count as a
+remote failure.
+User payloads are never retried across candidates. Probes use HTTP HEAD and accept
+any HTTP response status, without redirects; HTTPS certificates are verified.
+Local probe lookups use guarded system DNS, not a server's configured DNS group.
+API probes with the same normalized URL and wildcard/default expected status also
+update selection. Other URLs and explicit status expectations cannot overwrite it.
+
+Periodic and API probes share a 16-probe limit. Each periodic round's timeout
+includes admission/queue time; members not admitted before the deadline retain
+their previous health. A deadline expiry after queueing is inconclusive and also
+preserves prior health; successful probes and explicit remote errors still update it.
+Members with no full-budget attempt, then the oldest full-budget attempts, lead each
+round, independently of health. Local failures cannot monopolize these slots, and
+queued attempts can receive a full budget on a later round. Tied members rotate on admission.
+Due groups with the oldest unqueued admission get priority, with stable catalog order
+breaking ties.
+Under sustained saturation, reduce group size, increase
+timeout/interval, or expect unprobed/stale members. Scheduling has one-second
+granularity and does not overlap rounds within a group; other groups can run while
+a slow round is in flight. Activation/reload cancels old work and rejects obsolete
+results; an interrupted round is immediately eligible when its generation resumes.
+New committed generations start with unprobed health.
+
+The controller reports `type: URLTest`, effective TCP `now`, optional `udpNow`,
+`testUrl`, and selected-member `health` (`unprobed`, `healthy`, `dead`, or `stale`).
+Its `alive` is true only for fresh healthy results. Manual selection PUTs for
+automatic groups are rejected; automatic choices are neither pinned nor persisted.
+Leaf histories remain bounded to ten samples per URL and eight URLs. Automatic
+selection retains its configured-URL samples and full-budget attempt timestamps
+independently of API eviction; other attempt URLs are capped at eight per member
+for each of filtered and unfiltered probes.
+Automatic checks test each immediate member as a standalone outbound, not every
+surrounding chain or destination. URL-test groups are not supported by FFI.
 
 Only one `cache_file_path` is allowed across all input files. Its absence disables
 persistence; relative paths resolve against the process working directory.
@@ -394,7 +483,7 @@ are exempt from header idle expiry and have bounded queues/write deadlines.
 Responses are limited to 32 MiB. An oversized connection snapshot closes its
 WebSocket with code 1009 and reason `response exceeds 32 MiB`; tracking continues
 without truncating the connection list.
-Configuring a controller, `cache_file_path`, or any selector group enables the
+Configuring a controller, `cache_file_path`, or any selector/url-test group enables the
 catalog and its 16,384-node limit. Names must be nonempty, unique, at most 256
 bytes, and contain no control characters. `DIRECT`, `REJECT`, and
 `GLOBAL` are reserved. Configuration preparation rejects `/rules` or base
@@ -1851,13 +1940,27 @@ reload loop: reload-only PEM changes require restarting the embedded instance.
 
 On Linux, if directory permissions prevent watching a readable configuration's parent, startup falls back to direct file watches and logs a warning. In-place edits remain detectable, but atomic replacements may be missed; use SIGHUP or grant directory read permission when replacing files.
 
-Replacement configurations, certificates, and DNS resolvers are prepared while the current listeners continue serving. A preparation failure leaves the current configuration running. Once preparation succeeds, listeners are replaced. A failure to activate replacements exits with status 1; there is no rollback after listeners are retired. Existing TCP connections may drain for `global_limits.reload_grace_secs` during successful reloads; QUIC connections are closed.
+Replacement configurations, certificates, and DNS resolvers are prepared while
+the current listeners continue serving. A preparation failure leaves the current
+configuration running. Unchanged fixed TCP listen addresses retain their sockets
+across generations. New-generation TCP and Unix listeners accept queued
+connections only after activation completes; connections may wait in the kernel
+backlog during that interval.
+
+If activation fails, Shoes stops the candidate services and restores the previous
+configuration, including control state, resource limits, DNS ownership, and
+certificate workers. A successful rollback keeps the process running; if rollback
+also fails, Shoes exits with status 1 rather than serving a partial generation.
+Existing TCP connections begin draining when their old listeners retire, for up
+to `global_limits.reload_grace_secs`. That deadline still applies after rollback.
+TUN, WireGuard, and QUIC services are stopped and restarted; their existing
+sessions are not migrated or restored by rollback.
 
 Certificate-source file changes and ACME renewal do not trigger this full reload.
 They rotate live without replacing listeners or closing QUIC connections; see
 [Certificate Sources](#certificate-sources).
 
-QUIC listener sockets must finish closing before replacements bind. Closing endpoints get up to one second for best-effort close delivery, then their drivers are stopped locally so peer-controlled timers cannot delay reloads. A five-second socket-release guard remains; exceeding it indicates a local cleanup failure and exits with an error rather than announcing a partially ready generation.
+QUIC listener sockets must finish closing before replacements bind. Closing endpoints get up to one second for best-effort close delivery, then their drivers are stopped locally so peer-controlled timers cannot delay reloads. If the previous generation's sockets do not retire within the five-second socket-release guard, Shoes exits with an error rather than announcing a partially ready generation.
 
 Candidate QUIC buffer sizes are used during DNS preparation, but `global_limits` admission caps change only at activation. DNS bootstrap over HTTP/3 or QUIC proxy chains therefore needs headroom under the live cap. A cap-increasing reload may require a restart if preparation cannot fit. Lowering a cap does not revoke existing reservations, including those made during preparation; new admissions are blocked until usage falls sufficiently. At cold startup, preparation uses the initial unlimited admission caps.
 

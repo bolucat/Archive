@@ -296,6 +296,9 @@ struct tcp_pcb {
   s16_t rtime;
 
   u16_t mss;   /* maximum segment size */
+  u16_t gso_mss; /* segmentation size of outgoing GSO packets (0: none) */
+  u8_t gso_off_timer; /* slow timer ticks GSO stays off after a failure */
+  u8_t gso_off_count; /* GSO failures in a row, doubles the time it stays off */
 
   /* RTT (round trip time) estimation variables */
   u32_t rttest; /* RTT estimate in 500ms ticks */

@@ -201,6 +201,8 @@ type pairOpts struct {
 	serverMaxConn int
 	clientMaxConn int
 	congestion    string
+	forward       *ForwardConfig // server-side upstream proxy; nil = dial targets directly
+	conntt        int            // server dial timeout in ms
 }
 
 func basePairOpts() pairOpts {
@@ -211,6 +213,7 @@ func basePairOpts() pairOpts {
 		tcpRST:     400,
 		timeout:    60,
 		congestion: "bb",
+		conntt:     5000,
 	}
 }
 
@@ -253,7 +256,11 @@ func startPair(t *testing.T, opts pairOpts) *e2ePair {
 		}
 	}
 
-	srv, err := NewServer("127.0.0.1", p.key, opts.serverMaxConn, 16, 1000, 5000, cryptoCfg, nil, opts.congestion)
+	conntt := opts.conntt
+	if conntt <= 0 {
+		conntt = 5000
+	}
+	srv, err := NewServer("127.0.0.1", p.key, opts.serverMaxConn, conntt, cryptoCfg, opts.forward, opts.congestion)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -265,15 +272,11 @@ func startPair(t *testing.T, opts pairOpts) *e2ePair {
 	if opts.udp {
 		p.clientAddr = fmt.Sprintf("127.0.0.1:%d", getFreeUDPPort(t))
 		p.client, err = NewClient(p.clientAddr, "127.0.0.1", p.echoAddr, opts.timeout, p.key, "127.0.0.1",
-			0, 0, 0, 0, 0, 0, 0, opts.clientMaxConn, cryptoCfg, "", "", opts.congestion)
+			true, false, opts.clientMaxConn, cryptoCfg, "", "", opts.congestion)
 	} else {
 		p.clientAddr = fmt.Sprintf("127.0.0.1:%d", getFreePort(t))
-		sock5 := 0
-		if !opts.direct {
-			sock5 = 1
-		}
 		p.client, err = NewClient(p.clientAddr, "127.0.0.1", p.echoAddr, opts.timeout, p.key, "127.0.0.1",
-			1, opts.tcpBS, opts.tcpMW, opts.tcpRST, opts.tcpGZ, 0, sock5, opts.clientMaxConn, cryptoCfg,
+			false, !opts.direct, opts.clientMaxConn, cryptoCfg,
 			opts.s5user, opts.s5pass, opts.congestion)
 	}
 	if err != nil {

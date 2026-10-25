@@ -296,7 +296,6 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
         LOG_I ("%p socks5 server resolve addr", self);
         return 0;
     }
-    hev_socks5_set_addr_family (HEV_SOCKS5 (self), addr_family);
 
     if (LOG_ON ()) {
         const char *type;

@@ -14,12 +14,27 @@
 #include "mem/api/hev-memory-allocator-api.h"
 #include "lib/misc/hev-compiler.h"
 
+/* Darwin's monotonic clock advances while the system is asleep. */
+/* Use uptime so task timeouts only advance while the system is awake
+ * (matches Linux CLOCK_MONOTONIC semantics that exclude suspend). */
+#if defined(__APPLE__) && defined(CLOCK_UPTIME_RAW)
+#define HEV_TASK_TIMER_CLOCK CLOCK_UPTIME_RAW
+#else
+#define HEV_TASK_TIMER_CLOCK CLOCK_MONOTONIC
+#endif
+
 typedef struct _HevTaskTimerNode HevTaskTimerNode;
 
 struct _HevTaskTimer
 {
     HevRBTreeCached sort_tree;
     HevTaskSystemContext *ctx;
+
+    /* One-shot timestamp recorded by wait() right before it yields. The
+     * blocking poll consumes it for the epoll timeout, saving a clock
+     * read; wake() drops it so it never survives a schedule pass. */
+    struct timespec cached_curr;
+    int cached_curr_valid;
 };
 
 struct _HevTaskTimerNode
@@ -66,7 +81,7 @@ hev_task_timer_node_cmp (HevTaskTimerNode *a, HevTaskTimerNode *b)
 static inline void
 hev_task_timer_get_curr (struct timespec *curr)
 {
-    if (clock_gettime (CLOCK_MONOTONIC, curr) < 0)
+    if (clock_gettime (HEV_TASK_TIMER_CLOCK, curr) < 0)
         abort ();
 }
 
@@ -75,7 +90,7 @@ hev_task_timer_get_expire (struct timespec *expire, unsigned int milliseconds)
 {
     expire->tv_sec += milliseconds / 1000;
     expire->tv_nsec += (milliseconds % 1000) * 1000000;
-    if (expire->tv_nsec > 1000000000L) {
+    if (expire->tv_nsec >= 1000000000L) {
         expire->tv_sec++;
         expire->tv_nsec -= 1000000000L;
     }
@@ -132,7 +147,12 @@ hev_task_timer_get_timeout (HevTaskTimer *self)
     if (!node)
         return -1;
 
-    hev_task_timer_get_curr (&curr);
+    if (self->cached_curr_valid) {
+        curr = self->cached_curr;
+        self->cached_curr_valid = 0;
+    } else {
+        hev_task_timer_get_curr (&curr);
+    }
     this = container_of (node, HevTaskTimerNode, base);
     return hev_task_timer_get_time (&curr, &this->expire);
 }
@@ -160,6 +180,9 @@ hev_task_timer_wake (HevTaskTimer *self)
     HevRBTreeNode *node;
     struct timespec curr;
 
+    /* Ends a schedule pass: the cached timestamp must never outlive it. */
+    self->cached_curr_valid = 0;
+
     node = hev_rbtree_cached_first (&self->sort_tree);
     if (!node)
         return;
@@ -179,6 +202,8 @@ hev_task_timer_wait (HevTaskTimer *self, unsigned int milliseconds,
 
     /* get expire time */
     hev_task_timer_get_curr (&node->expire);
+    self->cached_curr = node->expire;
+    self->cached_curr_valid = 1;
     hev_task_timer_get_expire (&node->expire, milliseconds);
     node->task = task;
 

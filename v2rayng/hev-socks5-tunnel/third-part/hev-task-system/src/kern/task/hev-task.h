@@ -122,7 +122,7 @@ HevTaskState hev_task_get_state (HevTask *self);
  * @self: a #HevTask
  * @priority: priority
  *
- * Set the priority of a task. The value range of priority are [0-1],
+ * Set the priority of a task. The value range of priority is [0-15],
  * with smaller values representing higher priorities.
  *
  * Since: 1.0
@@ -232,6 +232,20 @@ void hev_task_wakeup (HevTask *task);
 void hev_task_yield (HevTaskYieldType type);
 
 /**
+ * hev_task_release_stack:
+ * @self: the running #HevTask
+ *
+ * Release the unused stack memory below the caller's frame back to the
+ * operating system. The pages are allocated again (zero-filled) when they
+ * are next accessed, so nothing live may be stored below the caller's frame.
+ * Does nothing if @self is not the running task, or if the caller is not
+ * running on the task's own stack (e.g. inside hev_task_call_jump).
+ *
+ * Since: 5.11
+ */
+void hev_task_release_stack (HevTask *self);
+
+/**
  * hev_task_sleep:
  * @milliseconds: time to sleep
  *
@@ -277,7 +291,7 @@ void hev_task_run (HevTask *self, HevTaskEntry entry, void *data);
 /**
  * hev_task_exit:
  *
- * The function terminates the calling process immediately.
+ * The function terminates the calling task immediately.
  *
  * Since: 1.4
  */

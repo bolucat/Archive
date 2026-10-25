@@ -54,6 +54,9 @@ make apps
 
 # Tests
 make tests
+
+# Benchmarks
+make benches
 ```
 
 ### Android
@@ -97,7 +100,9 @@ make
 ## Contributors
 
 * **hev** - https://hev.cc
-* **Mike Wang** - https://github.com/MikeWang000000
+* **mike wang** - https://github.com/mikewang000000
+* **sergey larin** - https://github.com/cerg2010cerg2010
+* **yujinpan** - https://github.com/yujinpan
 
 ## License
 

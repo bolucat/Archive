@@ -166,6 +166,7 @@ err_t            udp_sendto_if_src_chksum(struct udp_pcb *pcb, struct pbuf *p,
 void             udp_input      (struct pbuf *p, struct netif *inp);
 
 void             udp_init       (void);
+void             udp_fini       (void);
 
 /* for compatibility with older implementation */
 #define udp_new_ip6() udp_new_ip_type(IPADDR_TYPE_V6)
