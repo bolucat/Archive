@@ -17,7 +17,7 @@ pub struct Generation {
     pub id: u64,
     pub catalog: Catalog,
     pub rules: Vec<serde_json::Value>,
-    pub probes: crate::clash_api::probes::ProbeState,
+    pub probes: super::probes::ProbeState,
     pub leaf_udp_support: std::collections::HashMap<String, bool>,
 }
 
@@ -78,14 +78,20 @@ impl ControlService {
     pub fn new(config: ControlConfig) -> io::Result<Self> {
         let owner = SelectionOwner::new(config.cache_file_path.as_deref())?;
         let (commands, receiver) = mpsc::channel(64);
+        let connection_notes = config
+            .listeners
+            .iter()
+            .any(|listener| listener.connection_notes);
         let runtime = Arc::new(ControlRuntime {
             config,
-            flows: Arc::new(FlowRegistry::default()),
+            flows: Arc::new(FlowRegistry::new(connection_notes)),
             shutdown: CancellationToken::new(),
             activating: AtomicBool::new(true),
             connections: Arc::new(tokio::sync::Semaphore::new(64)),
             subscribers: Arc::new(tokio::sync::Semaphore::new(16)),
-            probes: Arc::new(tokio::sync::Semaphore::new(16)),
+            probes: Arc::new(tokio::sync::Semaphore::new(
+                super::probes::PROBE_CONCURRENCY,
+            )),
             logs: Arc::new(super::logs::LogHub::new()),
             active: RwLock::new(None),
             probe_epoch: RwLock::new(CancellationToken::new()),
@@ -218,6 +224,12 @@ async fn stop_automatic(task: Option<AbortOnDropHandle<()>>) {
     }
 }
 
+async fn stop_health(service: Option<super::health::HealthService>) {
+    if let Some(service) = service {
+        service.shutdown().await;
+    }
+}
+
 async fn run_owner(
     mut owner: SelectionOwner,
     mut receiver: mpsc::Receiver<Command>,
@@ -225,6 +237,7 @@ async fn run_owner(
     shutdown: CancellationToken,
 ) {
     let mut paused = false;
+    let mut health: Option<super::health::HealthService> = None;
     let mut pending: VecDeque<SelectionCommand> = VecDeque::new();
     let mut automatic: Option<AbortOnDropHandle<()>> = None;
     loop {
@@ -262,6 +275,7 @@ async fn run_owner(
             Command::Begin(view, reply) => {
                 let result = owner.reconcile(&view);
                 if result.is_ok() {
+                    stop_health(health.take()).await;
                     paused = true;
                     if let Some(runtime) = runtime.upgrade() {
                         let _active = runtime.active.write();
@@ -273,6 +287,7 @@ async fn run_owner(
                 let _ = reply.send(result);
             }
             Command::Publish(generation, reply) => {
+                stop_health(health.take()).await;
                 let result = owner.activate(generation.catalog.selection.clone());
                 if result.is_ok()
                     && let Some(runtime) = runtime.upgrade()
@@ -287,12 +302,23 @@ async fn run_owner(
                 paused = false;
                 stop_automatic(automatic.take()).await;
                 if let Some(runtime) = runtime.upgrade() {
+                    let generation = runtime.generation();
+                    if health.is_none()
+                        && let Ok(generation) = &generation
+                        && !generation.catalog.selection.health.definitions.is_empty()
+                    {
+                        health = Some(super::health::HealthService::start(
+                            generation.catalog.selection.clone(),
+                            runtime.probes.clone(),
+                            generation.probes.forbidden_ranges(),
+                        ));
+                    }
                     runtime.activating.store(false, Ordering::Release);
-                    if let Ok(generation) = runtime.generation()
+                    if let Ok(generation) = generation
                         && !generation.catalog.selection.automatic.0.is_empty()
                     {
                         automatic = Some(AbortOnDropHandle::new(tokio::spawn(
-                            crate::clash_api::probes::run_automatic(
+                            super::probes::run_automatic(
                                 Arc::downgrade(&runtime),
                                 generation,
                                 runtime.probe_epoch(),
@@ -338,12 +364,50 @@ async fn run_owner(
         }
     }
     stop_automatic(automatic).await;
+    stop_health(health).await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::control::selection::SelectorDefinition;
+
+    #[tokio::test]
+    async fn connection_notes_budget_survives_reload_without_retaining_generation() {
+        use crate::control::connection_notes::MAX_FLOWS;
+        let config = ControlConfig {
+            listeners: vec![
+                serde_yaml::from_str(
+                    "clash_api_address: '127.0.0.1:0'\nsecret: test\nconnection_notes: true",
+                )
+                .unwrap(),
+            ],
+            ..Default::default()
+        };
+        let mut service = ControlService::new(config).unwrap();
+        let registry = service.runtime.flows.clone();
+        let old = generation(1);
+        let weak = Arc::downgrade(&old);
+        service.runtime.publish(old).await.unwrap();
+        let buffers: Vec<_> = (0..MAX_FLOWS)
+            .map(|_| registry.start_notes().unwrap())
+            .collect();
+        service.runtime.publish(generation(2)).await.unwrap();
+        assert!(weak.upgrade().is_none());
+        assert!(Arc::ptr_eq(&registry, &service.runtime.flows));
+        assert!(registry.start_notes().is_none());
+        drop(buffers);
+        assert!(registry.start_notes().is_some());
+        let mut changed = crate::config::create_server_configs(
+            serde_yaml::from_str("- clash_api_address: '127.0.0.1:0'\n  secret: test").unwrap(),
+        )
+        .unwrap();
+        assert!(
+            service.runtime.prepare(&mut changed).await.is_err(),
+            "changing opt-in requires restart"
+        );
+        service.shutdown().await;
+    }
 
     fn generation(id: u64) -> Arc<Generation> {
         let selection = SelectionOwner::new(None)

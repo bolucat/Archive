@@ -4,6 +4,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -98,7 +99,7 @@ test.for(['en', 'zh-cn'] as const)(
           expect(wire.params.uid).toBe('local')
           return 'proxies: [{name: Node}]\nproxy-groups: [{name: Group}]\nrules: [MATCH,DIRECT]'
         }
-        if (method === 'get_storage_item') return null
+        if (method === 'get_storage_item') return { value: null, revision: 0 }
         if (method === 'get_profiles')
           return { current, items, global_transforms: [], valid: [] }
         if (method === 'activate_profile') {
@@ -153,22 +154,24 @@ test.for(['en', 'zh-cn'] as const)(
         <TestQueryProvider client={queries}>
           <BlockTaskProvider>
             <TooltipProvider>
-              <ImportUrlProvider>
-                <SnackbarProvider>
-                  <ContextMenuProvider>
-                    <div>
-                      <ProfilesLayoutProvider>
-                        <ProfilesDndProvider>
-                          <ScrollArea>
-                            <ProfilesHeader />
-                            <ProfilesList className="p-4 pt-0" />
-                          </ScrollArea>
-                        </ProfilesDndProvider>
-                      </ProfilesLayoutProvider>
-                    </div>
-                  </ContextMenuProvider>
-                </SnackbarProvider>
-              </ImportUrlProvider>
+              <SharedTooltip>
+                <ImportUrlProvider>
+                  <SnackbarProvider>
+                    <ContextMenuProvider>
+                      <div>
+                        <ProfilesLayoutProvider>
+                          <ProfilesDndProvider>
+                            <ScrollArea>
+                              <ProfilesHeader />
+                              <ProfilesList className="p-4 pt-0" />
+                            </ScrollArea>
+                          </ProfilesDndProvider>
+                        </ProfilesLayoutProvider>
+                      </div>
+                    </ContextMenuProvider>
+                  </SnackbarProvider>
+                </ImportUrlProvider>
+              </SharedTooltip>
             </TooltipProvider>
           </BlockTaskProvider>
         </TestQueryProvider>
@@ -397,7 +400,7 @@ test('reorders profiles by dragging the whole card', async ({
     (command, args) => {
       const wire = args as { method: string; params: { layout: unknown } }
       const method = command === 'call_rpc' ? wire.method : command
-      if (method === 'get_storage_item') return null
+      if (method === 'get_storage_item') return { value: null, revision: 0 }
       if (method === 'get_profiles')
         return {
           current: 'second',
@@ -434,19 +437,21 @@ test('reorders profiles by dragging the whole card', async ({
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <SnackbarProvider>
-              <ContextMenuProvider>
-                <div>
-                  <ProfilesLayoutProvider>
-                    <ProfilesDndProvider>
-                      <ScrollArea>
-                        <ProfilesList className="p-4 pt-0" />
-                      </ScrollArea>
-                    </ProfilesDndProvider>
-                  </ProfilesLayoutProvider>
-                </div>
-              </ContextMenuProvider>
-            </SnackbarProvider>
+            <SharedTooltip>
+              <SnackbarProvider>
+                <ContextMenuProvider>
+                  <div>
+                    <ProfilesLayoutProvider>
+                      <ProfilesDndProvider>
+                        <ScrollArea>
+                          <ProfilesList className="p-4 pt-0" />
+                        </ScrollArea>
+                      </ProfilesDndProvider>
+                    </ProfilesLayoutProvider>
+                  </div>
+                </ContextMenuProvider>
+              </SnackbarProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

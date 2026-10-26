@@ -4,6 +4,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -83,7 +84,7 @@ const renderFolder = async (folderId: string) => {
       const wire = args as { method: string; params: Record<string, unknown> }
       const method = command === 'call_rpc' ? wire.method : command
 
-      if (method === 'get_storage_item') return null
+      if (method === 'get_storage_item') return { value: null, revision: 0 }
       if (method === 'get_profiles') return document
       if (method === 'set_profile_layout') {
         const layout = wire.params.layout as ProfileLayout
@@ -128,23 +129,25 @@ const renderFolder = async (folderId: string) => {
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <ImportUrlProvider>
-              <SnackbarProvider>
-                <ContextMenuProvider>
-                  <div>
-                    <ProfilesLayoutProvider>
-                      <ProfilesDndProvider>
-                        <div className="relative h-[800px]">
-                          <ScrollArea>
-                            <RouterOutlet />
-                          </ScrollArea>
-                        </div>
-                      </ProfilesDndProvider>
-                    </ProfilesLayoutProvider>
-                  </div>
-                </ContextMenuProvider>
-              </SnackbarProvider>
-            </ImportUrlProvider>
+            <SharedTooltip>
+              <ImportUrlProvider>
+                <SnackbarProvider>
+                  <ContextMenuProvider>
+                    <div>
+                      <ProfilesLayoutProvider>
+                        <ProfilesDndProvider>
+                          <div className="relative h-[800px]">
+                            <ScrollArea>
+                              <RouterOutlet />
+                            </ScrollArea>
+                          </div>
+                        </ProfilesDndProvider>
+                      </ProfilesLayoutProvider>
+                    </div>
+                  </ContextMenuProvider>
+                </SnackbarProvider>
+              </ImportUrlProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

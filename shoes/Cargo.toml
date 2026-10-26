@@ -1,6 +1,6 @@
 [package]
 name = "shoes"
-version = "0.3.4"
+version = "0.3.5"
 publish = false # Cargo strips fork patches from crates.io packages.
 edition = "2024"
 rust-version = "1.95"
@@ -67,6 +67,10 @@ path = "tests/retention_allocation.rs"
 [[test]]
 name = "matcher_invariants"
 path = "tests/matcher_invariants.rs"
+
+[[test]]
+name = "rule_properties"
+path = "tests/rule_properties.rs"
 
 [[test]]
 name = "integration"
