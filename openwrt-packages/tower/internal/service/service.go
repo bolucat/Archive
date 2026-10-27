@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kenzok8/tower/internal/generator"
@@ -31,9 +32,19 @@ type Service struct {
 	rulesDir    string
 	ruleCache   *rules.Cache
 	daeValidate func(context.Context, string) error
+
+	// DAE exports read the LAN bridge once per process and reuse the airport
+	// format checks for a short while.
+	lanOnce     sync.Once
+	lanName     string
+	daeSubMu    sync.Mutex
+	daeSubCache map[string]daeSubscriptionCheck
 }
 
 const nativeDAESchemeID = "kenzok8-dae-native"
+
+// maxRuleSetBytes bounds one downloaded rule set.
+const maxRuleSetBytes = 8 << 20
 
 // New creates a Service.
 func New(st *store.Store) *Service {
@@ -311,12 +322,8 @@ func (s *Service) ExportStrictWithServiceRegions(target model.ClientTarget, prot
 		if err != nil {
 			return "", err
 		}
-		// Honk 变体用 include system.dae 引用 honk 自带的全局配置，dae validate
-		// 无法在临时目录里解析该引用（报 global required），交由 honk-core 导入时验证。
-		if target == model.ClientDAE {
-			if err := s.daeValidate(context.Background(), content); err != nil {
-				return "", fmt.Errorf("设备 dae validate 未通过：%w", err)
-			}
+		if err := s.validateDAEExport(target, content); err != nil {
+			return "", fmt.Errorf("设备 dae validate 未通过：%w", err)
 		}
 		return content, nil
 	}
@@ -355,10 +362,8 @@ func (s *Service) PreflightExportWithOptions(target model.ClientTarget, protocol
 			if generateErr != nil {
 				return generator.PreflightResult{Status: generator.PreflightUnsupported, PlanDigest: result.PlanDigest, Issues: []generator.PreflightIssue{{Code: "dae_render", Severity: "blocking", Location: "export", Message: "DAE 配置生成失败"}}, Planned: result.Planned}, nil
 			}
-			if target == model.ClientDAE {
-				if validateErr := s.daeValidate(context.Background(), content); validateErr != nil {
-					return generator.PreflightResult{Status: generator.PreflightUnsupported, PlanDigest: result.PlanDigest, Issues: []generator.PreflightIssue{{Code: "dae_validate", Severity: "blocking", Location: "export", Message: "设备 dae validate 未通过；当前 DAT 标签或配置需要修正"}}, Planned: result.Planned}, nil
-				}
+			if validateErr := s.validateDAEExport(target, content); validateErr != nil {
+				return generator.PreflightResult{Status: generator.PreflightUnsupported, PlanDigest: result.PlanDigest, Issues: []generator.PreflightIssue{{Code: "dae_validate", Severity: "blocking", Location: "export", Message: "设备 dae validate 未通过；当前 DAT 标签或配置需要修正"}}, Planned: result.Planned}, nil
 			}
 		}
 		return result, nil
@@ -501,18 +506,9 @@ func (s *Service) exportOptionsWithServiceRegions(target model.ClientTarget, pro
 					if _, loaded := lines[sourceURL]; loaded {
 						continue
 					}
-					cached, cacheErr := s.ruleCache.LinesLimited(sourceURL, 8<<20)
-					if cacheErr == nil {
-						cacheErr = generator.ValidateMRSYAMLSource(*resource, []byte(strings.Join(cached, "\n")))
-					}
-					if cacheErr != nil {
-						cacheErr = s.ruleCache.DownloadWithPolicy(sourceURL, 8<<20, "raw.githubusercontent.com", func(body []byte) error {
-							return generator.ValidateMRSYAMLSource(*resource, body)
-						})
-						if cacheErr == nil {
-							cached, cacheErr = s.ruleCache.LinesLimited(sourceURL, 8<<20)
-						}
-					}
+					cached, cacheErr := s.ruleSourceLines(sourceURL, 8<<20, "raw.githubusercontent.com", func(body []byte) error {
+						return generator.ValidateMRSYAMLSource(*resource, body)
+					})
 					if cacheErr != nil {
 						return generator.Options{}, fmt.Errorf("获取 MRS 对应的 YAML 规则源 %s 失败：%w", sourceURL, cacheErr)
 					}
@@ -530,18 +526,9 @@ func (s *Service) exportOptionsWithServiceRegions(target model.ClientTarget, pro
 					cached, alreadyLoaded := seenInline[sourceURL]
 					if !alreadyLoaded {
 						var cacheErr error
-						cached, cacheErr = s.ruleCache.LinesLimited(sourceURL, 4<<20)
+						cached, cacheErr = s.clashooInlineLines(sourceURL)
 						if cacheErr != nil {
-							cacheErr = s.ruleCache.DownloadWithPolicy(sourceURL, 4<<20, "raw.githubusercontent.com", func(body []byte) error {
-								_, err := generator.ParseClashooInlineRuleSet(body)
-								return err
-							})
-							if cacheErr == nil {
-								cached, cacheErr = s.ruleCache.LinesLimited(sourceURL, 4<<20)
-							}
-						}
-						if cacheErr != nil {
-							return generator.Options{}, &inlineSourceError{code: "resource_cache", location: location, message: fmt.Sprintf("获取 Clashoo inline 规则源 %s 失败：%v", sourceURL, cacheErr)}
+							return generator.Options{}, &inlineSourceError{code: "resource_cache", location: location, message: fmt.Sprintf("获取 Clashoo inline 规则源 %s 失败：%v（该规则源只存在于 MetaCubeX 的 sing 分支，直连不通时可换用不依赖 MRS 的方案，或稍后重试）", sourceURL, cacheErr)}
 						}
 						body := []byte(strings.Join(cached, "\n"))
 						if len(body) > 4<<20 {
@@ -560,29 +547,124 @@ func (s *Service) exportOptionsWithServiceRegions(target model.ClientTarget, pro
 					continue
 				}
 			}
-			if cached, err := s.ruleCache.Lines(resource.URL); err == nil {
+			// 读取顺序按代价排：缓存 → 随包分发的本地列表 → 网络（直连失败会走镜像）。
+			// 本地列表免费且离线可用，放在网络之前可以避免每个规则集都先等一次超时。
+			if cached, ok := s.ruleSourceLinesCached(resource.URL, maxRuleSetBytes); ok {
 				lines[resource.URL] = cached
 				continue
-			}
-			// 首次导出时惰性下载未缓存的规则集，避免预检因冷缓存失败。
-			if s.ruleCache.Download(resource.URL) == nil {
-				if cached, err := s.ruleCache.Lines(resource.URL); err == nil {
-					lines[resource.URL] = cached
-					continue
-				}
 			}
 			if name := rules.LocalRuleFilename(resource.URL); name != "" {
 				if b, err := os.ReadFile(filepath.Join(s.rulesDir, name)); err == nil {
 					lines[resource.URL] = strings.Split(string(b), "\n")
+					continue
 				}
+			}
+			if cached, err := s.ruleSourceLines(resource.URL, maxRuleSetBytes, "", nil); err == nil {
+				lines[resource.URL] = cached
 			}
 		}
 	}
-	return generator.Options{
+	options := generator.Options{
 		Target: target, Nodes: nodes, Protocols: protocols, Scheme: scheme,
 		PreferRuleSets: preferRuleSets, RuleSetLines: lines, Strict: strict,
 		ServiceRegions: serviceRegions,
-	}, nil
+	}
+	if target.Family() == model.FamilyDAE {
+		// dae only accepts explicit interface names, so the LAN bridge has to be
+		// read from the running network configuration of this device.
+		options.LANInterface = s.lanInterfaceForDAE()
+		var covered []string
+		options.DAESubscriptions, options.DAESubscriptionFallbacks, covered = s.daeSubscriptionPlan(target, nodes)
+		if len(covered) > 0 {
+			// Nodes the core fetches itself must not be inlined as well.
+			passthrough := make(map[string]bool, len(covered))
+			for _, id := range covered {
+				passthrough[id] = true
+			}
+			inlined := make([]model.ProxyNode, 0, len(nodes))
+			for _, node := range nodes {
+				if !passthrough[node.SourceID] {
+					inlined = append(inlined, node)
+				}
+			}
+			options.Nodes = inlined
+		}
+	}
+	return options, nil
+}
+
+// ruleMirrorPrefixes are CN-reachable mirrors for raw.githubusercontent.com, tried in
+// order only after the direct download fails. Clashoo itself ships its core downloads
+// through the same mirror for the same reason.
+var ruleMirrorPrefixes = []string{"https://gh-proxy.com/", "https://ghfast.top/"}
+
+// ruleSourceCandidate is one URL to try for a rule source, plus the host that the
+// download is pinned to.
+type ruleSourceCandidate struct {
+	url  string
+	host string
+}
+
+// ruleSourceCandidates lists the direct URL followed by the mirror URLs.
+func ruleSourceCandidates(sourceURL string) []ruleSourceCandidate {
+	out := make([]ruleSourceCandidate, 0, len(ruleMirrorPrefixes)+1)
+	out = append(out, ruleSourceCandidate{url: sourceURL, host: "raw.githubusercontent.com"})
+	for _, prefix := range ruleMirrorPrefixes {
+		mirrored := prefix + sourceURL
+		if parsed, err := url.Parse(mirrored); err == nil && parsed.Hostname() != "" {
+			out = append(out, ruleSourceCandidate{url: mirrored, host: parsed.Hostname()})
+		}
+	}
+	return out
+}
+
+// ruleSourceLinesCached returns cached lines for a rule source from the direct URL or
+// any mirror, without touching the network.
+func (s *Service) ruleSourceLinesCached(sourceURL string, maxBytes int) ([]string, bool) {
+	for _, candidate := range ruleSourceCandidates(sourceURL) {
+		if lines, err := s.ruleCache.LinesLimited(candidate.url, maxBytes); err == nil {
+			return lines, true
+		}
+	}
+	return nil, false
+}
+
+// ruleSourceLines returns rule-source lines, reading the cache first and downloading
+// (direct, then mirrors) when nothing is cached. validate runs on fresh bodies only.
+func (s *Service) ruleSourceLines(sourceURL string, maxBytes int, allowedHost string, validate func([]byte) error) ([]string, error) {
+	if lines, ok := s.ruleSourceLinesCached(sourceURL, maxBytes); ok {
+		return lines, nil
+	}
+	var firstErr error
+	for _, candidate := range ruleSourceCandidates(sourceURL) {
+		host := candidate.host
+		if allowedHost == "" {
+			host = ""
+		}
+		if err := s.ruleCache.DownloadWithPolicy(candidate.url, maxBytes, host, validate); err != nil {
+			if firstErr == nil && candidate.url == sourceURL {
+				firstErr = err
+			}
+			continue
+		}
+		if lines, err := s.ruleCache.LinesLimited(candidate.url, maxBytes); err == nil {
+			return lines, nil
+		}
+	}
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return nil, fmt.Errorf("规则源 %s 无法从直连或镜像获取", sourceURL)
+}
+
+// clashooInlineLines loads one Clashoo inline rule source: cached first (direct URL
+// then any mirror), then the direct download, then the mirrors.
+func (s *Service) clashooInlineLines(sourceURL string) ([]string, error) {
+	const maxBytes = 4 << 20
+	return s.ruleSourceLines(sourceURL, maxBytes, "raw.githubusercontent.com", func(body []byte) error {
+		_, err := generator.ParseClashooInlineRuleSet(body)
+		return err
+	})
 }
 
 // Schemes returns the bundled presets followed by user-imported schemes.
@@ -656,8 +738,8 @@ func (s *Service) SchemeSummaries() ([]SchemeSummary, error) {
 			}
 			summary.RuleSets++
 			if sourceURL, mapped := generator.MRSYAMLSourceURL(*rule.Resource); mapped {
-				lines, err := s.ruleCache.LinesLimited(sourceURL, 8<<20)
-				if err != nil {
+				lines, ok := s.ruleSourceLinesCached(sourceURL, 8<<20)
+				if !ok {
 					summary.Cached = false
 					continue
 				}
