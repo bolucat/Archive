@@ -432,9 +432,10 @@ Windows::UI::Text::FontStyle::Italic
 Windows::UI::Text::FontWeight
 Windows::UI::Xaml::Interop::TypeKind::Metadata
 Windows::UI::Xaml::Interop::TypeName
-Windows::Win32::AddPackageDependency
 Windows::Win32::APPMODEL_ERROR_NO_PACKAGE
+Windows::Win32::AddPackageDependencyOptions::{AddPackageDependencyOptions_None}
 Windows::Win32::COINIT_APARTMENTTHREADED
+Windows::Win32::CreatePackageDependencyOptions::{CreatePackageDependencyOptions_None}
 Windows::Win32::CoInitializeEx
 Windows::Win32::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 Windows::Win32::E_FAIL
@@ -445,7 +446,9 @@ Windows::Win32::GetCurrentPackageFullName
 Windows::Win32::GetDpiForWindow
 Windows::Win32::GetKeyboardState
 Windows::Win32::GetMonitorInfoW
+Windows::Win32::GetModuleHandleW
 Windows::Win32::GetProcessHeap
+Windows::Win32::GetProcAddress
 Windows::Win32::GetWindowLongW
 Windows::Win32::GetWindowPlacement
 Windows::Win32::IsIconic
@@ -459,6 +462,9 @@ Windows::Win32::ICON_BIG
 Windows::Win32::ICON_SMALL
 Windows::Win32::IDYES
 Windows::Win32::LWA_ALPHA
+Windows::Win32::LoadLibraryExW
+Windows::Win32::LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+Windows::Win32::LOAD_LIBRARY_SEARCH_SYSTEM32
 Windows::Win32::MB_ICONERROR
 Windows::Win32::MB_YESNO
 Windows::Win32::MessageBoxW
@@ -466,8 +472,11 @@ Windows::Win32::MONITOR_DEFAULTTONEAREST
 Windows::Win32::MonitorFromRect
 Windows::Win32::MonitorFromWindow
 Windows::Win32::PACKAGE_VERSION
+Windows::Win32::PACKAGEDEPENDENCY_CONTEXT
 Windows::Win32::PackageDependencyProcessorArchitectures::{PackageDependencyProcessorArchitectures_Arm, PackageDependencyProcessorArchitectures_Arm64, PackageDependencyProcessorArchitectures_Neutral, PackageDependencyProcessorArchitectures_None, PackageDependencyProcessorArchitectures_X64, PackageDependencyProcessorArchitectures_X86}
+Windows::Win32::PackageDependencyLifetimeKind::{PackageDependencyLifetimeKind_Process}
 Windows::Win32::PostQuitMessage
+Windows::Win32::PSID
 Windows::Win32::RegGetValueW
 Windows::Win32::RPC_E_CHANGED_MODE
 Windows::Win32::RRF_RT_REG_DWORD
@@ -487,7 +496,6 @@ Windows::Win32::SW_SHOWMINIMIZED
 Windows::Win32::SWP_NOACTIVATE
 Windows::Win32::SWP_NOSIZE
 Windows::Win32::SWP_NOZORDER
-Windows::Win32::TryCreatePackageDependency
 Windows::Win32::WM_SETICON
 Windows::Win32::WM_SETTINGCHANGE
 Windows::Win32::WM_THEMECHANGED

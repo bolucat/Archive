@@ -9,13 +9,22 @@ permissions:
 
 env:
   CARGO_INCREMENTAL: "0"
+  # The Foundation package that Windows App SDK 2.5.1 pins. Update it and the bootstrapper
+  # hashes below together with the reactor runtime version.
+  BOOTSTRAP_FOUNDATION_VERSION: "2.3.12"
 
 jobs:
   build:
     name: Build ${{ matrix.target }}
     strategy:
       matrix:
-        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+        include:
+          - target: x86_64-pc-windows-msvc
+            bootstrap-arch: x64
+            bootstrap-sha256: e4acd665ff39f8a0d591459bd5901482e71b4ffbe644f421ffad9431b5fed438
+          - target: aarch64-pc-windows-msvc
+            bootstrap-arch: arm64
+            bootstrap-sha256: 23f923b26fe622de4f460d60d69e41599de892e63fdcaf204caedb2a6f1af0ff
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,6 +50,29 @@ jobs:
           # Git Bash on Windows prints "<hash> *<file>"; write the text-mode form the app verifies.
           printf '%s  %s\n' "$(sha256sum "$asset" | cut -d ' ' -f 1)" "$asset" > "$asset.sha256"
           cat "$asset.sha256"
+      # Builds before Windows 11 24H1 load the bootstrapper beside the executable.
+      - name: Stage the Windows App SDK bootstrapper
+        shell: pwsh
+        run: |
+          $asset = "Microsoft.WindowsAppRuntime.Bootstrap-${{ matrix.target }}.dll"
+          $version = $env:BOOTSTRAP_FOUNDATION_VERSION
+          $package = "microsoft.windowsappsdk.foundation.$version.nupkg"
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk.foundation/$version/$package" -OutFile $package
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $package))
+          try {
+            $entry = $zip.GetEntry("runtimes/win-${{ matrix.bootstrap-arch }}/native/Microsoft.WindowsAppRuntime.Bootstrap.dll")
+            if (!$entry) { throw "$package has no ${{ matrix.bootstrap-arch }} bootstrapper" }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $PWD $asset))
+          } finally { $zip.Dispose() }
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "${{ matrix.bootstrap-sha256 }}") { throw "$asset SHA-256 $hash does not match the pinned hash" }
+          $signature = Get-AuthenticodeSignature $asset
+          if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notlike "CN=Microsoft Corporation,*") {
+            throw "$asset is not signed by Microsoft: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          }
+          [IO.File]::WriteAllText("$asset.sha256", "$hash  $asset`n")
+          Get-Content "$asset.sha256"
       - name: Write the release notes
         uses: orhun/git-cliff-action@v4
         with:
@@ -53,3 +85,5 @@ jobs:
           files: |
             enableLoopback-${{ matrix.target }}.exe
             enableLoopback-${{ matrix.target }}.exe.sha256
+            Microsoft.WindowsAppRuntime.Bootstrap-${{ matrix.target }}.dll
+            Microsoft.WindowsAppRuntime.Bootstrap-${{ matrix.target }}.dll.sha256

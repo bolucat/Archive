@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install Rust nightly toolchain
         run: |
           rustup toolchain install --profile minimal -c clippy -c rustfmt nightly
@@ -41,6 +41,10 @@ jobs:
       # Install your linters here
       - name: Clippy
         run: cargo clippy --all-targets --all-features
+      - name: Test process identity
+        run: |
+          cargo test --no-default-features --features process --lib process::pid_file
+          cargo test --no-default-features --features process --test process_pid_file
       - name: Run linters
         uses: wearerequired/lint-action@master
         with:

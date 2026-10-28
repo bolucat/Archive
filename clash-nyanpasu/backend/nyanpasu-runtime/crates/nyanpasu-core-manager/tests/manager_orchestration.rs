@@ -648,6 +648,38 @@ async fn manager_sweeps_stale_artifacts_and_advances_epoch() {
 }
 
 #[tokio::test]
+async fn manager_sweeps_a_stale_record_whose_pid_was_reused() {
+    let (_guard, dir) = common::utf8_tempdir();
+    let runtime_dir = dir.join("runtime");
+    std::fs::create_dir_all(&runtime_dir).unwrap();
+    let runtime_config = runtime_dir.join("config-8.yaml");
+    std::fs::write(&runtime_config, "stale: true\n").unwrap();
+    // The recorded core exited long ago; its pid now names a live process
+    // that started later (this test). The record must not block startup.
+    let hex = |text: &str| -> String { text.bytes().map(|byte| format!("{byte:02x}")).collect() };
+    std::fs::write(
+        runtime_dir.join("core-8.pid"),
+        format!(
+            "version=2\npid={}\nepoch=8\nexecutable={}\nstart-token=1\nruntime-config={}\n",
+            std::process::id(),
+            hex("mihomo"),
+            hex(runtime_config.as_str()),
+        ),
+    )
+    .unwrap();
+
+    let manager = CoreManager::new(ManagerOptions {
+        runtime_dir: Some(runtime_dir.clone()),
+        ..ManagerOptions::default()
+    })
+    .await
+    .expect("a reused pid must not fail construction");
+    assert!(!runtime_dir.join("core-8.pid").exists());
+    assert!(!runtime_config.exists());
+    manager.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
 async fn dropping_live_manager_releases_runtime_ownership() {
     let (_guard, dir) = common::utf8_tempdir();
     let runtime_dir = dir.join("runtime");

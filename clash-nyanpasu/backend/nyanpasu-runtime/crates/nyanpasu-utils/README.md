@@ -17,7 +17,11 @@ modules so the crate can be embedded in a larger monorepo without nested Cargo w
   live descendant tree before killing the root, then identity-validates and
   confirms every captured descendant independently. A descendant that reparents
   before either capture snapshot observes it cannot be safely attributed and
-  may remain.
+  may remain. A live PID whose start token differs from the record was reused
+  by another process: the record is retired and nothing is signaled. A
+  matching start token with a different or unreadable executable stays an
+  error. macOS reads start tokens through `sysctl(KERN_PROC_PID)` so that
+  processes of other users are compared too.
 
 Epoch record staging files are swept on the next manager startup. A narrow gap
 remains between process creation and identity-record publication; an orphan

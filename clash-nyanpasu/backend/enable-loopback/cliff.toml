@@ -27,6 +27,10 @@ postprocessors = [
 # Subjects are imperative sentences, not Conventional Commits.
 conventional_commits = false
 filter_unconventional = false
+# A fork bump with no application commit to describe it.
+commit_preprocessors = [
+  { pattern = '^Bump windows-rs fork for the framework bootstrap before Windows 11 24H1', replace = "Start on Windows 10 by bootstrapping the framework without Windows 11-only imports" },
+]
 commit_parsers = [
   { message = "^Release \\d", skip = true },
   { message = "^Merge (pull request|branch)", skip = true },

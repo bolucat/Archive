@@ -72,7 +72,26 @@ MPL-2.0-covered GotaTun code; binary and library distributors must retain
 See [dependency maintenance](DEPENDENCIES.md) for protected forks, update
 constraints and required integration checks.
 
-Precompiled binaries for x86_64 and Apple aarch64 are available on [Github Releases](https://github.com/cfal/shoes/releases).
+Precompiled binaries are available on [GitHub Releases](https://github.com/cfal/shoes/releases)
+for Linux x86_64/aarch64 and macOS Intel/Apple Silicon. The next release also adds
+Linux ARMv7 hard-float (`armv7-unknown-linux-gnueabihf` and
+`armv7-unknown-linux-musleabihf`), for CPUs that support 32-bit ARMv7 hard-float
+execution, not ARMv6 devices. GNU builds require a matching glibc userspace;
+musl builds are statically linked. ARMv7 release smoke checks run under QEMU,
+not on physical boards.
+
+Starting with the next release, releases provide a separate `SHA256SUMS` asset
+and GitHub build-provenance attestations. From the directory containing the
+downloaded archives and checksum file:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify shoes-armv7-unknown-linux-musleabihf.tar.gz --repo cfal/shoes
+```
+
+On macOS, use `shasum -a 256 --check SHA256SUMS` (download all listed archives or
+check the selected archive's entry). Attestations verify build provenance, not
+Apple Developer ID signing or notarization; macOS signing is not yet provided.
 
 For the previously published release:
 
@@ -98,8 +117,10 @@ The `nix` patch pins an [upstream commit](https://github.com/nix-rust/nix/commit
 containing [nix #2821](https://github.com/nix-rust/nix/pull/2821) for iOS socket
 compatibility. Retain it until adopting a registry release containing that fix.
 
-The `smoltcp` patch pins a commit from our [fork's main branch](https://github.com/cfal/smoltcp/tree/a80fa50dce926117669ef061f55f4d6bdad0904a)
+The `smoltcp` patch pins our [rebased TCP recovery fork](https://github.com/cfal/smoltcp/tree/042e568bfa39d0f111a23a4718ec257e474fd1e7)
 to preserve TCP ACK sequencing during partial retransmission in TUN and WireGuard.
+It tracks unreleased upstream main after 0.14.0, including the receive-window arithmetic fix;
+see [fork maintenance notes](DEPENDENCIES.md#smoltcp) for provenance and invariants.
 Retain it until adopting a registry release with equivalent loss-recovery fixes.
 When updating the pin, run the fork's `socket::tcp::test::` regressions with Reno
 and CUBIC enabled, plus Shoes' rootless TUN and WireGuard suites.

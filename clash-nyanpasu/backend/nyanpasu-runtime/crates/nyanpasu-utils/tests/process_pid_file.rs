@@ -265,14 +265,33 @@ async fn validated_orphan_reap_kills_captured_descendant_tree() {
     );
 }
 
+/// Rewrites one field of a serialized epoch record.
+fn replace_record_field(path: &std::path::Path, field: &str, value: &str) {
+    let raw = std::fs::read_to_string(path).unwrap();
+    let rewritten = raw
+        .lines()
+        .map(|line| match line.split_once('=') {
+            Some((key, _)) if key == field => format!("{key}={value}"),
+            _ => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(path, format!("{rewritten}\n")).unwrap();
+}
+
+fn hex(text: &str) -> String {
+    text.bytes().map(|byte| format!("{byte:02x}")).collect()
+}
+
 #[tokio::test]
-async fn orphan_reap_rejects_unproven_start_identity_without_killing() {
+async fn orphan_reap_retires_a_reused_pid_without_killing() {
     let dir = tempfile::tempdir().unwrap();
     let pid_path = dir.path().join("core-4.pid");
     let runtime_path = dir.path().join("config-4.yaml");
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
-    let (handle, _events) = Command::new(child())
-        .args(["sleep-forever"])
+    let (handle, mut events) = Command::new(child())
+        .args(["echo-stdin"])
+        .pipe_stdin(true)
         .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
             pid_path: &pid_path,
             runtime_config: &runtime_path,
@@ -281,22 +300,104 @@ async fn orphan_reap_rejects_unproven_start_identity_without_killing() {
         .spawn()
         .await
         .unwrap();
-    let pid = handle.pid();
+    // A record whose start token differs describes a process that has exited;
+    // the live process now holding the pid is someone else's.
     let record = read_epoch_pid_file(&pid_path).await.unwrap().unwrap();
-    let raw = std::fs::read_to_string(&pid_path).unwrap();
-    std::fs::write(
+    replace_record_field(
         &pid_path,
-        raw.replace(
-            &format!("start-token={}\n", record.start_token),
-            &format!("start-token={}\n", record.start_token.saturating_add(1)),
-        ),
-    )
-    .unwrap();
+        "start-token",
+        &record.start_token.wrapping_add(1).to_string(),
+    );
+
+    assert_eq!(
+        reap_epoch_pid_file(&pid_path, dir.path()).await.unwrap(),
+        OrphanReapOutcome::AlreadyExited
+    );
+    assert!(!pid_path.exists(), "the stale record was kept");
+
+    // The process still answers, so it was never signaled.
+    handle.write_stdin(b"nonce\n").await.unwrap();
+    loop {
+        match events.recv().await.expect("child event") {
+            ProcessEvent::Stdout(line) if line.trim_end() == "echo:nonce" => break,
+            ProcessEvent::Terminated(status) => panic!("reused pid was killed: {status:?}"),
+            _ => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn orphan_reap_spares_the_tree_under_a_reused_pid() {
+    let dir = tempfile::tempdir().unwrap();
+    let pid_path = dir.path().join("core-5.pid");
+    let runtime_path = dir.path().join("config-5.yaml");
+    std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
+    let (handle, mut events) = Command::new(child())
+        .args(["spawn-grandchild"])
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 5,
+        }))
+        .spawn()
+        .await
+        .unwrap();
+    let grandchild_pid = loop {
+        match events.recv().await.expect("parent event") {
+            ProcessEvent::Stdout(line) => {
+                if let Some(pid) = line.strip_prefix("grandchild-pid:") {
+                    break pid.trim().parse::<u32>().unwrap();
+                }
+            }
+            ProcessEvent::Terminated(status) => panic!("parent exited early: {status:?}"),
+            _ => {}
+        }
+    };
+    let record = read_epoch_pid_file(&pid_path).await.unwrap().unwrap();
+    replace_record_field(
+        &pid_path,
+        "start-token",
+        &record.start_token.wrapping_add(1).to_string(),
+    );
+
+    assert_eq!(
+        reap_epoch_pid_file(&pid_path, dir.path()).await.unwrap(),
+        OrphanReapOutcome::AlreadyExited
+    );
+    assert!(pid_alive(handle.pid()), "reused root was killed");
+    assert!(
+        pid_alive(grandchild_pid),
+        "descendant of a reused pid was killed"
+    );
+
+    let _ = handle.kill().await;
+}
+
+#[tokio::test]
+async fn orphan_reap_keeps_a_record_whose_executable_differs() {
+    let dir = tempfile::tempdir().unwrap();
+    let pid_path = dir.path().join("core-6.pid");
+    let runtime_path = dir.path().join("config-6.yaml");
+    std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
+    let (handle, _events) = Command::new(child())
+        .args(["sleep-forever"])
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 6,
+        }))
+        .spawn()
+        .await
+        .unwrap();
+    let pid = handle.pid();
+    // Same start token, another name: neither ownership nor exit is proven.
+    replace_record_field(&pid_path, "executable", &hex("another-core"));
 
     let error = reap_epoch_pid_file(&pid_path, dir.path())
         .await
-        .expect_err("identity mismatch must be uncertain");
+        .expect_err("an executable mismatch must stay uncertain");
     assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(pid_path.exists(), "an uncertain record was removed");
     assert!(pid_alive(pid), "uncertain identity was killed");
 
     let _ = handle.kill().await;

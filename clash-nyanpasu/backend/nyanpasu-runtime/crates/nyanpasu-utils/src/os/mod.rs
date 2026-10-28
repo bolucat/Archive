@@ -29,6 +29,9 @@ where
         .open(path)
         .await?;
     file.write_all(pid.to_string().as_bytes()).await?;
+    // A tokio file finishes writes in the background; without a flush a
+    // reader can still observe the truncated, empty file.
+    file.flush().await?;
     Ok(())
 }
 

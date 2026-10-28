@@ -319,7 +319,12 @@ standalone visual that needs layout or other visual properties.
 ## Choose a deployment model
 
 A framework-dependent application uses an installed Windows App SDK framework package and needs
-only `windows-reactor`.
+only `windows-reactor`. On Windows 11 24H1 and later, Reactor adds the framework through the
+Windows dynamic dependency API. Earlier Windows builds, including Windows 10, use the Windows App
+SDK bootstrapper instead: deploy `Microsoft.WindowsAppRuntime.Bootstrap.dll` for the process
+architecture beside the executable. It ships in the `Microsoft.WindowsAppSDK.Foundation` NuGet
+package under `runtimes/win-<arch>/native/`, and the Windows App Runtime installer provides the
+lifetime manager package it needs.
 
 For a self-contained application, add:
 

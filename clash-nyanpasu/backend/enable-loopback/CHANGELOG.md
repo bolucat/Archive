@@ -2,6 +2,11 @@
 
 Generated from the commit history by [git-cliff](https://git-cliff.org).
 
+## [0.1.5](https://github.com/libnyanpasu/enable-loopback/releases/tag/v0.1.5) - 2026-10-28
+
+- Start on Windows 10 by bootstrapping the framework without Windows 11-only imports ([2d403f6](https://github.com/libnyanpasu/enable-loopback/commit/2d403f6eabb03b4637278bae098da4753325b2a5))
+- Publish the Windows App SDK bootstrapper with each release ([a8e4146](https://github.com/libnyanpasu/enable-loopback/commit/a8e41461c23806106addecec161d1006141c0404))
+
 ## [0.1.4](https://github.com/libnyanpasu/enable-loopback/releases/tag/v0.1.4) - 2026-10-22
 
 - License the project under MIT ([a68bbb1](https://github.com/libnyanpasu/enable-loopback/commit/a68bbb15b9667dafabcacd728e62996cd1bd205f))

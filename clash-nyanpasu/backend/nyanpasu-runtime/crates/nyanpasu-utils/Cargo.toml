@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-utils"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Shared utilities for Nyanpasu applications and services."
 repository = "https://github.com/LibNyanpasu/nyanpasu-utils"
@@ -20,7 +20,7 @@ backon = { version = "1.6", optional = true }
 camino = { version = "1.1", features = ["serde1"], optional = true }
 constcat = "0.6.0"
 derive_builder = { version = "0.20", optional = true }
-dirs = { version = "6", optional = true }
+dirs = { version = "7", optional = true }
 encoding_rs = { version = "0.8", optional = true }
 kill_tree = { version = "0.2.4", features = ["tokio"], optional = true }
 log = { version = "0.4", optional = true }

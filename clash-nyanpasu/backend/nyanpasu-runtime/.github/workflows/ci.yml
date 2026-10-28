@@ -60,6 +60,8 @@ jobs:
           cargo test -p nyanpasu-serde --all-features --locked
           cargo test -p nyanpasu-serde --no-default-features --locked
           cargo test -p clash-api --test connections_decode --locked
+      - name: Orphan sweep across reused pids
+        run: cargo test -p nyanpasu-core-manager --test manager_orchestration --locked manager_sweeps
       - name: Run linters
         uses: wearerequired/lint-action@master
         with:

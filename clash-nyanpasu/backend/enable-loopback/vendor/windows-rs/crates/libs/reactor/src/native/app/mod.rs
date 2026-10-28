@@ -5,7 +5,6 @@ use bindings::*;
 mod application;
 
 windows_core::link!("kernel32.dll" "system" fn FindResourceW(module: *mut std::ffi::c_void, name: *const u16, resource_type: *const u16) -> *mut std::ffi::c_void);
-windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(name: *const u16) -> *mut std::ffi::c_void);
 windows_core::link!("kernel32.dll" "system" fn LoadResource(module: *mut std::ffi::c_void, resource: *mut std::ffi::c_void) -> *mut std::ffi::c_void);
 windows_core::link!("kernel32.dll" "system" fn LockResource(resource: *mut std::ffi::c_void) -> *mut std::ffi::c_void);
 windows_core::link!("kernel32.dll" "system" fn SizeofResource(module: *mut std::ffi::c_void, resource: *mut std::ffi::c_void) -> u32);
@@ -770,8 +769,9 @@ impl App {
     where
         T: 'static,
     {
-        bootstrap_runtime()?;
+        // The bootstrapper reaches the runtime's lifetime manager through COM.
         initialize_ui_thread()?;
+        bootstrap_runtime()?;
 
         let startup = Rc::new(RefCell::new(Some(startup)));
         let result = Rc::new(RefCell::new(Ok(())));
@@ -1285,7 +1285,7 @@ fn self_contained_manifest_present() -> bool {
     let marker = SELF_CONTAINED_MARKER.as_bytes();
 
     unsafe {
-        let module = GetModuleHandleW(std::ptr::null());
+        let module = GetModuleHandleW(windows_core::PCWSTR::null()).cast::<std::ffi::c_void>();
         if module.is_null() {
             return false;
         }

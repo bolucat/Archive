@@ -68,14 +68,32 @@ pub struct EpochPidRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrphanReapOutcome {
     NotFound,
+    /// The recorded process is gone: its pid is free or now names a process
+    /// with a different start token. Nothing was signaled.
     AlreadyExited,
     Killed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProcessIdentity {
-    executable: String,
+    /// `None` when the start token is readable but the executable is not, as
+    /// for another user's process on Linux (`/proc/<pid>/exe`).
+    executable: Option<String>,
     start_token: u64,
+}
+
+/// How a live process relates to an epoch record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdentityMatch {
+    /// Same start token and executable: the recorded process itself.
+    Same,
+    /// A different start token: the recorded process exited and its pid now
+    /// names another process.
+    Reused,
+    /// Same start token, but the executable differs or cannot be read. A live
+    /// process can change its observed name (exec, a replaced binary), so this
+    /// proves neither ownership nor exit.
+    Uncertain,
 }
 
 /// Owns one pid file around a spawned child.
@@ -142,19 +160,23 @@ impl PidFileGuard {
                 // narrow pre-record interval can leave an orphan without an
                 // authoritative identity record; such a process is never
                 // killed on an unproven numeric PID.
-                let identity = wait_for_process_identity(pid).await?.ok_or_else(|| {
-                    identity_error(format!("spawned pid {pid} disappeared before recording"))
+                let identity = wait_for_process_identity(pid, expected_exe)
+                    .await?
+                    .ok_or_else(|| {
+                        identity_error(format!("spawned pid {pid} disappeared before recording"))
+                    })?;
+                let executable = identity.executable.ok_or_else(|| {
+                    identity_error(format!("cannot resolve executable for spawned pid {pid}"))
                 })?;
-                if !exe_names_equal(&identity.executable, expected_exe) {
+                if !exe_names_equal(&executable, expected_exe) {
                     return Err(identity_error(format!(
-                        "spawned pid {pid} executable `{}` does not match `{expected_exe}`",
-                        identity.executable
+                        "spawned pid {pid} executable `{executable}` does not match `{expected_exe}`"
                     )));
                 }
                 let value = EpochPidRecord {
                     pid,
                     epoch: spec.epoch,
-                    executable: identity.executable,
+                    executable,
                     start_token: identity.start_token,
                     runtime_config: spec.runtime_config.clone(),
                 };
@@ -217,18 +239,34 @@ pub async fn read_epoch_pid_file(
     parse_epoch_record(&raw).map(Some)
 }
 
-/// Read-only identity check for a copied epoch record. A missing/reused PID is
-/// dead; inability to inspect it is an error, never proof of death. This does
-/// not authorize killing a process using a record in a user-owned directory.
+/// Read-only identity check for a copied epoch record. A missing pid, or one
+/// whose start token differs from the record (reused), is dead. Inability to
+/// inspect it, or a matching start token with a different executable, is an
+/// error, never proof of death. This does not authorize killing a process
+/// using a record in a user-owned directory.
 pub fn recorded_process_is_alive(raw: &str) -> std::io::Result<bool> {
     let record = parse_epoch_record(raw)?;
-    Ok(process_identity(record.pid)?
-        .as_ref()
-        .is_some_and(|identity| record_matches_identity(&record, identity)))
+    let Some(identity) = process_identity(record.pid)? else {
+        return Ok(false);
+    };
+    match compare_identity(&record, &identity) {
+        IdentityMatch::Same => Ok(true),
+        IdentityMatch::Reused => Ok(false),
+        IdentityMatch::Uncertain => Err(identity_error(format!(
+            "cannot prove whether live pid {} is the recorded process",
+            record.pid
+        ))),
+    }
 }
 
 /// Kills the orphan in `path` only after validating the full epoch record and
 /// proving that both pid and runtime config are contained by `runtime_dir`.
+///
+/// A live pid whose start token differs from the record belongs to another
+/// process: the record is removed and [`OrphanReapOutcome::AlreadyExited`] is
+/// returned without signaling that process or its descendants. A matching
+/// start token with a different or unreadable executable cannot be attributed
+/// either way; it is an error and the record is kept.
 ///
 /// Windows validates creation time and executable and terminates through the
 /// same process handle. Linux uses a pidfd plus a boot-bound `/proc` start
@@ -379,11 +417,17 @@ async fn reap_record(record: &EpochPidRecord) -> std::io::Result<OrphanReapOutco
     let Some(identity) = identity_for_reap(record.pid).await? else {
         return Ok(OrphanReapOutcome::AlreadyExited);
     };
-    if !record_matches_identity(record, &identity) {
-        return Err(identity_error(format!(
-            "cannot prove ownership of live pid {}",
-            record.pid
-        )));
+    match compare_identity(record, &identity) {
+        IdentityMatch::Same => {}
+        // Returned before capturing descendants: the tree under a reused pid
+        // belongs to another process.
+        IdentityMatch::Reused => return Ok(OrphanReapOutcome::AlreadyExited),
+        IdentityMatch::Uncertain => {
+            return Err(identity_error(format!(
+                "cannot prove ownership of live pid {}",
+                record.pid
+            )));
+        }
     }
 
     let descendants = capture_descendants(record.pid);
@@ -392,10 +436,14 @@ async fn reap_record(record: &EpochPidRecord) -> std::io::Result<OrphanReapOutco
     let mut killed_descendant = false;
     let mut failures = Vec::new();
     for descendant in descendants {
+        // `attributable_identity` admits only identities with an executable.
+        let Some(executable) = descendant.identity.executable else {
+            continue;
+        };
         let descendant_record = EpochPidRecord {
             pid: descendant.pid,
             epoch: record.epoch,
-            executable: descendant.identity.executable,
+            executable,
             start_token: descendant.identity.start_token,
             runtime_config: record.runtime_config.clone(),
         };
@@ -435,14 +483,18 @@ where
     let Some(identity) = identity else {
         return Ok(OrphanReapOutcome::AlreadyExited);
     };
-    if !record_matches_identity(record, &identity) {
-        if unowned_is_dead {
+    match compare_identity(record, &identity) {
+        IdentityMatch::Same => {}
+        IdentityMatch::Reused => return Ok(OrphanReapOutcome::AlreadyExited),
+        IdentityMatch::Uncertain if unowned_is_dead => {
             return Ok(OrphanReapOutcome::AlreadyExited);
         }
-        return Err(identity_error(format!(
-            "cannot prove ownership of live pid {}",
-            record.pid
-        )));
+        IdentityMatch::Uncertain => {
+            return Err(identity_error(format!(
+                "cannot prove ownership of live pid {}",
+                record.pid
+            )));
+        }
     }
 
     // Windows may report access denied when termination is already in flight.
@@ -519,7 +571,10 @@ fn capture_descendants(root_pid: u32) -> Vec<CapturedDescendant> {
 fn attributable_identity(
     result: std::io::Result<Option<ProcessIdentity>>,
 ) -> Option<ProcessIdentity> {
-    result.ok().flatten()
+    result
+        .ok()
+        .flatten()
+        .filter(|identity| identity.executable.is_some())
 }
 
 fn merge_descendant_captures(
@@ -605,11 +660,29 @@ fn identity_query_is_provisional(error: &std::io::Error) -> bool {
     false
 }
 
-async fn wait_for_process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+/// Polls until `pid` reports `expected_exe`, returning the last identity seen
+/// when it never does. A vfork-based spawn (glibc `posix_spawn`) resumes the
+/// parent once the child releases the parent's mm, before exec installs the
+/// new one, so `/proc/<pid>/exe` can briefly name the parent's binary. The
+/// start token survives exec, so the matching identity is the spawned one.
+async fn wait_for_process_identity(
+    pid: u32,
+    expected_exe: &str,
+) -> std::io::Result<Option<ProcessIdentity>> {
     let mut access_error = None;
+    let mut observed = None;
     for attempt in 0..IDENTITY_WAIT_ATTEMPTS {
         match process_identity(pid) {
-            Ok(Some(identity)) => return Ok(Some(identity)),
+            Ok(Some(identity)) => {
+                if identity
+                    .executable
+                    .as_deref()
+                    .is_some_and(|executable| exe_names_equal(executable, expected_exe))
+                {
+                    return Ok(Some(identity));
+                }
+                observed = Some(identity);
+            }
             Ok(None) => {}
             Err(error) if identity_query_is_provisional(&error) => {
                 access_error = Some(error);
@@ -620,32 +693,167 @@ async fn wait_for_process_identity(pid: u32) -> std::io::Result<Option<ProcessId
             tokio::time::sleep(IDENTITY_WAIT_DELAY).await;
         }
     }
-    match access_error {
-        Some(error) => Err(error),
-        None => Ok(None),
+    match (observed, access_error) {
+        (Some(identity), _) => Ok(Some(identity)),
+        (None, Some(error)) => Err(error),
+        (None, None) => Ok(None),
     }
 }
 
+/// Reads the executable's file name and start time through sysinfo. `None`
+/// when sysinfo does not list the pid.
 #[cfg(all(not(windows), not(target_os = "linux")))]
-fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+fn sysinfo_identity(pid: u32) -> Option<ProcessIdentity> {
     use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
 
     let kind = RefreshKind::nothing()
         .with_processes(ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
     let mut system = System::new_with_specifics(kind);
     system.refresh_specifics(kind);
-    let Some(process) = system.process(Pid::from_u32(pid)) else {
-        return Ok(None);
-    };
+    let process = system.process(Pid::from_u32(pid))?;
     let executable = process
         .exe()
         .and_then(Path::file_name)
         .and_then(|name| name.to_str())
-        .ok_or_else(|| identity_error(format!("cannot resolve executable for live pid {pid}")))?;
-    Ok(Some(ProcessIdentity {
-        executable: executable.to_owned(),
+        .map(str::to_owned);
+    Some(ProcessIdentity {
+        executable,
         start_token: process.start_time(),
+    })
+}
+
+#[cfg(all(not(windows), not(target_os = "linux"), not(target_os = "macos")))]
+fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+    Ok(sysinfo_identity(pid))
+}
+
+/// macOS takes the start token from `sysctl(KERN_PROC_PID)`, which reports
+/// processes of every uid. sysinfo reads it through `PROC_PIDTBSDINFO`, which
+/// is refused for another uid; sysinfo then reports a start time of 0, which
+/// cannot tell a reused pid from an unreadable one. Both read the kernel's
+/// `p_start.tv_sec`, so records written from sysinfo's value still compare.
+/// The executable still comes from sysinfo, the source the records were
+/// written with.
+#[cfg(target_os = "macos")]
+fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+    let Some(start_token) = darwin::start_seconds(pid)? else {
+        return Ok(None);
+    };
+    let executable = sysinfo_identity(pid).and_then(|identity| identity.executable);
+    // A pid that changed hands while the name was read would mix two
+    // processes into one identity.
+    if darwin::start_seconds(pid)? != Some(start_token) {
+        return Ok(None);
+    }
+    Ok(Some(ProcessIdentity {
+        executable,
+        start_token,
     }))
+}
+
+#[cfg(target_os = "macos")]
+mod darwin {
+    use std::mem::size_of;
+
+    // FFI-BINDING: `libc` does not bind Darwin's `struct kinfo_proc` (declared
+    // in the public SDK header <sys/sysctl.h>), so this declares the prefix
+    // that is read. `sysctl(KERN_PROC_PID)` is the only public interface that
+    // returns the start time of another uid's process:
+    // `proc_pidinfo(PROC_PIDTBSDINFO)` and `proc_pid_rusage` refuse other uids
+    // with EPERM, `PROC_PIDT_SHORTBSDINFO` carries no start time, and
+    // `PROC_PIDUNIQIDENTIFIERINFO` is Apple-private.
+    // Layout (XNU `struct user64_extern_proc`, bsd/sys/proc_internal.h, the
+    // record a 64-bit caller receives on arm64 and x86_64): the start time is
+    // the `timeval` member of the leading `p_un` union at offset 0, followed
+    // by two pointers, `p_flag`, `p_stat` and `p_pid`. The kernel sizes the
+    // buffer and the returned length is checked before the prefix is read.
+    // The tests compare the decoded start time with sysinfo's and the pid with
+    // the requested one.
+    // Removal: use `libc::kinfo_proc` once the `libc` crate binds it.
+    #[repr(C)]
+    struct KinfoProcPrefix {
+        start_time: libc::timeval,
+        _vmspace: *mut libc::c_void,
+        _sigacts: *mut libc::c_void,
+        _flag: libc::c_int,
+        stat: libc::c_char,
+        pid: libc::pid_t,
+    }
+
+    // Offsets of `struct user64_extern_proc` on both 64-bit targets.
+    const _: () = assert!(std::mem::offset_of!(KinfoProcPrefix, start_time) == 0);
+    const _: () = assert!(std::mem::offset_of!(KinfoProcPrefix, stat) == 36);
+    const _: () = assert!(std::mem::offset_of!(KinfoProcPrefix, pid) == 40);
+
+    /// `SZOMB` in bsd/sys/proc.h: exited, waiting for its parent.
+    const SZOMB: libc::c_char = 5;
+
+    /// The start time in seconds of a live process, or `None` when the pid
+    /// is free or a zombie.
+    pub(super) fn start_seconds(pid: u32) -> std::io::Result<Option<u64>> {
+        let pid = libc::pid_t::try_from(pid)
+            .map_err(|_| super::invalid_input(format!("pid {pid} is out of range")))?;
+        let mut name = [libc::CTL_KERN, libc::KERN_PROC, libc::KERN_PROC_PID, pid];
+        let mut len: libc::size_t = 0;
+        // SAFETY: `name` holds four initialized ints and its length is passed;
+        // a null old pointer with a valid length pointer asks only for the
+        // buffer size, and no new value is written.
+        if unsafe {
+            libc::sysctl(
+                name.as_mut_ptr(),
+                name.len() as libc::c_uint,
+                std::ptr::null_mut(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        // `u64` elements keep the record 8-byte aligned.
+        let mut buffer = vec![0_u64; len.div_ceil(size_of::<u64>())];
+        let mut len = buffer.len() * size_of::<u64>();
+        // SAFETY: `buffer` is writable for `len` bytes, `len` is a valid
+        // in/out pointer, and `name` is as above.
+        if unsafe {
+            libc::sysctl(
+                name.as_mut_ptr(),
+                name.len() as libc::c_uint,
+                buffer.as_mut_ptr().cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        if len == 0 {
+            return Ok(None);
+        }
+        if len < size_of::<KinfoProcPrefix>() {
+            return Err(super::invalid_data(format!(
+                "kinfo_proc for pid {pid} is truncated to {len} bytes"
+            )));
+        }
+        // SAFETY: the kernel wrote at least `size_of::<KinfoProcPrefix>()`
+        // bytes, the buffer is 8-byte aligned, and every field is an integer or
+        // a raw pointer, valid for any bit pattern.
+        let record = unsafe { buffer.as_ptr().cast::<KinfoProcPrefix>().read() };
+        if record.pid != pid {
+            return Err(super::invalid_data(format!(
+                "kinfo_proc for pid {pid} describes pid {}",
+                record.pid
+            )));
+        }
+        if record.stat == SZOMB {
+            return Ok(None);
+        }
+        u64::try_from(record.start_time.tv_sec)
+            .map(Some)
+            .map_err(|_| super::invalid_data(format!("negative start time for pid {pid}")))
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -653,9 +861,12 @@ fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
     let Some(first_ticks) = linux_start_ticks(pid)? else {
         return Ok(None);
     };
+    // `/proc/<pid>/stat` is world-readable, `/proc/<pid>/exe` is not: another
+    // user's process has a start token but no readable executable.
     let executable_path = match std::fs::read_link(format!("/proc/{pid}/exe")) {
-        Ok(path) => path,
+        Ok(path) => Some(path),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
         Err(error) => return Err(error),
     };
     let Some(second_ticks) = linux_start_ticks(pid)? else {
@@ -665,12 +876,18 @@ fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
         return Ok(None);
     }
     let executable = executable_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| identity_error(format!("cannot resolve executable for live pid {pid}")))?;
+        .map(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    identity_error(format!("cannot resolve executable for live pid {pid}"))
+                })
+        })
+        .transpose()?;
     let boot_id = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
     Ok(Some(ProcessIdentity {
-        executable: executable.to_owned(),
+        executable,
         start_token: boot_bound_start_token(boot_id.trim(), first_ticks),
     }))
 }
@@ -795,7 +1012,7 @@ fn process_identity_from_handle(
         .and_then(|name| name.to_str())
         .ok_or_else(|| identity_error(format!("cannot resolve executable for live pid {pid}")))?;
     Ok(ProcessIdentity {
-        executable: executable.to_owned(),
+        executable: Some(executable.to_owned()),
         start_token: (u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime),
     })
 }
@@ -965,9 +1182,36 @@ async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
     crate::os::kill_pid::<String>(record.pid, None).await
 }
 
+fn compare_identity(record: &EpochPidRecord, identity: &ProcessIdentity) -> IdentityMatch {
+    if record.start_token != identity.start_token {
+        return IdentityMatch::Reused;
+    }
+    match &identity.executable {
+        Some(observed) if recorded_executable_matches(&record.executable, observed) => {
+            IdentityMatch::Same
+        }
+        _ => IdentityMatch::Uncertain,
+    }
+}
+
 fn record_matches_identity(record: &EpochPidRecord, identity: &ProcessIdentity) -> bool {
-    record.start_token == identity.start_token
-        && exe_names_equal(&record.executable, &identity.executable)
+    compare_identity(record, identity) == IdentityMatch::Same
+}
+
+/// Compares a recorded executable name with a live observation of a process
+/// whose start token already matches.
+fn recorded_executable_matches(recorded: &str, observed: &str) -> bool {
+    if exe_names_equal(recorded, observed) {
+        return true;
+    }
+    // Linux reports an executable unlinked after exec, such as a core binary
+    // replaced by an upgrade, as `<name> (deleted)`. The start token already
+    // identifies the process; only that exact suffix is tolerated.
+    #[cfg(target_os = "linux")]
+    if let Some(observed) = observed.strip_suffix(" (deleted)") {
+        return exe_names_equal(recorded, observed);
+    }
+    false
 }
 
 #[cfg(windows)]
@@ -1182,14 +1426,155 @@ mod tests {
         let mut record = EpochPidRecord {
             pid,
             epoch: 1,
-            executable: identity.executable,
+            executable: identity.executable.unwrap(),
             start_token: identity.start_token,
             runtime_config: PathBuf::from("config-1.yaml"),
         };
         assert!(recorded_process_is_alive(&serialize_epoch_record(&record).unwrap()).unwrap());
+        let mut renamed = record.clone();
+        renamed.executable = "another-name".into();
+        assert_eq!(
+            recorded_process_is_alive(&serialize_epoch_record(&renamed).unwrap())
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::PermissionDenied,
+            "a matching start token with another executable is not proof of death"
+        );
         record.start_token = record.start_token.wrapping_add(1);
         assert!(!recorded_process_is_alive(&serialize_epoch_record(&record).unwrap()).unwrap());
         assert!(recorded_process_is_alive("incomplete").is_err());
+    }
+
+    fn record_for(executable: &str, start_token: u64) -> EpochPidRecord {
+        EpochPidRecord {
+            pid: 1,
+            epoch: 1,
+            executable: executable.into(),
+            start_token,
+            runtime_config: PathBuf::from("config-1.yaml"),
+        }
+    }
+
+    fn observed(executable: Option<&str>, start_token: u64) -> ProcessIdentity {
+        ProcessIdentity {
+            executable: executable.map(str::to_owned),
+            start_token,
+        }
+    }
+
+    #[test]
+    fn start_token_decides_reuse_before_the_executable_is_needed() {
+        let record = record_for("mihomo", 7);
+        assert_eq!(
+            compare_identity(&record, &observed(Some("mihomo"), 7)),
+            IdentityMatch::Same
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(Some("launchd"), 8)),
+            IdentityMatch::Reused
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(None, 8)),
+            IdentityMatch::Reused,
+            "another user's process has an unreadable executable but a readable start token"
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(Some("other"), 7)),
+            IdentityMatch::Uncertain
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(None, 7)),
+            IdentityMatch::Uncertain
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn deleted_executable_suffix_matches_only_with_an_equal_start_token() {
+        let record = record_for("mihomo", 7);
+        assert_eq!(
+            compare_identity(&record, &observed(Some("mihomo (deleted)"), 7)),
+            IdentityMatch::Same
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(Some("other (deleted)"), 7)),
+            IdentityMatch::Uncertain
+        );
+        assert_eq!(
+            compare_identity(&record, &observed(Some("mihomo (deleted)"), 8)),
+            IdentityMatch::Reused
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn darwin_start_time_matches_sysinfo_for_an_own_process() {
+        let pid = std::process::id();
+        let start = darwin::start_seconds(pid).unwrap().unwrap();
+        assert_eq!(
+            Some(start),
+            sysinfo_identity(pid).map(|identity| identity.start_token)
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn darwin_start_time_reads_another_users_process() {
+        // launchd runs as root; sysinfo reports a start time of 0 for it when
+        // the tests run unprivileged.
+        let start = darwin::start_seconds(1).unwrap();
+        assert!(
+            start.is_some_and(|start| start > 0),
+            "launchd start time: {start:?}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn darwin_start_time_reports_a_free_pid_as_absent() {
+        // macOS allocates pids below 99999.
+        assert_eq!(darwin::start_seconds(99_999_999).unwrap(), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reused_pid_owned_by_root_is_retired() {
+        // pid 1 runs as root. An unprivileged run cannot read its executable
+        // on Linux, nor its BSD info on macOS, yet its start token decides.
+        let identity = process_identity(1).unwrap().expect("pid 1 is alive");
+        let record = EpochPidRecord {
+            pid: 1,
+            epoch: 1,
+            executable: "mihomo".into(),
+            start_token: identity.start_token.wrapping_add(1),
+            runtime_config: PathBuf::from("config-1.yaml"),
+        };
+
+        assert_eq!(
+            reap_record(&record).await.unwrap(),
+            OrphanReapOutcome::AlreadyExited
+        );
+    }
+
+    #[tokio::test]
+    async fn reused_pid_is_not_signaled_by_the_kill_path() {
+        let pid = std::process::id();
+        let identity = process_identity(pid).unwrap().unwrap();
+        let record = EpochPidRecord {
+            pid,
+            epoch: 1,
+            executable: identity.executable.unwrap(),
+            start_token: identity.start_token.wrapping_add(1),
+            runtime_config: PathBuf::from("config-1.yaml"),
+        };
+
+        let outcome = reap_record_with_kill(&record, false, || async {
+            panic!("a reused pid must not be signaled");
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(outcome, OrphanReapOutcome::AlreadyExited);
     }
 
     #[test]
@@ -1243,7 +1628,7 @@ mod tests {
     #[test]
     fn second_snapshot_only_descendant_is_captured() {
         let late_identity = ProcessIdentity {
-            executable: "late-child".into(),
+            executable: Some("late-child".into()),
             start_token: 22,
         };
         let captured =
@@ -1257,7 +1642,7 @@ mod tests {
     #[test]
     fn unreadable_second_snapshot_identity_is_not_attributed() {
         let first_identity = ProcessIdentity {
-            executable: "old-child".into(),
+            executable: Some("old-child".into()),
             start_token: 7,
         };
         let captured = merge_descendant_captures(
@@ -1300,18 +1685,27 @@ mod tests {
             .args(["/D", "/S", "/C", "ping -n 30 127.0.0.1 >NUL"])
             .spawn()
             .unwrap();
+        // Spawned directly: `sh -c` may exec into `sleep`, changing the
+        // executable after the identity was read.
         #[cfg(unix)]
-        let mut child = std::process::Command::new("sh")
-            .args(["-c", "sleep 30"])
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
             .spawn()
             .unwrap();
 
         let pid = child.id();
-        let identity = wait_for_process_identity(pid).await.unwrap().unwrap();
+        #[cfg(windows)]
+        let expected_exe = "cmd.exe";
+        #[cfg(unix)]
+        let expected_exe = "sleep";
+        let identity = wait_for_process_identity(pid, expected_exe)
+            .await
+            .unwrap()
+            .unwrap();
         let record = EpochPidRecord {
             pid,
             epoch: 1,
-            executable: identity.executable,
+            executable: identity.executable.unwrap(),
             start_token: identity.start_token,
             runtime_config: PathBuf::from("config-1.yaml"),
         };

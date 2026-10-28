@@ -455,8 +455,12 @@ Each pid record includes its epoch, executable identity, process start token,
 and runtime path. `CoreManager::new` sweeps before accepting work: it validates
 every record, kills only a fully matching live process, confirms death, removes
 that epoch's yaml/pid/socket/backup/temp artifacts, and seeds the next epoch
-above the maximum artifact epoch observed. If identity cannot be proven, the
-manager fails construction instead of killing an uncertain process.
+above the maximum artifact epoch observed. A live pid whose start token
+differs from the record was reused by another process after the recorded core
+exited; that record is retired without signaling anything. If identity cannot
+be proven (a matching start token with a different or unreadable executable,
+or a process that cannot be inspected), the manager fails construction instead
+of killing an uncertain process.
 
 If an in-process stop cannot prove death, the epoch is quarantined. Start,
 switch, restart, and config application return `Error::ManagerQuarantined`

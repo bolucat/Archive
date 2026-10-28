@@ -1,4 +1,25 @@
 
+## [2.0.2] - 2026-10-28
+
+
+### 🐛 Bug Fixes
+
+- **core-manager:** Sweep stale records whose pid was reused by @greenhat616 
+
+
+### 🧹 Miscellaneous Tasks
+
+- Bump nyanpasu-utils for nyanpasu-log-preview by @greenhat616 
+
+-----------------
+
+
+
+**Full Changelog**: https://github.com/libnyanpasu/nyanpasu-runtime/compare/v2.0.1...v2.0.2
+
+
+
+
 ## [2.0.1] - 2026-10-21
 
 

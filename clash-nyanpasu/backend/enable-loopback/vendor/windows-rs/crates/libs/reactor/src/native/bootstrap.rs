@@ -3,9 +3,30 @@ use bindings::*;
 use windows_core::*;
 
 const FRAMEWORK_FAMILY: PCWSTR = w!("Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe");
-const PACKAGE_DEPENDENCY_LIFETIME_KIND_PROCESS: i32 = 0;
+const BOOTSTRAP_DLL: &str = "Microsoft.WindowsAppRuntime.Bootstrap.dll";
+const MDD_BOOTSTRAP_INITIALIZE_OPTIONS_NONE: i32 = 0;
 
 static BOOTSTRAPPED: Mutex<bool> = Mutex::new(false);
+
+type TryCreatePackageDependencyFn = unsafe extern "system" fn(
+    PSID,
+    PCWSTR,
+    PACKAGE_VERSION,
+    PackageDependencyProcessorArchitectures,
+    PackageDependencyLifetimeKind,
+    PCWSTR,
+    CreatePackageDependencyOptions,
+    *mut PWSTR,
+) -> HRESULT;
+type AddPackageDependencyFn = unsafe extern "system" fn(
+    PCWSTR,
+    i32,
+    AddPackageDependencyOptions,
+    *mut PACKAGEDEPENDENCY_CONTEXT,
+    *mut PWSTR,
+) -> HRESULT;
+type MddBootstrapInitialize2Fn =
+    unsafe extern "system" fn(u32, PCWSTR, PACKAGE_VERSION, i32) -> HRESULT;
 
 pub(super) fn bootstrap() -> Result<()> {
     let mut bootstrapped = BOOTSTRAPPED.lock().unwrap();
@@ -18,22 +39,9 @@ pub(super) fn bootstrap() -> Result<()> {
 }
 
 unsafe fn bootstrap_inner() -> Result<()> {
-    let mut dependency_id = PWSTR::null();
-    let hr = unsafe {
-        TryCreatePackageDependency(
-            std::ptr::null_mut(),
-            FRAMEWORK_FAMILY,
-            PACKAGE_VERSION {
-                Anonymous: PACKAGE_VERSION_0 {
-                    Version: WINDOWSAPPSDK_RUNTIME_VERSION_UINT64,
-                },
-            },
-            process_architecture().flags | PackageDependencyProcessorArchitectures_Neutral,
-            PACKAGE_DEPENDENCY_LIFETIME_KIND_PROCESS,
-            PCWSTR::null(),
-            0,
-            &mut dependency_id,
-        )
+    let hr = match os_package_dependency_api() {
+        Some(api) => unsafe { add_framework_dependency(api) },
+        None => unsafe { initialize_bootstrapper()? },
     };
     if hr == STATEREPOSITORY_E_DEPENDENCY_NOT_RESOLVED {
         show_install_dialog();
@@ -42,15 +50,57 @@ unsafe fn bootstrap_inner() -> Result<()> {
             "Microsoft.WindowsAppRuntime.2 framework package is not installed.",
         ));
     }
-    hr.ok()?;
+    hr.ok()
+}
+
+/// Windows App SDK's own bootstrapper calls the Windows 11 dynamic dependency API only from
+/// 24H1, the first release that exports `TryCreatePackageDependency2`; earlier builds need the
+/// runtime's lifetime manager instead. Resolving the exports at run time keeps them out of the
+/// import table, where Windows 10 would stop the loader before `main`.
+fn os_package_dependency_api() -> Option<(TryCreatePackageDependencyFn, AddPackageDependencyFn)> {
+    unsafe {
+        let kernelbase = GetModuleHandleW(w!("kernelbase.dll"));
+        if kernelbase.is_null() {
+            return None;
+        }
+        GetProcAddress(kernelbase, s!("TryCreatePackageDependency2"))?;
+        let try_create: TryCreatePackageDependencyFn = core::mem::transmute(GetProcAddress(
+            kernelbase,
+            s!("TryCreatePackageDependency"),
+        )?);
+        let add: AddPackageDependencyFn =
+            core::mem::transmute(GetProcAddress(kernelbase, s!("AddPackageDependency"))?);
+        Some((try_create, add))
+    }
+}
+
+unsafe fn add_framework_dependency(
+    (try_create, add): (TryCreatePackageDependencyFn, AddPackageDependencyFn),
+) -> HRESULT {
+    let mut dependency_id = PWSTR::null();
+    let hr = unsafe {
+        try_create(
+            std::ptr::null_mut(),
+            FRAMEWORK_FAMILY,
+            minimum_version(),
+            process_architecture().flags | PackageDependencyProcessorArchitectures_Neutral,
+            PackageDependencyLifetimeKind_Process,
+            PCWSTR::null(),
+            CreatePackageDependencyOptions_None,
+            &mut dependency_id,
+        )
+    };
+    if hr.is_err() {
+        return hr;
+    }
 
     let mut handle = std::ptr::null_mut();
     let mut package_full_name = PWSTR::null();
-    let result = unsafe {
-        AddPackageDependency(
+    let hr = unsafe {
+        add(
             PCWSTR(dependency_id.0),
             0,
-            0,
+            AddPackageDependencyOptions_None,
             &mut handle,
             &mut package_full_name,
         )
@@ -67,14 +117,57 @@ unsafe fn bootstrap_inner() -> Result<()> {
             package_full_name.0.cast::<std::ffi::c_void>(),
         );
     }
-    if result == STATEREPOSITORY_E_DEPENDENCY_NOT_RESOLVED {
-        show_install_dialog();
+    hr
+}
+
+/// The bootstrapper is app-local: load it from the executable's directory, never the DLL search
+/// path. It stays loaded for the life of the process, as does the framework it adds.
+unsafe fn initialize_bootstrapper() -> Result<HRESULT> {
+    let path = std::env::current_exe()
+        .map_err(|error| Error::new(E_FAIL, error.to_string()))?
+        .with_file_name(BOOTSTRAP_DLL);
+    let path = HSTRING::from(path.as_path());
+    let module = unsafe {
+        LoadLibraryExW(
+            PCWSTR(path.as_ptr()),
+            std::ptr::null_mut(),
+            (LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32) as u32,
+        )
+    };
+    if module.is_null() {
         return Err(Error::new(
-            result,
-            "Microsoft.WindowsAppRuntime.2 framework package is not installed.",
+            HRESULT::from_thread(),
+            format!(
+                "Could not load {BOOTSTRAP_DLL} beside the executable; Windows builds before \
+                 Windows 11 24H1 need it to use the framework package."
+            ),
         ));
     }
-    result.ok()
+    let Some(initialize) = (unsafe { GetProcAddress(module, s!("MddBootstrapInitialize2")) })
+    else {
+        return Err(Error::new(
+            HRESULT::from_thread(),
+            format!("{BOOTSTRAP_DLL} does not export MddBootstrapInitialize2."),
+        ));
+    };
+    let initialize: MddBootstrapInitialize2Fn = unsafe { core::mem::transmute(initialize) };
+    // Release 2.0 and later select the framework by major version alone.
+    Ok(unsafe {
+        initialize(
+            WINDOWSAPPSDK_RUNTIME_VERSION_MAJOR << 16 | WINDOWSAPPSDK_RUNTIME_VERSION_MINOR,
+            PCWSTR::null(),
+            minimum_version(),
+            MDD_BOOTSTRAP_INITIALIZE_OPTIONS_NONE,
+        )
+    })
+}
+
+fn minimum_version() -> PACKAGE_VERSION {
+    PACKAGE_VERSION {
+        Anonymous: PACKAGE_VERSION_0 {
+            Version: WINDOWSAPPSDK_RUNTIME_VERSION_UINT64,
+        },
+    }
 }
 
 #[derive(Clone, Copy)]
