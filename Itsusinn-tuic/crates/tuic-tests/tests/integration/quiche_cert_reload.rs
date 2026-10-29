@@ -1,0 +1,351 @@
+//! Certificate hot-reload test for the tokio-quiche (`wind-tuiche`) backend.
+//!
+//! A `TuicheInbound` is started with a self-signed certificate A. A raw quinn
+//! client completes the QUIC/TLS handshake and reads the served leaf
+//! certificate via `Connection::peer_identity()`. We then push a *different*
+//! certificate B through `CertStore::update` and reconnect: the newly served
+//! certificate must change — proving the `ConnectionHook` +
+//! `select_certificate` callback path hot-reloads certs into the running
+//! listener with no restart.
+
+// These e2e tests drive real QUIC sockets; only *run* them on 64-bit hosts
+// (cross-emulated 32-bit test execution is unreliable for networking). The
+// quiche backend itself now builds on 32-bit too (see patches/tokio-quiche).
+#![cfg(all(
+	target_pointer_width = "64",
+	not(any(target_os = "android", target_os = "freebsd", target_arch = "loongarch64"))
+))]
+
+use std::{
+	net::SocketAddr,
+	sync::Arc,
+	time::{Duration, Instant},
+};
+
+use quinn::Endpoint;
+use rustls::{
+	DigitallySignedStruct, SignatureScheme,
+	client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
+	pki_types::{CertificateDer, ServerName, UnixTime},
+};
+use tempfile::TempDir;
+use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
+use wind_core::{
+	AbstractInbound, Dispatcher, FlowContext, Outbound, RouteAction, Router, tcp::AbstractTcpStream, udp::UdpStream,
+};
+use wind_tuic::quiche::TuicheInboundBuilder;
+
+#[path = "../../../tuic-server/src/cert_renewal.rs"]
+mod renewal;
+
+/// How long the listener may take to serve the rotated certificate. The swap
+/// itself is an in-process atomic store, so this only has to cover the time to
+/// observe a handshake — it is a failure budget, not an expected wait.
+const RELOAD_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Pause between two observation attempts, so a failed probe cannot spin.
+const RETRY_INTERVAL: Duration = Duration::from_millis(50);
+
+/// How long the listener may take to stop once its cancellation token fires.
+/// Cancellation winds down the accept loop and every connection handler, so the
+/// only way to exceed this is a listener that cannot be stopped at all.
+const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
+
+// ---- a no-op outbound handler (TLS handshake is all we need) --------------
+
+struct NoopOutbound;
+
+#[async_trait::async_trait]
+impl Outbound for NoopOutbound {
+	async fn handle_tcp(&self, _ctx: FlowContext, _stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+		Ok(())
+	}
+
+	async fn handle_udp(&self, _ctx: FlowContext, _udp_stream: UdpStream) -> eyre::Result<()> {
+		Ok(())
+	}
+}
+
+/// Router that forwards everything to the `"default"` outbound handler.
+struct ForwardRouter;
+
+impl Router for ForwardRouter {
+	#[allow(clippy::manual_async_fn)]
+	fn route(&self, _ctx: &FlowContext) -> impl std::future::Future<Output = eyre::Result<RouteAction>> + Send {
+		async { Ok(RouteAction::Forward("default".to_string())) }
+	}
+}
+
+// ---- an accept-all server-cert verifier that exposes nothing --------------
+
+#[derive(Debug)]
+struct SkipVerify;
+
+impl ServerCertVerifier for SkipVerify {
+	fn verify_server_cert(
+		&self,
+		_end_entity: &CertificateDer<'_>,
+		_intermediates: &[CertificateDer<'_>],
+		_server_name: &ServerName<'_>,
+		_ocsp: &[u8],
+		_now: UnixTime,
+	) -> Result<ServerCertVerified, rustls::Error> {
+		Ok(ServerCertVerified::assertion())
+	}
+
+	fn verify_tls12_signature(
+		&self,
+		_message: &[u8],
+		_cert: &CertificateDer<'_>,
+		_dss: &DigitallySignedStruct,
+	) -> Result<HandshakeSignatureValid, rustls::Error> {
+		Ok(HandshakeSignatureValid::assertion())
+	}
+
+	fn verify_tls13_signature(
+		&self,
+		_message: &[u8],
+		_cert: &CertificateDer<'_>,
+		_dss: &DigitallySignedStruct,
+	) -> Result<HandshakeSignatureValid, rustls::Error> {
+		Ok(HandshakeSignatureValid::assertion())
+	}
+
+	fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+		vec![
+			SignatureScheme::ECDSA_NISTP256_SHA256,
+			SignatureScheme::ECDSA_NISTP384_SHA384,
+			SignatureScheme::ED25519,
+			SignatureScheme::RSA_PSS_SHA256,
+			SignatureScheme::RSA_PSS_SHA384,
+			SignatureScheme::RSA_PSS_SHA512,
+		]
+	}
+}
+
+/// Generate a fresh self-signed cert for `localhost`, returning `(cert_pem,
+/// key_pem)`.
+fn self_signed() -> (String, String) {
+	let c = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+	(c.cert.pem(), c.signing_key.serialize_pem())
+}
+
+/// The leaf certificate of a PEM bundle, in DER — the same encoding
+/// `peer_identity()` hands back, so a served certificate can be compared
+/// against the exact cert that was pushed into the store.
+fn leaf_der(cert_pem: &str) -> Vec<u8> {
+	rustls_pemfile::certs(&mut cert_pem.as_bytes())
+		.next()
+		.expect("certificate PEM must contain at least one certificate")
+		.expect("certificate PEM must parse")
+		.as_ref()
+		.to_vec()
+}
+
+/// Connect to `addr`, complete the handshake, and return the served leaf
+/// certificate (DER).
+async fn fetch_served_cert(endpoint: &Endpoint, addr: SocketAddr) -> eyre::Result<Vec<u8>> {
+	let conn = endpoint.connect(addr, "localhost").expect("connect config").await?;
+	let identity = conn.peer_identity().expect("peer identity present");
+	let chain = identity
+		.downcast::<Vec<CertificateDer<'static>>>()
+		.expect("peer identity is a cert chain");
+	let leaf = chain.first().expect("non-empty chain").as_ref().to_vec();
+	conn.close(0u32.into(), b"done");
+	Ok(leaf)
+}
+
+#[tokio::test]
+async fn quiche_certificate_hot_reload() -> eyre::Result<()> {
+	tuic_tests::install_crypto_provider();
+
+	// The listener reads the certificate files, so the directory has to outlive
+	// it — but it must not be shared: a fixed name under the system temp dir
+	// makes parallel or successive runs write the same two paths, and nothing
+	// ever removed it. This guard is unique per call and deletes on drop.
+	let dir = TempDir::new()?;
+	let cert_path = dir.path().join("cert.pem");
+	let key_path = dir.path().join("key.pem");
+
+	// Initial certificate A.
+	let (cert_a, key_a) = self_signed();
+	std::fs::write(&cert_path, &cert_a)?;
+	std::fs::write(&key_path, &key_a)?;
+
+	let (addr_tx, mut addr_rx) = tokio::sync::watch::channel(None::<SocketAddr>);
+	// Drives the shutdown below: cancelling it stops the accept loop, and
+	// `listen` only returns after every connection handler has drained.
+	let cancel = CancellationToken::new();
+	let inbound = TuicheInboundBuilder::new()
+		.listen_addr("127.0.0.1:0".parse().unwrap())
+		.bound_addr(addr_tx)
+		.cancel_token(cancel.clone())
+		.certificate_path(cert_path.to_string_lossy().into_owned())
+		.private_key_path(key_path.to_string_lossy().into_owned())
+		.build()
+		.await?;
+	let store = inbound.cert_store();
+
+	let mut dispatcher = Dispatcher::new(ForwardRouter);
+	dispatcher.add_handler("default", Arc::new(NoopOutbound));
+	// Kept out of a bare `tokio::spawn(...)`: the handle is what lets the test
+	// observe the listener actually stopping instead of being torn down
+	// implicitly when the runtime is dropped.
+	let mut listener = tokio::spawn(async move {
+		let _ = inbound.listen(&dispatcher).await;
+	});
+
+	// Wait for the listener to bind and report its OS-assigned address.
+	let listen = addr_rx
+		.wait_for(|a| a.is_some())
+		.await
+		.expect("listener exited before reporting its bound address")
+		.expect("wait_for predicate guarantees Some");
+
+	// quinn client that accepts any cert (we only want to read what is served).
+	let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+	let mut crypto = rustls::ClientConfig::builder_with_provider(provider)
+		.with_protocol_versions(&[&rustls::version::TLS13])?
+		.dangerous()
+		.with_custom_certificate_verifier(Arc::new(SkipVerify))
+		.with_no_client_auth();
+	crypto.alpn_protocols = vec![b"h3".to_vec()];
+	let qcc = quinn::crypto::rustls::QuicClientConfig::try_from(crypto)?;
+	let endpoint = Endpoint::client("127.0.0.1:0".parse()?)?;
+	endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(qcc)));
+
+	// 1) Served cert before rotation.
+	let served_a = fetch_served_cert(&endpoint, listen).await?;
+
+	// 2) Rotate to a different certificate B and reconnect.
+	let (cert_b, key_b) = self_signed();
+	let expected_b = leaf_der(&cert_b);
+	assert_ne!(
+		served_a, expected_b,
+		"the two generated certificates must differ, otherwise this test proves nothing"
+	);
+	std::fs::write(&cert_path, &cert_b)?;
+	std::fs::write(&key_path, &key_b)?;
+	let renew_cert = cert_path.clone();
+	let renew_key = key_path.clone();
+	let renewal_cancel = CancellationToken::new();
+	let signal = renewal_cancel.clone();
+	let updated_store = store.clone();
+	let (updated_tx, updated_rx) = tokio::sync::oneshot::channel();
+	let mut updated_tx = Some(updated_tx);
+	let renewal_task = tokio::spawn(async move {
+		renewal::run(renewal_cancel, Duration::from_millis(1), move || {
+			let (store, cert, key, signal, tx) = (
+				updated_store.clone(),
+				renew_cert.clone(),
+				renew_key.clone(),
+				signal.clone(),
+				updated_tx.take(),
+			);
+			async move {
+				let result = renewal::reload(&store, &cert, &key).await;
+				if let Some(tx) = tx {
+					let _ = tx.send(result.is_ok());
+				}
+				signal.cancel();
+				result
+			}
+		})
+		.await;
+	});
+	assert!(timeout(RELOAD_DEADLINE, updated_rx).await??);
+	timeout(RELOAD_DEADLINE, renewal_task).await??;
+
+	// The swap is an in-process `ArcSwap::store`, so it is visible to the very
+	// next handshake. Poll instead of sleeping a fixed slice: a probe may fail
+	// transiently, and only the rotated leaf arriving within the budget proves
+	// the running listener picked the rotation up with no restart. A listener
+	// that keeps serving the old leaf exhausts the budget and fails.
+	let deadline = Instant::now() + RELOAD_DEADLINE;
+	let mut served_b = None;
+	while served_b.is_none() {
+		let remaining = deadline.saturating_duration_since(Instant::now());
+		if remaining.is_zero() {
+			break;
+		}
+		match timeout(remaining, fetch_served_cert(&endpoint, listen)).await {
+			Ok(Ok(leaf)) if leaf == expected_b => served_b = Some(leaf),
+			Ok(Ok(_)) => tokio::time::sleep(RETRY_INTERVAL).await,
+			Ok(Err(err)) => {
+				tracing::debug!("cert reload probe failed, retrying: {err}");
+				tokio::time::sleep(RETRY_INTERVAL).await;
+			}
+			Err(_) => break,
+		}
+	}
+	let served_b = served_b.ok_or_else(|| {
+		eyre::eyre!(
+			"the served certificate did not become the rotated leaf within {RELOAD_DEADLINE:?} of CertStore::update — hot \
+			 reload failed"
+		)
+	})?;
+
+	// Redundant with the poll's exit condition, but kept as the explicit
+	// contract of this test: the listener must serve exactly the rotated leaf.
+	assert_eq!(
+		served_b, expected_b,
+		"the certificate served after CertStore::update is not the rotated leaf"
+	);
+
+	// Failed renewal must leave the previously served leaf intact.
+	std::fs::write(&cert_path, b"invalid certificate")?;
+	assert!(renewal::reload(&store, &cert_path, &key_path).await.is_err());
+	assert_eq!(fetch_served_cert(&endpoint, listen).await?, expected_b);
+
+	endpoint.wait_idle().await;
+
+	// The listener must stop because it was asked to, not because the test
+	// runtime is going away. This used to be a detached `tokio::spawn` whose
+	// handle was dropped, so a listener that ignored cancellation would still
+	// let the test pass. The bounded await turns that into a failure, and the
+	// explicit abort on the timeout branch keeps the runtime drop from being
+	// the only thing that ever cleans the task up.
+	cancel.cancel();
+	match timeout(SHUTDOWN_DEADLINE, &mut listener).await {
+		Ok(Ok(())) => {}
+		Ok(Err(err)) => eyre::bail!("the listener task panicked instead of shutting down cleanly: {err}"),
+		Err(_) => {
+			listener.abort();
+			eyre::bail!("the listener was still running {SHUTDOWN_DEADLINE:?} after its cancellation token fired");
+		}
+	}
+	Ok(())
+}
+
+#[tokio::test]
+async fn quiche_application_honors_custom_alpn_and_auth_timeout() -> eyre::Result<()> {
+	tuic_tests::install_crypto_provider();
+	let dir = TempDir::new()?;
+	let mut cfg =
+		tuic_tests::quiche_server_config("127.0.0.1:0".parse()?, dir.path().into(), uuid::Uuid::new_v4(), "test", false);
+	cfg.auth_timeout = Duration::from_millis(50);
+	cfg.tls.alpn = vec!["tuic-audit".into()];
+	let server = tuic_server::run(cfg).await?;
+	let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+	let mut crypto = rustls::ClientConfig::builder_with_provider(provider)
+		.with_protocol_versions(&[&rustls::version::TLS13])?
+		.dangerous()
+		.with_custom_certificate_verifier(Arc::new(SkipVerify))
+		.with_no_client_auth();
+	crypto.alpn_protocols = vec![b"tuic-audit".to_vec()];
+	let qcc = quinn::crypto::rustls::QuicClientConfig::try_from(crypto)?;
+	let endpoint = Endpoint::client("127.0.0.1:0".parse()?)?;
+	endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(qcc)));
+	let result = async {
+		let connection = timeout(Duration::from_secs(2), endpoint.connect(server.local_addr, "localhost")?).await??;
+		// Deliberately send no TUIC Authenticate command. The historical 3s
+		// default cannot satisfy this deadline; the configured 50ms can.
+		timeout(Duration::from_secs(2), connection.closed()).await?;
+		Ok::<_, eyre::Report>(())
+	}
+	.await;
+	endpoint.close(0u32.into(), b"done");
+	server.shutdown().await;
+	result
+}

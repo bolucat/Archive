@@ -1,0 +1,369 @@
+//! Graceful-shutdown integration tests at the `App::run()` level.
+//!
+//! These verify that the full TUIC server (Plugin → Router → Inbound → REST
+//! API) stops cleanly within a bounded time when its root `CancellationToken`
+//! is cancelled — without relying on OS signals (SIGTERM / Ctrl-C).  This is
+//! the path `docker stop` triggers, and it must complete before the container
+//! runtime's own SIGKILL deadline.
+//!
+//! The tests complement the lower-level cancellation tests in `wind-test`
+//! (which verify `TuicInbound::listen` in isolation) and `tuic-client` (which
+//! verify individual tunnel inbounds).
+
+use std::{
+	net::{Ipv4Addr, SocketAddr},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
+	},
+	time::{Duration, Instant},
+};
+
+use tokio::{
+	io::{AsyncReadExt, AsyncWriteExt},
+	net::TcpListener,
+	sync::{oneshot, watch},
+	time::timeout,
+};
+use tuic_server::{Config, TuicServerPlugin};
+use tuic_tests::install_crypto_provider;
+use wind_core::{App, FlowContext, Outbound, hooks::Protocol, rule::NetworkType, types::TargetAddr};
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+/// Minimal context for driving the client outbound directly.
+fn test_ctx(target: &TargetAddr) -> FlowContext {
+	FlowContext {
+		target: target.clone(),
+		network: NetworkType::Tcp,
+		source: None,
+		inbound_tag: "tuic-test".into(),
+		protocol: Protocol::Tuic,
+		user: None,
+		inbound_port: None,
+		inbound_type: None,
+	}
+}
+
+/// Start a server on an OS-assigned loopback port and wait until the inbound
+/// reports the address it actually bound.
+///
+/// The address is taken from the server itself rather than from a probe socket
+/// that is bound and closed before the server starts: a probed port is not
+/// reserved, so another process (or a parallel test) can take it in the window
+/// between the probe and the server's own bind, and the server then fails to
+/// start for a reason unrelated to what the test is checking.
+async fn start_server(
+	cfg: Config,
+) -> (
+	Arc<wind_core::AppContext>,
+	tokio::task::JoinHandle<eyre::Result<()>>,
+	SocketAddr,
+) {
+	let (addr_tx, mut addr_rx) = watch::channel(None::<SocketAddr>);
+	let app = App::new()
+		.add_plugin(TuicServerPlugin::new(cfg).with_bound_addr(addr_tx))
+		.await
+		.expect("plugin build");
+
+	let ctx = app.context().clone();
+	let mut handle = tokio::spawn(async move { app.run().await });
+
+	// Either the inbound reports its socket, or the server gives up first —
+	// in which case the test must fail with that reason, not sit on a
+	// configured address that was never bound. The wait is bounded so a server
+	// that neither binds nor exits fails the test instead of hanging it.
+	let addr = timeout(Duration::from_secs(10), async {
+		tokio::select! {
+			reported = addr_rx.wait_for(|a| a.is_some()) => reported
+				.expect("the address channel closed before the server reported its bound address")
+				.expect("wait_for predicate guarantees a bound address"),
+			exited = &mut handle => match exited {
+				Ok(Ok(())) => panic!("server exited before reporting its bound address"),
+				Ok(Err(e)) => panic!("server failed before reporting its bound address: {e:#}"),
+				Err(e) => panic!("server task panicked: {e}"),
+			},
+		}
+	})
+	.await
+	.expect("the server neither reported its bound address nor exited within 10s");
+	assert_ne!(addr.port(), 0, "the server must report the OS-assigned port, got {addr}");
+	assert!(addr.ip().is_loopback(), "the test server must stay on loopback, got {addr}");
+
+	(ctx, handle, addr)
+}
+
+// ---------------------------------------------------------------------------
+// tests
+// ---------------------------------------------------------------------------
+
+/// An idle server whose token is cancelled must return `Ok(())` from
+/// `App::run()` within a bounded time — no hanging, no timeout-then-SIGKILL.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn idle_server_exits_on_cancel() {
+	install_crypto_provider();
+
+	let (cfg, _data_dir) = build_minimal_server_config();
+	let (ctx, handle, _addr) = start_server(cfg).await;
+
+	// Trigger graceful shutdown via the cancel token (no OS signal).
+	ctx.token.cancel();
+
+	let result = timeout(Duration::from_secs(5), handle)
+		.await
+		.expect("App::run did not exit within 5s of cancellation")
+		.expect("App::run task panicked");
+
+	match result {
+		Ok(()) => {} // clean exit
+		Err(e) => panic!("App::run returned an error after cancellation: {e}"),
+	}
+}
+
+/// When a client connects before the token is cancelled, the server must still
+/// drain all per-connection handlers and the accept loop within a bounded time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn active_connection_drains_on_cancel() {
+	install_crypto_provider();
+
+	// Build a config *with* a known user so a client can authenticate.
+	let uuid = uuid::Uuid::new_v4();
+	let password = "test-password";
+	let (cfg, _data_dir) = build_server_config_with_user(uuid, password);
+
+	let (ctx, handle, addr) = start_server(cfg).await;
+
+	// Connect a TUIC client to ensure the server spawns a per-connection
+	// handler tracked in ctx.tasks.
+	let client_ctx = Arc::new(wind_core::AppContext::default());
+	let password_bytes: Arc<[u8]> = Arc::from(password.as_bytes());
+	let client_opts = wind_tuic::quinn::outbound::TuicOutboundOpts {
+		peer_addr: addr,
+		peer_resolver: None,
+		sni: "localhost".to_string(),
+		auth: (uuid, password_bytes),
+		alpn: vec!["h3".to_string()],
+		skip_cert_verify: true,
+		zero_rtt_handshake: false,
+		heartbeat: Duration::from_secs(30),
+		gc_interval: Duration::from_secs(10),
+		gc_lifetime: Duration::from_secs(30),
+		reconnect: Default::default(),
+		client_config: None,
+		congestion_control: wind_tuic::quinn::CongestionControl::Bbr,
+		max_concurrent_bi_streams: None,
+		max_concurrent_uni_streams: None,
+		send_window: None,
+		stream_receive_window: None,
+		max_idle_time: None,
+		udp_relay_mode: wind_tuic::quinn::UdpRelayMode::Native,
+		socket_factory: None,
+	};
+	// `new` performs the QUIC/TLS handshake: success means the server accepted
+	// the connection, so a failed handshake must fail this test rather than
+	// silently drain a server with no active connection.
+	let _client = wind_tuic::quinn::outbound::TuicOutbound::new(client_ctx, client_opts)
+		.await
+		.expect("TUIC client must connect to the server before cancellation");
+	// Give the server a moment to register the connection handler.
+	tokio::time::sleep(Duration::from_millis(200)).await;
+
+	// Cancel — the entire chain from accept loop through per-connection
+	// handlers must unwind.
+	ctx.token.cancel();
+
+	let result = timeout(Duration::from_secs(10), handle)
+		.await
+		.expect("App::run did not exit within 10s of cancellation with active client")
+		.expect("App::run task panicked");
+
+	match result {
+		Ok(()) => {}
+		Err(e) => panic!("App::run returned an error after cancellation: {e}"),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// helpers for traffic tests
+// ---------------------------------------------------------------------------
+
+/// Connect a TUIC client to the given server address / credentials.
+async fn connect_tuic_client(
+	addr: SocketAddr,
+	uuid: uuid::Uuid,
+	password: &str,
+) -> Arc<wind_tuic::quinn::outbound::TuicOutbound> {
+	let ctx = Arc::new(wind_core::AppContext::default());
+	let password_bytes: Arc<[u8]> = Arc::from(password.as_bytes());
+	let opts = wind_tuic::quinn::outbound::TuicOutboundOpts {
+		peer_addr: addr,
+		peer_resolver: None,
+		sni: "localhost".to_string(),
+		auth: (uuid, password_bytes),
+		alpn: vec!["h3".to_string()],
+		skip_cert_verify: true,
+		zero_rtt_handshake: false,
+		heartbeat: Duration::from_secs(30),
+		gc_interval: Duration::from_secs(10),
+		gc_lifetime: Duration::from_secs(30),
+		reconnect: Default::default(),
+		client_config: None,
+		congestion_control: wind_tuic::quinn::CongestionControl::Bbr,
+		max_concurrent_bi_streams: None,
+		max_concurrent_uni_streams: None,
+		send_window: None,
+		stream_receive_window: None,
+		max_idle_time: None,
+		udp_relay_mode: wind_tuic::quinn::UdpRelayMode::Native,
+		socket_factory: None,
+	};
+	let client = wind_tuic::quinn::outbound::TuicOutbound::new(ctx, opts)
+		.await
+		.expect("connect tuic client");
+	Arc::new(client)
+}
+
+/// Start a TCP echo server on a random local port. Returns the server task
+/// handle and the bound address. The server echoes every byte it receives.
+async fn start_tcp_echo_server() -> (tokio::task::JoinHandle<()>, SocketAddr) {
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind tcp echo");
+	let addr = listener.local_addr().expect("echo addr");
+	let handle = tokio::spawn(async move {
+		while let Ok((mut stream, _)) = listener.accept().await {
+			tokio::spawn(async move {
+				let mut buf = vec![0u8; 4096];
+				loop {
+					match stream.read(&mut buf).await {
+						Ok(0) | Err(_) => break,
+						Ok(n) => {
+							let _ = stream.write_all(&buf[..n]).await;
+						}
+					}
+				}
+			});
+		}
+	});
+	(handle, addr)
+}
+
+// ---------------------------------------------------------------------------
+// long-lived traffic test
+// ---------------------------------------------------------------------------
+
+/// When a TUIC client has active, long-lived TCP traffic flowing through the
+/// tunnel, cancelling the server's root token must still drain all connection
+/// handlers and the accept loop within a bounded time — the traffic must not
+/// keep the server alive indefinitely. The client-side tunnel task this test
+/// drives must drain with it: the test awaits its handle after the server has
+/// stopped rather than leaving it detached.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drains_while_active_traffic_flows() {
+	install_crypto_provider();
+
+	// 1. Start a local TCP echo server.
+	let (_echo_task, echo_addr) = start_tcp_echo_server().await;
+
+	// 2. Build and start the TUIC server.
+	let uuid = uuid::Uuid::new_v4();
+	let password = "test-pass";
+	let (cfg, _data_dir) = build_server_config_with_user(uuid, password);
+
+	let (ctx, app_handle, server_addr) = start_server(cfg).await;
+
+	// 3. Connect a TUIC client.
+	let client = connect_tuic_client(server_addr, uuid, password).await;
+	tokio::time::sleep(Duration::from_millis(200)).await;
+
+	// 4. Open a TCP tunnel through TUIC to the echo server and start continuous traffic in a background task.
+	let (local, remote) = tokio::io::duplex(8192);
+	let target = TargetAddr::IPv4(Ipv4Addr::LOCALHOST, echo_addr.port());
+
+	let c = client.clone();
+	let tunnel_handle = tokio::spawn(async move {
+		let _ = c.handle_tcp(test_ctx(&target), Box::new(remote)).await;
+	});
+
+	// 5. Pump traffic through the tunnel: send a ping, expect the echo back. Run in a loop to keep the connection busy.
+	let traffic_done = Arc::new(AtomicBool::new(false));
+	let td = traffic_done.clone();
+	// Count successful ping→echo round-trips so the test can prove traffic
+	// actually flowed through the tunnel before cancellation (previously the
+	// loop could `break` immediately and the test still passed).
+	let round_trips = Arc::new(AtomicUsize::new(0));
+	let rt = round_trips.clone();
+	// Dropped when the traffic loop ends, so the poll below can tell "still
+	// flowing" from "the connection already broke" without a fixed wait.
+	let (traffic_stop_tx, mut traffic_stop_rx) = oneshot::channel::<()>();
+	let traffic_handle = tokio::spawn(async move {
+		let (mut reader, mut writer) = tokio::io::split(local);
+		let ping = b"hello-from-tuic-keepalive";
+		let mut buf = vec![0u8; ping.len()];
+		loop {
+			if td.load(Ordering::SeqCst) {
+				break;
+			}
+			if writer.write_all(ping).await.is_err() {
+				break;
+			}
+			match reader.read_exact(&mut buf).await {
+				Ok(_) if buf == ping => {
+					// echo OK
+					rt.fetch_add(1, Ordering::SeqCst);
+				}
+				_ => break, // connection broken (expected after cancel)
+			}
+		}
+		drop(traffic_stop_tx);
+	});
+
+	// Let the traffic loop run for a few round-trips.  Poll until the count is
+	// reached instead of sleeping for a fixed slice: a loaded or slow machine
+	// must not turn "not finished yet" into a failure.  Bail out as soon as the
+	// loop is gone, so a broken tunnel still fails fast instead of burning the
+	// whole deadline.
+	let deadline = Instant::now() + Duration::from_secs(10);
+	while Instant::now() < deadline && round_trips.load(Ordering::SeqCst) < 3 && traffic_stop_rx.try_recv().is_err() {
+		tokio::time::sleep(Duration::from_millis(10)).await;
+	}
+
+	// 6. Prove traffic actually flowed through the tunnel: several successful ping→echo round-trips must have completed before
+	//    we cancel (previously zero round-trips still passed the test).
+	let completed = round_trips.load(Ordering::SeqCst);
+	assert!(
+		completed >= 3,
+		"expected at least 3 successful ping→echo round-trips through the tunnel before cancel, got {completed}"
+	);
+
+	// 7. Cancel — traffic is still flowing.
+	ctx.token.cancel();
+	traffic_done.store(true, Ordering::SeqCst);
+
+	// 8. App::run must exit within 10s.
+	let result = timeout(Duration::from_secs(10), app_handle)
+		.await
+		.expect("App::run did not exit within 10s while traffic was active")
+		.expect("App::run task panicked");
+
+	match result {
+		Ok(()) => {}
+		Err(e) => panic!("App::run returned an error while draining active traffic: {e}"),
+	}
+
+	// Clean up: the traffic loop should have exited by now (connection broke).
+	let _ = timeout(Duration::from_secs(2), traffic_handle).await;
+
+	// The tunnel task must be gone too. Its handle used to be dropped without
+	// ever being awaited, so a task that outlived the server would be torn down
+	// implicitly only when the test runtime shut down. The bounded await makes
+	// that an assertion about the shutdown this test exists to check, and fails
+	// instead of hanging if the tunnel keeps running.
+	match timeout(Duration::from_secs(2), tunnel_handle).await {
+		Ok(Ok(())) => {}
+		Ok(Err(e)) => panic!("the TCP tunnel task panicked instead of draining: {e}"),
+		Err(_) => panic!("the TCP tunnel task was still running 2s after the server drained active traffic"),
+	}
+}
+
+use super::shutdown_fixture::{build_minimal_server_config, build_server_config_with_user};

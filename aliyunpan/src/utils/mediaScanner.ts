@@ -59,6 +59,28 @@ export class MediaScanner {
     return MediaScanner.instance
   }
 
+  /**
+   * Saves a folder favorite and scans it unless an existing favorite already covers it.
+   * `coveredByAncestor` is set by browsers that reached the folder through a favorite,
+   * which matters for drives whose files carry no path (macOS `browsesInsideFavorite`).
+   */
+  async favoriteFolder(folder: IAliGetFileModel, driveServerId: string, name: string, isDriveRootFavorite: boolean, coveredByAncestor = false): Promise<void> {
+    const context = await this.resolveScanContext(folder, driveServerId)
+    const id = this.getScopedFolderKey(context, folder.file_id)
+    const saved = this.mediaStore.folders.find(item => item.id === id)
+    const covered = (coveredByAncestor && !isDriveRootFavorite) || this.mediaStore.folders.some(item => item.id !== id && item.isFavorite !== false && item.itemCount > 0
+      && item.userId === context.userId && item.driveId === context.driveId
+      && (item.isDriveRootFavorite || (!!folder.path && !!item.path && item.path !== '/'
+        && folder.path.startsWith(item.path.replace(/\/$/, '') + '/'))))
+    this.mediaStore.addFolder({ ...saved, id, fileId: folder.file_id, name: name.trim(),
+      path: folder.path || '', userId: context.userId, driveId: context.driveId,
+      driveServerId: saved?.driveServerId || context.driveServerId, scanDate: saved?.scanDate || new Date(),
+      itemCount: saved?.itemCount || 0, isFavorite: true, isDriveRootFavorite })
+    await this.mediaStore.flushPersistence()
+    if (!covered) await this.scanFolder({ ...folder, name: name.trim(), user_id: context.userId } as IAliGetFileModel,
+      saved?.driveServerId || context.driveServerId, { incremental: true, silent: true })
+  }
+
   // 统一扫描入口，按当前网盘类型分流
   async scanFolder(
     folder: IAliGetFileModel,
@@ -329,6 +351,8 @@ export class MediaScanner {
   }
 
   private getScopedFolderKey(scanContext: ScanContext, fileId: string): string {
+    const saved = this.mediaStore.folders.find(item => item.userId === scanContext.userId && item.driveId === scanContext.driveId && item.fileId === fileId)
+    if (saved) return saved.id
     return [scanContext.driveServerId, scanContext.userId, scanContext.driveId, fileId].map(value => encodeURIComponent(String(value || ''))).join(':')
   }
 
@@ -380,7 +404,7 @@ export class MediaScanner {
     return this.scanFolder(rootFolder, 'webdav')
   }
 
-  async scanLocalFolder(folderPath: string): Promise<void> {
+  async scanLocalFolder(folderPath: string, displayName?: string): Promise<void> {
     if (this.isScanning) {
       message.warning('正在扫描中，请稍后...')
       return
@@ -405,8 +429,10 @@ export class MediaScanner {
     let previousFileIds: string[] = []
 
     try {
-      const folderName = path.basename(folderPath)
       sourceId = `local_${folderPath}`
+      const existingFolder = this.mediaStore.folders.find(source => source.id === sourceId)
+      const folderName = displayName?.trim() || existingFolder?.name || path.basename(folderPath)
+      const isFavorite = displayName ? true : (existingFolder?.isFavorite ?? true)
       sourceWasExisting = this.mediaStore.folders.some(source => source.id === sourceId)
       previousFileIds = await DB.getMediaLibraryFolderFileIds(sourceId)
       const seenFileIds = new Set<string>()
@@ -422,6 +448,7 @@ export class MediaScanner {
             id: sourceId,
             fileId: folderPath,
             name: folderName,
+            isFavorite,
             path: folderPath,
             userId: 'local',
             driveId: 'local',
@@ -452,11 +479,6 @@ export class MediaScanner {
       }
       if (!this.shouldStop) await processBatch()
 
-      if (!videoCount) {
-        message.info('未在该文件夹中找到视频文件')
-        return
-      }
-
       if (!this.shouldStop) {
         await this.mediaStore.flushPersistence()
         await DB.reconcileMediaLibraryFolder(sourceId, [...seenFileIds])
@@ -465,6 +487,7 @@ export class MediaScanner {
           id: `local_${folderPath}`,
           fileId: folderPath,
           name: folderName,
+          isFavorite,
           path: folderPath,
           userId: 'local',
           driveId: 'local',

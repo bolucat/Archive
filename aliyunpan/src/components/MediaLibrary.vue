@@ -266,7 +266,7 @@
           </div>
         </div>
         <div class="pan-right-container">
-          <MediaPanRight :unified-files="props.unifiedFiles" :browse-mode="props.browseMode" :browse-selection="effectiveBrowseSelection" :descending="props.folderDescending" @enter-folder="handleEnterFolder" @file-action="handleBrowserFileAction" />
+          <MediaPanRight :unified-files="props.unifiedFiles" :favorite-browse="favoriteBrowse" :browse-mode="props.browseMode" :browse-selection="effectiveBrowseSelection" :descending="props.folderDescending" @enter-folder="handleEnterFolder" @file-action="handleBrowserFileAction" />
         </div>
       </div>
 
@@ -563,6 +563,10 @@
       </template>
     </div>
 
+    <a-modal :visible="!!pendingFavoriteFolder" :title="t('unified.addToFavorites')" @ok="saveBrowserFolderFavorite" @cancel="pendingFavoriteFolder = undefined">
+      <a-form layout="vertical"><a-form-item :label="t('mediaLibrary.folderName')"><a-input v-model="folderFavoriteName" :placeholder="t('mediaLibrary.libraryNamePlaceholder')" @press-enter="saveBrowserFolderFavorite" /></a-form-item></a-form>
+    </a-modal>
+
     <!-- 添加文件夹对话框 -->
     <a-modal
       v-model:visible="showAddFolderModal"
@@ -618,6 +622,8 @@
 </template>
 
 <script setup lang="ts">
+import { MediaScanner } from '../utils/mediaScanner'
+import { isFileSourceRoot } from '../utils/fileSourceRoots'
 import { playbackVersions } from '../utils/seriesVersionPreferences'
 import { openMediaShare } from '../utils/mediaShare'
 import { openPersonalRating } from '../utils/mediaPersonalRating'
@@ -679,7 +685,7 @@ type MediaListItem = MediaLibraryItem & {
   continueEpisodeLabel?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   activeCategory?: string
   selectedFolder?: any
   selectedGenre?: string
@@ -693,8 +699,9 @@ const props = defineProps<{
   browseMode?: 'grid' | 'list'
   localOnly?: boolean
   browseSort?: MediaBrowseSort
+  browseSortDescending?: boolean
   browseSelection?: boolean
-}>()
+}>(), { browseSortDescending: undefined })
 const localSelection = ref(false)
 const effectiveBrowseSelection = computed(() => props.browseSelection || localSelection.value)
 const playlistVisible = ref(false)
@@ -826,6 +833,13 @@ const toggleMediaServerSection = () => {
 
 // 文件夹文件列表
 const folderFileList = ref<any[]>([])
+// A saved favorite browses as a poster library (folders and videos only); opening a drive itself is file browsing.
+const favoriteBrowse = computed(() => {
+  const root = folderNavigationStack.value[0] || currentFolderInfo.value
+  const id = String(root?.id || '')
+  if (!props.unifiedFiles || !id || id.startsWith('account:') || id.startsWith('webdav:')) return false
+  return mediaStore.folders.some(folder => folder.id === id && folder.isFavorite !== false)
+})
 const currentFolderInfo = ref<any>(null)
 const folderNavigationStack = ref<any[]>([]) // 文件夹导航堆栈
 
@@ -971,7 +985,7 @@ const loadMediaPage = async (reset = false) => {
 }
 
 const loadNextPage = () => void loadMediaPage(false)
-watch(() => props.browseSort, () => void loadMediaPage(true))
+watch(() => [props.browseSort, props.browseSortDescending], () => void loadMediaPage(true))
 watch(() => props.browseSelection, () => { localSelection.value = false; selectedBrowseIds.value = [] })
 watch(() => props.localOnly, () => void loadMediaPage(true))
 
@@ -1349,7 +1363,9 @@ const toggleLocalMediaWatched = (item: MediaLibraryItem) => {
   setMediaWatched(item, watched, mediaStore)
 }
 const localFileForMedia = (item: MediaLibraryItem) => {
-  if (item.tmdbId || item.metadataSource === 'ai-tmdb') return undefined
+  // A scraped poster wins over the local preview regardless of metadata provider.
+  // Matched records without artwork still need the local video fallback.
+  if (item.posterUrl || item.backdropUrl) return undefined
   return [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))].find(file => file.driveId === 'local' || file.driveServerId === 'local')
 }
 const getItemDisplayImage = (item: MediaLibraryItem) => {
@@ -1477,9 +1493,48 @@ const openMedia = (item: MediaLibraryItem) => {
   showingDetail.value = true
 }
 
+const pendingFavoriteFolder = ref<IAliGetFileModel>()
+const folderFavoriteName = ref('')
+function saveBrowserFolderFavorite() {
+  const folder = pendingFavoriteFolder.value
+  if (!folder) return
+  // As on macOS, an emptied name keeps the default: "All Files" for a drive root, else the folder name.
+  const name = folderFavoriteName.value.trim() || (isFileSourceRoot(folder) ? t('unified.allFiles') : folder.name)
+  pendingFavoriteFolder.value = undefined
+  if (folder.drive_id === 'local') {
+    void MediaScanner.getInstance().scanLocalFolder(folder.file_id, name).catch(error => message.error(String(error)))
+    return
+  }
+  // Inside a favorite card everything was scraped with that favorite (macOS browsesInsideFavorite).
+  void MediaScanner.getInstance().favoriteFolder(folder, folder.drive_id, name, isFileSourceRoot(folder), favoriteBrowse.value)
+    .catch(error => message.error(String(error)))
+}
+
 const handleBrowserFileAction = async (action: string, file: IAliGetFileModel) => {
+  if (action === 'download' && !file.isDir && file.drive_id !== 'local') {
+    const settings = useSettingStore()
+    const savePath = settings.AriaIsLocal ? settings.downSavePath : settings.ariaSavePath
+    if (!savePath?.trim()) { message.error(t('posterMenu.downloadPathRequired')); return }
+    try { await DownDAL.aAddDownload([Object.assign({}, file, { user_id: mediaPanTreeStore.user_id })], savePath, false) }
+    catch (error) { message.error(error instanceof Error ? error.message : String(error)) }
+    return
+  }
   const target = mediaStore.mediaItems.find(item => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))].some(candidate => candidate.id === file.file_id || candidate.path === file.file_id))
-  if (file.isDir && action === 'favorite') { mediaStore.addFolder({ id: file.drive_id + '_' + file.file_id, fileId: file.file_id, name: file.name, path: file.file_id, userId: mediaPanTreeStore.user_id, driveId: file.drive_id, driveServerId: file.drive_id, scanDate: new Date(), itemCount: 0, isFavorite: true }); return }
+  if (file.isDir && action === 'favorite') {
+    const saved = mediaStore.folders.find(folder => folder.userId === mediaPanTreeStore.user_id && folder.driveId === file.drive_id && folder.fileId === file.file_id)
+    if (saved && saved.isFavorite !== false && (!isFileSourceRoot(file) || saved.isDriveRootFavorite)) {
+      // Removing a favorite also clears the media scraped from it; remote files stay.
+      Modal.confirm({
+        title: t('unified.removeFavoriteFolder'), content: t('unified.removeFavoriteConfirmation'),
+        okText: t('unified.removeFavoriteFolder'), cancelText: t('common.cancel'), okButtonProps: { status: 'danger' },
+        onOk: () => mediaStore.removeFolder(saved.id)
+      })
+    } else {
+      pendingFavoriteFolder.value = { ...file, user_id: mediaPanTreeStore.user_id } as IAliGetFileModel
+      folderFavoriteName.value = saved?.name || (isFileSourceRoot(file) ? t('unified.allFiles') : file.name)
+    }
+    return
+  }
   if (['play', 'loop', 'shuffle'].includes(action)) {
     if (file.isDir) { const folder = mediaStore.folders.find(folder => folder.fileId === file.file_id); if (folder) await playBrowse(action as 'play' | 'loop' | 'shuffle', folder.id); else message.warning(t('mediaLibrary.noPlayableVideo')); }
     else await menuOpenFile(file, '', { playlistLoop: action === 'loop' })
@@ -2036,7 +2091,7 @@ const playFromMenu = async (loop = false, shuffle = false) => {
 
 function compareBrowseItems(a: MediaLibraryItem, b: MediaLibraryItem) {
   const values = (item: MediaLibraryItem) => ({ title: item.name, fileName: item.driveFiles[0]?.name || item.seasons?.flatMap(season => season.episodes || [])[0]?.driveFiles[0]?.name, addedAt: item.addedAt, premiereDate: item.releaseDate })
-  return compareMediaBrowseValues(values(a), values(b), props.browseSort || 'fileName')
+  return compareMediaBrowseValues(values(a), values(b), props.browseSort || 'fileName', props.browseSortDescending)
 }
 
 async function playBrowse(mode: 'play' | 'loop' | 'shuffle', folderId?: string) {
@@ -3707,7 +3762,7 @@ defineExpose({
 
 [arco-theme='dark'] .playlist-card-context-menu {
   border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 22, 30, 0.96);
+  background: var(--app-overlay-bg);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.32);
 }
 
@@ -3720,7 +3775,7 @@ defineExpose({
 }
 
 [arco-theme='dark'] .library-card-context-menu {
-  background: rgba(24, 28, 36, 0.72);
+  background: var(--app-overlay-bg);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
 }
@@ -4028,16 +4083,13 @@ defineExpose({
 
 .detail-media-modal :deep(.arco-modal-content) {
   border-radius: 28px;
-  background:
-    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
-    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
-    var(--app-mineradio-bg, #08090b);
+  background: var(--app-overlay-bg);
   border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.08));
   box-shadow:
     0 28px 60px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .detail-media-modal :deep(.arco-modal-header) {
@@ -4201,9 +4253,9 @@ defineExpose({
   padding: 8px;
   border-radius: 14px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--app-overlay-bg);
   box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(14px);
+  backdrop-filter: none;
 }
 
 .playlist-card-context-item {
@@ -4236,10 +4288,10 @@ defineExpose({
   min-width: 184px;
   padding: 7px;
   border-radius: 18px;
-  background: rgba(250, 246, 239, 0.72);
+  background: var(--app-overlay-bg);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow: 0 18px 42px rgba(45, 35, 25, 0.2);
-  backdrop-filter: blur(22px) saturate(145%);
+  backdrop-filter: none;
 }
 
 .library-card-context-item {
@@ -4397,10 +4449,7 @@ defineExpose({
 /* 媒体管理弹窗 — 非 scoped，覆盖 Arco Design portal 渲染的 modal 样式 */
 body[arco-theme='dark'] .detail-media-modal .arco-modal,
 body[arco-theme='dark'] .detail-media-modal .arco-modal-content {
-  background:
-    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
-    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
-    var(--app-mineradio-bg, #08090b) !important;
+  background: var(--app-overlay-bg) !important;
   border-color: var(--app-glass-line, rgba(255, 255, 255, 0.08)) !important;
 }
 
@@ -4462,10 +4511,10 @@ body:not([arco-theme='dark']) .detail-media-modal .arco-modal,
 body:not([arco-theme='dark']) .detail-media-modal .arco-modal-content {
   color: rgba(17, 24, 39, 0.94) !important;
   border: 1px solid rgba(15, 23, 42, 0.08) !important;
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: var(--app-overlay-bg) !important;
   box-shadow: 0 28px 60px rgba(15, 23, 42, 0.14) !important;
-  backdrop-filter: blur(24px) saturate(1.2) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 body:not([arco-theme='dark']) .detail-media-modal .arco-modal-header {

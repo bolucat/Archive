@@ -264,9 +264,11 @@
 	margin-top: 10px;
 }
 
-.honk-subscription-add .cbi-input-text {
-	flex: 1;
-	min-width: 160px;
+/* 加 .honk-page 前缀压过后面的 `.honk-page .cbi-input-text{min-width:0}`，
+   否则手机上两个输入框会被挤成一条窄缝而不是换行。 */
+.honk-page .honk-subscription-add .cbi-input-text {
+	flex: 1 1 12rem;
+	min-width: 12rem;
 }
 
 /* ---------- Meta line (mono, muted) ---------- */
@@ -292,28 +294,56 @@
 
 /* ---------- Forms / fields ---------- */
 
+/* 两栏表单：左栏固定宽度、标签右对齐贴近控件（和最早的设计一致）。
+   窄屏（手机）自动堆叠，标签改成左对齐放在控件上方。 */
 .honk-page .cbi-value {
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	padding: 9px 0;
 	margin: 0;
 	border: 0;
 	background: transparent;
 }
 
-.honk-page .cbi-value-title {
+/* 用 `.cbi-value > label.cbi-value-title` 压过 Bootstrap 的
+   `.cbi-value label.cbi-value-title`（它把标签设成 flex 定宽 + 右对齐）。 */
+.honk-page .cbi-value > label.cbi-value-title {
 	float: none;
 	display: block;
+	flex: 0 0 168px;
 	width: auto;
-	padding: 0 0 6px;
+	padding: 0 8px 0 0;
+	text-align: right;
+	line-height: 1.5;
 	font-size: 13px;
 	font-weight: 600;
 	opacity: 0.85;
+	white-space: nowrap;
 }
 
 .honk-page .cbi-value-field {
 	display: block;
+	flex: 1 1 auto;
 	width: auto;
+	margin-left: 0;
 	padding: 0;
 	min-width: 0;
+}
+
+@media (max-width: 719px) {
+	.honk-page .cbi-value {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 6px;
+	}
+
+	.honk-page .cbi-value > label.cbi-value-title {
+		flex: none;
+		padding: 0;
+		text-align: left;
+		white-space: normal;
+	}
 }
 
 .honk-page .cbi-value-description {
@@ -358,6 +388,16 @@
 	line-height: 1.5;
 }
 
+/* Full dae configuration editor: keep dae source lines unwrapped so line
+   numbers and indentation stay meaningful while scrolling horizontally. */
+.honk-page .honk-config-editor {
+	min-height: 420px;
+	white-space: pre;
+	overflow-wrap: normal;
+	overflow-x: auto;
+	tab-size: 4;
+}
+
 .honk-page .cbi-input-text:focus,
 .honk-page .cbi-input-password:focus,
 .honk-page .cbi-input-select:focus,
@@ -397,21 +437,105 @@
 	max-width: 640px;
 }
 
+/* 导入配置：文件选择行。原生的 file 控件在 Argon/Bootstrap 下都会被拉成
+   一个大盒子、内嵌按钮贴着左上角，所以隐藏它，用 label 冒充按钮。 */
+.honk-page .honk-file-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.honk-page .honk-file-pick {
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+	margin: 0;
+	white-space: nowrap;
+}
+
+.honk-page .honk-file-pick input[type="file"] {
+	display: none;
+}
+
+.honk-page .honk-file-name {
+	/* 只占自身宽度，别把「导入并启动」推到屏幕最右边 */
+	flex: 0 1 auto;
+	max-width: 40ch;
+	min-width: 0;
+	font-size: 12.5px;
+	color: var(--hk-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 配置页的标签栏：一排切换，只显示当前板块 */
+.honk-tabs-wrap {
+	margin: 4px 0 14px;
+}
+
+.honk-page .honk-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	max-width: 100%;
+}
+
+.honk-page .honk-tabs .honk-seg-btn:disabled {
+	opacity: 0.32;
+	cursor: not-allowed;
+}
+
+/* 分段/标签控件：选中态原来用纯白药丸，深色主题下非常刺眼。
+   Argon 的暗色是额外加载 dark.css、不在 <html> 上留标记，所以不能靠
+   属性选择器区分明暗；这里统一用中性灰的半透明层次，明暗两种背景都成立，
+   同时把主题给 <button> 的边框和阴影压掉，保证和轨道融为一体。 */
+.honk-page .honk-seg {
+	background: rgba(128, 128, 128, 0.18);
+}
+
+.honk-page .honk-seg-btn {
+	border: 0 !important;
+	background: transparent !important;
+	color: inherit;
+	box-shadow: none !important;
+	opacity: 0.7;
+}
+
+.honk-page .honk-seg-btn.is-active,
+.honk-page .honk-seg-btn[aria-selected="true"] {
+	background: rgba(128, 128, 128, 0.38) !important;
+	color: inherit;
+	opacity: 1;
+	font-weight: 600;
+	box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.22) !important;
+}
+
 /* ---------- iOS toggle switch (boot-enabled checkbox) ---------- */
 
 .honk-page input[type="checkbox"] {
 	-webkit-appearance: none;
 	appearance: none;
 	position: relative;
-	width: 46px;
-	height: 27px;
+	/* !important：Argon 用 `input[type="checkbox"]{width:1rem !important}` 强压尺寸，
+	   不跟着加就只剩 16px，开关的圆点还会溢出成一个白球。 */
+	width: 46px !important;
+	height: 27px !important;
 	margin: 0;
 	border: 0;
 	border-radius: 999px;
 	background: rgba(128, 128, 128, 0.3);
+	background-image: none !important;
 	cursor: pointer;
 	transition: background-color 0.2s ease, opacity 0.2s ease;
 	flex: none;
+}
+
+/* 主题会给复选框画自己的方框与勾（Bootstrap 用 ::before/::after），
+   我们的 ::before 是开关圆点，所以只保留自己的，把主题的 ::after 关掉。 */
+.honk-page input[type="checkbox"]::after {
+	content: none !important;
 }
 
 .honk-page input[type="checkbox"]::before {
@@ -429,6 +553,8 @@
 
 .honk-page input[type="checkbox"]:checked {
 	background: var(--hk-green);
+	/* 挡掉主题注入的勾选图标（Argon 会给 :checked 塞一张 SVG 背景图） */
+	background-image: none !important;
 }
 
 .honk-page input[type="checkbox"]:checked::before {
@@ -495,6 +621,14 @@
 }
 
 /* ---------- Notes & alerts ---------- */
+
+.honk-mode-note .honk-inline-link {
+	margin-left: 8px;
+	color: var(--hk-accent-border);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	font-size: 12.5px;
+}
 
 .honk-note {
 	font-size: 12.5px;
