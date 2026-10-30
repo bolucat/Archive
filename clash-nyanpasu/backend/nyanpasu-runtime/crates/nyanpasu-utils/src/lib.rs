@@ -16,6 +16,9 @@ pub use nyanpasu_log_preview as log_preview;
 #[cfg(feature = "reqwest")]
 pub mod reqwest_ext;
 
+#[cfg(feature = "redb")]
+pub mod redb_ext;
+
 #[cfg(feature = "dirs")]
 pub mod dirs;
 

@@ -4,8 +4,7 @@
 pub mod macos {
     use std::net::IpAddr;
     pub fn get_default_network_hardware_port() -> std::io::Result<String> {
-        let dir = tempfile::tempdir()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let dir = tempfile::tempdir().map_err(|e| std::io::Error::other(e.to_string()))?;
         let path = dir.path().join("default-network-hardware-port.sh");
         std::fs::write(
             &path,
@@ -19,14 +18,13 @@ pub mod macos {
             ))
             .output()?;
         Ok(String::from_utf8(output.stdout)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
+            .map_err(|e| std::io::Error::other(e.to_string()))?
             .trim()
             .to_string())
     }
 
     pub fn set_dns(service_name: &str, dns: Option<Vec<IpAddr>>) -> std::io::Result<()> {
-        let dir = tempfile::tempdir()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let dir = tempfile::tempdir().map_err(|e| std::io::Error::other(e.to_string()))?;
         let path = dir.path().join("set-macos-dns.sh");
         std::fs::write(
             &path,
@@ -55,8 +53,7 @@ pub mod macos {
     }
 
     pub fn get_dns(service_name: &str) -> std::io::Result<Option<Vec<IpAddr>>> {
-        let dir = tempfile::tempdir()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let dir = tempfile::tempdir().map_err(|e| std::io::Error::other(e.to_string()))?;
         let path = dir.path().join("get-macos-dns.sh");
         std::fs::write(
             &path,
@@ -69,8 +66,8 @@ pub mod macos {
                 path.to_string_lossy()
             ))
             .output()?;
-        let output = String::from_utf8(output.stdout)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let output =
+            String::from_utf8(output.stdout).map_err(|e| std::io::Error::other(e.to_string()))?;
         log::debug!("{:?}", output);
         let dns = output
             .split(&['\n', ' '])

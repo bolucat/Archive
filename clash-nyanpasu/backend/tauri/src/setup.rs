@@ -36,12 +36,144 @@ use crate::{
     },
     utils::init::logging::ReloadSignal,
 };
-use anyhow::Context;
 use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
+use snafu::ResultExt as _;
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 const RESTART_BUDGET: u8 = 3;
+
+#[cfg(test)]
+#[path = "setup_tests.rs"]
+mod tests;
+
+/// The composition root retains these owners even when construction stops early.
+#[derive(Clone, Default)]
+pub(crate) struct StartupOwners {
+    shutdown: CancellationToken,
+    tasks: TaskTracker,
+    core: Option<crate::core::actor_v2::CoreClient>,
+}
+
+impl StartupOwners {
+    pub(crate) fn request_shutdown(&self) {
+        self.shutdown.cancel();
+        self.tasks.close();
+    }
+
+    pub(crate) async fn wait_shutdown(&self) {
+        self.tasks.wait().await;
+        if let Some(core) = &self.core {
+            core.finish_shutdown().await;
+        }
+    }
+}
+
+/// Keeps the error out of Tauri's panic-producing setup boundary. The failure
+/// handler shows the dialog and hands ownership to the event-loop exit path.
+pub(crate) fn run_setup(
+    mut owners: StartupOwners,
+    setup: impl FnOnce(&mut StartupOwners) -> Result<(), crate::startup_failure::StartupFailure>,
+    host: &impl StartupFailureHost,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Err(failure) = setup(&mut owners) {
+        tracing::error!(error = %failure.detail, path = ?failure.path, kind = ?failure.kind, "application startup failed");
+        host.show(failure);
+        host.retain(owners);
+        host.exit(1);
+    }
+    Ok(())
+}
+
+/// Presentation and event-loop ownership transfer at the setup boundary.
+pub(crate) trait StartupFailureHost {
+    fn show(&self, failure: crate::startup_failure::StartupFailure);
+    fn retain(&self, owners: StartupOwners);
+    fn exit(&self, code: i32);
+}
+
+pub(crate) struct TauriStartupFailureHost {
+    pub handle: tauri::AppHandle,
+    pub paths: PathResolver,
+}
+
+impl StartupFailureHost for TauriStartupFailureHost {
+    fn show(&self, failure: crate::startup_failure::StartupFailure) {
+        use tauri::Manager as _;
+        if let Some(logging) = self
+            .handle
+            .try_state::<crate::utils::init::logging::LoggingShutdown>()
+        {
+            logging.record_startup_failure(failure.detail.clone());
+        }
+        crate::startup_failure::show(&crate::startup_failure::Report::new(failure, &self.paths));
+    }
+
+    fn retain(&self, owners: StartupOwners) {
+        use tauri::Manager as _;
+        self.handle.manage(owners);
+    }
+
+    fn exit(&self, code: i32) {
+        self.handle.exit(code);
+    }
+}
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to prepare migrations"))]
+    PrepareMigrations {
+        source: crate::core::migration::runner::Error,
+    },
+    #[snafu(display("failed to run migrations"))]
+    RunMigrations {
+        source: crate::core::migration::runner::Error,
+    },
+    #[snafu(display("failed to build service ipc"))]
+    BuildServiceIpc {
+        source: nyanpasu_ipc::client::ClientError,
+    },
+    #[snafu(display("failed to locate install directory"))]
+    LocateInstallDirectory {
+        source: nyanpasu_paths::InstallDirError,
+    },
+    #[snafu(display("failed to build core host"))]
+    BuildCoreHost {
+        source: crate::core::actor_v2::local_host::Error,
+    },
+    #[snafu(display("failed to spawn core actor"))]
+    SpawnCoreActor { source: ractor::SpawnErr },
+    #[snafu(display("failed to spawn service actor"))]
+    SpawnServiceActor { source: ractor::SpawnErr },
+    #[snafu(display("failed to start jobs"))]
+    StartJobs { source: crate::client::jobs::Error },
+    #[snafu(display("failed to build auto launch"))]
+    BuildAutoLaunch {
+        source: crate::client::system_proxy::ports::AutoLaunchError,
+    },
+    #[snafu(display("failed to build pac"))]
+    BuildPac {
+        source: crate::client::system_proxy::ports::PacError,
+    },
+    #[snafu(display("failed to spawn system proxy"))]
+    SpawnSystemProxy {
+        source: crate::client::system_proxy::Error,
+    },
+    #[snafu(display("failed to spawn hotkeys"))]
+    SpawnHotkeys {
+        source: crate::client::hotkey::Error,
+    },
+    #[snafu(display("failed to open storage"))]
+    OpenStorage {
+        source: crate::core::storage::StorageOperationError,
+    },
+    #[snafu(display("failed to build client"))]
+    BuildClient { source: crate::client::SetupError },
+    #[snafu(display("failed to install widget"))]
+    InstallWidget {
+        source: crate::client::ui_effects::adapters::InstallError,
+    },
+}
 
 /// Bound to `tauri::Wry` rather than generic over the runtime: the window
 /// helpers the hotkey adapter drives are themselves written against the
@@ -53,7 +185,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
     paths: PathResolver,
-) -> Result<(), anyhow::Error> {
+    owners: &mut StartupOwners,
+) -> Result<(), Error> {
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
     crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
@@ -68,16 +201,17 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     // The root of the shutdown. Created here rather than in the client: the
     // system proxy, hotkey and widget owners are built outside it.
-    let shutdown = CancellationToken::new();
-    let tasks = TaskTracker::new();
+    let shutdown = owners.shutdown.clone();
+    let tasks = owners.tasks.clone();
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
-        super::shutdown_hook::setup_shutdown_hook(move || {
+        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(move || {
             tracing::info!("Shutdown hook triggered, exiting app...");
             shutdown_handle.exit(0);
-        })
-        .context("Failed to setup the shutdown hook")?;
+        }) {
+            tracing::warn!(error = %snafu::Report::from_error(&error), "shutdown hook unavailable; continuing without it");
+        }
     }
 
     // Only Tauri knows where the bundle is. Resources are copied best-effort,
@@ -86,10 +220,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
-        .context("Failed to setup config migrations")?;
-    migrations
-        .run_pending()
-        .context("Failed to run config migrations before client setup")?;
+        .context(PrepareMigrationsSnafu)?;
+    migrations.run_pending().context(RunMigrationsSnafu)?;
     crate::log_err!(crate::utils::init::init_resources(
         paths.app_data_dir().as_std_path(),
         resources_dir.as_deref()
@@ -100,21 +232,20 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
-        .context("Failed to build the service IPC client")?;
+        .context(BuildServiceIpcSnafu)?;
     let service_binary = crate::core::service::control::service_binary(
         paths
             .app_install_dir()
-            .context("Failed to locate the service binary")?
+            .context(LocateInstallDirectorySnafu)?
             .as_std_path(),
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
-    let (core_v2, service) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths, &service_binary).await?;
+    let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
+        let control = crate::core::actor_v2::local_host::build(&paths, &service_binary)
+            .await
+            .context(BuildCoreHostSnafu)?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
             Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
-        let core = crate::core::actor_v2::CoreClient::spawn(local)
-            .await
-            .context("Failed to spawn core actor")?;
         let adapter = Arc::new(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
@@ -122,11 +253,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 paths.clone(),
             ),
         );
-        let service =
-            crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-                .await
-                .context("Failed to spawn service actor")?;
-        anyhow::Ok((core, service))
+        start_runtime_owners(owners, local, adapter, &paths, jobs_capture).await
     })?;
     drop(span);
     // The sink end of the hotkey channel goes into the actor; the receiving end
@@ -136,13 +263,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
     let span = tracing::info_span!("spawn_effect_owners").entered();
-    let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
-        paths.jobs_path().into_std_path_buf(),
-        jobs_capture,
-        shutdown.child_token(),
-        &tasks,
-    ))
-    .context("Failed to start jobs owner")?;
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
@@ -159,7 +279,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
     let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
-        .context("Failed to open the storage")?;
+        .context(OpenStorageSnafu)?;
     app.manage(storage.clone());
     let storage_changes = storage.subscribe();
     let storage_handle = app_handle.clone();
@@ -193,7 +313,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
-        http_frontend: Some(debug_http_frontend(&app_handle)?),
+        http_frontend: Some(debug_http_frontend(&app_handle)),
         http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
@@ -253,7 +373,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     })
-    .context("Failed to setup nyanpasu client")?;
+    .context(BuildClientSnafu)?;
     drop(span);
     // The tray menu and the first window render with the process locale, so
     // the configured language replaces the system default before either exists.
@@ -286,31 +406,100 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
         &tasks,
-    ))
-    .context("Failed to setup the network statistic widget")?;
+    ));
     widget_controller
         .install(Arc::new(widget_manager))
-        .context("Failed to install the network statistic widget")?;
+        .context(InstallWidgetSnafu)?;
     drop(span);
     app.manage(client);
 
     Ok(())
 }
 
+async fn start_runtime_owners(
+    owners: &mut StartupOwners,
+    local: crate::core::actor_v2::endpoint::EndpointHandle,
+    adapter: Arc<dyn crate::core::actor_v2::service_actor::ServiceHostAdapter>,
+    paths: &PathResolver,
+    jobs_capture: nyanpasu_jobs::LogCapture,
+) -> Result<
+    (
+        crate::core::actor_v2::CoreClient,
+        crate::core::actor_v2::service_actor::ServiceClient,
+        nyanpasu_jobs::JobsClient,
+    ),
+    Error,
+> {
+    let core = crate::core::actor_v2::CoreClient::spawn(local)
+        .await
+        .context(SpawnCoreActorSnafu)?;
+    owners.core = Some(core.clone());
+    let service =
+        crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
+            .await
+            .context(SpawnServiceActorSnafu)?;
+    service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
+    let jobs = crate::client::jobs::start(
+        paths.jobs_path().into_std_path_buf(),
+        jobs_capture,
+        owners.shutdown.child_token(),
+        &owners.tasks,
+    )
+    .await
+    .context(StartJobsSnafu)?;
+    Ok((core, service, jobs))
+}
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum UnifiedRpcError {
+    #[snafu(display("failed to build unified RPC"))]
+    BuildRpc {
+        source: crate::unified_rpc::SetupError,
+    },
+    #[snafu(display("failed to install HTTP routes"))]
+    InstallHttpRoutes {
+        source: crate::unified_rpc::SetupError,
+    },
+    #[snafu(display("unified RPC state was already registered"))]
+    RegisterState,
+}
+
 /// Registers the unified RPC command table after `resolve_setup` has managed
 /// storage and the other Tauri state dependencies.
-pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
+pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<crate::core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };
-    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
+    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies).context(BuildRpcSnafu)?;
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
-        .install(&rpc)?;
-    anyhow::ensure!(app.manage(rpc), "unified RPC state was already registered");
+        .install(&rpc)
+        .context(InstallHttpRoutesSnafu)?;
+    snafu::ensure!(app.manage(rpc), RegisterStateSnafu);
     Ok(())
+}
+
+#[derive(Debug, snafu::Snafu)]
+enum TrafficStoreError {
+    #[snafu(display("failed to create traffic directory {}", path.display()))]
+    CreateTrafficDirectory {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(unix)]
+    #[snafu(display("failed to secure traffic directory {}", path.display()))]
+    SecureTrafficDirectory {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(windows)]
+    #[snafu(display("failed to harden traffic directory {}", path.display()))]
+    HardenTrafficDirectory {
+        path: std::path::PathBuf,
+        source: nyanpasu_utils::io::atomic_fs::AtomicFsError,
+    },
 }
 
 /// Recording is optional, so a store that cannot be opened disables it rather
@@ -318,15 +507,17 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
 /// owner-only directory.
 fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
-    let open = || -> anyhow::Result<TrafficFileStorage> {
-        std::fs::create_dir_all(&dir)?;
+    let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
+        std::fs::create_dir_all(&dir).context(CreateTrafficDirectorySnafu { path: &dir })?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+                .context(SecureTrafficDirectorySnafu { path: &dir })?;
         }
         #[cfg(windows)]
-        nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)?;
+        nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)
+            .context(HardenTrafficDirectorySnafu { path: &dir })?;
         let profile = Profile::desktop();
         Ok(TrafficFileStorage::new(
             dir.join("traffic.tsdb"),
@@ -372,7 +563,7 @@ fn build_application_effects(
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
-) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
+) -> Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>), Error> {
     // The AppImage path is read here, at the only place that legitimately has
     // the Tauri environment, and handed to the adapter as a plain value.
     #[cfg(target_os = "linux")]
@@ -391,9 +582,8 @@ fn build_application_effects(
 
     let auto_launch = AutoLaunchConfig::resolve(appimage)
         .and_then(AutoLaunchBackend::new)
-        .context("Failed to resolve the auto-launch registration")?;
-    let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js"))
-        .context("Failed to build the PAC backend")?;
+        .context(BuildAutoLaunchSnafu)?;
+    let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js")).context(BuildPacSnafu)?;
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
         SystemProxyArgs {
@@ -405,7 +595,7 @@ fn build_application_effects(
         },
         tasks,
     ))
-    .context("Failed to spawn the system proxy actor")?;
+    .context(SpawnSystemProxySnafu)?;
     let hotkeys = tauri::async_runtime::block_on(HotkeyClient::spawn(
         HotkeyArgs {
             registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone(), main_thread)),
@@ -414,7 +604,7 @@ fn build_application_effects(
         },
         tasks,
     ))
-    .context("Failed to spawn the hotkey actor")?;
+    .context(SpawnHotkeysSnafu)?;
 
     let widget = Arc::new(TauriWidgetController::new(paths.clone()));
     let executor = Arc::new(ApplicationEffectExecutor::new(
@@ -485,13 +675,11 @@ fn forward_actor_events(
     }));
 }
 
-fn debug_http_frontend(
-    app: &tauri::AppHandle,
-) -> anyhow::Result<crate::server::debug_http::Frontend> {
+fn debug_http_frontend(app: &tauri::AppHandle) -> crate::server::debug_http::Frontend {
     use crate::server::debug_http::{Frontend, FrontendAssets};
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {
-            return Ok(Frontend::Dev(url.clone()));
+            return Frontend::Dev(url.clone());
         }
     }
     struct TauriFrontendAssets(tauri::AssetResolver<tauri::Wry>);
@@ -509,7 +697,5 @@ fn debug_http_frontend(
                 .map(|asset| (asset.mime_type, asset.bytes))
         }
     }
-    Ok(Frontend::Embedded(Arc::new(TauriFrontendAssets(
-        app.asset_resolver(),
-    ))))
+    Frontend::Embedded(Arc::new(TauriFrontendAssets(app.asset_resolver())))
 }

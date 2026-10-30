@@ -176,10 +176,7 @@ impl RuntimeConfigStore {
         let mut options = tokio::fs::OpenOptions::new();
         options.create_new(true).write(true);
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
+        options.mode(0o600);
         let mut file = options.open(&path).await?;
 
         #[cfg(unix)]

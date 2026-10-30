@@ -364,7 +364,7 @@ impl CoreManager {
         snapshot: &ConfigSnapshot,
     ) -> Result<EpochPlan, Error> {
         self.validate_launchable(spec).await?;
-        let resolved = self.resolve_features(&spec).await?;
+        let resolved = self.resolve_features(spec).await?;
         self.prepare_launch_with_features(spec, epoch, snapshot, resolved)
             .await
     }
@@ -382,13 +382,13 @@ impl CoreManager {
             self.controller_dir(),
             epoch,
             resolved.runtime,
-            Some(self.local_ipc_settings(&spec)),
+            Some(self.local_ipc_settings(spec)),
         )?;
         if let Some(store) = &self.inner.native_store {
             prepared.native_paths(spec.core.kind, store.data_dir())?;
         }
         self.warn_http_fallback(
-            &spec,
+            spec,
             resolved.version.as_deref(),
             prepared.rewrote_controller,
         );
@@ -436,16 +436,16 @@ impl CoreManager {
             self.controller_dir(),
             epoch,
             resolved.runtime,
-            Some(self.local_ipc_settings(&spec)),
+            Some(self.local_ipc_settings(spec)),
         )?;
         let bootstrap = snapshot.prepare_bootstrap(
             self.inner.options.controller_template.as_deref(),
             self.controller_dir(),
             epoch,
             resolved.runtime,
-            Some(self.local_ipc_settings(&spec)),
+            Some(self.local_ipc_settings(spec)),
         )?;
-        self.warn_http_fallback(&spec, resolved.version.as_deref(), full.rewrote_controller);
+        self.warn_http_fallback(spec, resolved.version.as_deref(), full.rewrote_controller);
         if full.controller.host != bootstrap.controller.host
             || full.controller.secret != bootstrap.controller.secret
         {

@@ -24,7 +24,9 @@
 
 use std::sync::Arc;
 
+use backon::Retryable as _;
 use camino::{Utf8Path, Utf8PathBuf};
+use nyanpasu_utils::io::{IoFailure, classify, transient_backoff};
 use serde::Serialize;
 use tokio::{
     io::AsyncWriteExt,
@@ -54,6 +56,28 @@ const FILE_PREFIX: &str = "core-";
 const FILE_SUFFIX: &str = ".jsonl";
 
 const MAX_BATCH_RECORDS: usize = 256;
+
+async fn retry_io<T, E, F, Fut>(path: &Utf8Path, mut operation: F) -> Result<T, Error>
+where
+    E: Into<Error>,
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let result = (|| {
+        let attempt = operation();
+        async move { attempt.await.map_err(Into::into) }
+    })
+    .retry(transient_backoff())
+    .when(|error| matches!(error, Error::Io(source) if classify(source) == IoFailure::Transient))
+    .await;
+    match result {
+        Err(Error::Io(source)) => Err(Error::LogSinkIo {
+            path: path.to_owned(),
+            source,
+        }),
+        result => result,
+    }
+}
 
 /// Rotation knobs, mirrored from `ManagerOptions` so the writer does not carry
 /// the whole option bag.
@@ -135,23 +159,62 @@ impl GapRecord {
 /// as a runtime directory that cannot be hardened.
 pub(crate) async fn prepare_dir(parent: &Utf8Path) -> Result<Utf8PathBuf, Error> {
     let dir = parent.join(LOG_DIR_NAME);
-    match tokio::fs::symlink_metadata(&dir).await {
+    match retry_io(&dir, || async {
+        #[cfg(test)]
+        tests::io_attempt(tests::Operation::Metadata)?;
+        tokio::fs::symlink_metadata(&dir).await
+    })
+    .await
+    {
         Ok(metadata) => validate_directory_metadata(&dir, &metadata)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            tokio::fs::create_dir_all(&dir).await?;
+        Err(Error::LogSinkIo { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            retry_io(&dir, || async {
+                #[cfg(test)]
+                tests::io_attempt(tests::Operation::CreateDirectory)?;
+                tokio::fs::create_dir_all(&dir).await
+            })
+            .await?;
+            let metadata = retry_io(&dir, || tokio::fs::symlink_metadata(&dir)).await?;
+            validate_directory_metadata(&dir, &metadata)?;
         }
-        Err(error) => return Err(error.into()),
+        Err(error) => return Err(error),
     }
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).await?;
+        retry_io(&dir, || async {
+            #[cfg(test)]
+            tests::io_attempt(tests::Operation::Permissions)?;
+            tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).await
+        })
+        .await?;
     }
     #[cfg(windows)]
     {
-        nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)?;
-        nyanpasu_utils::io::atomic_fs::verify_windows_directory_acl(&dir)?;
+        use nyanpasu_utils::io::atomic_fs::AtomicFsError;
+
+        retry_io(&dir, || async {
+            #[cfg(test)]
+            tests::io_attempt(tests::Operation::Permissions)?;
+            nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)
+        })
+        .await?;
+        retry_io(&dir, || async {
+            #[cfg(test)]
+            tests::io_attempt(tests::Operation::VerifyPermissions)?;
+            nyanpasu_utils::io::atomic_fs::verify_windows_directory_acl(&dir).map_err(|error| {
+                match error {
+                    // Here UnsafePath means an unsafe ACL, not a bad node type.
+                    error @ AtomicFsError::UnsafePath(_) => AtomicFsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        error,
+                    )),
+                    error => error,
+                }
+            })
+        })
+        .await?;
     }
 
     Ok(dir)
@@ -375,14 +438,31 @@ async fn prune_dir(dir: &Utf8Path, keep: usize, protect: Option<u64>) {
 }
 
 async fn create(dir: &Utf8Path, seq: u64) -> Result<tokio::fs::File, Error> {
+    let path = dir.join(file_name(seq));
+    match retry_io(&path, || tokio::fs::symlink_metadata(&path)).await {
+        Ok(metadata)
+            if metadata.file_type().is_symlink()
+                || !metadata.is_file()
+                || nyanpasu_utils::io::atomic_fs::is_reparse_point(&metadata) =>
+        {
+            return Err(Error::UnsafeRuntimeArtifact(path));
+        }
+        Ok(_) => {}
+        Err(Error::LogSinkIo { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     let mut options = tokio::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    Ok(options.open(dir.join(file_name(seq))).await?)
+    options.mode(0o600);
+    retry_io(&path, || async {
+        #[cfg(test)]
+        tests::io_attempt(tests::Operation::Open)?;
+        #[cfg(test)]
+        tests::make_open_target_readonly(&path)?;
+        options.open(&path).await
+    })
+    .await
 }
 
 fn file_name(seq: u64) -> String {
@@ -399,6 +479,8 @@ fn file_seq(name: &str) -> Option<u64> {
 }
 
 async fn read_seqs(dir: &Utf8Path) -> Result<Vec<u64>, std::io::Error> {
+    #[cfg(test)]
+    tests::io_attempt(tests::Operation::List)?;
     let mut seqs = Vec::new();
     let mut entries = tokio::fs::read_dir(dir).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -413,7 +495,7 @@ async fn read_seqs(dir: &Utf8Path) -> Result<Vec<u64>, std::io::Error> {
 }
 
 async fn next_seq(dir: &Utf8Path) -> Result<u64, Error> {
-    let seqs = read_seqs(dir).await?;
+    let seqs = retry_io(dir, || read_seqs(dir)).await?;
     Ok(seqs.into_iter().max().unwrap_or(0) + 1)
 }
 
@@ -428,6 +510,232 @@ fn prune_targets(mut seqs: Vec<u64>, max_files: usize) -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::{cell::RefCell, collections::VecDeque, io::ErrorKind};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum Operation {
+        Metadata,
+        CreateDirectory,
+        Permissions,
+        #[cfg(windows)]
+        VerifyPermissions,
+        List,
+        Open,
+    }
+
+    struct Faults {
+        operation: Operation,
+        errors: VecDeque<std::io::Error>,
+        attempts: usize,
+    }
+
+    tokio::task_local! {
+        static FAULTS: RefCell<Faults>;
+        static READONLY_FILE: RefCell<Option<(Utf8PathBuf, std::fs::Permissions)>>;
+    }
+
+    #[cfg(windows)]
+    tokio::task_local! {
+        static UNPROTECTED_LOG_ACL: Utf8PathBuf;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test(start_paused = true)]
+    async fn manager_rejects_unsecured_log_directory_permissions() {
+        let (_guard, dir) = temp_dir();
+        let runtime = dir.join("runtime");
+        UNPROTECTED_LOG_ACL
+            .scope(runtime.join("logs"), async {
+                let start = tokio::time::Instant::now();
+                let result = crate::CoreManager::new(crate::ManagerOptions {
+                    runtime_dir: Some(runtime),
+                    ..Default::default()
+                })
+                .await;
+                assert!(matches!(result, Err(Error::LogSinkIo { source, .. })
+                if source.kind() == ErrorKind::PermissionDenied));
+                assert_eq!(start.elapsed(), std::time::Duration::ZERO);
+            })
+            .await;
+    }
+
+    pub(super) fn make_open_target_readonly(path: &Utf8Path) -> std::io::Result<()> {
+        READONLY_FILE
+            .try_with(|saved| {
+                // Install a real permission-denied target after directory hardening
+                // and sequence selection, immediately before the production open.
+                std::fs::File::create(path)?;
+                let original = std::fs::metadata(path)?.permissions();
+                let mut readonly = original.clone();
+                readonly.set_readonly(true);
+                std::fs::set_permissions(path, readonly)?;
+                *saved.borrow_mut() = Some((path.to_owned(), original));
+                Ok(())
+            })
+            .unwrap_or(Ok(()))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn manager_log_open_permission_denied_is_fatal() {
+        #[cfg(unix)]
+        // SAFETY: geteuid takes no pointers and has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("skipped: root bypasses Unix file write permissions");
+            return;
+        }
+        let (_guard, dir) = temp_dir();
+        READONLY_FILE
+            .scope(RefCell::new(None), async {
+                let start = tokio::time::Instant::now();
+                let result = crate::CoreManager::new(crate::ManagerOptions {
+                    runtime_dir: Some(dir.join("runtime")),
+                    ..Default::default()
+                })
+                .await;
+                let (path, original) =
+                    READONLY_FILE.with(|saved| saved.borrow_mut().take().unwrap());
+                std::fs::set_permissions(&path, original).unwrap();
+                assert!(
+                    matches!(result, Err(Error::LogSinkIo { source, path: failed })
+                if source.kind() == ErrorKind::PermissionDenied && failed == path)
+                );
+                assert_eq!(start.elapsed(), std::time::Duration::ZERO);
+                assert!(path.is_file());
+            })
+            .await;
+    }
+
+    pub(super) fn io_attempt(operation: Operation) -> std::io::Result<()> {
+        #[cfg(windows)]
+        if operation == Operation::VerifyPermissions {
+            let _ = UNPROTECTED_LOG_ACL.try_with(|dir| {
+                // Remove DACL protection after hardening so the real verifier
+                // reports UnsafePath for permissions rather than node metadata.
+                let output = std::process::Command::new("icacls")
+                    .arg(dir)
+                    .arg("/inheritance:e")
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "{output:?}");
+            });
+        }
+        FAULTS
+            .try_with(|faults| {
+                let mut faults = faults.borrow_mut();
+                if faults.operation != operation {
+                    return Ok(());
+                }
+                faults.attempts += 1;
+                match faults.errors.pop_front() {
+                    Some(error) => Err(error),
+                    None => Ok(()),
+                }
+            })
+            .unwrap_or(Ok(()))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn manager_retries_log_preparation_and_open_without_degrading() {
+        for operation in [
+            Operation::Metadata,
+            Operation::CreateDirectory,
+            Operation::Permissions,
+            Operation::List,
+            Operation::Open,
+            #[cfg(windows)]
+            Operation::VerifyPermissions,
+        ] {
+            for exhausted in [false, true] {
+                for code in 0..if cfg!(windows) { 6 } else { 4 } {
+                    let kinds = [
+                        ErrorKind::Interrupted,
+                        ErrorKind::WouldBlock,
+                        ErrorKind::TimedOut,
+                        ErrorKind::ResourceBusy,
+                    ];
+                    let errors = (0..if exhausted { 4 } else { 3 })
+                        .map(|_| match kinds.get(code) {
+                            Some(kind) => std::io::Error::from(*kind),
+                            None => std::io::Error::from_raw_os_error(32 + (code - 4) as i32),
+                        })
+                        .collect();
+                    let (_guard, dir) = temp_dir();
+                    FAULTS
+                        .scope(
+                            RefCell::new(Faults {
+                                operation,
+                                errors,
+                                attempts: 0,
+                            }),
+                            async {
+                                let start = tokio::time::Instant::now();
+                                let result = crate::CoreManager::new(crate::ManagerOptions {
+                                    runtime_dir: Some(dir.join("runtime")),
+                                    ..Default::default()
+                                })
+                                .await;
+                                assert_eq!(
+                                    start.elapsed(),
+                                    std::time::Duration::from_millis(350),
+                                    "{operation:?}"
+                                );
+                                FAULTS.with(|f| {
+                                    assert_eq!(
+                                        f.borrow().attempts,
+                                        if operation == Operation::List && !exhausted {
+                                            5
+                                        } else {
+                                            4
+                                        },
+                                        "{operation:?}"
+                                    )
+                                });
+                                if exhausted {
+                                    assert!(
+                                        matches!(result, Err(Error::LogSinkIo { .. })),
+                                        "{operation:?}"
+                                    );
+                                } else {
+                                    let manager = result.unwrap();
+                                    let logs = manager
+                                        .log_dir()
+                                        .expect("retry success keeps disk logging");
+                                    assert!(logs.join("core-000001.jsonl").is_file());
+                                    manager.shutdown().await.unwrap();
+                                }
+                            },
+                        )
+                        .await;
+                }
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn manager_does_not_retry_or_degrade_unknown_log_io() {
+        for operation in [Operation::Metadata, Operation::Open] {
+            for kind in [
+                ErrorKind::PermissionDenied,
+                ErrorKind::InvalidInput,
+                ErrorKind::Other,
+            ] {
+                let (_guard, dir) = temp_dir();
+                FAULTS.scope(RefCell::new(Faults {
+                    operation, errors: [kind.into()].into(), attempts: 0,
+                }), async {
+                    let start = tokio::time::Instant::now();
+                    let result = crate::CoreManager::new(crate::ManagerOptions {
+                        runtime_dir: Some(dir.join("runtime")), ..Default::default()
+                    }).await;
+                    assert!(matches!(result, Err(Error::LogSinkIo { source, path })
+                        if source.kind() == kind && path.as_std_path().starts_with(dir.join("runtime").canonicalize().unwrap())));
+                    assert_eq!(start.elapsed(), std::time::Duration::ZERO);
+                    FAULTS.with(|f| assert_eq!(f.borrow().attempts, 1));
+                }).await;
+            }
+        }
+    }
 
     use crate::{
         kind::CoreKind,

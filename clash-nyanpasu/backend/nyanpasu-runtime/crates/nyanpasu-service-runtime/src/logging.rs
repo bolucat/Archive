@@ -23,6 +23,9 @@ fn get_file_appender(max_files: usize) -> Result<(NonBlocking, WorkerGuard)> {
 
 /// initial instance global logger
 pub fn init(debug: bool, write_file: bool) -> anyhow::Result<()> {
+    // Tracing builds always log at TRACE.
+    #[cfg(feature = "tracing")]
+    let _ = debug;
     if write_file {
         let log_dir = crate::utils::dirs::service_logs_dir();
         ensure_plain_dir(&log_dir)?;

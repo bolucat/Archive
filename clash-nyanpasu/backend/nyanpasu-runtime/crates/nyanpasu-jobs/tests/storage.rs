@@ -207,5 +207,8 @@ fn storage_reports_parent_path_conflicts() {
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("already-a-file");
     std::fs::write(&parent, b"occupied").unwrap();
-    assert!(RedbJobStore::open(parent.join("jobs.redb")).is_err());
+    assert!(matches!(
+        RedbJobStore::open(parent.join("jobs.redb")),
+        Err(Error::JournalDirectory(_))
+    ));
 }

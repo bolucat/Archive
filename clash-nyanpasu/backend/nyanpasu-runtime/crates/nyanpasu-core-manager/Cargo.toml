@@ -19,6 +19,7 @@ path = "tests/helpers/manager_host.rs"
 nyanpasu-core-metadata = { path = "../nyanpasu-core-metadata" }
 nyanpasu-utils = { path = "../nyanpasu-utils", default-features = false, features = ["process"] }
 
+backon = "1.6"
 camino = { version = "1.1", features = ["serde1"] }
 chrono.workspace = true
 clash-api = { path = "../clash-api" }
@@ -39,6 +40,7 @@ zerocopy = { version = "0.8", features = ["derive", "simd"] }
 
 [dev-dependencies]
 nyanpasu-core-manager = { path = ".", features = ["test-hooks"] }
+tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 default = []

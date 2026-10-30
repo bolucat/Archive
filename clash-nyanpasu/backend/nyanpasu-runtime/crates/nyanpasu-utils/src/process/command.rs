@@ -100,6 +100,10 @@ impl Command {
     /// request Ctrl+C without changing the host's console association.
     /// Missing or unsuccessful helpers fall back to killing the process tree.
     /// Ignored on Unix, where graceful stops send SIGTERM.
+    #[cfg_attr(
+        not(windows),
+        expect(unused_mut, reason = "only Windows records the helper")
+    )]
     pub fn windows_shutdown_helper(mut self, path: impl Into<PathBuf>) -> Self {
         #[cfg(windows)]
         {

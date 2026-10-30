@@ -291,7 +291,7 @@ pub(crate) async fn spawn(cmd: Command) -> Result<SpawnParts, ProcessError> {
         program: program.clone(),
         message: error.to_string(),
     };
-    let group = Arc::new(processkit::ProcessGroup::new().map_err(&spawn_error)?);
+    let group = Arc::new(processkit::ProcessGroup::new().map_err(spawn_error)?);
     let containment = map_containment(group.mechanism());
     let mut run = group.start(&pk).await.map_err(spawn_error)?;
     let timeout_at = timeout.map(|timeout| tokio::time::Instant::now() + timeout);

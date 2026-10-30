@@ -1,8 +1,8 @@
 #![cfg(feature = "process")]
 
 use nyanpasu_utils::process::{
-    Command, EpochPidFile, EpochPidFileSpec, OrphanReapOutcome, ProcessEvent, read_epoch_pid_file,
-    reap_epoch_pid_file,
+    Command, EpochPidFile, EpochPidFileSpec, OrphanReapError, OrphanReapOutcome, ProcessEvent,
+    read_epoch_pid_file, reap_epoch_pid_file,
 };
 
 fn child() -> &'static str {
@@ -396,7 +396,7 @@ async fn orphan_reap_keeps_a_record_whose_executable_differs() {
     let error = reap_epoch_pid_file(&pid_path, dir.path())
         .await
         .expect_err("an executable mismatch must stay uncertain");
-    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(matches!(error, OrphanReapError::ProcessUnconfirmed { .. }));
     assert!(pid_path.exists(), "an uncertain record was removed");
     assert!(pid_alive(pid), "uncertain identity was killed");
 

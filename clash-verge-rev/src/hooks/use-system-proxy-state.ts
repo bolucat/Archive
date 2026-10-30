@@ -5,10 +5,11 @@ import { useDisplayedMixedPort } from '@/hooks/use-displayed-mixed-port'
 import { useVerge } from '@/hooks/use-verge'
 import { useSystemData } from '@/providers/app-data-context'
 import {
-  getAutotemProxy,
+  getAutoProxy,
   getEmbeddedServerPort,
   patchVergeConfig,
 } from '@/services/cmds'
+import { mutate } from '@/services/mutate'
 import {
   removeCacheData,
   revalidateQueries,
@@ -20,8 +21,8 @@ export const useSystemProxyState = () => {
   const { sysproxy } = useSystemData()
   const displayedMixedPort = useDisplayedMixedPort()
   const { data: autoproxy } = useQuery({
-    queryKey: ['getAutotemProxy'],
-    queryFn: getAutotemProxy,
+    queryKey: ['getAutoProxy'],
+    queryFn: getAutoProxy,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })
@@ -64,10 +65,16 @@ export const useSystemProxyState = () => {
       while (pendingRef.current !== null) {
         const target = pendingRef.current
         pendingRef.current = null
-        await patchVergeConfig({ enable_system_proxy: target })
+        await mutate(() => patchVergeConfig({ enable_system_proxy: target }), {
+          id: 'toggle-system-proxy',
+          errorNotice: false,
+        })
         confirmed = target
         if (!target && verge?.auto_close_connection) {
-          await closeAllConnections().catch(() => {})
+          await mutate(() => closeAllConnections(), {
+            id: 'close-all-connections',
+            errorNotice: false,
+          }).catch(() => {})
         }
       }
     } catch (error) {
@@ -92,7 +99,7 @@ export const useSystemProxyState = () => {
       }
       // Kept separate so an unreadable config cannot discard OS state that did read.
       try {
-        await revalidateQueries([['getSystemProxy'], ['getAutotemProxy']])
+        await revalidateQueries([['getSystemProxy'], ['getAutoProxy']])
       } catch (error) {
         console.warn(
           '[system-proxy] rereading the OS proxy after a toggle failed:',
@@ -102,14 +109,14 @@ export const useSystemProxyState = () => {
         // rather than stay live from a stale cache.
         await Promise.all([
           removeCacheData(['getSystemProxy']),
-          removeCacheData(['getAutotemProxy']),
+          removeCacheData(['getAutoProxy']),
         ])
       }
     }
   }
 
   const invalidateProxyState = () =>
-    revalidateQueries([['getSystemProxy'], ['getAutotemProxy']])
+    revalidateQueries([['getSystemProxy'], ['getAutoProxy']])
 
   return {
     indicator,

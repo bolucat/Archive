@@ -40,6 +40,16 @@ pub struct ValidatedConfigs {
 impl ValidatedConfigs {
     #[cfg(any(target_os = "android", target_os = "ios", feature = "ffi", test))]
     pub(crate) fn validate_ffi_support(&self) -> std::io::Result<()> {
+        if self
+            .configs
+            .iter()
+            .any(|config| matches!(config, Config::TunServer(tun) if tun.auto_route))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "managed TUN requires the CLI process lifecycle; FFI hosts must manage their own network",
+            ));
+        }
         self.control.reject_ffi()?;
         if self
             .catalog
@@ -369,6 +379,29 @@ pub fn create_server_configs(mut all_configs: Vec<Config>) -> std::io::Result<Va
     // Combine into Config list (only Server and TunServer variants)
     let mut result: Vec<Config> = server_configs.into_iter().map(Config::Server).collect();
     result.extend(tun_configs.into_iter().map(Config::TunServer));
+    crate::desktop::validate_config(&result)?;
+    if result
+        .iter()
+        .any(|config| matches!(config, Config::TunServer(tun) if tun.auto_route))
+    {
+        let binds = result
+            .iter()
+            .filter_map(|config| match config {
+                Config::Server(server) => Some(&server.bind_location),
+                _ => None,
+            })
+            .chain(control.listeners.iter().map(|listener| &listener.bind));
+        for bind in binds {
+            if let BindLocation::Address(addresses) = bind
+                && addresses.iter().any(|address| !address.is_literal())
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "managed TUN requires literal listener addresses; native hostname lookup is disabled",
+                ));
+            }
+        }
+    }
 
     let mut validated = ValidatedConfigs {
         catalog,
@@ -999,6 +1032,7 @@ fn validate_server_config(
     named_pems: &HashMap<String, String>,
     global_limits: GlobalLimits,
 ) -> std::io::Result<()> {
+    crate::sudoku_mask::validate_server(&server_config.protocol, &server_config.transport)?;
     if let ServerProxyConfig::Wireguard(config) = &server_config.protocol {
         if server_config.transport != Transport::Udp
             || server_config.tcp_settings.is_some()
@@ -1305,6 +1339,7 @@ pub(crate) fn validate_client_vision_protocol(
 /// Recursive validation of client proxy config structure (Vision rules, etc.)
 fn validate_client_proxy_structure(config: &ClientProxyConfig) -> std::io::Result<()> {
     let inner = match config {
+        ClientProxyConfig::SudokuMask(config) => Some(config.protocol.as_ref()),
         ClientProxyConfig::Tls(tls_config) => {
             tls_config
                 .key_exchange_groups
@@ -1349,6 +1384,7 @@ fn validate_client_config(
     named_pems: &HashMap<String, String>,
     global_limits: GlobalLimits,
 ) -> std::io::Result<()> {
+    crate::sudoku_mask::validate_client(&client_config.protocol, &client_config.transport)?;
     client_config.validate_quic_key_exchange(true)?;
     if let ClientProxyConfig::Wireguard(config) = &mut client_config.protocol {
         if client_config.transport != Transport::Udp
@@ -1464,6 +1500,10 @@ fn validate_client_proxy_config(
     default_sni: Option<&str>,
 ) -> std::io::Result<()> {
     match client_proxy_config {
+        ClientProxyConfig::SudokuMask(config) => {
+            config.prepare()?;
+            validate_client_proxy_config(&mut config.protocol, named_pems, default_sni)?;
+        }
         ClientProxyConfig::Shadowsocks { config, .. } => config.validate_keys()?,
         ClientProxyConfig::Vmess {
             user_id, cipher, ..
@@ -1747,6 +1787,17 @@ fn validate_server_proxy_config(
 ) -> std::io::Result<()> {
     validate_server_auth(server_proxy_config)?;
     match server_proxy_config {
+        ServerProxyConfig::SudokuMask(config) => {
+            config.prepare()?;
+            validate_server_proxy_config(
+                &mut config.protocol,
+                client_groups,
+                rule_groups,
+                named_pems,
+                ServerProtocolContext::Stream,
+                global_limits,
+            )?;
+        }
         ServerProxyConfig::Wireguard(_) => {
             return Err(super::types::wireguard::invalid(
                 "WireGuard requires a top-level server protocol",
@@ -2136,7 +2187,9 @@ fn validate_tun_config(
     // Validate that we have either Linux config (device_name/address) or mobile config (device_fd)
     #[cfg(target_os = "linux")]
     {
-        if config.device_fd.is_none() && (config.device_name.is_none() || config.address.is_none())
+        if !config.auto_route
+            && config.device_fd.is_none()
+            && (config.device_name.is_none() || config.address.is_none())
         {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,

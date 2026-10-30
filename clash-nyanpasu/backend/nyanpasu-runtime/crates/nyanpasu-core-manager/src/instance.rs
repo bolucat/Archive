@@ -286,13 +286,12 @@ impl Instance {
             let pid_file = epoch_pid_path(&spec, epoch).map(ToOwned::to_owned);
             move |event| {
                 // Record this process before the supervisor can start another run.
-                if matches!(event, SupervisorEvent::Started { .. }) {
-                    if let (Some(store), Some(path)) = (&shared.native_store, &pid_file) {
-                        if let Err(error) = store.record_started(path) {
-                            *shared.persistence_error.lock() = Some(error.to_string());
-                            shared.cancel.cancel();
-                        }
-                    }
+                if matches!(event, SupervisorEvent::Started { .. })
+                    && let (Some(store), Some(path)) = (&shared.native_store, &pid_file)
+                    && let Err(error) = store.record_started(path)
+                {
+                    *shared.persistence_error.lock() = Some(error.to_string());
+                    shared.cancel.cancel();
                 }
                 let _ = event_tx.send(event);
             }

@@ -74,6 +74,33 @@ pub enum OrphanReapOutcome {
     Killed,
 }
 
+/// Classifies failures to safely retire an epoch pid record.
+#[derive(Debug, thiserror::Error)]
+pub enum OrphanReapError {
+    /// The record or its referenced runtime path is invalid. No process was signaled.
+    #[error("unusable epoch pid record at {path}: {source}")]
+    RecordUnusable {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Ownership or exit could not be proven. A validated kill may already have occurred.
+    #[error("cannot confirm retirement of pid {pid} recorded at {path}: {source}")]
+    ProcessUnconfirmed {
+        path: PathBuf,
+        pid: u32,
+        #[source]
+        source: std::io::Error,
+    },
+    /// A filesystem operation failed, possibly after an ownership-verified kill.
+    #[error("epoch pid record filesystem operation failed at {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProcessIdentity {
     /// `None` when the start token is readable but the executable is not, as
@@ -218,6 +245,12 @@ pub async fn read_epoch_pid_file(
     path: impl AsRef<Path>,
 ) -> std::io::Result<Option<EpochPidRecord>> {
     let path = path.as_ref();
+    retry_record_io(|| read_epoch_pid_file_once(path)).await
+}
+
+async fn read_epoch_pid_file_once(path: &Path) -> std::io::Result<Option<EpochPidRecord>> {
+    #[cfg(test)]
+    tests::record_io_attempt(false)?;
     match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             return Err(invalid_input(format!(
@@ -235,8 +268,22 @@ pub async fn read_epoch_pid_file(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     }
-    let raw = tokio::fs::read_to_string(path).await?;
+    let raw = tokio::fs::read(path).await?;
+    let raw = String::from_utf8(raw).map_err(|_| invalid_data("epoch pid record is not UTF-8"))?;
     parse_epoch_record(&raw).map(Some)
+}
+
+/// Restricted to record filesystem IO; signaling a process is never retried.
+async fn retry_record_io<T, F, Fut>(operation: F) -> std::io::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<T>>,
+{
+    use backon::Retryable as _;
+    operation
+        .retry(crate::io::transient_backoff())
+        .when(|error| crate::io::classify(error) == crate::io::IoFailure::Transient)
+        .await
 }
 
 /// Read-only identity check for a copied epoch record. A missing pid, or one
@@ -281,44 +328,104 @@ pub fn recorded_process_is_alive(raw: &str) -> std::io::Result<bool> {
 /// snapshots observe them cannot be attributed to the epoch and are
 /// deliberately not killed; persistent group/job identity would be required
 /// to close that gap.
+///
+/// # Errors
+/// Returns [`OrphanReapError::RecordUnusable`] for invalid record data or paths,
+/// [`OrphanReapError::ProcessUnconfirmed`] when ownership or exit is unproven,
+/// and [`OrphanReapError::Io`] for filesystem failures. Record reads and removal
+/// retry transient IO three times; signaling is never retried.
 pub async fn reap_epoch_pid_file(
     path: impl AsRef<Path>,
     runtime_dir: impl AsRef<Path>,
-) -> std::io::Result<OrphanReapOutcome> {
+) -> Result<OrphanReapOutcome, OrphanReapError> {
     let path = path.as_ref();
-    let runtime_dir = tokio::fs::canonicalize(runtime_dir.as_ref()).await?;
+    let unusable = |source| OrphanReapError::RecordUnusable {
+        path: path.to_owned(),
+        source,
+    };
+    let io = |path: &Path, source| OrphanReapError::Io {
+        path: path.to_owned(),
+        source,
+    };
+    let record_error = |source: std::io::Error| {
+        if is_invalid_record(&source) {
+            unusable(source)
+        } else {
+            io(path, source)
+        }
+    };
+    let runtime_dir = tokio::fs::canonicalize(runtime_dir.as_ref())
+        .await
+        .map_err(|source| io(runtime_dir.as_ref(), source))?;
     let parent = path
         .parent()
-        .ok_or_else(|| invalid_input("pid file has no parent directory"))?;
-    if tokio::fs::canonicalize(parent).await? != runtime_dir {
-        return Err(invalid_input("pid file escapes the runtime directory"));
+        .ok_or_else(|| unusable(invalid_input("pid file has no parent directory")))?;
+    if tokio::fs::canonicalize(parent)
+        .await
+        .map_err(|source| io(parent, source))?
+        != runtime_dir
+    {
+        return Err(unusable(invalid_input(
+            "pid file escapes the runtime directory",
+        )));
     }
-    let epoch = epoch_from_file_name(path, "core-", ".pid")?;
-    let Some(record) = read_epoch_pid_file(path).await? else {
+    let epoch = epoch_from_file_name(path, "core-", ".pid").map_err(unusable)?;
+    let Some(record) = read_epoch_pid_file(path).await.map_err(record_error)? else {
         return Ok(OrphanReapOutcome::NotFound);
     };
     if record.epoch != epoch {
-        return Err(invalid_data("pid filename and embedded epoch differ"));
+        return Err(unusable(invalid_data(
+            "pid filename and embedded epoch differ",
+        )));
     }
     let runtime_parent = record
         .runtime_config
         .parent()
-        .ok_or_else(|| invalid_input("runtime config has no parent directory"))?;
-    if tokio::fs::canonicalize(runtime_parent).await? != runtime_dir {
-        return Err(invalid_input(
+        .ok_or_else(|| unusable(invalid_input("runtime config has no parent directory")))?;
+    let runtime_parent = tokio::fs::canonicalize(runtime_parent)
+        .await
+        .map_err(|source| {
+            if source.kind() == std::io::ErrorKind::NotFound {
+                unusable(source)
+            } else {
+                io(runtime_parent, source)
+            }
+        })?;
+    if runtime_parent != runtime_dir {
+        return Err(unusable(invalid_input(
             "runtime config escapes the runtime directory",
-        ));
+        )));
     }
-    let runtime_epoch = epoch_from_file_name(&record.runtime_config, "config-", ".yaml")?;
+    let runtime_epoch =
+        epoch_from_file_name(&record.runtime_config, "config-", ".yaml").map_err(unusable)?;
     if runtime_epoch != epoch {
-        return Err(invalid_data(
+        return Err(unusable(invalid_data(
             "runtime config filename and embedded epoch differ",
-        ));
+        )));
     }
-    validate_runtime_target(&record.runtime_config).await?;
+    validate_runtime_target(&record.runtime_config)
+        .await
+        .map_err(|source| {
+            if is_invalid_record(&source) {
+                unusable(source)
+            } else {
+                io(&record.runtime_config, source)
+            }
+        })?;
 
-    let outcome = reap_record(&record).await?;
-    remove_record_if_matches(path, &record).await?;
+    let outcome =
+        reap_record(&record)
+            .await
+            .map_err(|source| OrphanReapError::ProcessUnconfirmed {
+                path: path.to_owned(),
+                pid: record.pid,
+                source,
+            })?;
+    // Even malformed replacement data here is a cleanup failure after a possible kill,
+    // not an unusable original record that can safely be discarded before signaling.
+    remove_record_if_matches(path, &record)
+        .await
+        .map_err(|source| io(path, source))?;
     Ok(outcome)
 }
 
@@ -598,6 +705,10 @@ fn merge_descendant_captures(
 }
 
 fn descendant_pids(root_pid: u32) -> BTreeSet<u32> {
+    #[cfg(test)]
+    if let Some(pids) = tests::injected_descendants(root_pid) {
+        return pids;
+    }
     use sysinfo::{Pid, System};
 
     let system = System::new_all();
@@ -700,6 +811,22 @@ async fn wait_for_process_identity(
     }
 }
 
+fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+    #[cfg(test)]
+    if let Some(result) = tests::injected_identity(pid) {
+        return result;
+    }
+    native_process_identity(pid)
+}
+
+async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
+    #[cfg(test)]
+    if let Some(result) = tests::injected_kill(record.pid) {
+        return result;
+    }
+    native_kill_recorded_process(record).await
+}
+
 /// Reads the executable's file name and start time through sysinfo. `None`
 /// when sysinfo does not list the pid.
 #[cfg(all(not(windows), not(target_os = "linux")))]
@@ -723,7 +850,7 @@ fn sysinfo_identity(pid: u32) -> Option<ProcessIdentity> {
 }
 
 #[cfg(all(not(windows), not(target_os = "linux"), not(target_os = "macos")))]
-fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+fn native_process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
     Ok(sysinfo_identity(pid))
 }
 
@@ -735,7 +862,7 @@ fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
 /// The executable still comes from sysinfo, the source the records were
 /// written with.
 #[cfg(target_os = "macos")]
-fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+fn native_process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
     let Some(start_token) = darwin::start_seconds(pid)? else {
         return Ok(None);
     };
@@ -857,7 +984,7 @@ mod darwin {
 }
 
 #[cfg(target_os = "linux")]
-fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+fn native_process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
     let Some(first_ticks) = linux_start_ticks(pid)? else {
         return Ok(None);
     };
@@ -922,7 +1049,7 @@ fn boot_bound_start_token(boot_id: &str, ticks: u64) -> u64 {
 }
 
 #[cfg(windows)]
-fn process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+fn native_process_identity(pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
     use windows::Win32::System::Threading::{
         PROCESS_ACCESS_RIGHTS, PROCESS_QUERY_LIMITED_INFORMATION,
     };
@@ -1043,7 +1170,7 @@ fn windows_io_error(error: windows::core::Error) -> std::io::Error {
 }
 
 #[cfg(windows)]
-async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
+async fn native_kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
     use windows::Win32::System::Threading::{
         PROCESS_ACCESS_RIGHTS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
         TerminateProcess,
@@ -1068,7 +1195,7 @@ async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
+async fn native_kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
     let pidfd = match LinuxPidFd::open(record.pid) {
         Ok(pidfd) => pidfd,
         Err(error) if error.raw_os_error() == Some(libc::ENOSYS) => {
@@ -1161,12 +1288,12 @@ fn kill_revalidated_by_pid(record: &EpochPidRecord) -> std::io::Result<()> {
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]
-async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
+async fn native_kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
     kill_revalidated_by_pid(record)
 }
 
 #[cfg(not(any(unix, windows)))]
-async fn kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
+async fn native_kill_recorded_process(record: &EpochPidRecord) -> std::io::Result<()> {
     let identity = process_identity(record.pid)?.ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -1276,9 +1403,19 @@ async fn write_epoch_record(path: &Path, record: &EpochPidRecord) -> std::io::Re
 }
 
 async fn remove_record_if_matches(path: &Path, expected: &EpochPidRecord) -> std::io::Result<()> {
-    if read_epoch_pid_file(path).await?.as_ref() != Some(expected) {
+    retry_record_io(|| remove_record_if_matches_once(path, expected)).await
+}
+
+async fn remove_record_if_matches_once(
+    path: &Path,
+    expected: &EpochPidRecord,
+) -> std::io::Result<()> {
+    // Retry the identity-bound read and removal together, without nested retries.
+    if read_epoch_pid_file_once(path).await?.as_ref() != Some(expected) {
         return Ok(());
     }
+    #[cfg(test)]
+    tests::record_io_attempt(true)?;
     match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -1403,12 +1540,29 @@ fn epoch_from_file_name(path: &Path, prefix: &str, suffix: &str) -> std::io::Res
         .map_err(|_| invalid_input(format!("invalid epoch in artifact name `{name}`")))
 }
 
+// Keep validation failures distinct from OS errors with the same ErrorKind.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct InvalidRecord(String);
+
+fn is_invalid_record(error: &std::io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|source| source.is::<InvalidRecord>())
+}
+
 fn invalid_input(message: impl Into<String>) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidInput, message.into())
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        InvalidRecord(message.into()),
+    )
 }
 
 fn invalid_data(message: impl Into<String>) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, message.into())
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        InvalidRecord(message.into()),
+    )
 }
 
 fn identity_error(message: impl Into<String>) -> std::io::Error {
@@ -1418,6 +1572,420 @@ fn identity_error(message: impl Into<String>) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::{cell::RefCell, collections::VecDeque, io::ErrorKind};
+
+    tokio::task_local! {
+        static FAULTS: RefCell<Faults>;
+    }
+
+    #[derive(Default)]
+    struct Faults {
+        reads: VecDeque<Option<std::io::Error>>,
+        removals: VecDeque<Option<std::io::Error>>,
+        read_attempts: usize,
+        remove_attempts: usize,
+        processes: BTreeMap<u32, FakeProcess>,
+    }
+
+    struct FakeProcess {
+        identity: ProcessIdentity,
+        denied: bool,
+        survives: bool,
+        signals: usize,
+    }
+
+    pub(super) fn record_io_attempt(removing: bool) -> std::io::Result<()> {
+        FAULTS
+            .try_with(|faults| {
+                let mut faults = faults.borrow_mut();
+                let errors = if removing {
+                    faults.remove_attempts += 1;
+                    &mut faults.removals
+                } else {
+                    faults.read_attempts += 1;
+                    &mut faults.reads
+                };
+                match errors.pop_front().flatten() {
+                    Some(error) => Err(error),
+                    None => Ok(()),
+                }
+            })
+            .unwrap_or(Ok(()))
+    }
+
+    pub(super) fn injected_identity(pid: u32) -> Option<std::io::Result<Option<ProcessIdentity>>> {
+        FAULTS
+            .try_with(|faults| {
+                let faults = faults.borrow();
+                let process = faults.processes.get(&pid)?;
+                Some(if process.denied {
+                    Err(ErrorKind::PermissionDenied.into())
+                } else if process.signals > 0 && !process.survives {
+                    Ok(None)
+                } else {
+                    Ok(Some(process.identity.clone()))
+                })
+            })
+            .ok()
+            .flatten()
+    }
+
+    pub(super) fn injected_kill(pid: u32) -> Option<std::io::Result<()>> {
+        FAULTS
+            .try_with(|faults| {
+                let mut faults = faults.borrow_mut();
+                let process = faults.processes.get_mut(&pid)?;
+                process.signals += 1;
+                Some(Ok(()))
+            })
+            .ok()
+            .flatten()
+    }
+
+    pub(super) fn injected_descendants(pid: u32) -> Option<BTreeSet<u32>> {
+        FAULTS
+            .try_with(|faults| {
+                let faults = faults.borrow();
+                faults.processes.contains_key(&pid).then(|| {
+                    faults
+                        .processes
+                        .keys()
+                        .copied()
+                        .filter(|child| *child != pid)
+                        .collect()
+                })
+            })
+            .ok()
+            .flatten()
+    }
+
+    fn reap_fixture() -> (tempfile::TempDir, PathBuf, EpochPidRecord, Faults) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("core-1.pid");
+        let record = EpochPidRecord {
+            pid: u32::MAX - 1,
+            epoch: 1,
+            executable: "test-core".into(),
+            start_token: 7,
+            runtime_config: dir.path().join("config-1.yaml"),
+        };
+        std::fs::write(&path, serialize_epoch_record(&record).unwrap()).unwrap();
+        std::fs::write(&record.runtime_config, "").unwrap();
+        let mut faults = Faults::default();
+        faults.processes.insert(
+            record.pid,
+            FakeProcess {
+                identity: observed(Some(&record.executable), record.start_token),
+                denied: false,
+                survives: false,
+                signals: 0,
+            },
+        );
+        (dir, path, record, faults)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_classifies_unusable_records_before_signaling() {
+        for case in [
+            "garbage",
+            "utf8",
+            "version",
+            "epoch",
+            "missing-parent",
+            "no-parent",
+            "escape",
+            "config-epoch",
+            "config-directory",
+            "pid-directory",
+        ] {
+            let (dir, path, mut record, faults) = reap_fixture();
+            let outside = tempfile::tempdir().unwrap();
+            match case {
+                "missing-parent" => record.runtime_config = dir.path().join("absent/config-1.yaml"),
+                "no-parent" => record.runtime_config = PathBuf::new(),
+                "escape" => record.runtime_config = outside.path().join("config-1.yaml"),
+                "config-epoch" => record.runtime_config = dir.path().join("config-2.yaml"),
+                "config-directory" => {
+                    std::fs::remove_file(&record.runtime_config).unwrap();
+                    std::fs::create_dir(&record.runtime_config).unwrap();
+                }
+                "epoch" => record.epoch = 2,
+                _ => {}
+            }
+            let raw = match case {
+                "garbage" => b"garbage".to_vec(),
+                "utf8" => vec![0xff],
+                "version" => serialize_epoch_record(&record)
+                    .unwrap()
+                    .replace("version=2", "version=3")
+                    .into_bytes(),
+                _ => serialize_epoch_record(&record).unwrap().into_bytes(),
+            };
+            std::fs::write(&path, raw).unwrap();
+            if case == "pid-directory" {
+                std::fs::remove_file(&path).unwrap();
+                std::fs::create_dir(&path).unwrap();
+            }
+            FAULTS
+                .scope(RefCell::new(faults), async {
+                    let error = reap_epoch_pid_file(&path, dir.path()).await.unwrap_err();
+                    assert!(
+                        matches!(error, OrphanReapError::RecordUnusable { .. }),
+                        "{case}: {error:?}"
+                    );
+                    assert!(path.exists(), "{case}");
+                    FAULTS.with(|f| {
+                        assert_eq!(f.borrow().processes[&record.pid].signals, 0, "{case}")
+                    });
+                })
+                .await;
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_classifies_identity_query_denial_without_signaling() {
+        let (dir, path, record, mut faults) = reap_fixture();
+        faults.processes.get_mut(&record.pid).unwrap().denied = true;
+        FAULTS
+            .scope(RefCell::new(faults), async {
+                let error = reap_epoch_pid_file(&path, dir.path()).await.unwrap_err();
+                assert!(
+                    matches!(error, OrphanReapError::ProcessUnconfirmed { source, .. }
+                if source.kind() == ErrorKind::PermissionDenied)
+                );
+                assert!(path.exists());
+                FAULTS.with(|f| assert_eq!(f.borrow().processes[&record.pid].signals, 0));
+            })
+            .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_classifies_exit_unconfirmed_after_one_signal() {
+        for descendant in [false, true] {
+            let (dir, path, record, mut faults) = reap_fixture();
+            let survivor = if descendant {
+                record.pid - 1
+            } else {
+                record.pid
+            };
+            faults.processes.insert(
+                survivor,
+                FakeProcess {
+                    identity: observed(Some(&record.executable), record.start_token),
+                    denied: false,
+                    survives: true,
+                    signals: 0,
+                },
+            );
+            FAULTS
+                .scope(RefCell::new(faults), async {
+                    let error = reap_epoch_pid_file(&path, dir.path()).await.unwrap_err();
+                    assert!(matches!(error, OrphanReapError::ProcessUnconfirmed { .. }));
+                    assert!(path.exists());
+                    FAULTS.with(|f| {
+                        let f = f.borrow();
+                        assert_eq!(f.processes[&record.pid].signals, 1);
+                        assert_eq!(f.processes[&survivor].signals, 1);
+                    });
+                })
+                .await;
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_retries_record_io_without_repeating_signals() {
+        let kinds = [
+            ErrorKind::Interrupted,
+            ErrorKind::WouldBlock,
+            ErrorKind::TimedOut,
+            ErrorKind::ResourceBusy,
+        ];
+        // raw Windows sharing/lock errors may map to PermissionDenied;
+        // they must be recognized before the permission rule.
+        for index in 0..kinds.len() + if cfg!(windows) { 2 } else { 0 } {
+            let kind = kinds
+                .get(index)
+                .copied()
+                .unwrap_or(ErrorKind::PermissionDenied);
+            for removing in [false, true] {
+                for exhausted in [false, true] {
+                    let (dir, path, record, mut faults) = reap_fixture();
+                    let errors = (0..if exhausted { 4 } else { 3 })
+                        .map(|_| {
+                            #[cfg(windows)]
+                            if index >= 4 {
+                                return Some(std::io::Error::from_raw_os_error(
+                                    32 + (index - 4) as i32,
+                                ));
+                            }
+                            let _ = index;
+                            Some(std::io::Error::from(kind))
+                        })
+                        .collect();
+                    if removing {
+                        faults.removals = errors;
+                    } else {
+                        faults.reads = errors;
+                    }
+                    FAULTS
+                        .scope(RefCell::new(faults), async {
+                            let start = tokio::time::Instant::now();
+                            let result = reap_epoch_pid_file(&path, dir.path()).await;
+                            assert_eq!(start.elapsed(), Duration::from_millis(350));
+                            if exhausted {
+                                assert!(
+                                    matches!(result, Err(OrphanReapError::Io { .. })),
+                                    "{result:?}"
+                                );
+                                assert!(path.exists());
+                            } else {
+                                assert_eq!(result.unwrap(), OrphanReapOutcome::Killed);
+                                assert!(!path.exists());
+                            }
+                            FAULTS.with(|f| {
+                                let f = f.borrow();
+                                assert_eq!(
+                                    f.processes[&record.pid].signals,
+                                    usize::from(removing || !exhausted)
+                                );
+                                if removing {
+                                    assert_eq!(f.remove_attempts, 4);
+                                } else {
+                                    assert_eq!(f.read_attempts, if exhausted { 4 } else { 5 });
+                                }
+                            });
+                        })
+                        .await;
+                }
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_does_not_retry_or_degrade_nontransient_io() {
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::InvalidInput,
+            ErrorKind::InvalidData,
+            ErrorKind::Other,
+        ] {
+            for removing in [false, true] {
+                let (dir, path, record, mut faults) = reap_fixture();
+                if removing {
+                    faults.removals.push_back(Some(kind.into()));
+                } else {
+                    faults.reads.push_back(Some(kind.into()));
+                }
+                FAULTS.scope(RefCell::new(faults), async {
+                    let start = tokio::time::Instant::now();
+                    let error = reap_epoch_pid_file(&path, dir.path()).await.unwrap_err();
+                    assert!(matches!(error, OrphanReapError::Io { source, .. } if source.kind() == kind));
+                    assert_eq!(start.elapsed(), Duration::ZERO);
+                    assert!(path.exists());
+                    FAULTS.with(|f| {
+                        let f = f.borrow();
+                        assert_eq!(f.processes[&record.pid].signals, usize::from(removing));
+                        assert_eq!(f.remove_attempts, usize::from(removing));
+                        assert_eq!(f.read_attempts, if removing { 2 } else { 1 });
+                    });
+                }).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn public_reap_runtime_directory_io_keeps_source_and_path() {
+        let (dir, path, _, _) = reap_fixture();
+        let missing = dir.path().join("missing");
+        let error = reap_epoch_pid_file(&path, &missing).await.unwrap_err();
+        assert!(matches!(error, OrphanReapError::Io { path, source }
+            if path == missing && source.kind() == ErrorKind::NotFound));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_cleanup_read_failure_is_io_after_signal() {
+        let (dir, path, record, mut faults) = reap_fixture();
+        faults.reads = [None, Some(invalid_data("replacement record is malformed"))].into();
+        FAULTS
+            .scope(RefCell::new(faults), async {
+                let error = reap_epoch_pid_file(&path, dir.path()).await.unwrap_err();
+                assert!(matches!(error, OrphanReapError::Io { .. }));
+                assert!(path.exists());
+                FAULTS.with(|f| assert_eq!(f.borrow().processes[&record.pid].signals, 1));
+            })
+            .await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn public_reap_acl_denied_record_is_permission_io() {
+        let (dir, path, _, _) = reap_fixture();
+        let account = std::process::Command::new("whoami").output().unwrap();
+        assert!(account.status.success());
+        let account = String::from_utf8(account.stdout).unwrap();
+        let account = account.trim();
+        let deny = std::process::Command::new("icacls")
+            .arg(&path)
+            .args(["/deny", &format!("{account}:(R)")])
+            .output()
+            .unwrap();
+        assert!(deny.status.success(), "{deny:?}");
+        let result = reap_epoch_pid_file(&path, dir.path()).await;
+        let restore = std::process::Command::new("icacls")
+            .arg(&path)
+            .args(["/remove:d", account])
+            .output()
+            .unwrap();
+        assert!(restore.status.success(), "{restore:?}");
+        assert!(matches!(result, Err(OrphanReapError::Io { source, .. })
+            if source.kind() == ErrorKind::PermissionDenied));
+        assert!(path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn public_reap_unreadable_record_is_permission_io() {
+        use std::os::unix::fs::PermissionsExt;
+        if nix::unistd::geteuid().is_root() {
+            eprintln!("skipped: root bypasses Unix file permissions");
+            return;
+        }
+        let (dir, path, _, _) = reap_fixture();
+        let original = std::fs::metadata(&path).unwrap().permissions();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let result = reap_epoch_pid_file(&path, dir.path()).await;
+        std::fs::set_permissions(&path, original).unwrap();
+        assert!(matches!(result, Err(OrphanReapError::Io { source, .. })
+            if source.kind() == ErrorKind::PermissionDenied));
+        assert!(path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(start_paused = true)]
+    async fn public_reap_rejects_symlink_records_and_runtime_targets() {
+        for pid_link in [false, true] {
+            let (dir, path, record, faults) = reap_fixture();
+            let link = if pid_link {
+                &path
+            } else {
+                &record.runtime_config
+            };
+            let target = dir.path().join("target");
+            std::fs::rename(link, &target).unwrap();
+            std::os::unix::fs::symlink(&target, link).unwrap();
+            FAULTS
+                .scope(RefCell::new(faults), async {
+                    assert!(matches!(
+                        reap_epoch_pid_file(&path, dir.path()).await,
+                        Err(OrphanReapError::RecordUnusable { .. })
+                    ));
+                    assert!(link.is_symlink());
+                    FAULTS.with(|f| assert_eq!(f.borrow().processes[&record.pid].signals, 0));
+                })
+                .await;
+        }
+    }
 
     #[test]
     fn copied_record_checks_identity_without_killing_the_process() {

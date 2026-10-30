@@ -57,6 +57,7 @@ pub(crate) struct ConfigInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RawController {
+    #[cfg_attr(not(windows), allow(dead_code))]
     Pipe(String),
     #[cfg_attr(windows, allow(dead_code))]
     Unix(String),

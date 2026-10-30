@@ -127,6 +127,7 @@ export interface TranslationResources {
           badges: {
             adminMode: string
             adminServiceMode: string
+            notRunning: string
             serviceMode: string
             sidecarMode: string
           }
@@ -224,7 +225,9 @@ export interface TranslationResources {
             sidecarFailed: string
             stateRefreshFailed: string
           }
+          locationRefusedMessage: string
           message: string
+          notAutoStartedMessage: string
           reinstall: string
           repair: string
           success: string
@@ -317,6 +320,14 @@ export interface TranslationResources {
         editor: {
           actions: {
             format: string
+          }
+          enhance: {
+            globalMerge: string
+            globalScript: string
+            order: string
+            profileMerge: string
+            profileScript: string
+            settingsPriority: string
           }
           messages: {
             readOnly: string
@@ -446,6 +457,7 @@ export interface TranslationResources {
             updateFailed: string
           }
           notices: {
+            discardedKeys: string
             emergencyRefreshFailed: string
             forceRefreshCompleted: string
           }
@@ -500,6 +512,9 @@ export interface TranslationResources {
             updateSuccess: string
           }
         }
+        warnings: {
+          invalidTestUrl: string
+        }
       }
       page: {
         actions: {
@@ -510,6 +525,7 @@ export interface TranslationResources {
           toggleChain: string
         }
         chain: {
+          confirmEnable: string
           connectFailed: string
           disconnectFailed: string
           duplicateNode: string
@@ -518,6 +534,7 @@ export interface TranslationResources {
           exitNode: string
           header: string
           instruction: string
+          keepDisabled: string
           minimumNodes: string
           minimumNodesHint: string
           warning: string
@@ -801,10 +818,12 @@ export interface TranslationResources {
             configUpdateFailed: string
             modeUpdateFailed: string
             restartFailed: string
+            serviceCoreStopped: string
             startFailed: string
             stopFailed: string
           }
           clashService: {
+            coreAlreadyRunning: string
             installFailed: string
             reinstallFailed: string
             repairFailed: string
@@ -830,7 +849,13 @@ export interface TranslationResources {
             versionUpdated: string
           }
           clashService: {
+            appDataNotOwned: string
             installSuccess: string
+            permissionFallback: string
+            permissionRejectedReason: string
+            permissionRepairGuide: string
+            permissionWritableReason: string
+            sidecarFallback: string
             uninstallSuccess: string
           }
           updater: {
@@ -939,9 +964,12 @@ export interface TranslationResources {
           messages: {
             automaticFallback: string
             automaticFallbackFailed: string
+            duplicatePort: string
+            invalidPort: string
             portInUse: string
             portTooHigh: string
             portTooLow: string
+            runningPort: string
             saved: string
             saveFailed: string
           }
@@ -949,6 +977,7 @@ export interface TranslationResources {
         }
         dns: {
           dialog: {
+            profileScope: string
             title: string
             warning: string
           }
@@ -1161,6 +1190,7 @@ export interface TranslationResources {
             autoRoute: string
             device: string
             dnsHijack: string
+            dnsMode: string
             mtu: string
             routeExcludeAddress: string
             stack: string
@@ -1175,6 +1205,7 @@ export interface TranslationResources {
           tooltips: {
             autoRedirect: string
             dnsHijack: string
+            dnsMode: string
           }
         }
         update: {
@@ -1442,13 +1473,10 @@ export interface TranslationResources {
         validation: {
           config: {
             bootFailed: string
-            coreChangeFailed: string
             failed: string
             processTerminated: string
           }
           merge: {
-            generalError: string
-            keyError: string
             mappingError: string
             syntaxError: string
           }
@@ -1459,8 +1487,6 @@ export interface TranslationResources {
             syntaxError: string
           }
           yaml: {
-            generalError: string
-            keyError: string
             mappingError: string
             readError: string
             syntaxError: string

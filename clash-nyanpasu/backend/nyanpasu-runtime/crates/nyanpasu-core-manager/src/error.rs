@@ -67,6 +67,14 @@ pub enum Error {
     #[error(transparent)]
     Process(#[from] nyanpasu_utils::process::ProcessError),
     #[error(transparent)]
+    OrphanReap(#[from] nyanpasu_utils::process::OrphanReapError),
+    #[error("core log filesystem operation failed at {path}")]
+    LogSinkIo {
+        path: Utf8PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error(transparent)]
     Api(#[from] clash_api::Error),
     #[error("failed to process config YAML: {0}")]
     Yaml(#[from] serde_yaml_ng::Error),
@@ -115,6 +123,8 @@ impl Error {
             | Self::StartupTimeout { .. }
             | Self::StartupFailed { .. }
             | Self::Process(_)
+            | Self::OrphanReap(_)
+            | Self::LogSinkIo { .. }
             | Self::Api(_)
             | Self::Io(_) => None,
         }

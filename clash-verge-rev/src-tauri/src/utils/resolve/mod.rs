@@ -1,3 +1,4 @@
+use crate::core::notify::NoticeStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
@@ -9,17 +10,18 @@ use crate::{
         handle::Handle,
         hotkey::Hotkey,
         logger,
+        manager::CoreFailure,
         service::{SERVICE_MANAGER, ServiceManager},
         tray::Tray,
     },
+    core::{auto_backup::AutoBackupManager, lightweight::auto_lightweight_boot},
     feat,
-    module::{auto_backup::AutoBackupManager, lightweight::auto_lightweight_boot},
     process::AsyncHandler,
     utils::{init, server, window_manager::WindowManager},
 };
 use clash_verge_logging::{Type, logging, logging_error};
-use clash_verge_signal;
 
+#[cfg(target_os = "macos")]
 pub mod dns;
 mod scheme;
 pub(crate) mod window;
@@ -101,7 +103,7 @@ pub async fn resolve_reset_async() -> Result<(), anyhow::Error> {
     #[cfg(target_os = "macos")]
     {
         use dns::restore_public_dns;
-        restore_public_dns().await;
+        restore_public_dns().await?;
     }
 
     Ok(())
@@ -186,6 +188,8 @@ async fn init_silent_updater() {
     logging!(info, Type::Setup, "Silent updater initialized");
 }
 
+// Upstream has no session-end signal support on Linux; see crates/clash-verge-signal.
+#[cfg(target_os = "linux")]
 pub(crate) fn init_signal() {
     logging!(debug, Type::Setup, "Initializing signal handlers...");
     clash_verge_signal::register(feat::quit);
@@ -221,6 +225,8 @@ async fn init_core_manager() -> bool {
         Ok(initialized) => initialized,
         Err(error) => {
             logging!(error, Type::Setup, "core manager initialization failed: {error:#}");
+            CoreManager::global().record_startup_error(CoreFailure::StartFailed(format!("{error:#}")));
+            Handle::notice(NoticeStatus::CoreStartError, "");
             false
         }
     }

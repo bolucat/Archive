@@ -77,7 +77,8 @@ impl RunExecution {
                 }
                 if let Some(reply) = reply.take() {
                     let response = match &error {
-                        Error::AlreadySubmitted(_) | Error::AdmissionFailed(_) => error.clone(),
+                        Error::AlreadySubmitted(id) => Error::AlreadySubmitted(*id),
+                        Error::AdmissionFailed(reason) => Error::AdmissionFailed(reason.clone()),
                         _ => Error::AdmissionUnknown(id),
                     };
                     let _ = reply.send(Err(response));

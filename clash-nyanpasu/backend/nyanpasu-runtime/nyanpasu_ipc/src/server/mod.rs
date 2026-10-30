@@ -31,7 +31,7 @@ fn configure_listener_mode<'n>(options: ListenerOptions<'n>) -> ListenerOptions<
     // fchmod() on socket file descriptors, so permissions are applied to the socket path below.
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
     {
-        return options.mode(0o664);
+        options.mode(0o664)
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]

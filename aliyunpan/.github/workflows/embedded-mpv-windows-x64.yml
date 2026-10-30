@@ -9,9 +9,9 @@ on:
         default: false
         type: boolean
       required_providers:
-        description: Comma-separated cloud providers to validate (Aliyun by default)
+        description: Optional comma-separated provider subset for diagnostics
         required: false
-        default: 'aliyun'
+        default: ''
         type: string
   workflow_dispatch:
     inputs:
@@ -21,9 +21,9 @@ on:
         default: false
         type: boolean
       required_providers:
-        description: Comma-separated cloud providers to validate (Aliyun by default)
+        description: Optional comma-separated provider subset for diagnostics
         required: false
-        default: 'aliyun'
+        default: ''
         type: string
   push:
     branches:
@@ -61,6 +61,7 @@ jobs:
       - name: Verify MPV playback header and proxy contracts
         run: |
           pnpm exec vitest run `
+            src/utils/__tests__/ossExpiry.test.ts `
             src/utils/__tests__/playbackHeaders.test.ts `
             src/utils/__tests__/proxyMediaRewrite.test.ts `
             src/utils/__tests__/proxyhelper.test.ts `

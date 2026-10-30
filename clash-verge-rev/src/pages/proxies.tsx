@@ -1,10 +1,10 @@
 import { LanOutlined, LanRounded, WarningRounded } from '@mui/icons-material'
-import { Box, Button, ButtonGroup } from '@mui/material'
+import { Box, Button, ButtonGroup, Typography } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BasePage, TooltipIcon } from '@/components/base'
+import { BaseDialog, BasePage, TooltipIcon } from '@/components/base'
 import { ProviderButton } from '@/components/proxy/provider-button'
 import { ProxyGroups } from '@/components/proxy/proxy-groups'
 import {
@@ -16,6 +16,7 @@ import {
   patchClashMode,
   updateProxyChainConfigInRuntime,
 } from '@/services/cmds'
+import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { debugLog } from '@/utils/debug'
 
@@ -37,6 +38,7 @@ const ProxyPage = () => {
       return false
     }
   })
+  const [chainConfirmOpen, setChainConfirmOpen] = useState(false)
 
   const [chainConfigData, dispatchChainConfigData] = useReducer(
     (_: string | null, action: string | null) => action,
@@ -57,31 +59,43 @@ const ProxyPage = () => {
   const onChangeMode = useLockFn(async (mode: Mode) => {
     try {
       // patchClashMode 在后端 PATCH 失败时会 reject，需提示用户而非静默失败
-      await patchClashMode(mode)
-      refreshClashConfig()
+      await mutate(() => patchClashMode(mode), {
+        id: 'patch-clash-mode',
+        errorNotice: false,
+      })
+      await refreshClashConfig()
     } catch (error) {
       showNotice.error(error)
     }
   })
 
-  const onToggleChainMode = useLockFn(async () => {
-    const newChainMode = !isChainMode
+  const applyChainMode = (enabled: boolean) => {
+    setIsChainMode(enabled)
+    localStorage.setItem('proxy-chain-mode-enabled', enabled.toString())
+  }
 
-    setIsChainMode(newChainMode)
-    // 保存链式代理按钮状态到 localStorage
-    localStorage.setItem('proxy-chain-mode-enabled', newChainMode.toString())
-
-    if (!newChainMode) {
-      // 退出链式代理模式时，清除链式代理配置
-      try {
-        debugLog('Exiting chain mode, clearing chain configuration')
-        await updateProxyChainConfigInRuntime(null)
-        debugLog('Chain configuration cleared successfully')
-      } catch (error) {
-        console.error('Failed to clear chain configuration:', error)
-      }
+  const onExitChainMode = useLockFn(async () => {
+    // 退出链式代理模式时，清除链式代理配置
+    try {
+      debugLog('Exiting chain mode, clearing chain configuration')
+      const result = await mutate(() => updateProxyChainConfigInRuntime(null), {
+        id: 'update-proxy-chain-runtime',
+        errorNotice: false,
+      })
+      if (!result.ok) return
+      debugLog('Chain configuration cleared successfully')
+    } catch (error) {
+      console.error('Failed to clear chain configuration:', error)
+      showNotice.error(error)
+      return
     }
+    applyChainMode(false)
   })
+
+  const onToggleChainMode = () => {
+    if (isChainMode) onExitChainMode().catch(() => {})
+    else setChainConfirmOpen(true)
+  }
 
   // 当开启链式代理模式时，获取配置数据
   useEffect(() => {
@@ -116,7 +130,7 @@ const ProxyPage = () => {
       }
     }
 
-    fetchChainConfig()
+    fetchChainConfig().catch(() => {})
 
     return () => {
       cancelled = true
@@ -125,7 +139,7 @@ const ProxyPage = () => {
 
   useEffect(() => {
     if (normalizedMode && !isMode(normalizedMode)) {
-      onChangeMode('rule')
+      onChangeMode('rule').catch(() => {})
     }
   }, [normalizedMode, onChangeMode])
 
@@ -191,7 +205,23 @@ const ProxyPage = () => {
         mode={curMode ?? 'rule'}
         isChainMode={isChainMode}
         chainConfigData={chainConfigData}
+        onExitChainMode={onExitChainMode}
       />
+      <BaseDialog
+        open={chainConfirmOpen}
+        title={t('proxies.page.actions.toggleChain')}
+        okBtn={t('proxies.page.chain.confirmEnable')}
+        cancelBtn={t('proxies.page.chain.keepDisabled')}
+        contentSx={{ width: { xs: 320, sm: 420 } }}
+        onCancel={() => setChainConfirmOpen(false)}
+        onClose={() => setChainConfirmOpen(false)}
+        onOk={() => {
+          setChainConfirmOpen(false)
+          applyChainMode(true)
+        }}
+      >
+        <Typography variant="body2">{chainWarning}</Typography>
+      </BaseDialog>
     </BasePage>
   )
 }

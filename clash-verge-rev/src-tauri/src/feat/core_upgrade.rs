@@ -34,12 +34,10 @@ static STAGING_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// `.rollback` and `.old` are fixed paths, so two upgrades must not overlap.
 static UPGRADE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, specta::Type)]
 pub struct CoreUpgradeReport {
     /// False when the managed core was already at the latest version.
     pub upgraded: bool,
-    pub from: std::string::String,
-    pub to: std::string::String,
 }
 
 pub async fn upgrade_core(force: bool) -> Result<CoreUpgradeReport> {
@@ -62,11 +60,7 @@ pub async fn upgrade_core(force: bool) -> Result<CoreUpgradeReport> {
     logging!(debug, Type::Core, "core upgrade: latest version resolved via {proxy:?}");
 
     if !force && installed == latest {
-        return Ok(CoreUpgradeReport {
-            upgraded: false,
-            from: installed,
-            to: latest,
-        });
+        return Ok(CoreUpgradeReport { upgraded: false });
     }
 
     let package = download_package(proxy, alpha, &latest).await?;
@@ -150,11 +144,7 @@ pub async fn upgrade_core(force: bool) -> Result<CoreUpgradeReport> {
     #[cfg(windows)]
     let _ = std::fs::remove_file(target.with_extension("old"));
 
-    Ok(CoreUpgradeReport {
-        upgraded: true,
-        from: installed,
-        to: latest,
-    })
+    Ok(CoreUpgradeReport { upgraded: true })
 }
 
 /// Whether this upgrade handed bytes to the Service's approved core directory.
@@ -359,24 +349,31 @@ fn stage_core(target: &Path, package: &[u8], version: &str) -> Result<StagedCore
 }
 
 fn create_staging_file(directory: &Path, core_name: &OsStr) -> Result<(PathBuf, File)> {
-    for _ in 0..32 {
-        let generation = STAGING_GENERATION.fetch_add(1, Ordering::Relaxed);
-        let path = directory.join(format!(
-            ".{}.{}.{generation}.tmp",
-            core_name.to_string_lossy(),
-            std::process::id()
-        ));
+    use crate::utils::retry::{RetryError, RetryPolicy, retry_sync};
+    retry_sync(
+        RetryPolicy::fixed(
+            std::num::NonZeroUsize::MIN.saturating_add(31),
+            std::time::Duration::ZERO,
+        ),
+        |_| {
+            let generation = STAGING_GENERATION.fetch_add(1, Ordering::Relaxed);
+            let path = directory.join(format!(
+                ".{}.{}.{generation}.tmp",
+                core_name.to_string_lossy(),
+                std::process::id()
+            ));
 
-        match File::options().write(true).create_new(true).open(&path) {
-            Ok(file) => return Ok((path, file)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => {
-                return Err(error).with_context(|| format!("failed to create {}", path.display()));
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(file) => Ok((path, file)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(RetryError::Retry(
+                    anyhow::anyhow!("failed to create a unique staging file in {}", directory.display()),
+                )),
+                Err(error) => Err(RetryError::Stop(
+                    anyhow::Error::from(error).context(format!("failed to create {}", path.display())),
+                )),
             }
-        }
-    }
-
-    bail!("failed to create a unique staging file in {}", directory.display())
+        },
+    )
 }
 
 #[cfg(windows)]

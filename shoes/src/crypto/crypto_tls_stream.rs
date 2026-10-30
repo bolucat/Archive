@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use futures::ready;
 use std::io::{self, BufRead, Write};
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -77,8 +77,11 @@ impl TlsState {
     }
 }
 
+/// Writes may buffer output; callers must flush before waiting for a response.
+/// Reads only drive input, except for best-effort fatal alerts.
 pub struct CryptoTlsStream<IO> {
     io: IO,
+    writer_waker: Option<Waker>,
     pub(super) session: TlsConnection,
     state: TlsState,
     need_flush: bool,
@@ -110,6 +113,7 @@ impl<IO: AsyncStream> CryptoTlsStream<IO> {
     fn with_input(io: IO, session: TlsConnection, input: TlsInput) -> Self {
         Self {
             io,
+            writer_waker: None,
             session,
             state: TlsState::Stream,
             need_flush: false,
@@ -321,6 +325,12 @@ impl<IO: AsyncStream> CryptoTlsStream<IO> {
     }
 
     pub fn poll_drain_tls(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.register_writer(cx);
+        self.poll_drain_tls_inner(cx)
+    }
+
+    // The fatal read-error path also drains output, without registering as the writer.
+    fn poll_drain_tls_inner(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // The peer no longer accepts TLS records once this direction is raw.
         if let Some(prefix) = &mut self.raw_write_prefix {
             while !prefix.is_empty() {
@@ -339,6 +349,13 @@ impl<IO: AsyncStream> CryptoTlsStream<IO> {
             }
         }
         Poll::Ready(Ok(()))
+    }
+
+    fn register_writer(&mut self, cx: &Context<'_>) {
+        match &mut self.writer_waker {
+            Some(waker) => waker.clone_from(cx.waker()),
+            None => self.writer_waker = Some(cx.waker().clone()),
+        }
     }
 }
 
@@ -380,13 +397,11 @@ impl<IO: AsyncStream> AsyncRead for CryptoTlsStream<IO> {
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
                 Err(error) => return Poll::Ready(Err(error)),
             }
-            // Service post-handshake responses without blocking readable plaintext
-            // on output backpressure. Both I/O directions register their wakers.
-            if let Poll::Ready(Err(error)) = Pin::new(&mut *this).poll_flush(cx) {
-                return Poll::Ready(Err(error));
-            }
             if let Err(error) = ready!(this.poll_receive_tls(cx)) {
-                let _ = this.poll_drain_tls(cx);
+                if let Some(writer) = this.writer_waker.take() {
+                    writer.wake();
+                }
+                let _ = this.poll_drain_tls_inner(cx);
                 return Poll::Ready(Err(error));
             }
         }
@@ -399,6 +414,7 @@ impl<IO: AsyncStream> AsyncWrite for CryptoTlsStream<IO> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
+        self.register_writer(cx);
         if !self.state.writeable() {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
@@ -415,7 +431,7 @@ impl<IO: AsyncStream> AsyncWrite for CryptoTlsStream<IO> {
         let mut pos = 0;
         while pos < buf.len() {
             pos += self.session.writer().write(&buf[pos..])?;
-            match self.poll_drain_tls(cx) {
+            match self.poll_drain_tls_inner(cx) {
                 Poll::Ready(Ok(())) => {}
                 Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
                 Poll::Pending if pos == 0 => return Poll::Pending,
@@ -430,6 +446,7 @@ impl<IO: AsyncStream> AsyncWrite for CryptoTlsStream<IO> {
         cx: &mut Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
+        self.register_writer(cx);
         if !self.state.writeable() {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
@@ -448,7 +465,7 @@ impl<IO: AsyncStream> AsyncWrite for CryptoTlsStream<IO> {
 
         loop {
             let written = self.session.writer().write_vectored(bufs)?;
-            let pending = match self.poll_drain_tls(cx) {
+            let pending = match self.poll_drain_tls_inner(cx) {
                 Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
                 Poll::Ready(Ok(())) => false,
                 Poll::Pending => true,
@@ -471,30 +488,28 @@ impl<IO: AsyncStream> AsyncWrite for CryptoTlsStream<IO> {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if self.write_raw {
-            ready!(self.poll_drain_tls(cx))?;
+        self.register_writer(cx);
+        if !self.write_raw {
+            self.session.writer().flush()?;
+        }
+        ready!(self.poll_drain_tls_inner(cx))?;
+        if self.write_raw || self.need_flush {
             ready!(Pin::new(&mut self.io).poll_flush(cx))?;
             self.raw_write_prefix = None;
-            self.need_flush = false;
-            return Poll::Ready(Ok(()));
-        }
-        self.session.writer().flush()?;
-        ready!(self.poll_drain_tls(cx))?;
-        if self.need_flush {
-            ready!(Pin::new(&mut self.io).poll_flush(cx))?;
             self.need_flush = false;
         }
         Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.register_writer(cx);
         if !self.write_raw {
             if self.state.writeable() {
                 self.session.send_close_notify();
                 self.state.shutdown_write();
             }
             // A failed ordinary TLS session still has output to send before writer.flush fails.
-            ready!(self.poll_drain_tls(cx))?;
+            ready!(self.poll_drain_tls_inner(cx))?;
             ready!(self.as_mut().poll_flush(cx))?;
         } else {
             ready!(self.as_mut().poll_flush(cx))?;
@@ -515,6 +530,7 @@ impl<IO: AsyncStream> AsyncPing for CryptoTlsStream<IO> {
     }
 
     fn poll_write_ping(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<bool>> {
+        self.register_writer(cx);
         let written = ready!(Pin::new(&mut self.io).poll_write_ping(cx))?;
         self.need_flush |= written;
         Poll::Ready(Ok(written))

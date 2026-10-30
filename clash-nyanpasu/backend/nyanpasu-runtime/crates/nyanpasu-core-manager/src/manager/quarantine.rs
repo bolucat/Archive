@@ -1,4 +1,4 @@
-use nyanpasu_utils::process::{OrphanReapOutcome, reap_epoch_pid_file};
+use nyanpasu_utils::process::{OrphanReapError, OrphanReapOutcome, reap_epoch_pid_file};
 
 use crate::{Epoch, error::Error, runtime_store::RuntimeConfigStore, state::CoreState};
 
@@ -90,7 +90,7 @@ impl CoreManager {
     }
 }
 
-fn quarantine_error(ctrl: &Ctrl) -> Option<Error> {
+pub(super) fn quarantine_error(ctrl: &Ctrl) -> Option<Error> {
     let first = ctrl.quarantine.first()?;
     let reason = if ctrl.quarantine.len() == 1 {
         first.reason.clone()
@@ -135,30 +135,85 @@ pub(super) fn reject_quarantine(ctrl: &Ctrl) -> Result<(), Error> {
 pub(super) async fn sweep_orphans(
     store: &RuntimeConfigStore,
     options: &crate::ManagerOptions,
-) -> Result<u64, Error> {
+) -> Result<(u64, Vec<QuarantinedEpoch>), Error> {
     // Artifact numbers are read back from filenames, so they are not epochs:
     // a directory can carry `config-0.yaml`, and a zero that cannot be named
     // is a zero that leaks forever. Discovery and cleanup stay raw; only the
     // allocator seed crosses into the domain, one increment later.
     let discovered = store.artifact_epochs().await?;
     let max_seen = discovered.iter().copied().max().unwrap_or(0);
+    let mut quarantine = Vec::new();
     for artifact in discovered {
         let pid_path = store.artifact_pid_path(artifact);
-        if tokio::fs::try_exists(&pid_path).await? {
-            reap_epoch_pid_file(pid_path.as_std_path(), store.dir().as_std_path()).await?;
+        let result = if artifact == 0 {
+            // Zero cannot name a quarantined epoch. Reject its record before
+            // the reaper can authorize any signal.
+            match tokio::fs::symlink_metadata(&pid_path).await {
+                Ok(_) => Err(OrphanReapError::RecordUnusable {
+                    path: pid_path.clone().into_std_path_buf(),
+                    source: std::io::Error::new(std::io::ErrorKind::InvalidData, "epoch is zero"),
+                }),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(OrphanReapOutcome::NotFound)
+                }
+                Err(error) => return Err(error.into()),
+            }
+        } else {
+            reap_epoch_pid_file(pid_path.as_std_path(), store.dir().as_std_path()).await
+        };
+        match result {
+            Ok(_) => {}
+            Err(error @ OrphanReapError::RecordUnusable { .. }) => {
+                let renamed = pid_path.with_file_name(format!(
+                    "core-{artifact}.pid.corrupt-{}",
+                    chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+                ));
+                // A same-second collision must preserve the earlier evidence.
+                match tokio::fs::symlink_metadata(&renamed).await {
+                    Ok(_) => {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!("corrupt record backup already exists: {renamed}"),
+                        )
+                        .into());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+                tokio::fs::rename(&pid_path, &renamed).await?;
+                tracing::warn!(
+                    path = %pid_path,
+                    renamed_path = %renamed,
+                    error = %error,
+                    action = "preserved unusable pid record; cleaning epoch artifacts",
+                    "unusable orphan pid record"
+                );
+            }
+            Err(error @ OrphanReapError::ProcessUnconfirmed { .. }) => {
+                quarantine.push(QuarantinedEpoch {
+                    epoch: Epoch::new(artifact).expect("zero records are rejected before reaping"),
+                    reason: error.to_string(),
+                    death_proven: false,
+                });
+                continue;
+            }
+            Err(error @ OrphanReapError::Io { .. }) => return Err(error.into()),
         }
         if let Some(epoch) = Epoch::new(artifact) {
             cleanup_controller(options, epoch).await?;
         }
         store.cleanup_artifacts(artifact).await?;
     }
-    Ok(max_seen)
+    Ok((max_seen, quarantine))
 }
 
 pub(super) async fn cleanup_controller(
     options: &crate::ManagerOptions,
     epoch: Epoch,
 ) -> Result<(), Error> {
+    // Only Unix controllers are socket files that outlive their epoch.
+    #[cfg(not(unix))]
+    let _ = epoch;
     if options.controller_dir.is_some() {
         #[cfg(unix)]
         {
@@ -207,7 +262,9 @@ mod controller_tests {
         std::fs::write(store.dir().join("config-7.yaml"), "secret: private").unwrap();
         let foreign = dir.join("unrelated.sock");
         let _foreign = std::os::unix::net::UnixListener::bind(&foreign).unwrap();
-        assert_eq!(sweep_orphans(&store, &options).await.unwrap(), 7);
+        let (max_seen, quarantine) = sweep_orphans(&store, &options).await.unwrap();
+        assert_eq!(max_seen, 7);
+        assert!(quarantine.is_empty());
         assert!(!std::path::Path::new(&endpoint).exists());
         assert!(foreign.exists());
         std::fs::write(&endpoint, "not a socket").unwrap();

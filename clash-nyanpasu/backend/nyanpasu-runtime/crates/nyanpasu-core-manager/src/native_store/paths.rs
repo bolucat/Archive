@@ -52,18 +52,17 @@ pub fn rewrite_paths(kind: CoreKind, document: &mut Mapping, source: &Utf8Path) 
             }
         }
     }
-    if kind == CoreKind::ClashRust {
-        if let Some(listen) = document
+    if kind == CoreKind::ClashRust
+        && let Some(listen) = document
             .get_mut("dns")
             .and_then(Value::as_mapping_mut)
             .and_then(|dns| dns.get_mut("listen"))
             .and_then(Value::as_mapping_mut)
-        {
-            for kind in ["doh", "dot", "doh3"] {
-                if let Some(config) = listen.get_mut(kind).and_then(Value::as_mapping_mut) {
-                    for key in ["ca-cert", "ca-key"] {
-                        rebase(config.get_mut(key), source);
-                    }
+    {
+        for kind in ["doh", "dot", "doh3"] {
+            if let Some(config) = listen.get_mut(kind).and_then(Value::as_mapping_mut) {
+                for key in ["ca-cert", "ca-key"] {
+                    rebase(config.get_mut(key), source);
                 }
             }
         }

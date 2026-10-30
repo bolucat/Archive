@@ -63,10 +63,10 @@ async fn wait_timeout_and_delete_recreate_never_release_running_key() {
         .await
         .unwrap();
     let run = client.run_now("held").await.unwrap();
-    assert_eq!(
+    assert!(matches!(
         client.wait(run.id, Some(Duration::ZERO)).await.unwrap_err(),
-        Error::WaitTimedOut(run.id)
-    );
+        Error::WaitTimedOut(id) if id == run.id
+    ));
     assert_eq!(run.cancel().await.unwrap(), CancelResult::Unsupported);
     client.reconcile("default", 2, vec![]).await.unwrap();
     client.reconcile("default", 3, vec![job]).await.unwrap();

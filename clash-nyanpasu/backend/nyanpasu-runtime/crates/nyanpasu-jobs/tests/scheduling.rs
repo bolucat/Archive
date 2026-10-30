@@ -135,10 +135,10 @@ async fn invalid_scope_snapshot_is_atomic_and_cannot_delete_another_owner() {
     assert_eq!(inspect.jobs.len(), 1);
     assert_eq!(inspect.scopes["default"].applied_revision, Some(1));
     assert!(inspect.scopes["default"].last_error.is_some());
-    assert_eq!(
+    assert!(matches!(
         client.reconcile("default", 1, vec![]).await.unwrap_err(),
         Error::StaleRevision
-    );
+    ));
     let mut other = good;
     other.definition.scope = "other".into();
     assert!(client.reconcile("other", 1, vec![other]).await.is_err());

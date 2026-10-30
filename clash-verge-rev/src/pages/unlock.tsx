@@ -19,20 +19,19 @@ import {
   alpha,
   useTheme,
 } from '@mui/material'
-import { Channel, invoke } from '@tauri-apps/api/core'
+import { Channel } from '@tauri-apps/api/core'
 import { useLockFn } from 'ahooks'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BaseEmpty, BasePage } from '@/components/base'
+import {
+  checkMediaUnlock,
+  checkMediaUnlockItem,
+  getUnlockItems,
+  type UnlockItem,
+} from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
-
-interface UnlockItem {
-  name: string
-  status: string
-  region?: string | null
-  check_time?: string | null
-}
 
 const UNLOCK_RESULTS_STORAGE_KEY = 'clash_verge_unlock_results'
 
@@ -41,6 +40,7 @@ const STATUS_LABEL_KEYS: Record<string, string> = {
   Yes: 'tests.statuses.test.yes',
   No: 'tests.statuses.test.no',
   Failed: 'tests.statuses.test.failed',
+  Risky: 'tests.statuses.test.risky',
   Completed: 'tests.statuses.test.completed',
   'Disallowed ISP': 'tests.statuses.test.disallowedIsp',
   'Originals Only': 'tests.statuses.test.originalsOnly',
@@ -119,7 +119,7 @@ const UnlockPage = () => {
 
     void (async () => {
       try {
-        const defaultItems = await invoke<UnlockItem[]>('get_unlock_items')
+        const defaultItems = await getUnlockItems()
         const existingMap = new Map(
           storedItems.map((item) => [normalizeUnlockName(item.name), item]),
         )
@@ -153,9 +153,7 @@ const UnlockPage = () => {
     try {
       setIsCheckingAll(true)
       setLoadingItems(unlockItems.map((item) => item.name))
-      const result = await invoke<UnlockItem[]>('check_media_unlock', {
-        onComplete,
-      })
+      const result = await checkMediaUnlock(onComplete)
       const sortedItems = result.sort((a, b) => a.name.localeCompare(b.name))
 
       unlockItemsRef.current = sortedItems
@@ -174,9 +172,7 @@ const UnlockPage = () => {
   const checkSingleMedia = async (name: string) => {
     setLoadingItems((items) => [...items, name])
     try {
-      const result = await invoke<UnlockItem>('check_media_unlock_item', {
-        name,
-      })
+      const result = await checkMediaUnlockItem(name)
       const updatedItems = unlockItemsRef.current.map((item) =>
         item.name === name ? result : item,
       )
@@ -201,7 +197,7 @@ const UnlockPage = () => {
     if (status === 'Pending') return 'default'
     if (status === 'Yes') return 'success'
     if (status === 'No') return 'error'
-    if (status === 'Soon') return 'warning'
+    if (status === 'Soon' || status === 'Risky') return 'warning'
     if (status.includes('Failed')) return 'error'
     if (status === 'Completed') return 'info'
     if (
@@ -227,7 +223,8 @@ const UnlockPage = () => {
   const getStatusBorderColor = (status: string) => {
     if (status === 'Yes') return theme.palette.success.main
     if (status === 'No') return theme.palette.error.main
-    if (status === 'Soon') return theme.palette.warning.main
+    if (status === 'Soon' || status === 'Risky')
+      return theme.palette.warning.main
     if (status.includes('Failed')) return theme.palette.error.main
     if (status === 'Completed') return theme.palette.info.main
     return theme.palette.divider

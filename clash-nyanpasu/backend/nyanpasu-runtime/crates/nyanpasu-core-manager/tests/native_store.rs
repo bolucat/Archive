@@ -143,10 +143,10 @@ async fn real_cores_keep_flushed_selections_across_hosts_and_core_switches() {
     tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             let raw = std::fs::read(&rust_cache).unwrap();
-            if let Ok(doc) = serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&raw) {
-                if doc["selected"]["Proxy"].as_str() == Some("REJECT") {
-                    break;
-                }
+            if let Ok(doc) = serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&raw)
+                && doc["selected"]["Proxy"].as_str() == Some("REJECT")
+            {
+                break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }

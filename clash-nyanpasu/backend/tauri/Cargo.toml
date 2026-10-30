@@ -40,7 +40,7 @@ nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-platform = { path = '../nyanpasu-platform' }
-nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
@@ -275,6 +275,7 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+tauri = { version = '2.4', features = ['test'] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }

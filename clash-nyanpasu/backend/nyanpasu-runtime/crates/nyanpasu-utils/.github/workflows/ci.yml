@@ -45,6 +45,8 @@ jobs:
         run: |
           cargo test --no-default-features --features process --lib process::pid_file
           cargo test --no-default-features --features process --test process_pid_file
+      - name: Test error classification
+        run: cargo test --no-default-features --features redb --lib -- io::tests redb_ext::tests
       - name: Run linters
         uses: wearerequired/lint-action@master
         with:

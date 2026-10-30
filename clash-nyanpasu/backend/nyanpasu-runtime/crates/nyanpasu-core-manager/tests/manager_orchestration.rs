@@ -703,7 +703,11 @@ async fn dropping_live_manager_releases_runtime_ownership() {
                 Err(Error::RuntimeDirectoryOwned(_)) => {
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
-                Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                Err(Error::Io(error))
+                | Err(Error::OrphanReap(nyanpasu_utils::process::OrphanReapError::Io {
+                    source: error,
+                    ..
+                })) if error.kind() == std::io::ErrorKind::PermissionDenied => {
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
                 Err(error) => panic!("unexpected construction error: {error}"),

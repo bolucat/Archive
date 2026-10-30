@@ -24,7 +24,6 @@ nyanpasu-utils = {
 
 anyhow = { workspace = true }
 axum = { version = "0.8", features = ["ws"], optional = true }
-axum-extra = { version = "0.12", features = ["typed-header"], optional = true }
 derive_builder = "0.20"
 futures-util = { workspace = true, optional = true }
 http = "1"
@@ -41,17 +40,17 @@ tokio = { workspace = true }
 tower = { version = "0.5", features = ["util"], optional = true }
 tracing = { workspace = true }
 tracing-attributes = { workspace = true }
-widestring = { version = "1", optional = true }
 
 indexmap = { version = "2", features = ["serde"] }
 serde_json = "1"
 
 [target."cfg(windows)".dependencies]
 nyanpasu-windows-security = { path = "../crates/nyanpasu-windows-security" }
+widestring = { version = "1", optional = true }
 
 [features]
 client = ["dep:futures-util", "dep:reqwest", "dep:reqwest-websocket", "nyanpasu-utils/reqwest"]
-server = ["dep:axum", "dep:axum-extra", "dep:tower", "dep:widestring"]
+server = ["dep:axum", "dep:tower", "dep:widestring"]
 specta = ["dep:specta", "nyanpasu-utils/specta", "nyanpasu-logging/specta"]
 
 # The pipe-inspection example calls Win32 directly.
