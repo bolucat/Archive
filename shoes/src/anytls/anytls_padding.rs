@@ -8,6 +8,83 @@ use md5::{Digest, Md5};
 use rand::RngExt;
 use std::sync::Arc;
 
+pub(super) type SharedPadding = Arc<parking_lot::RwLock<Arc<PaddingFactory>>>;
+
+#[cfg(test)]
+pub(super) struct PaddingWriteCase {
+    pub sizes: &'static str,
+    pub payload: bytes::BytesMut,
+    pub writes: Vec<Vec<u8>>,
+}
+
+#[cfg(test)]
+pub(super) fn padding_write_cases() -> impl Iterator<Item = PaddingWriteCase> {
+    use super::anytls_types::{Command, Frame};
+    use bytes::{Bytes, BytesMut};
+
+    [
+        ("", 0, vec![], vec![]),
+        ("", 5, vec![], vec![5]),
+        ("c,20-20", 0, vec![], vec![]),
+        ("c,20-20", 5, vec![8], vec![20]),
+        ("5-5,c,20-20", 5, vec![], vec![5]),
+        ("10-10", 5, vec![], vec![5]),
+        ("12-12", 5, vec![], vec![5]),
+        ("13-13", 5, vec![1], vec![13]),
+        ("2-2,20-20", 5, vec![10], vec![2, 20]),
+        ("2-2", 5, vec![], vec![2, 3]),
+        ("20-20,2-2", 5, vec![8, 2], vec![20, 9]),
+        ("65555-65555", 5, vec![65535, 1], vec![65555]),
+        ("65536-65536", 0, vec![65535, 1], vec![65550]),
+    ]
+    .into_iter()
+    .map(|(sizes, payload_len, padding_lengths, write_lengths)| {
+        let payload = BytesMut::from(vec![42; payload_len].as_slice());
+        let mut wire = payload.clone();
+        for length in padding_lengths {
+            Frame::with_data(Command::Waste, 0, Bytes::from(vec![0; length]))
+                .encode_into(&mut wire)
+                .unwrap();
+        }
+        let writes = write_lengths
+            .into_iter()
+            .map(|length| wire.split_to(length).to_vec())
+            .collect();
+        assert!(wire.is_empty());
+        PaddingWriteCase {
+            sizes,
+            payload,
+            writes,
+        }
+    })
+}
+
+pub(super) fn append_padding(
+    buf: &mut bytes::BytesMut,
+    mut remaining: usize,
+    includes_headers: bool,
+) {
+    use super::anytls_types::{Command, FRAME_HEADER_SIZE};
+    use bytes::BufMut;
+    loop {
+        if includes_headers {
+            if remaining <= FRAME_HEADER_SIZE {
+                break;
+            }
+            remaining -= FRAME_HEADER_SIZE;
+        } else if remaining == 0 {
+            break;
+        }
+        let length = remaining.min(u16::MAX as usize);
+        buf.reserve(FRAME_HEADER_SIZE + length);
+        buf.put_u8(Command::Waste as u8);
+        buf.put_u32(0);
+        buf.put_u16(length as u16);
+        buf.put_bytes(0, length);
+        remaining -= length;
+    }
+}
+
 /// Check mark constant - indicates "stop if no more data" in padding scheme
 pub const CHECK_MARK: i32 = -1;
 
@@ -43,7 +120,7 @@ impl PaddingFactory {
         let stop = scheme
             .get("stop")
             .ok_or_else(|| "missing 'stop' in padding scheme".to_string())?
-            .parse::<u32>()
+            .parse::<i64>()
             .map_err(|_| "invalid 'stop' value in padding scheme".to_string())?;
 
         let mut hasher = Md5::new();
@@ -57,7 +134,8 @@ impl PaddingFactory {
         Ok(Self {
             scheme,
             raw_scheme: raw_scheme.to_vec(),
-            stop,
+            // The reference wraps signed stop values to u32; -1 means never stop.
+            stop: stop as u32,
             md5,
         })
     }
@@ -99,41 +177,32 @@ impl PaddingFactory {
         };
 
         let mut sizes = Vec::new();
-        let parts: Vec<&str> = spec.split(',').collect();
-
-        for part in parts {
+        for part in spec.split(',') {
             let part = part.trim();
 
-            // Check mark - indicates "stop if no more data"
             if part == "c" {
                 sizes.push(CHECK_MARK);
                 continue;
             }
 
-            // Parse range: "min-max"
-            if let Some((min_str, max_str)) = part.split_once('-') {
-                let min_val: i64 = match min_str.trim().parse() {
-                    Ok(v) if v > 0 => v,
-                    _ => continue,
-                };
-                let max_val: i64 = match max_str.trim().parse() {
-                    Ok(v) if v > 0 => v,
-                    _ => continue,
-                };
-
-                // Ensure min <= max
-                let (min_val, max_val) = (min_val.min(max_val), min_val.max(max_val));
-
-                if min_val == max_val {
-                    // Fixed size
-                    sizes.push(min_val as i32);
-                } else {
-                    // Random size in range [min, max]
-                    let mut rng = rand::rng();
-                    let size = rng.random_range(min_val..=max_val);
-                    sizes.push(size as i32);
-                }
-            }
+            let Some((min, max)) = part.split_once('-') else {
+                continue;
+            };
+            let min: i64 = match min.trim().parse() {
+                Ok(value) if value > 0 && value <= 1 << 20 => value,
+                _ => continue,
+            };
+            let max: i64 = match max.trim().parse() {
+                Ok(value) if value > 0 && value <= 1 << 20 => value,
+                _ => continue,
+            };
+            let (min, max) = (min.min(max), min.max(max));
+            let size = if min == max {
+                min
+            } else {
+                rand::rng().random_range(min..max)
+            };
+            sizes.push(size as i32);
         }
 
         sizes
@@ -149,7 +218,43 @@ impl Default for PaddingFactory {
 
 #[cfg(test)]
 mod tests {
+    use super::super::anytls_types::{Command, FRAME_HEADER_SIZE};
     use super::*;
+    use bytes::BytesMut;
+
+    #[test]
+    fn reference_ranges_and_large_padding_frames() {
+        let factory = PaddingFactory::new(b"stop=-1\n1=31-30,65535-65535,65536-65536,1048576-1048576,1048577-1048577,0-5\n01=99-99").unwrap();
+        assert_eq!(factory.stop(), u32::MAX);
+        assert_eq!(
+            factory.generate_record_payload_sizes(1),
+            vec![30, 65535, 65536, 1048576]
+        );
+        for mixed in [true, false] {
+            for length in [65535, 65536, 200000, 1048576] {
+                let mut wire = BytesMut::new();
+                append_padding(&mut wire, length, mixed);
+                let encoded_len = wire.len();
+                let mut bodies = 0;
+                let mut frames = 0;
+                while let Some(frame) =
+                    super::super::anytls_types::FrameCodec::decode(&mut wire).unwrap()
+                {
+                    assert_eq!(frame.cmd, Command::Waste);
+                    assert!(frame.data.len() <= 65535);
+                    bodies += frame.data.len();
+                    frames += 1;
+                }
+                assert!(wire.is_empty());
+                if mixed {
+                    assert!(encoded_len <= length && length - encoded_len <= FRAME_HEADER_SIZE);
+                } else {
+                    assert_eq!(bodies, length);
+                    assert_eq!(encoded_len, length + frames * FRAME_HEADER_SIZE);
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_default_factory() {
@@ -175,7 +280,7 @@ mod tests {
         for _ in 0..100 {
             let sizes = factory.generate_record_payload_sizes(1);
             assert_eq!(sizes.len(), 1);
-            assert!(sizes[0] >= 100 && sizes[0] <= 400);
+            assert!((100..400).contains(&sizes[0]));
         }
     }
 
@@ -186,9 +291,34 @@ mod tests {
         let sizes = factory.generate_record_payload_sizes(2);
 
         assert_eq!(sizes.len(), 3);
-        assert!(sizes[0] >= 400 && sizes[0] <= 500);
+        assert!((400..500).contains(&sizes[0]));
         assert_eq!(sizes[1], CHECK_MARK);
-        assert!(sizes[2] >= 500 && sizes[2] <= 1000);
+        assert!((500..1000).contains(&sizes[2]));
+    }
+
+    #[test]
+    fn ranges_are_exclusive_positive_and_bounded() {
+        for (range, expected) in [
+            ("1-2", vec![1]),
+            ("2-1", vec![1]),
+            ("1048576-1048576", vec![1 << 20]),
+            ("1048577-1048577", vec![]),
+            ("1-1048577", vec![]),
+            ("0-1", vec![]),
+            ("0-0", vec![]),
+            ("-1-1", vec![]),
+            ("invalid,1,1-x,1-2-3", vec![]),
+            ("invalid,2-2,0-1,3-3", vec![2, 3]),
+        ] {
+            let factory = PaddingFactory::new(format!("stop=2\n1={range}").as_bytes()).unwrap();
+            for _ in 0..64 {
+                assert_eq!(
+                    factory.generate_record_payload_sizes(1),
+                    expected,
+                    "{range}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -223,5 +353,31 @@ mod tests {
         let scheme = "0=100-100";
         let result = PaddingFactory::new(scheme.as_bytes());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn signed_stop_values_wrap_like_the_reference() {
+        for (stop, expected) in [
+            ("-1", u32::MAX),
+            ("-2", u32::MAX - 1),
+            ("4294967295", u32::MAX),
+            ("4294967296", 0),
+            ("4294967297", 1),
+        ] {
+            let scheme = format!("stop={stop}\n0=31-31");
+            assert_eq!(
+                PaddingFactory::new(scheme.as_bytes()).unwrap().stop(),
+                expected
+            );
+        }
+        for stop in [
+            "",
+            "-",
+            "1.5",
+            "9223372036854775808",
+            "-9223372036854775809",
+        ] {
+            assert!(PaddingFactory::new(format!("stop={stop}").as_bytes()).is_err());
+        }
     }
 }

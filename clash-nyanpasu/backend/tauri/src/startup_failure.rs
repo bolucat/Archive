@@ -11,12 +11,10 @@ use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
-use crate::{
-    core::{
-        corrupt,
-        migration::child_result::{Failure, FailureStage, RevisionFailure},
-    },
-    setup,
+use crate::setup;
+use nyanpasu_core::{
+    corrupt,
+    migration::child_result::{Failure, FailureStage, RevisionFailure},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +50,7 @@ pub(crate) struct Report {
 
 impl StartupFailure {
     pub(crate) fn from_setup(error: &setup::Error, paths: &PathResolver) -> Self {
-        use crate::client::SetupError;
+        use nyanpasu_core::client::SetupError;
         use setup::Error;
         let (kind, path) = match error {
             Error::PrepareMigrations { source } | Error::RunMigrations { source } => {
@@ -69,8 +67,8 @@ impl StartupFailure {
                 },
             ),
             Error::BuildCoreHost { source } => match source {
-                crate::core::actor_v2::local_host::Error::InspectConfig { path, .. }
-                | crate::core::actor_v2::local_host::Error::ReadCoreKind { path, .. } => {
+                nyanpasu_core::actor_v2::local_host::Error::InspectConfig { path, .. }
+                | nyanpasu_core::actor_v2::local_host::Error::ReadCoreKind { path, .. } => {
                     (FailureKind::UserConfig, Some(path.clone()))
                 }
                 _ => (
@@ -94,8 +92,8 @@ impl StartupFailure {
             Error::BuildClient { source } => match source {
                 SetupError::LoadApplication {
                     source:
-                        crate::client::application::Error::LoadState { path, .. }
-                        | crate::client::application::Error::InitializeState { path, .. },
+                        nyanpasu_core::client::application::Error::LoadState { path, .. }
+                        | nyanpasu_core::client::application::Error::InitializeState { path, .. },
                 } => (
                     FailureKind::UserConfig,
                     Some(path.clone().into_std_path_buf()),
@@ -109,7 +107,7 @@ impl StartupFailure {
                     Some(paths.clash_config_path().into_std_path_buf()),
                 ),
                 SetupError::LoadProfiles {
-                    source: crate::client::profiles::Error::PrepareMaterialization { .. },
+                    source: nyanpasu_core::client::profiles::Error::PrepareMaterialization { .. },
                 } => (
                     FailureKind::Directories,
                     Some(

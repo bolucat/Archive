@@ -2,6 +2,121 @@ use super::*;
 use crate::config::pem::convert_cert_paths;
 use crate::dns::IpStrategy;
 
+#[test]
+fn websocket_early_data_validation_reaches_clients_and_every_server_target() {
+    use crate::tcp::{
+        tcp_client_handler_factory::create_tcp_client_handler,
+        tcp_server_handler_factory::create_tcp_server_handler,
+    };
+    use serde_json::json;
+    use std::sync::Arc;
+
+    let resolver: Arc<dyn crate::resolver::Resolver> =
+        Arc::new(crate::resolver::NativeResolver::new());
+    let selector = Arc::new(crate::client_proxy_selector::ClientProxySelector::new(
+        vec![],
+    ));
+    for server in [false, true] {
+        for (options, expected) in [
+            (json!({}), None),
+            (json!({"max_early_data": 0}), None),
+            (
+                json!({"max_early_data": 32, "matching_path": "/ws", "matching_headers": {"Host": "example.test"}}),
+                None,
+            ),
+            (
+                json!({"max_early_data": 32, "early_data_header_name": "X-Early", "matching_headers": {"Host": "example.test"}}),
+                None,
+            ),
+            (
+                json!({"early_data_header_name": "X-Early"}),
+                Some("early_data_header_name requires max_early_data > 0"),
+            ),
+            (
+                json!({"max_early_data": 32}),
+                Some(if server {
+                    "WebSocket path early data requires matching_path"
+                } else {
+                    "WebSocket early data requires matching_headers.Host"
+                }),
+            ),
+            (
+                json!({"max_early_data": 4096, "matching_path": "/ws"}),
+                Some("WebSocket early data limit exceeds HTTP line budget"),
+            ),
+            (
+                json!({"max_early_data": 32, "early_data_header_name": "Host"}),
+                Some("reserved WebSocket early data header"),
+            ),
+            (
+                json!({"max_early_data": 32, "early_data_header_name": "X-Early", "matching_headers": {"x-EARLY": "YQ"}}),
+                Some("duplicate or conflicting WebSocket header"),
+            ),
+            (
+                json!({"max_early_data": 32, "early_data_header_name": "X-Early", "matching_headers": {"Host": "example.test", "Connection": "Upgrade"}}),
+                if server {
+                    None
+                } else {
+                    Some("matching_headers conflicts with WebSocket handshake")
+                },
+            ),
+        ] {
+            let mut protocol = options.clone();
+            protocol["protocol"] = if server {
+                json!({"type": "forward", "targets": "127.0.0.1:80"})
+            } else {
+                json!({"type": "portforward"})
+            };
+            let (config, factory_result) = if server {
+                let protocol = json!({"type": "ws", "targets": [
+                    {"matching_path": "/other", "protocol": {"type": "forward", "targets": "127.0.0.1:81"}},
+                    protocol
+                ]});
+                let handler = create_tcp_server_handler(
+                    serde_json::from_value(protocol.clone()).unwrap(),
+                    &selector,
+                    &resolver,
+                    None,
+                );
+                (
+                    json!([{"address": "0.0.0.0:1080", "protocol": protocol}]),
+                    handler.map(|_| ()),
+                )
+            } else {
+                protocol["type"] = "ws".into();
+                let handler = create_tcp_client_handler(
+                    serde_json::from_value(protocol.clone()).unwrap(),
+                    &crate::address::NetLocation::from_str("127.0.0.1:443", None).unwrap(),
+                    resolver.clone(),
+                );
+                (
+                    json!([{"address": "0.0.0.0:1080", "protocol": {"type": "socks"}, "rules": [{
+                        "masks": "0.0.0.0/0", "action": "allow", "client_chain": {
+                            "address": "127.0.0.1:443", "protocol": {"type": "tls", "verify": false, "protocol": protocol}
+                        }
+                    }]}]),
+                    handler.map(|_| ()),
+                )
+            };
+            let yaml = serde_yaml::to_string(&config).unwrap();
+            let validated = create_server_configs(serde_yaml::from_str(&yaml).unwrap()).map(|_| ());
+            for (stage, result) in [("preparation", validated), ("factory", factory_result)] {
+                if let Some(expected) = expected {
+                    assert_eq!(
+                        result.unwrap_err().to_string(),
+                        expected,
+                        "{stage}, server={server}, options={options}"
+                    );
+                } else {
+                    result.unwrap_or_else(|error| {
+                        panic!("{stage}, server={server}, options={options}: {error}")
+                    });
+                }
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn sudoku_mask_walkers_reach_certificates_rules_clients_and_fake_dns_targets() {
     use serde_json::json;
@@ -166,7 +281,7 @@ fn sudoku_mask_preserves_sni_and_existing_immediate_child_constraints() {
     let resolver = std::sync::Arc::new(crate::resolver::NativeResolver::new());
     crate::tcp::tcp_client_handler_factory::create_tcp_client_handler(
         reality,
-        Some("origin.example".into()),
+        &crate::address::NetLocation::from_str("origin.example:443", None).unwrap(),
         resolver,
     )
     .unwrap();
@@ -324,6 +439,41 @@ fn sudoku_mask_outer_prefix_preserves_tls_alpn_validation() {
             );
         }
     }
+}
+
+#[test]
+fn ffi_group_support_preserves_selectors_and_controller_error_precedence() {
+    use serde_json::json;
+
+    let validate = |config| {
+        create_server_configs(serde_json::from_value(config).unwrap())
+            .unwrap()
+            .validate_ffi_support()
+    };
+    validate(json!([{
+        "client_group": "manual", "type": "selector", "client_proxies": ["direct"]
+    }]))
+    .unwrap();
+    let automatic = json!({
+        "client_group": "auto", "type": "url-test",
+        "url": "http://192.0.2.2/", "client_proxies": ["direct"]
+    });
+    let error = validate(json!([automatic.clone()])).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(
+        error.to_string(),
+        "url-test groups require the process runtime and are not supported by FFI"
+    );
+    let error = validate(json!([
+        automatic,
+        {"clash_api_address": "127.0.0.1:0", "secret": "test"}
+    ]))
+    .unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+        error.to_string(),
+        "Clash controller and cache configuration are not supported by the FFI lifecycle"
+    );
 }
 
 #[test]
@@ -769,7 +919,7 @@ fn xhttp_split_capacity_uses_candidate_global_stream_limit() {
                     for entry in entries {
                         let configs = serde_json::from_value(json!([
                             entry,
-                            {"global_limits": {"max_streams_per_connection": stream_limit}}
+                            {"global_settings": {"max_streams_per_connection": stream_limit}}
                         ]))
                         .unwrap();
                         let result = create_server_configs(configs);
@@ -920,13 +1070,13 @@ async fn test_validate_config_success() {
     let configs = vec![
         Config::RuleConfigGroup(RuleConfigGroup {
             rule_group: "test-rules".to_string(),
-            rules: crate::config::RuleGroupRules::Policies(Box::new(OneOrSome::One(RuleConfig {
+            rules: OneOrSome::One(RuleConfig {
                 criteria: Default::default(),
                 action: RuleActionConfig::Allow {
                     override_address: None,
                     client_chains: NoneOrSome::One(ClientChain::default()),
                 },
-            }))),
+            }),
         }),
         Config::ClientConfigGroup(ClientConfigGroup {
             group_type: Default::default(),

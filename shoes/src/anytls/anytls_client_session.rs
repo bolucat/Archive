@@ -4,19 +4,19 @@
 //! Creates multiplexed streams over a single TLS connection.
 
 use aws_lc_rs::digest::{SHA256, digest};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use crate::address::NetLocation;
-use crate::anytls::anytls_padding::PaddingFactory;
-use crate::anytls::anytls_stream::{AnyTlsStream, STREAM_CHANNEL_BUFFER};
+use crate::anytls::anytls_padding::{PaddingFactory, SharedPadding, append_padding};
+use crate::anytls::anytls_stream::{AnyTlsStream, STREAM_CHANNEL_BUFFER, StreamLifecycle};
 use crate::anytls::anytls_types::{Command, FRAME_HEADER_SIZE, Frame, FrameCodec, StringMap};
 use crate::async_stream::AsyncStream;
 use crate::socks_handler::write_location_to_vec;
@@ -60,9 +60,14 @@ pub struct AnyTlsClientSession {
     tasks: Vec<tokio::task::AbortHandle>,
 }
 
+struct StreamEntry {
+    sender: mpsc::Sender<Bytes>,
+    lifecycle: Arc<StreamLifecycle>,
+}
+
 struct ClientSessionState {
     /// Stream management
-    streams: Mutex<HashMap<u32, mpsc::Sender<Bytes>>>,
+    streams: Mutex<HashMap<u32, StreamEntry>>,
     stream_id_counter: AtomicU32,
 
     /// Unified channel for all outgoing messages (control frames and data)
@@ -73,13 +78,13 @@ struct ClientSessionState {
     is_closed: Arc<AtomicBool>,
 
     /// Padding configuration
-    padding: Arc<PaddingFactory>,
+    padding: SharedPadding,
 
     /// Protocol version negotiation
     peer_version: AtomicU8,
 
-    /// Pending stream opens (stream_id -> completion sender)
-    pending_opens: Mutex<HashMap<u32, oneshot::Sender<Result<(), String>>>>,
+    open_deadline: Mutex<Option<tokio::time::Instant>>,
+    deadline_changed: Notify,
 
     /// Padding state (client only) - true until stop packets sent
     send_padding: AtomicBool,
@@ -98,25 +103,15 @@ struct ClientSessionState {
 
 struct StreamRegistration {
     state: Arc<ClientSessionState>,
-    stream_id: u32,
     armed: bool,
 }
 
 impl Drop for StreamRegistration {
     fn drop(&mut self) {
         if self.armed {
-            self.state.streams.lock().remove(&self.stream_id);
-            self.state.pending_opens.lock().remove(&self.stream_id);
-            if self
-                .state
-                .outgoing_tx
-                .try_send(OutgoingMessage::Fin {
-                    stream_id: self.stream_id,
-                })
-                .is_err()
-            {
-                self.state.close();
-            }
+            // Settings or SYN may already be consumed/queued. Never recycle a
+            // transport whose cancelled open has an ambiguous wire boundary.
+            self.state.close();
         }
     }
 }
@@ -146,7 +141,7 @@ impl AnyTlsClientSession {
     pub async fn new(
         transport: Box<dyn AsyncStream>,
         password: &str,
-        padding: Arc<PaddingFactory>,
+        padding: SharedPadding,
     ) -> io::Result<Arc<Self>> {
         let (state, tasks) = ClientSessionState::new(transport, password, padding).await?;
         Ok(Arc::new(Self { state, tasks }))
@@ -161,7 +156,11 @@ impl AnyTlsClientSession {
 
     pub(super) fn remove_stream(&self, stream_id: u32) {
         self.state.streams.lock().remove(&stream_id);
-        self.state.pending_opens.lock().remove(&stream_id);
+    }
+
+    pub(super) fn is_reusable(&self) -> bool {
+        !self.state.is_closed.load(Ordering::Relaxed)
+            && self.state.stream_id_counter.load(Ordering::Relaxed) < u32::MAX
     }
 
     pub(super) fn close(&self) {
@@ -174,7 +173,7 @@ impl ClientSessionState {
         self.is_closed.store(true, Ordering::Relaxed);
         self.close_notify.cancel();
         self.streams.lock().clear();
-        self.pending_opens.lock().clear();
+        *self.open_deadline.lock() = None;
     }
 
     /// Create a new client session on the given transport.
@@ -192,21 +191,22 @@ impl ClientSessionState {
     pub async fn new(
         mut transport: Box<dyn AsyncStream>,
         password: &str,
-        padding: Arc<PaddingFactory>,
+        padding: SharedPadding,
     ) -> io::Result<(Arc<Self>, Vec<tokio::task::AbortHandle>)> {
         let hash_result = digest(&SHA256, password.as_bytes());
         let mut password_hash = [0u8; 32];
         password_hash.copy_from_slice(hash_result.as_ref());
 
         // Send authentication (this is packet 0, sent separately)
-        Self::send_auth(&mut transport, &password_hash, &padding).await?;
+        let initial_padding = padding.read().clone();
+        Self::send_auth(&mut transport, &password_hash, &initial_padding).await?;
 
         // Create unified channel for all outgoing messages
         let (outgoing_tx, outgoing_rx) = mpsc::channel(STREAM_CHANNEL_BUFFER);
 
         // Pre-encode Settings frame into initial buffer
         // This will be sent together with first SYN + destination as one TLS record
-        let initial_buffer = Self::create_initial_buffer(&padding);
+        let initial_buffer = Self::create_initial_buffer(&initial_padding);
 
         let session = Arc::new(Self {
             streams: Mutex::new(HashMap::new()),
@@ -215,7 +215,8 @@ impl ClientSessionState {
             is_closed: Arc::new(AtomicBool::new(false)),
             padding: Arc::clone(&padding),
             peer_version: AtomicU8::new(1), // Assume v1 until server confirms v2
-            pending_opens: Mutex::new(HashMap::new()),
+            open_deadline: Mutex::new(None),
+            deadline_changed: Notify::new(),
             send_padding: AtomicBool::new(true),
             pkt_counter: AtomicU32::new(0), // Start at 0, incremented before use
             initial_buffer: std::sync::Mutex::new(Some(initial_buffer)),
@@ -244,7 +245,9 @@ impl ClientSessionState {
 
         // Allocate buffer with room for Settings + SYN + typical destination
         let mut buffer = BytesMut::with_capacity(256);
-        settings_frame.encode_into(&mut buffer);
+        settings_frame
+            .encode_into(&mut buffer)
+            .expect("fixed settings fit a control frame");
         buffer
     }
 
@@ -254,9 +257,13 @@ impl ClientSessionState {
         password_hash: &[u8; 32],
         padding: &PaddingFactory,
     ) -> io::Result<()> {
-        // Calculate padding for packet 0
+        // Authentication has one u16 length, unlike framed padding which can span records.
         let padding_sizes = padding.generate_record_payload_sizes(0);
-        let padding_len = padding_sizes.first().copied().unwrap_or(0).max(0) as u16;
+        let padding_len = padding_sizes
+            .first()
+            .copied()
+            .unwrap_or(0)
+            .clamp(0, u16::MAX as i32) as u16;
 
         // Build auth frame: SHA256(password) + padding_len(u16) + padding
         let mut auth_frame = Vec::with_capacity(34 + padding_len as usize);
@@ -322,6 +329,7 @@ impl ClientSessionState {
             }
             writer_state.close();
         });
+        let watchdog_task = tokio::spawn(Self::watchdog_loop(Arc::clone(&session)));
         let reader_task = tokio::spawn(async move {
             tokio::select! {
                 result = Self::reader_loop(
@@ -335,7 +343,41 @@ impl ClientSessionState {
             }
             session.close();
         });
-        vec![writer_task.abort_handle(), reader_task.abort_handle()]
+        vec![
+            writer_task.abort_handle(),
+            reader_task.abort_handle(),
+            watchdog_task.abort_handle(),
+        ]
+    }
+
+    async fn watchdog_loop(session: Arc<Self>) {
+        loop {
+            let changed = session.deadline_changed.notified();
+            let deadline = *session.open_deadline.lock();
+            tokio::select! {
+                _ = session.close_notify.cancelled() => return,
+                _ = changed => {},
+                _ = async {
+                    match deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    let expired = {
+                        let deadline = session.open_deadline.lock();
+                        let expired = deadline.is_some_and(|deadline| deadline <= tokio::time::Instant::now());
+                        if expired {
+                            session.is_closed.store(true, Ordering::Relaxed);
+                        }
+                        expired
+                    };
+                    if expired {
+                        session.close();
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     /// Writer loop - sends frames to the transport with padding
@@ -417,7 +459,17 @@ impl ClientSessionState {
                     stream_id,
                     data,
                 } => {
-                    Frame::with_data(cmd, stream_id, data).encode_into(&mut write_buf);
+                    // Do not charge the previous lease's queued writes against
+                    // the new stream's peer-response watchdog.
+                    if cmd == Command::Syn
+                        && stream_id >= 2
+                        && session.peer_version.load(Ordering::Relaxed) >= 2
+                    {
+                        *session.open_deadline.lock() =
+                            Some(tokio::time::Instant::now() + std::time::Duration::from_secs(3));
+                        session.deadline_changed.notify_one();
+                    }
+                    Frame::with_data(cmd, stream_id, data).encode_into(&mut write_buf)?;
                     log::debug!(
                         "AnyTLS client writer: control frame {} bytes",
                         write_buf.len()
@@ -429,7 +481,7 @@ impl ClientSessionState {
                 }
                 OutgoingMessage::Data { stream_id, data } => {
                     let padding_active = session.send_padding.load(Ordering::Relaxed);
-                    Frame::data(stream_id, data).encode_into(&mut write_buf);
+                    Frame::data(stream_id, data).encode_into(&mut write_buf)?;
                     log::debug!(
                         "AnyTLS client writer: stream {} data {} bytes",
                         stream_id,
@@ -448,7 +500,7 @@ impl ClientSessionState {
                     }
                 }
                 OutgoingMessage::Fin { stream_id } => {
-                    Frame::control(Command::Fin, stream_id).encode_into(&mut write_buf);
+                    Frame::control(Command::Fin, stream_id).encode_into(&mut write_buf)?;
                     log::debug!("AnyTLS client writer: stream {} FIN", stream_id);
                     Self::write_with_padding(&session, &mut writer, &write_buf, &mut padding_buf)
                         .await?;
@@ -485,89 +537,55 @@ impl ClientSessionState {
         use crate::anytls::anytls_padding::CHECK_MARK;
 
         if !session.send_padding.load(Ordering::Relaxed) {
-            // Padding disabled, write directly
             return writer.write_all(data).await;
         }
 
-        // Increment packet counter and check if we should still pad
         let pkt = session.pkt_counter.fetch_add(1, Ordering::Relaxed) + 1;
-        let stop = session.padding.stop();
+        let padding = session.padding.read().clone();
 
-        if pkt >= stop {
+        if pkt >= padding.stop() {
             session.send_padding.store(false, Ordering::Relaxed);
             return writer.write_all(data).await;
         }
 
-        // Get padding sizes for this packet
-        let pkt_sizes = session.padding.generate_record_payload_sizes(pkt);
-        if pkt_sizes.is_empty() {
-            return writer.write_all(data).await;
-        }
-
+        let pkt_sizes = padding.generate_record_payload_sizes(pkt);
         let mut remaining = data;
 
         for size in pkt_sizes {
             if size == CHECK_MARK {
-                // Check mark: stop if no more payload
                 if remaining.is_empty() {
                     break;
                 }
                 continue;
             }
 
-            let l = size as usize;
-            let remain_len = remaining.len();
+            let size = size as usize;
+            let payload_len = remaining.len();
 
-            if remain_len > l {
-                // This segment is all payload, no padding needed
-                writer.write_all(&remaining[..l]).await?;
-                remaining = &remaining[l..];
-            } else if remain_len > 0 {
-                // This segment contains payload + padding
-                // We need to combine them into single write for correct TLS record
-                let padding_len = l.saturating_sub(remain_len + FRAME_HEADER_SIZE);
-                if padding_len > 0 {
-                    // Combine payload + WASTE frame into single buffer
+            if payload_len > size {
+                writer.write_all(&remaining[..size]).await?;
+                remaining = &remaining[size..];
+            } else if payload_len > 0 {
+                let padding_budget = size - payload_len;
+                if padding_budget > FRAME_HEADER_SIZE {
+                    // Payload and padding share one write to preserve TLS record boundaries.
                     padding_buf.clear();
-                    padding_buf.reserve(remain_len + FRAME_HEADER_SIZE + padding_len);
-
-                    // Add payload
+                    padding_buf.reserve(size);
                     padding_buf.extend_from_slice(remaining);
-
-                    // Add WASTE frame header (7 bytes) - NO Vec ALLOCATION
-                    padding_buf.put_u8(Command::Waste as u8);
-                    padding_buf.put_u32(0); // stream_id = 0 for padding
-                    padding_buf.put_u16(padding_len as u16);
-
-                    // Add padding zeros - put_bytes does NOT allocate Vec!
-                    padding_buf.put_bytes(0, padding_len);
-
-                    // Single write for payload + padding (one TLS record)
+                    append_padding(padding_buf, padding_budget, true);
                     writer.write_all(padding_buf).await?;
                 } else {
-                    // Padding would be negative/zero, just write payload
                     writer.write_all(remaining).await?;
                 }
                 remaining = &[];
             } else {
-                // This segment is pure padding (no payload left)
-                // Build WASTE frame directly in padding_buf - NO Vec ALLOCATION
                 padding_buf.clear();
-                padding_buf.reserve(FRAME_HEADER_SIZE + l);
-
-                // WASTE frame header
-                padding_buf.put_u8(Command::Waste as u8);
-                padding_buf.put_u32(0); // stream_id = 0
-                padding_buf.put_u16(l as u16);
-
-                // Padding zeros - put_bytes does NOT allocate Vec!
-                padding_buf.put_bytes(0, l);
-
+                padding_buf.reserve(FRAME_HEADER_SIZE + size);
+                append_padding(padding_buf, size, false);
                 writer.write_all(padding_buf).await?;
             }
         }
 
-        // Write any remaining payload after padding scheme exhausted
         if !remaining.is_empty() {
             writer.write_all(remaining).await?;
         }
@@ -586,6 +604,7 @@ impl ClientSessionState {
     {
         log::debug!("AnyTLS client reader loop started");
         let mut buffer = BytesMut::with_capacity(8192);
+        let mut header_received = false;
 
         loop {
             // Scope for the strong reference to session
@@ -604,7 +623,17 @@ impl ClientSessionState {
                 }
 
                 // Decode any frames already in buffer
-                while let Some(frame) = FrameCodec::decode(&mut buffer)? {
+                while buffer.len() >= FRAME_HEADER_SIZE {
+                    if !header_received {
+                        // A header proves liveness even if its payload arrives slowly.
+                        // Count it only once: a later lease may re-arm during the payload.
+                        *session.open_deadline.lock() = None;
+                        header_received = true;
+                    }
+                    let Some(frame) = FrameCodec::decode(&mut buffer)? else {
+                        break;
+                    };
+                    header_received = false;
                     log::debug!(
                         "AnyTLS client received frame: {:?} stream={} len={}",
                         frame.cmd,
@@ -661,7 +690,9 @@ impl ClientSessionState {
 
                 let tx = {
                     let streams = self.streams.lock();
-                    streams.get(&frame.stream_id).cloned()
+                    streams
+                        .get(&frame.stream_id)
+                        .map(|entry| entry.sender.clone())
                 };
 
                 if let Some(tx) = tx {
@@ -675,26 +706,34 @@ impl ClientSessionState {
 
             Command::Fin => {
                 // Stream closed by server
-                let tx = {
+                let entry = {
                     let mut streams = self.streams.lock();
                     streams.remove(&frame.stream_id)
                 };
 
-                // Signal EOF
-                if let Some(tx) = tx {
-                    let _ = tx.send(Bytes::new()).await;
+                // Dropping the sender preserves queued data without blocking
+                // the session reader on an EOF sentinel in a full channel.
+                if let Some(entry) = entry {
+                    entry.lifecycle.finish(None);
                 }
             }
 
             Command::SynAck => {
-                // Stream open acknowledged (v2)
-                let mut pending = self.pending_opens.lock();
-                if let Some(sender) = pending.remove(&frame.stream_id) {
-                    if frame.data.is_empty() {
-                        let _ = sender.send(Ok(()));
-                    } else {
-                        let error = String::from_utf8_lossy(&frame.data).to_string();
-                        let _ = sender.send(Err(error));
+                if !frame.data.is_empty() {
+                    let entry = self.streams.lock().remove(&frame.stream_id);
+                    if let Some(entry) = entry {
+                        if self
+                            .outgoing_tx
+                            .try_send(OutgoingMessage::Fin {
+                                stream_id: frame.stream_id,
+                            })
+                            .is_err()
+                        {
+                            self.close();
+                        }
+                        entry
+                            .lifecycle
+                            .finish(Some(String::from_utf8_lossy(&frame.data).into_owned()));
                     }
                 }
             }
@@ -708,28 +747,10 @@ impl ClientSessionState {
                 }
             }
 
-            Command::UpdatePaddingScheme => {
-                // Server sent new padding scheme for censorship resistance.
-                // Per protocol: "subsequent new sessions must use the server's padding scheme"
-                //
-                // TODO: Implement UpdatePaddingScheme support:
-                // 1. Change AnyTlsClientHandler.padding from Arc<PaddingFactory> to
-                //    Arc<arc_swap::ArcSwap<PaddingFactory>> (or similar atomic wrapper)
-                // 2. Pass a reference to that atomic into AnyTlsClientSession
-                // 3. Here, parse frame.data as raw padding scheme bytes and call:
-                //    if let Ok(new_factory) = PaddingFactory::new(&frame.data) {
-                //        shared_padding.store(Arc::new(new_factory));
-                //        log::info!("AnyTLS padding scheme updated: {}", new_factory.md5());
-                //    }
-                // 4. New sessions created by the handler will automatically use the updated scheme
-                //
-                // Reference: anytls-go/proxy/session/session.go:319-332
-                // Reference: sing-anytls/session/session.go:314-327
-                log::debug!(
-                    "AnyTLS received padding scheme update ({} bytes) - not yet implemented",
-                    frame.data.len()
-                );
-            }
+            Command::UpdatePaddingScheme => match PaddingFactory::new(&frame.data) {
+                Ok(padding) => *self.padding.write() = Arc::new(padding),
+                Err(error) => log::debug!("Ignoring invalid AnyTLS padding update: {error}"),
+            },
 
             Command::Alert => {
                 // Server alert - fatal
@@ -779,6 +800,7 @@ impl ClientSessionState {
         destination: NetLocation,
         owner: Arc<AnyTlsClientSession>,
     ) -> io::Result<AnyTlsStream> {
+        validate_destination(&destination)?;
         if self.is_closed.load(Ordering::Relaxed) {
             return Err(io::Error::new(
                 io::ErrorKind::NotConnected,
@@ -799,6 +821,7 @@ impl ClientSessionState {
 
         // Create stream channels
         let (data_tx, data_rx) = mpsc::channel(STREAM_CHANNEL_BUFFER);
+        let lifecycle = Arc::new(StreamLifecycle::client(self.outgoing_tx.clone()));
 
         // Register stream
         {
@@ -806,26 +829,21 @@ impl ClientSessionState {
             if self.is_closed.load(Ordering::Relaxed) {
                 return Err(io::ErrorKind::NotConnected.into());
             }
-            streams.insert(stream_id, data_tx);
+            streams.insert(
+                stream_id,
+                StreamEntry {
+                    sender: data_tx,
+                    lifecycle: lifecycle.clone(),
+                },
+            );
         }
         let mut registration = StreamRegistration {
             state: Arc::clone(self),
-            stream_id,
             armed: true,
         };
 
-        // Set up SYNACK receiver if v2
-        let synack_rx = if self.peer_version.load(Ordering::Relaxed) >= 2 {
-            let (tx, rx) = oneshot::channel();
-            let mut pending = self.pending_opens.lock();
-            pending.insert(stream_id, tx);
-            Some(rx)
-        } else {
-            None
-        };
-
         // Encode destination address
-        let dest_data = write_location_to_vec(&destination);
+        let dest_data = write_location_to_vec(&destination)?;
 
         // Try to take the initial buffer (only first stream gets it)
         // If present, we send Settings + SYN + destination as single message
@@ -834,8 +852,8 @@ impl ClientSessionState {
             if let Some(ref mut buf) = *buf_guard {
                 // First stream - add SYN and destination to buffer
                 // This creates: [Settings frame][SYN frame][PSH frame with destination]
-                Frame::control(Command::Syn, stream_id).encode_into(buf);
-                Frame::data(stream_id, Bytes::from(dest_data.clone())).encode_into(buf);
+                Frame::control(Command::Syn, stream_id).encode_into(buf)?;
+                Frame::data(stream_id, Bytes::from(dest_data.clone())).encode_into(buf)?;
 
                 // Take the buffer (subsequent streams won't have it)
                 buf_guard.take().map(|b| b.freeze())
@@ -861,58 +879,31 @@ impl ClientSessionState {
                 .await?;
         }
 
-        // Wait for SYNACK if v2
-        if let Some(synack_rx) = synack_rx {
-            // 3-second timeout matches Go implementation's deadline watcher
-            match tokio::time::timeout(std::time::Duration::from_secs(3), synack_rx).await {
-                Ok(Ok(Ok(()))) => {
-                    log::debug!("AnyTLS stream {} opened", stream_id);
-                }
-                Ok(Ok(Err(error))) => {
-                    // Remove stream on error
-                    let mut streams = self.streams.lock();
-                    streams.remove(&stream_id);
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        format!("Stream open failed: {}", error),
-                    ));
-                }
-                Ok(Err(_)) => {
-                    // Sender dropped
-                    let mut streams = self.streams.lock();
-                    streams.remove(&stream_id);
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionAborted,
-                        "Stream open cancelled",
-                    ));
-                }
-                Err(_) => {
-                    // Timeout - remove from pending and streams
-                    {
-                        let mut pending = self.pending_opens.lock();
-                        pending.remove(&stream_id);
-                    }
-                    let mut streams = self.streams.lock();
-                    streams.remove(&stream_id);
-                    return Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "Stream open timeout",
-                    ));
-                }
-            }
-        }
-
         let stream = AnyTlsStream::with_keepalive(
             stream_id,
             data_rx,
-            self.outgoing_tx.clone(),
             Arc::clone(&self.is_closed),
             owner,
+            lifecycle,
         );
         registration.armed = false;
 
         Ok(stream)
     }
+}
+
+pub(super) fn validate_destination(destination: &NetLocation) -> io::Result<()> {
+    if destination
+        .address()
+        .hostname()
+        .is_some_and(|host| host.len() > 255)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "AnyTLS destination hostname exceeds 255 bytes",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -925,6 +916,7 @@ mod tests {
 
     #[derive(Default)]
     struct WriteLog {
+        writes: Vec<Vec<u8>>,
         pending: Vec<u8>,
         flushed: Vec<Vec<u8>>,
     }
@@ -937,7 +929,9 @@ mod tests {
             _: &mut Context<'_>,
             data: &[u8],
         ) -> Poll<io::Result<usize>> {
-            self.0.lock().pending.extend_from_slice(data);
+            let mut log = self.0.lock();
+            log.writes.push(data.to_vec());
+            log.pending.extend_from_slice(data);
             Poll::Ready(Ok(data.len()))
         }
         fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -958,15 +952,305 @@ mod tests {
             stream_id_counter: AtomicU32::new(1),
             outgoing_tx,
             is_closed: Arc::new(AtomicBool::new(false)),
-            padding: Arc::new(PaddingFactory::new(b"stop=1\n0=0-0").unwrap()),
+            padding: Arc::new(parking_lot::RwLock::new(Arc::new(
+                PaddingFactory::new(b"stop=1\n0=0-0").unwrap(),
+            ))),
             peer_version: AtomicU8::new(1),
-            pending_opens: Mutex::new(HashMap::new()),
+            open_deadline: Mutex::new(None),
+            deadline_changed: Notify::new(),
             send_padding: AtomicBool::new(false),
             pkt_counter: AtomicU32::new(0),
             initial_buffer: std::sync::Mutex::new(None),
             close_notify: CancellationToken::new(),
         });
         (state, rx)
+    }
+
+    #[tokio::test]
+    async fn padding_segments_preserve_write_boundaries_without_flushing() {
+        for case in crate::anytls::anytls_padding::padding_write_cases() {
+            let (state, _rx) = writer_state();
+            *state.padding.write() = Arc::new(
+                PaddingFactory::new(format!("stop=8\n1={}", case.sizes).as_bytes()).unwrap(),
+            );
+            state.send_padding.store(true, Ordering::Relaxed);
+            let log = Arc::new(Mutex::new(WriteLog::default()));
+            ClientSessionState::write_with_padding(
+                &state,
+                &mut RecordingWriter(log.clone()),
+                &case.payload,
+                &mut BytesMut::new(),
+            )
+            .await
+            .unwrap();
+            let log = log.lock();
+            assert_eq!(log.writes, case.writes, "sizes={}", case.sizes);
+            assert!(log.flushed.is_empty());
+            assert_eq!(state.pkt_counter.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn padding_updates_propagate_without_resetting_sessions() {
+        use tokio::io::AsyncReadExt;
+        let (state, _rx) = writer_state();
+        let (unrelated, _other_rx) = writer_state();
+        state.send_padding.store(true, Ordering::Relaxed);
+        state.pkt_counter.store(4, Ordering::Relaxed);
+        let scheme = b"stop=10\n0=9-9\n5=1048576-1048576\n6=128-128";
+        state
+            .handle_frame(Frame::with_data(
+                Command::UpdatePaddingScheme,
+                0,
+                Bytes::from_static(scheme),
+            ))
+            .await
+            .unwrap();
+        let expected = PaddingFactory::new(scheme).unwrap();
+        assert_eq!(state.padding.read().md5(), expected.md5());
+        assert_ne!(unrelated.padding.read().md5(), expected.md5());
+        assert_eq!(state.pkt_counter.load(Ordering::Relaxed), 4);
+        state
+            .handle_frame(Frame::with_data(
+                Command::UpdatePaddingScheme,
+                0,
+                Bytes::from_static(b"stop=invalid"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(state.padding.read().md5(), expected.md5());
+
+        let log = Arc::new(Mutex::new(WriteLog::default()));
+        let mut writer = RecordingWriter(log.clone());
+        let payload = Frame::data(1, Bytes::from_static(b"payload")).encode();
+        ClientSessionState::write_with_padding(&state, &mut writer, &payload, &mut BytesMut::new())
+            .await
+            .unwrap();
+        let mut wire = BytesMut::from(log.lock().pending.as_slice());
+        assert_eq!(wire.len(), 1 << 20);
+        assert_eq!(
+            FrameCodec::decode(&mut wire).unwrap().unwrap().data,
+            b"payload"[..]
+        );
+        let mut frames = 0;
+        while let Some(frame) = FrameCodec::decode(&mut wire).unwrap() {
+            assert_eq!(frame.cmd, Command::Waste);
+            frames += 1;
+        }
+        assert!(wire.is_empty());
+        assert!(frames > 1);
+
+        let (transport, mut peer) = tokio::io::duplex(1024);
+        let session = AnyTlsClientSession::new(Box::new(transport), "test", state.padding.clone())
+            .await
+            .unwrap();
+        let mut auth = [0; 43];
+        peer.read_exact(&mut auth).await.unwrap();
+        assert_eq!(&auth[32..34], &[0, 9]);
+        let mut settings = session
+            .state
+            .initial_buffer
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap();
+        let settings = FrameCodec::decode(&mut settings).unwrap().unwrap();
+        assert_eq!(
+            StringMap::from_bytes(&settings.data)
+                .get("padding-md5")
+                .unwrap(),
+            expected.md5()
+        );
+        drop(session);
+
+        state.send_padding.store(false, Ordering::Relaxed);
+        state
+            .handle_frame(Frame::with_data(
+                Command::UpdatePaddingScheme,
+                0,
+                Bytes::from_static(b"stop=100\n6=256-256"),
+            ))
+            .await
+            .unwrap();
+        log.lock().pending.clear();
+        ClientSessionState::write_with_padding(&state, &mut writer, &payload, &mut BytesMut::new())
+            .await
+            .unwrap();
+        assert_eq!(log.lock().pending, payload);
+        assert_eq!(state.pkt_counter.load(Ordering::Relaxed), 5);
+    }
+
+    #[tokio::test]
+    async fn authentication_padding_length_matches_its_clamped_body() {
+        use tokio::io::AsyncReadExt;
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let (transport, mut peer) = tokio::io::duplex(31);
+            let task = tokio::spawn(async move {
+                let mut transport: Box<dyn AsyncStream> = Box::new(transport);
+                let padding = PaddingFactory::new(b"stop=8\n0=1048576-1048576").unwrap();
+                ClientSessionState::send_auth(&mut transport, &[42; 32], &padding)
+                    .await
+                    .unwrap();
+            });
+            let mut bytes = Vec::new();
+            peer.read_to_end(&mut bytes).await.unwrap();
+            task.await.unwrap();
+            assert_eq!(&bytes[..32], &[42; 32]);
+            assert_eq!(&bytes[32..34], &[255, 255]);
+            assert_eq!(bytes.len(), 34 + 65535);
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn split_waste_respects_payload_record_wire_budget() {
+        let payload = Frame::data(1, Bytes::from_static(b"payload")).encode();
+        let frame_limit = u16::MAX as usize + FRAME_HEADER_SIZE;
+        for budget in [
+            8,
+            frame_limit,
+            frame_limit + 7,
+            frame_limit + 8,
+            70000,
+            (1 << 20) - payload.len(),
+        ] {
+            let size = payload.len() + budget;
+            let (state, _rx) = writer_state();
+            *state.padding.write() = Arc::new(
+                PaddingFactory::new(format!("stop=2\n1={size}-{size}").as_bytes()).unwrap(),
+            );
+            state.send_padding.store(true, Ordering::Relaxed);
+            let log = Arc::new(Mutex::new(WriteLog::default()));
+            ClientSessionState::write_with_padding(
+                &state,
+                &mut RecordingWriter(log.clone()),
+                &payload,
+                &mut BytesMut::new(),
+            )
+            .await
+            .unwrap();
+            let mut bytes = BytesMut::from(log.lock().pending.as_slice());
+            let remainder = budget % frame_limit;
+            let unused = if remainder <= FRAME_HEADER_SIZE {
+                remainder
+            } else {
+                0
+            };
+            assert_eq!(bytes.len(), size - unused, "budget={budget}");
+            assert_eq!(
+                FrameCodec::decode(&mut bytes).unwrap().unwrap().cmd,
+                Command::Psh
+            );
+            while !bytes.is_empty() {
+                let waste = FrameCodec::decode(&mut bytes)
+                    .unwrap()
+                    .expect("complete WASTE frame");
+                assert_eq!(waste.cmd, Command::Waste);
+                assert!(waste.data.iter().all(|byte| *byte == 0));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn watchdog_arms_only_for_version_two_warm_syns() {
+        for (version, id, command, armed) in [
+            (1, 2, Command::Syn, false),
+            (2, 1, Command::Syn, false),
+            (2, 2, Command::Syn, true),
+            (2, 2, Command::HeartRequest, false),
+        ] {
+            let (state, rx) = writer_state();
+            state.peer_version.store(version, Ordering::Relaxed);
+            state
+                .outgoing_tx
+                .try_send(OutgoingMessage::Control {
+                    cmd: command,
+                    stream_id: id,
+                    data: Bytes::new(),
+                })
+                .unwrap();
+            let log = Arc::new(Mutex::new(WriteLog::default()));
+            let mut writer = Box::pin(ClientSessionState::writer_loop(
+                Arc::downgrade(&state),
+                RecordingWriter(log.clone()),
+                rx,
+                state.close_notify.clone(),
+            ));
+            assert!(
+                writer
+                    .as_mut()
+                    .poll(&mut Context::from_waker(std::task::Waker::noop()))
+                    .is_pending()
+            );
+            assert_eq!(log.lock().flushed.len(), 1);
+            assert_eq!(
+                state.open_deadline.lock().is_some(),
+                armed,
+                "v{version} stream {id} {command:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pure_padding_splits_at_the_frame_payload_limit() {
+        let payload = Frame::data(1, Bytes::from_static(b"payload")).encode();
+        let size = payload.len();
+        let (state, _rx) = writer_state();
+        *state.padding.write() = Arc::new(
+            PaddingFactory::new(format!("stop=2\n1={size}-{size},70000-70000").as_bytes()).unwrap(),
+        );
+        state.send_padding.store(true, Ordering::Relaxed);
+        let log = Arc::new(Mutex::new(WriteLog::default()));
+        ClientSessionState::write_with_padding(
+            &state,
+            &mut RecordingWriter(log.clone()),
+            &payload,
+            &mut BytesMut::new(),
+        )
+        .await
+        .unwrap();
+        let mut bytes = BytesMut::from(log.lock().pending.as_slice());
+        assert_eq!(bytes.len(), payload.len() + 70000 + 2 * FRAME_HEADER_SIZE);
+        let data = FrameCodec::decode(&mut bytes).unwrap().unwrap();
+        assert_eq!(
+            (data.cmd, data.data.as_ref()),
+            (Command::Psh, &b"payload"[..])
+        );
+        for size in [65535, 4465] {
+            let waste = FrameCodec::decode(&mut bytes).unwrap().unwrap();
+            assert_eq!((waste.cmd, waste.stream_id), (Command::Waste, 0));
+            assert_eq!(waste.data.len(), size);
+            assert!(waste.data.iter().all(|byte| *byte == 0));
+        }
+        assert!(bytes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn authentication_padding_is_clamped_to_its_wire_length() {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let (io, mut peer) = tokio::io::duplex(4096);
+            let mut transport: Box<dyn AsyncStream> = Box::new(io);
+            let padding = PaddingFactory::new(b"stop=2\n0=1048576-1048576").unwrap();
+            let sending = async {
+                ClientSessionState::send_auth(&mut transport, &[42; 32], &padding)
+                    .await
+                    .unwrap();
+                transport.shutdown().await.unwrap();
+            };
+            let receiving = async {
+                let mut auth = Vec::new();
+                peer.read_to_end(&mut auth).await.unwrap();
+                assert_eq!(&auth[..32], &[42; 32]);
+                let length = u16::from_be_bytes([auth[32], auth[33]]);
+                assert_eq!(length, u16::MAX);
+                assert_eq!(auth.len(), 34 + usize::from(length));
+                assert!(auth[34..].iter().all(|byte| *byte == 0));
+            };
+            tokio::join!(sending, receiving);
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -999,6 +1283,7 @@ mod tests {
                 state.close_notify.clone(),
             ));
             // A quota can yield before the barrier; repeated polls must eventually reach it.
+            let mut acknowledged = false;
             for _ in 0..4 {
                 assert!(
                     writer
@@ -1007,9 +1292,11 @@ mod tests {
                         .is_pending()
                 );
                 if barrier.try_recv().is_ok() {
+                    acknowledged = true;
                     break;
                 }
             }
+            assert!(acknowledged, "flush barrier was not acknowledged");
             let log = log.lock();
             assert!(log.pending.is_empty());
             assert_eq!(log.flushed.len(), expected_flushes);
@@ -1059,8 +1346,8 @@ mod tests {
         use tokio::io::AsyncReadExt;
 
         tokio::time::timeout(Duration::from_secs(5), async {
-            let (mut state, rx) = writer_state();
-            Arc::get_mut(&mut state).unwrap().padding =
+            let (state, rx) = writer_state();
+            *state.padding.write() =
                 Arc::new(PaddingFactory::new(b"stop=3\n0=0-0\n1=128-128\n2=128-128").unwrap());
             state.send_padding.store(true, Ordering::Relaxed);
             for index in 0..5 {
@@ -1126,7 +1413,7 @@ mod tests {
         let session = AnyTlsClientSession::new(
             Box::new(transport),
             "test",
-            PaddingFactory::default_factory(),
+            Arc::new(parking_lot::RwLock::new(PaddingFactory::default_factory())),
         )
         .await
         .unwrap();
@@ -1182,25 +1469,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelled_stream_open_releases_registration() {
-        let (session, stream, _peer) = open().await;
-        session.state.peer_version.store(2, Ordering::Relaxed);
+    async fn local_completion_removes_registration_without_closing_the_session() {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let (session, mut stream, mut peer) = open().await;
+            let exercise = async {
+                assert_eq!(session.state.streams.lock().len(), 1);
+                stream.shutdown().await.unwrap();
+                assert!(session.state.streams.lock().is_empty());
+                let next = session
+                    .open_stream(NetLocation::from_str("127.0.0.1:12345", None).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(session.state.streams.lock().len(), 1);
+                drop(next);
+                assert!(session.state.streams.lock().is_empty());
+                assert!(!session.state.is_closed.load(Ordering::Relaxed));
+                session.close();
+            };
+            let drain = async {
+                tokio::io::copy(&mut peer, &mut tokio::io::sink())
+                    .await
+                    .unwrap();
+            };
+            tokio::join!(exercise, drain);
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelled_stream_open_retires_the_session() {
+        let (session, mut stream, _peer) = open().await;
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                stream.write_all(&vec![0; 2 * 1024 * 1024])
+            )
+            .await
+            .is_err()
+        );
         let destination = NetLocation::from_str("127.0.0.1:12345", None).unwrap();
         assert!(
             tokio::time::timeout(Duration::from_millis(50), session.open_stream(destination))
                 .await
                 .is_err()
         );
-        assert_eq!(session.state.streams.lock().len(), 1);
-        assert!(session.state.pending_opens.lock().is_empty());
+        assert!(session.state.is_closed.load(Ordering::Relaxed));
         drop(stream);
-        assert!(session.state.streams.lock().is_empty());
     }
 
     #[tokio::test]
     async fn shutdown_drains_data_after_a_cancelled_flush() {
         let (transport, mut peer) = tokio::io::duplex(64);
-        let padding = Arc::new(PaddingFactory::new(b"stop=1\n0=0-0").unwrap());
+        let padding = Arc::new(parking_lot::RwLock::new(Arc::new(
+            PaddingFactory::new(b"stop=1\n0=0-0").unwrap(),
+        )));
         let session = AnyTlsClientSession::new(Box::new(transport), "test", padding)
             .await
             .unwrap();

@@ -237,15 +237,17 @@ fn test_get_single_instance_placeholder_with_sid() {
 
 #[test]
 fn migration_child_failure_file_round_trip() {
-    use crate::core::migration::child_result::{FailureStage, RevisionFailure};
+    use nyanpasu_core::migration::child_result::{FailureStage, RevisionFailure};
     for stage in [
         FailureStage::RunnerConstruction,
         FailureStage::Backup,
         FailureStage::Migration,
     ] {
         let root = tempfile::tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = nyanpasu_core::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         paths.create_base_dirs().unwrap();
         let result_path = root.path().join("result.json");
         match stage {
@@ -318,10 +320,12 @@ fn migration_child_failure_file_round_trip() {
 
 #[test]
 fn migration_child_failure_preserves_the_available_backup() {
-    use crate::core::migration::child_result::FailureStage;
+    use nyanpasu_core::migration::child_result::FailureStage;
     let root = tempfile::tempdir().unwrap();
-    let paths =
-        crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+    let paths = nyanpasu_core::utils::test_support::test_paths(
+        root.path().join("config"),
+        root.path().join("data"),
+    );
     paths.create_base_dirs().unwrap();
     std::fs::write(paths.nyanpasu_config_path(), "app_log_level: [invalid]\n").unwrap();
     let result_path = root.path().join("result.json");

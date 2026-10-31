@@ -63,6 +63,7 @@ mod option_util;
 mod port_forward_handler;
 mod prepend_stream;
 mod process;
+mod quic_client;
 mod quic_endpoint;
 mod quic_server;
 mod quic_stream;
@@ -71,6 +72,8 @@ pub mod resolver;
 pub mod resources;
 mod routing;
 pub mod rule_set;
+#[cfg(unix)]
+mod rule_updater;
 pub mod rules;
 mod rustls_config_util;
 mod rustls_connection_util;

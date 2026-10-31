@@ -162,7 +162,14 @@ fn configs() -> (quinn::ClientConfig, quinn::ServerConfig) {
 /// Plain quinn endpoints on loopback whose client trusts the server's self-signed
 /// `localhost` certificate.
 pub(crate) fn test_endpoints() -> (quinn::Endpoint, quinn::Endpoint) {
-    let (client_config, server_config) = configs();
+    test_endpoints_with_config(|_| {})
+}
+
+pub(crate) fn test_endpoints_with_config(
+    configure: impl FnOnce(&mut quinn::ServerConfig),
+) -> (quinn::Endpoint, quinn::Endpoint) {
+    let (client_config, mut server_config) = configs();
+    configure(&mut server_config);
     let server = quinn::Endpoint::server(server_config, "127.0.0.1:0".parse().unwrap()).unwrap();
     let mut client = quinn::Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
     client.set_default_client_config(client_config);

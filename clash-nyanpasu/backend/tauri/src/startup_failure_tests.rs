@@ -1,10 +1,9 @@
 use super::*;
-use crate::{
-    client::{self, SetupError},
-    core::{
-        actor_v2::local_host,
-        migration::{runner, store},
-    },
+use nyanpasu_core::{
+    actor_v2::local_host,
+    client,
+    client::SetupError,
+    migration::{runner, store},
 };
 
 fn paths() -> PathResolver {

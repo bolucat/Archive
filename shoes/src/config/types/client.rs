@@ -349,6 +349,8 @@ impl<'de> Deserialize<'de> for ClientConfig {
         let transport = fields.transport.unwrap_or_else(|| {
             if fields.protocol.is_wireguard() {
                 Transport::Udp
+            } else if fields.protocol.is_native_quic() {
+                Transport::Quic
             } else {
                 Transport::Tcp
             }
@@ -414,6 +416,10 @@ pub enum ClientProxyConfig {
     SudokuMask(crate::sudoku_mask::SudokuMaskConfig<ClientProxyConfig>),
     Direct,
     Wireguard(Box<super::wireguard::WireguardClientConfig>),
+    #[serde(alias = "hy2")]
+    Hysteria2(super::quic_client::Hysteria2ClientConfig),
+    #[serde(alias = "tuicv5")]
+    Tuic(super::quic_client::TuicClientConfig),
     Http {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         username: Option<String>,
@@ -550,6 +556,16 @@ pub enum ClientProxyConfig {
         /// Each line is a key=value pair like "stop=8" or "0=30-30"
         #[serde(default, skip_serializing_if = "Option::is_none")]
         padding_scheme: Option<Vec<String>>,
+        /// Values <= 5 use the reference default of 30 seconds.
+        #[serde(default = "default_anytls_idle_secs")]
+        idle_session_check_interval_secs: u32,
+        #[serde(default = "default_anytls_idle_secs")]
+        idle_session_timeout_secs: u32,
+        /// Retention floor, not proactive dialing or a connection limit.
+        #[serde(default)]
+        min_idle_session: usize,
+        #[serde(default, skip_serializing_if = "is_false")]
+        disable_reuse: bool,
     },
     /// NaiveProxy client protocol (HTTP/2 CONNECT with padding)
     #[serde(alias = "naive")]
@@ -564,7 +580,15 @@ pub enum ClientProxyConfig {
     },
 }
 
+fn default_anytls_idle_secs() -> u32 {
+    30
+}
+
 impl ClientProxyConfig {
+    pub fn is_native_quic(&self) -> bool {
+        matches!(self, Self::Hysteria2(_) | Self::Tuic(_))
+    }
+
     pub fn is_wireguard(&self) -> bool {
         matches!(self, Self::Wireguard(_))
     }
@@ -579,6 +603,8 @@ impl ClientProxyConfig {
             ClientProxyConfig::SudokuMask(_) => "Sudoku mask",
             ClientProxyConfig::Direct => "Direct",
             ClientProxyConfig::Wireguard(_) => "WireGuard",
+            ClientProxyConfig::Hysteria2(_) => "Hysteria2",
+            ClientProxyConfig::Tuic(_) => "TUIC",
             ClientProxyConfig::Http { .. } => "HTTP",
             ClientProxyConfig::Socks { .. } => "SOCKS5",
             ClientProxyConfig::Shadowsocks { .. } => "Shadowsocks",
@@ -643,6 +669,10 @@ pub struct WebsocketClientConfig {
     pub matching_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matching_headers: Option<HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "crate::websocket::is_zero")]
+    pub max_early_data: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub early_data_header_name: Option<String>,
     #[serde(default, skip_serializing_if = "WebsocketPingType::is_default")]
     pub ping_type: WebsocketPingType,
     pub protocol: Box<ClientProxyConfig>,

@@ -1,11 +1,11 @@
 use clap::Args;
 
-use crate::core::migration::{
+use colored::Colorize;
+use nyanpasu_core::migration::{
     MigrationAdvice, Runner,
     child_result::{Failure, FailureStage},
     current_version, registry,
 };
-use colored::Colorize;
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Args)]
@@ -44,11 +44,13 @@ fn is_fresh_install_instance(paths: &PathResolver) -> bool {
 pub(crate) enum Error {
     #[snafu(display("specify only one migration or version"))]
     SelectTarget,
+    #[snafu(display("failed to resolve host build metadata"))]
+    ResolveBundleMetadata { source: crate::bundle::Error },
     #[snafu(display("invalid migration target version"))]
     ParseVersion { source: semver::Error },
     #[snafu(display("failed to resolve current migration version"))]
     ResolveVersion {
-        source: crate::core::migration::VersionError,
+        source: nyanpasu_core::migration::VersionError,
     },
     #[snafu(display("failed to create migration directories"))]
     CreateDirectories {
@@ -56,13 +58,13 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to initialize migration runner"))]
     ConstructRunner {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
     #[snafu(display("migration not found: {id}"))]
     FindMigration { id: String },
     #[snafu(display("migration failed"))]
     RunMigration {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
 }
 
@@ -88,14 +90,16 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             !(args.migration.is_some() && args.version.is_some()),
             SelectTargetSnafu
         );
+        let bundle_metadata =
+            crate::bundle::compiled_metadata().context(ResolveBundleMetadataSnafu)?;
         let fresh_install = is_fresh_install_instance(paths);
         let target = match args.version.as_deref() {
             Some(version) => semver::Version::parse(version).context(ParseVersionSnafu)?,
-            None => current_version().context(ResolveVersionSnafu)?,
+            None => current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
         };
         paths.create_base_dirs().context(CreateDirectoriesSnafu)?;
-        let runner =
-            Runner::with_target(target, paths.clone(), args.force).context(ConstructRunnerSnafu)?;
+        let runner = Runner::with_target(target, paths.clone(), bundle_metadata, args.force)
+            .context(ConstructRunnerSnafu)?;
         Ok((fresh_install, runner))
     })();
     let (fresh_install, mut runner) = construction.map_err(|error| {
@@ -149,7 +153,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
         let stage = if matches!(
             &error,
             Error::RunMigration {
-                source: crate::core::migration::runner::Error::CreateBackup { .. }
+                source: nyanpasu_core::migration::runner::Error::CreateBackup { .. }
             }
         ) {
             FailureStage::Backup
@@ -260,7 +264,8 @@ mod tests {
         };
         let data = std::env::var_os("NYANPASU_TEST_MIGRATION_DATA").unwrap();
         let result_file = std::env::var_os("NYANPASU_TEST_MIGRATION_RESULT").unwrap();
-        let paths = crate::client::tests::test_paths(config, std::path::PathBuf::from(data));
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config, std::path::PathBuf::from(data));
         parse(
             &MigrateOpts {
                 force: false,

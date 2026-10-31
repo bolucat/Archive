@@ -11,13 +11,15 @@ env:
   RUST_BACKTRACE: 1
   SING_BOX_VERSION: 1.14.1
   SING_BOX_SHA256: 12cb2816b52febb356f6a885b740cc8758c3f30b8ae0ca8edba80f0d2d35343f
+  ANYTLS_SING_BOX_VERSION: 1.15.0-alpha.13
+  ANYTLS_SING_BOX_SHA256: bfc39f643a5ecc1b702c5723ff662e61dde813f12b3af0d0cfce4f629ff74047
   MIHOMO_VERSION: 1.19.31
   MIHOMO_SHA256: 04cf9f09671704f839ddbee2e93069dc831a4123a75281e725d1d96ab9ac1afc
-  XRAY_VERSION: 26.10.29
-  XRAY_SHA256: 8a5f3e6a1057e4bd0f8a7c57c9d91204b4be0b74222a6e210d070603101163c2
+  XRAY_VERSION: 26.10.31
+  XRAY_SHA256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
   SSSERVER_VERSION: 1.25.0
   SSSERVER_SHA256: 874f817fcf3e6d7681ec715a1c13c686c6eaae936524d102639b38364f3966ae
-  XRAY_COMMIT: 0afec66085a85191e9dd2a4a6646c7c9a94688d1
+  XRAY_COMMIT: a4a3dff5b20c2faae567b742c172c7b95e75c083
   MIHOMO_ALPHA_COMMIT: 94b13aed49b8dc41973e4bb3f721c5fa2c5c5c1f
   NAIVE_CADDY_VERSION: 2.11.7-naive
   NAIVE_CADDY_SHA256: ac97057c925bb098eb575e7b0cb8bd547d4c5f845b09a3dedfbe34444aa7ae88
@@ -47,7 +49,7 @@ jobs:
     env:
       GOMAXPROCS: 1
       WG_SING_BOX_COMMIT: 7054cac5124465ffdb145870d7c01885566711b1
-      WG_XRAY_COMMIT: 0afec66085a85191e9dd2a4a6646c7c9a94688d1
+      WG_XRAY_COMMIT: a4a3dff5b20c2faae567b742c172c7b95e75c083
     steps:
     - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
@@ -139,6 +141,23 @@ jobs:
     - name: Run local tests
       run: cargo test --workspace --locked --lib --bins --verbose
 
+    - uses: actions/setup-go@v7
+      with:
+        go-version: '1.27.3'
+        cache: false
+
+    - name: Build pinned AnyTLS reference peer
+      working-directory: tests/fixtures/anytls-peer
+      run: GOMAXPROCS=1 go build -mod=readonly -p 1 -o "$RUNNER_TEMP/shoes-anytls-peer" .
+
+    - name: Test AnyTLS pooling against the reference peer
+      env:
+        ANYTLS_REFERENCE_PEER: ${{ runner.temp }}/shoes-anytls-peer
+        CARGO_BUILD_JOBS: 1
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --lib
+        reference_peer_tcp_uot_and_concurrent_session_reuse -- --ignored
+
     - name: Run process contract tests
       run: cargo test -p shoes --locked --test process_contract --verbose -- --test-threads=1
 
@@ -214,6 +233,31 @@ jobs:
     - name: Run native filesystem watcher regressions
       run: >-
         .github/require-tests.sh cargo test -p shoes --locked --lib file_watcher:: -- --test-threads=1
+
+    - name: Run remote-rule installer tests
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --lib --features ffi
+        rule_updater:: -- --test-threads=1
+
+    - name: Run remote-rule process tests
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --test process_contract --features ffi
+        remote_rules:: -- --test-threads=1
+
+    - name: Run WebSocket unit and configuration tests
+      env:
+        CARGO_BUILD_JOBS: 1
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --lib --features ffi --
+        websocket:: config::validate::tests::websocket_early_data_ --test-threads=1
+
+    - name: Run local WebSocket early-data interoperability tests
+      env:
+        CARGO_BUILD_JOBS: 1
+        RUST_LOG: warn
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --features ffi,integration-tests
+        --test ws_early_data -- --test-threads=1
 
   integration-tests:
     name: Integration (${{ matrix.name }})
@@ -305,6 +349,19 @@ jobs:
         chmod +x "$binary"
         echo "SHOES_TEST_SING_BOX_BIN=$binary" >> "$GITHUB_ENV"
 
+    - name: Install sing-box AnyTLS padding test peer
+      if: matrix.target == 'optional_peer'
+      run: |
+        archive="$RUNNER_TEMP/sing-box-anytls.tar.gz"
+        curl --fail --location --retry 3 \
+          --output "$archive" \
+          "https://github.com/SagerNet/sing-box/releases/download/v${ANYTLS_SING_BOX_VERSION}/sing-box-${ANYTLS_SING_BOX_VERSION}-linux-amd64.tar.gz"
+        echo "${ANYTLS_SING_BOX_SHA256}  ${archive}" | sha256sum --check --strict
+        tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+        binary="$RUNNER_TEMP/sing-box-${ANYTLS_SING_BOX_VERSION}-linux-amd64/sing-box"
+        chmod +x "$binary"
+        echo "SHOES_TEST_ANYTLS_SING_BOX_BIN=$binary" >> "$GITHUB_ENV"
+
     - name: Install Mihomo test peer
       if: matrix.peer == 'mihomo'
       run: |
@@ -363,6 +420,12 @@ jobs:
         .github/require-tests.sh cargo test -p shoes --locked --lib --features integration-tests
         h2mux::h2mux_server_session::singbox_interop_tests:: -- --test-threads=1
 
+    - name: Run native QUIC client interoperability tests
+      if: matrix.target == 'optional_peer'
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --lib --features optional-peer-tests
+        quic_client::interop:: -- --test-threads=1
+
     - name: Restore pinned XHTTP peers
       if: matrix.target == 'xhttp_interop'
       id: xhttp-peers
@@ -419,6 +482,26 @@ jobs:
         "$HOME/.cache/shoes-xray/xray" version
         "$HOME/.cache/shoes-mihomo/mihomo" -v
 
+    - name: Run WebSocket early-data interoperability tests
+      if: matrix.target == 'optional_peer'
+      env:
+        CARGO_BUILD_JOBS: 1
+        RUST_LOG: warn
+        WS_SING_BOX_VERSION: 1.14.3
+        WS_SING_BOX_SHA256: e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee
+      run: |
+        # Older sing-box clients discard response bytes read ahead during the upgrade.
+        archive="$RUNNER_TEMP/ws-sing-box.tar.gz"
+        curl --fail --location --retry 3 \
+          --output "$archive" \
+          "https://github.com/SagerNet/sing-box/releases/download/v${WS_SING_BOX_VERSION}/sing-box-${WS_SING_BOX_VERSION}-linux-amd64.tar.gz"
+        echo "${WS_SING_BOX_SHA256}  ${archive}" | sha256sum --check --strict
+        tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+        export SHOES_TEST_SING_BOX_BIN="$RUNNER_TEMP/sing-box-${WS_SING_BOX_VERSION}-linux-amd64/sing-box"
+        "$SHOES_TEST_SING_BOX_BIN" version
+        .github/require-tests.sh cargo test -p shoes --locked --features optional-peer-tests \
+          --test ws_early_data -- --test-threads=1
+
     - name: Run integration tests
       env:
         TEST_FILTERS: ${{ matrix.filters }}
@@ -437,3 +520,9 @@ jobs:
               --verbose "$filter::" -- --test-threads=1
           done
         fi
+
+    - name: Run public HTTPS rule delivery
+      if: matrix.name == 'external proxies'
+      run: >-
+        .github/require-tests.sh cargo test -p shoes --locked --features external-network-tests
+        --test process_contract remote_rules::public_https -- --test-threads=1

@@ -4,20 +4,17 @@
 )]
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
+mod adapters;
 mod bundle;
-mod client;
 mod cmds;
 mod consts;
 mod core;
-mod enhance;
 mod event_handler;
 mod ipc;
 mod server;
-mod service;
 mod setup;
 mod specta_export;
 mod startup_failure;
-mod state;
 mod unified_rpc;
 
 mod host_paths;
@@ -370,35 +367,33 @@ pub fn run() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    let metadata = match bundle::BundleMetadata::resolve(
-        cfg!(windows),
-        context.config_mut(),
-        executable_dir,
-        || tauri::webview_version().is_ok(),
-    ) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            let path = match &error {
-                bundle::Error::InspectWebview { path, .. }
-                | bundle::Error::ValidateWebview { path } => Some(path.clone()),
-                _ => None,
-            };
-            let recovery = if bundle::is_portable(executable_dir) {
-                "web_view2.portable_recovery"
-            } else {
-                "web_view2.installed_recovery"
-            };
-            startup_failure::show_one_shot(
-                startup_failure::FailureKind::WebView2,
-                path,
-                &error,
-                Some(recovery),
-            );
-            startup_logging.finish_blocking();
-            return std::process::ExitCode::FAILURE;
-        }
-    };
-    let updater = metadata.setup(context.config_mut()).expect(
+    let metadata =
+        match bundle::resolve(cfg!(windows), context.config_mut(), executable_dir, || {
+            tauri::webview_version().is_ok()
+        }) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let path = match &error {
+                    bundle::Error::InspectWebview { path, .. }
+                    | bundle::Error::ValidateWebview { path } => Some(path.clone()),
+                    _ => None,
+                };
+                let recovery = if bundle::is_portable(executable_dir) {
+                    "web_view2.portable_recovery"
+                } else {
+                    "web_view2.installed_recovery"
+                };
+                startup_failure::show_one_shot(
+                    startup_failure::FailureKind::WebView2,
+                    path,
+                    &error,
+                    Some(recovery),
+                );
+                startup_logging.finish_blocking();
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+    let updater = bundle::setup(&metadata, context.config_mut()).expect(
         "the embedded bundle configuration has valid updater endpoints and a supported target",
     );
     // The setup closure owns its copy; build failures still need paths for the reporter.
@@ -422,7 +417,7 @@ pub fn run() -> std::process::ExitCode {
             // A reloaded page keeps the same webview, so `Channel::send`
             // cannot tell its old connection-detail subscriptions are gone.
             if payload.event() == tauri::webview::PageLoadEvent::Started {
-                core::clash::connection_details::cancel_for_webview(webview, webview.label());
+                adapters::connection_details::cancel_for_webview(webview, webview.label());
             }
         })
         .setup(move |app| {
@@ -541,7 +536,7 @@ pub fn run() -> std::process::ExitCode {
             // Every webview's connection-detail subscriptions must end on
             // destroy, not just "main"'s: `Channel::send` cannot detect it.
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                core::clash::connection_details::cancel_for_webview(app_handle, &label);
+                adapters::connection_details::cancel_for_webview(app_handle, &label);
             }
         }
         #[cfg(target_os = "macos")]

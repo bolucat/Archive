@@ -326,6 +326,11 @@ impl<IO: AsyncStream> CryptoTlsStream<IO> {
 
     pub fn poll_drain_tls(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.register_writer(cx);
+        if !self.write_raw && self.state.writeable() {
+            // Deferred KeyUpdate replies must not consume the next plaintext record's budget.
+            // Failed sessions still need to drain accepted data and fatal alerts.
+            let _ = self.session.writer().write(&[]);
+        }
         self.poll_drain_tls_inner(cx)
     }
 
@@ -538,6 +543,9 @@ impl<IO: AsyncStream> AsyncPing for CryptoTlsStream<IO> {
 }
 
 impl<IO: AsyncStream> AsyncStream for CryptoTlsStream<IO> {
+    fn local_addr(&self) -> Option<std::net::SocketAddr> {
+        self.io.local_addr()
+    }
     fn peer_addr(&self) -> Option<std::net::SocketAddr> {
         self.io.peer_addr()
     }

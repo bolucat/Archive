@@ -11,17 +11,15 @@ use nyanpasu_ipc::{
 };
 
 use super::{StartupFailureHost, StartupOwners};
-use crate::{
-    core::{
-        actor_v2::{
-            endpoint::{
-                ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
-            },
-            service_actor::ServiceHostAdapter,
+use crate::startup_failure::{FailureKind, StartupFailure};
+use nyanpasu_core::{
+    actor_v2::{
+        endpoint::{
+            ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
         },
-        service::control::ServiceCommandError,
+        service_actor::ServiceHostAdapter,
     },
-    startup_failure::{FailureKind, StartupFailure},
+    service::control::ServiceCommandError,
 };
 
 struct Endpoint(Arc<Mutex<Vec<&'static str>>>);
@@ -138,8 +136,10 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _entered = runtime.enter();
     let dir = tempfile::tempdir().unwrap();
-    let paths =
-        crate::client::tests::test_paths(dir.path().join("config"), dir.path().join("data"));
+    let paths = nyanpasu_core::utils::test_support::test_paths(
+        dir.path().join("config"),
+        dir.path().join("data"),
+    );
     paths.create_base_dirs().unwrap();
     // A real redb open failure: another handle holds the jobs database.
     let _held = redb::Database::create(paths.jobs_path()).unwrap();
@@ -172,7 +172,7 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
                         cleanup: cleanup.clone(),
                     }),
                     &paths,
-                    crate::client::jobs::capture(),
+                    nyanpasu_core::client::jobs::capture(),
                 )
                 .await
                 .err()

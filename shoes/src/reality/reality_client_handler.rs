@@ -4,9 +4,9 @@ use async_trait::async_trait;
 
 use super::{CipherSuite, Mldsa65VerifyKey, RealityClientConfig};
 use crate::address::ResolvedLocation;
-use crate::async_stream::AsyncStream;
+use crate::async_stream::{AsyncMessageStream, AsyncStream};
 use crate::crypto::{CryptoTlsStream, TlsReadMode};
-use crate::tcp::tcp_handler::{TcpClientHandler, TcpClientSetupResult};
+use crate::tcp::tcp_handler::{ClientTransport, TcpClientHandler, TcpClientSetupResult};
 
 #[derive(Debug)]
 pub struct RealityClientHandler {
@@ -70,7 +70,6 @@ impl RealityClientHandler {
     async fn setup_client_stream_common(
         &self,
         client_stream: Box<dyn AsyncStream>,
-        mode: TlsReadMode,
     ) -> std::io::Result<CryptoTlsStream<Box<dyn AsyncStream>>> {
         match &self.server_name {
             rustls::pki_types::ServerName::DnsName(_) => {}
@@ -98,6 +97,10 @@ impl RealityClientHandler {
         };
 
         let connection = reality_config.create_connection()?;
+        let mode = match self.handler {
+            RealityInnerClientHandler::VisionVless { .. } => TlsReadMode::PreserveRecords,
+            RealityInnerClientHandler::Default(_) => TlsReadMode::Stream,
+        };
         let stream = CryptoTlsStream::handshake(client_stream, connection, mode, &[]).await?;
         log::debug!(
             "REALITY CLIENT: Handshake completed successfully, negotiated_group={:?}",
@@ -110,6 +113,38 @@ impl RealityClientHandler {
 
 #[async_trait]
 impl TcpClientHandler for RealityClientHandler {
+    fn has_session_pool(&self) -> bool {
+        matches!(&self.handler, RealityInnerClientHandler::Default(handler) if handler.has_session_pool())
+    }
+
+    async fn connect_client_tcp(
+        &self,
+        transport: ClientTransport<'_>,
+        target: ResolvedLocation,
+    ) -> std::io::Result<TcpClientSetupResult> {
+        if let RealityInnerClientHandler::Default(handler) = &self.handler {
+            let transport = transport.wrap(|stream| self.setup_client_stream_common(stream));
+            handler.connect_client_tcp(transport, target).await
+        } else {
+            self.setup_client_tcp_stream(transport.open.await?, target)
+                .await
+        }
+    }
+
+    async fn connect_client_udp(
+        &self,
+        transport: ClientTransport<'_>,
+        target: ResolvedLocation,
+    ) -> std::io::Result<Box<dyn AsyncMessageStream>> {
+        if let RealityInnerClientHandler::Default(handler) = &self.handler {
+            let transport = transport.wrap(|stream| self.setup_client_stream_common(stream));
+            handler.connect_client_udp(transport, target).await
+        } else {
+            self.setup_client_udp_bidirectional(transport.open.await?, target)
+                .await
+        }
+    }
+
     async fn prepare_target(
         &self,
         target: ResolvedLocation,
@@ -140,11 +175,7 @@ impl TcpClientHandler for RealityClientHandler {
         client_stream: Box<dyn AsyncStream>,
         remote_location: ResolvedLocation,
     ) -> std::io::Result<TcpClientSetupResult> {
-        let mode = match self.handler {
-            RealityInnerClientHandler::VisionVless { .. } => TlsReadMode::PreserveRecords,
-            RealityInnerClientHandler::Default(_) => TlsReadMode::Stream,
-        };
-        let tls_stream = self.setup_client_stream_common(client_stream, mode).await?;
+        let tls_stream = self.setup_client_stream_common(client_stream).await?;
 
         match self.handler {
             RealityInnerClientHandler::Default(ref handler) => {
@@ -175,9 +206,7 @@ impl TcpClientHandler for RealityClientHandler {
         client_stream: Box<dyn AsyncStream>,
         target: ResolvedLocation,
     ) -> std::io::Result<Box<dyn crate::async_stream::AsyncMessageStream>> {
-        let tls_stream = self
-            .setup_client_stream_common(client_stream, TlsReadMode::Stream)
-            .await?;
+        let tls_stream = self.setup_client_stream_common(client_stream).await?;
 
         match &self.handler {
             RealityInnerClientHandler::Default(handler) => {
@@ -186,10 +215,11 @@ impl TcpClientHandler for RealityClientHandler {
                     .await
             }
             RealityInnerClientHandler::VisionVless { uuid, .. } => {
-                crate::vless::vless_client_handler::setup_vless_udp_bidirectional(
+                crate::vless::vless_client_handler::setup_vision_vless_udp_bidirectional(
                     tls_stream,
                     uuid,
                     target.into_location(),
+                    crate::vless::VisionWriteErrorPolicy::Legacy,
                 )
                 .await
             }
