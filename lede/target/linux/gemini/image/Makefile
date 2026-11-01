@@ -178,8 +178,8 @@ endef
 # All DTB files are prefixed with "gemini-"
 define Device/Default
 	PROFILES := Default
-	DEVICE_DTS_DIR = $$(DTS_DIR)/gemini
-	KERNEL_DEPENDS = $$(wildcard $(DTS_DIR)/$$(DEVICE_DTS).dts)
+	DEVICE_DTS_DIR = $$(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/gemini)
+	KERNEL_DEPENDS = $$(wildcard $$(DEVICE_DTS_DIR)/$$(DEVICE_DTS).dts)
 	KERNEL_NAME := zImage
 	KERNEL := kernel-bin | append-dtb
 	BLOCKSIZE := 128k
@@ -191,7 +191,8 @@ GEMINI_NAS_PACKAGES := $(DEFAULT_PACKAGES.nas) \
 		kmod-md-mod kmod-md-linear \
 		kmod-md-raid0 kmod-md-raid1 kmod-md-raid10 kmod-md-raid456 \
 		kmod-fs-btrfs kmod-fs-cifs kmod-fs-nfs \
-		kmod-fs-nfsd kmod-fs-ntfs3 kmod-fs-reiserfs kmod-fs-vfat \
+		kmod-fs-nfsd kmod-fs-ntfs3 kmod-fs-vfat \
+		$(if $(filter 5.4 5.10,$(KERNEL_PATCHVER)),kmod-fs-reiserfs) \
 		kmod-nls-utf8 kmod-usb-storage-extras kmod-hwmon-drivetemp \
 		cfdisk e2fsprogs badblocks \
 		partx-utils

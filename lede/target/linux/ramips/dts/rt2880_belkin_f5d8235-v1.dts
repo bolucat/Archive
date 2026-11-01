@@ -37,10 +37,24 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_factory_0: eeprom@0 {
+						reg = <0x0 0x200>;
+					};
+
+					macaddr_factory_4: macaddr@4 {
+						reg = <0x4 0x6>;
+					};
+				};
 			};
 
 			partition@50000 {
@@ -53,8 +67,8 @@
 
 	rtl8366s {
 		compatible = "realtek,rtl8366s";
-		gpio-sda = <&gpio0 1 GPIO_ACTIVE_HIGH>;
-		gpio-sck = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+		sda-gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+		sck-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
 
 		realtek,initvals = <
 			0x0242 0x02BF
@@ -99,8 +113,7 @@
 	};
 
 	keys {
-		compatible = "gpio-keys-polled";
-		poll-interval = <100>;
+		compatible = "gpio-keys";
 
 		wps {
 			label = "wps";
@@ -196,7 +209,8 @@
 
 &ethernet {
 	status = "okay";
-	mtd-mac-address = <&factory 0x4>;
+	nvmem-cells = <&macaddr_factory_4>;
+	nvmem-cell-names = "mac-address";
 
 	port@0 {
 		mediatek,fixed-link = <1000 1 1 1>;
@@ -232,6 +246,6 @@
 };
 
 &wmac {
-	status = "okay";
-	ralink,mtd-eeprom = <&factory 0x0>;
+	nvmem-cells = <&eeprom_factory_0>;
+	nvmem-cell-names = "eeprom";
 };

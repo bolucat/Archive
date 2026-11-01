@@ -331,6 +331,7 @@ const catalogHistory = ref<string[]>([])
 function showCatalog(route = 'library', pushHistory = true) {
   if (route.startsWith('home-entry/')) { showHomeRow(decodeURIComponent(route.slice('home-entry/'.length))); return }
   if (route.startsWith('custom-series/')) { void showCustomSeries(route.slice('custom-series/'.length)); return }
+  if (route.startsWith('series/')) { void openAutomaticSeries(route.slice('series/'.length)); return }
   if (pushHistory) {
     if (!isCatalogPage.value) catalogHistory.value = []
     else if (selectedHomeRowKey.value !== 'catalog:' + route) catalogHistory.value.push(selectedHomeRowKey.value.slice(8))
@@ -491,12 +492,6 @@ async function showCustomSeries(id = '') {
  try {
   const local = await DB.getMediaLibraryItemsByIds([...new Set(group.members.filter(member => !member.serverId).flatMap(member => [member.id, member.parentId || detailSeriesId(member.id)]))])
   if (version !== seriesLoadVersion) return
-  if (seriesPreferences.openDetail) {
-   const first = group.members[0]
-   if (first?.serverId) { showServer(first.serverId, { kind: 'item-detail', itemId: first.id, title: first.title }); return }
-   const item = first && libraryPlaylistMembers(local, [first.id])[0]
-   if (item) { await openVideo(item); return }
-  }
   customSeriesCards.value = group.members.flatMap(member => {
    if (member.serverId) return [{ key: member.serverId + ':' + member.id, title: member.title, action: () => showServer(member.serverId!, { kind: 'item-detail', itemId: member.id, title: member.title }) }]
    const item = libraryPlaylistMembers(local, [member.id])[0]
@@ -931,6 +926,11 @@ async function openVideo(item: MediaLibraryItem) {
   await showCategory(item.type === 'tv' ? 'tv' : item.type === 'movie' ? 'movies' : 'unmatched')
   videoView.value?.openItem(item)
 }
+async function openAutomaticSeries(id: string) {
+  let group = libraryMovieSeries(homeLibrary.value).find(group => group.id === id)
+  if (!group) group = libraryMovieSeries(await DB.getHomeMediaLibrary()).find(group => group.id === id)
+  if (group?.members[0]) await openVideo(group.members[0])
+}
 async function openMusic(item: IMusicTrack) {
   app.mediaLibrarySection = 'music'
   await nextTick()
@@ -1032,9 +1032,8 @@ function localRow(items: MediaLibraryItem[], row: Omit<Row, 'cards'>, card: (ite
   const members = movieVersionItems(items.filter(item => !groupedIDs.has(item.id)))
   const groupCards: Card[] = groups.map(group => ({ key: 'series:' + group.id, title: group.title, image: group.members[0]?.posterUrl,
     subtitle: t('customSeries.memberCount', { count: group.members.length }), action: () => {
-      if (seriesPreferences.openDetail) void openVideo(group.members[0])
-      else if (group.id.startsWith('custom:')) void showCustomSeries(group.id.slice(7))
-      else showCatalog('series/' + group.id)
+      if (group.id.startsWith('custom:')) void showCustomSeries(group.id.slice(7))
+      else if (group.members[0]) void openVideo(group.members[0])
     } }))
   return { ...row, count: groupCards.length + members.length, get cards() { return [...groupCards, ...members.map(card)] }, preview: () => [...groupCards, ...members.slice(0, 24).map(card)].slice(0, 24) }
 }
@@ -1110,7 +1109,7 @@ const localRows = computed<Row[]>(() => {
   for (const group of libraryMovieSeries(homeLibrary.value)) {
     const key = 'catalog:series/' + group.id
     result.push({ key, title: group.title, count: group.members.length, get cards() { return group.members.map(item => localCard(item)) }, preview: () => group.members.slice(0, 24).map(item => localCard(item)), more: () => showCatalog('series/' + group.id) })
-    seriesCards.push({ key, title: group.title, image: group.members[0]?.posterUrl, subtitle: t('customSeries.memberCount', { count: group.members.length }), action: () => { if (seriesPreferences.openDetail && group.members[0]) void openVideo(group.members[0]); else showCatalog('series/' + group.id) }, contextMenu: (event: MouseEvent) => openCategoryMenu(event, 'series/' + group.id) })
+    seriesCards.push({ key, title: group.title, image: group.members[0]?.posterUrl, subtitle: t('customSeries.memberCount', { count: group.members.length }), action: () => { if (group.members[0]) void openVideo(group.members[0]) }, contextMenu: (event: MouseEvent) => openCategoryMenu(event, 'series/' + group.id) })
   }
   for (const group of (seriesPreferences.useCustom ? customSeriesGroups.value : [])) {
     const members = libraryPlaylistMembers(homeLibrary.value, group.members.filter(member => !member.serverId).map(member => member.id))

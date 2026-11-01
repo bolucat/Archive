@@ -1,0 +1,215 @@
+Subject: [PATCH] QSDK 10: 007-fix-gcc-4.9-compile
+
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/adpt/hppe/adpt_hppe_acl.c
++++ b/src/adpt/hppe/adpt_hppe_acl.c
+@@ -504,7 +504,7 @@
+ 	fal_acl_direc_t direc, fal_acl_bind_obj_t obj_t, a_uint32_t obj_idx)
+ {
+ 	a_uint32_t hw_index = 0, hw_entries = 0, hw_srctype = 0;
+-	union ipo_rule_reg_u hw_reg = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
+ 
+ 	hw_entries = g_acl_list[dev_id][list_id].rule_hw_entry[rule_id];
+ 
+@@ -1483,10 +1483,10 @@
+ {
+ 	sw_error_t rv = 0;
+ 	a_uint32_t hw_index = 0, hw_entries = 0;
+-	union ipo_rule_reg_u hw_reg = {0};
+-	union ipo_mask_reg_u hw_mask = {0};
+-	union ipo_action_u hw_act = {0};
+-	union ipo_cnt_tbl_u hw_match = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
++	union ipo_mask_reg_u hw_mask = {{0}};
++	union ipo_action_u hw_act = {{0}};
++	union ipo_cnt_tbl_u hw_match = {{0}};
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+ 	ADPT_NULL_POINT_CHECK(rule);
+@@ -1570,7 +1570,7 @@
+ 	fal_acl_direc_t direc, fal_acl_bind_obj_t obj_t, a_uint32_t obj_idx)
+ {
+ 	a_uint32_t hw_index = 0, hw_entries = 0;
+-	union ipo_rule_reg_u hw_reg = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
+ 
+ 	hw_entries = g_acl_list[dev_id][list_id].rule_hw_entry[rule_id];
+ 
+@@ -2931,9 +2931,9 @@
+ 		a_uint32_t rule_id, a_uint32_t rule_nr, fal_acl_rule_t * rule,
+ 		a_uint32_t rule_type_map, a_uint32_t allocated_entries)
+ {
+-	union ipo_rule_reg_u hw_reg = {0};
+-	union ipo_mask_reg_u hw_mask = {0};
+-	union ipo_action_u hw_act = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
++	union ipo_mask_reg_u hw_mask = {{0}};
++	union ipo_action_u hw_act = {{0}};
+ 	sw_error_t rv = 0;
+ 	a_uint32_t hw_entry = 0;
+ 	a_uint32_t i = 0;
+@@ -3162,9 +3162,9 @@
+ {
+ 	sw_error_t rv = 0;
+ 	a_uint32_t hw_index = 0, hw_entries = 0;
+-	union ipo_rule_reg_u hw_reg = {0};
+-	union ipo_mask_reg_u hw_mask = {0};
+-	union ipo_action_u hw_act = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
++	union ipo_mask_reg_u hw_mask = {{0}};
++	union ipo_action_u hw_act = {{0}};
+ 
+ 	union rule_ext_1_reg_u ext_1 = {0};
+ 	union rule_ext_2_reg_u ext_2 = {0};
+@@ -3182,7 +3182,7 @@
+ 
+ 	while(hw_entries != 0)
+ 	{
+-	    union ipo_cnt_tbl_u counters = {0};
++	    union ipo_cnt_tbl_u counters = {{0}};
+ 		hw_index = _acl_bit_index(hw_entries, 8, 0);
+ 		if(hw_index >= ADPT_ACL_ENTRY_NUM_PER_LIST)
+ 			break;
+@@ -3238,9 +3238,9 @@
+ {
+ 	a_uint8_t i = 0;
+ 	a_uint8_t hw_entries = g_acl_list[dev_id][list_id].rule_hw_entry[rule_id];
+-	union ipo_rule_reg_u hw_reg = {0};
+-	union ipo_mask_reg_u hw_mask = {0};
+-	union ipo_action_u hw_act = {0};
++	union ipo_rule_reg_u hw_reg = {{0}};
++	union ipo_mask_reg_u hw_mask = {{0}};
++	union ipo_action_u hw_act = {{0}};
+ 
+ 	if(hw_entries != 0)
+ 	{
+--- a/src/adpt/hppe/adpt_hppe_misc.c
++++ b/src/adpt/hppe/adpt_hppe_misc.c
+@@ -394,17 +394,17 @@
+ sw_error_t
+ adpt_hppe_debug_counter_set(void)
+ {
+-	union vlan_cnt_tbl_u vlan_cnt_tbl = {0};
+-	union pre_l2_cnt_tbl_u pre_l2_cnt_tbl = {0};
+-	union port_tx_drop_cnt_tbl_u port_tx_drop_cnt_tbl = {0};
+-	union eg_vsi_counter_tbl_u eg_vsi_counter_tbl = {0};
+-	union port_tx_counter_tbl_reg_u port_tx_counter_tbl = {0};
+-	union vp_tx_counter_tbl_reg_u vp_tx_counter_tbl = {0};
+-	union queue_tx_counter_tbl_u queue_tx_counter_tbl = {0};
++	union vlan_cnt_tbl_u vlan_cnt_tbl = {{0}};
++	union pre_l2_cnt_tbl_u pre_l2_cnt_tbl = {{0}};
++	union port_tx_drop_cnt_tbl_u port_tx_drop_cnt_tbl = {{0}};
++	union eg_vsi_counter_tbl_u eg_vsi_counter_tbl = {{0}};
++	union port_tx_counter_tbl_reg_u port_tx_counter_tbl = {{0}};
++	union vp_tx_counter_tbl_reg_u vp_tx_counter_tbl = {{0}};
++	union queue_tx_counter_tbl_u queue_tx_counter_tbl = {{0}};
+ 	union epe_dbg_in_cnt_reg_u epe_dbg_in_cnt = {0};
+ 	union epe_dbg_out_cnt_reg_u epe_dbg_out_cnt = {0};
+-	union vp_tx_drop_cnt_tbl_u vp_tx_drop_cnt_tbl = {0};
+-	union drop_cpu_cnt_tbl_u drop_cpu_cnt_tbl = {0};
++	union vp_tx_drop_cnt_tbl_u vp_tx_drop_cnt_tbl = {{0}};
++	union drop_cpu_cnt_tbl_u drop_cpu_cnt_tbl = {{0}};
+ 
+ 	a_uint32_t i;
+ 
+--- a/src/adpt/hppe/adpt_hppe_portctrl.c
++++ b/src/adpt/hppe/adpt_hppe_portctrl.c
+@@ -78,7 +78,7 @@
+  */
+ #define GMAC_TX_THD    0x1
+ 
+-static a_uint32_t port_interface_mode[SW_MAX_NR_DEV][SW_MAX_NR_PORT] = {0};
++static a_uint32_t port_interface_mode[SW_MAX_NR_DEV][SW_MAX_NR_PORT] = {{0}};
+ 
+ static a_bool_t
+ _adpt_hppe_port_phy_connected (a_uint32_t dev_id, fal_port_t port_id)
+--- a/src/adpt/hppe/adpt_hppe_pppoe.c
++++ b/src/adpt/hppe/adpt_hppe_pppoe.c
+@@ -33,7 +33,7 @@
+ 	union pppoe_session_u pppoe_session = {0};
+ 	union pppoe_session_ext_u pppoe_session_ext = {0};
+ 	union pppoe_session_ext1_u pppoe_session_ext1 = {0};
+-	union eg_l3_if_tbl_u eg_l3_if_tbl = {0};
++	union eg_l3_if_tbl_u eg_l3_if_tbl = {{0}};
+ 	a_uint32_t num, entry_idx = PPPOE_SESSION_MAX_ENTRY;
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+@@ -102,7 +102,7 @@
+ 	union pppoe_session_u pppoe_session_zero = {0};
+ 	union pppoe_session_ext_u pppoe_session_ext_zero = {0};
+ 	union pppoe_session_ext1_u pppoe_session_ext1_zero = {0};
+-	union eg_l3_if_tbl_u eg_l3_if_tbl = {0};
++	union eg_l3_if_tbl_u eg_l3_if_tbl = {{0}};
+ 	a_uint32_t num;
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+@@ -186,8 +186,8 @@
+ adpt_hppe_pppoe_en_set(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t enable)
+ {
+ 	sw_error_t rv = SW_OK;
+-	union in_l3_if_tbl_u in_l3_if_tbl = {0};
+-	union eg_l3_if_tbl_u eg_l3_if_tbl = {0};
++	union in_l3_if_tbl_u in_l3_if_tbl = {{0}};
++	union eg_l3_if_tbl_u eg_l3_if_tbl = {{0}};
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+ 
+@@ -217,7 +217,7 @@
+ adpt_hppe_pppoe_en_get(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t *enable)
+ {
+ 	sw_error_t rv = SW_OK;
+-	union in_l3_if_tbl_u in_l3_if_tbl = {0};
++	union in_l3_if_tbl_u in_l3_if_tbl = {{0}};
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+ 	ADPT_NULL_POINT_CHECK(enable);
+--- a/src/adpt/hppe/adpt_hppe_qos.c
++++ b/src/adpt/hppe/adpt_hppe_qos.c
+@@ -26,7 +26,7 @@
+ #include "hppe_shaper.h"
+ #include "adpt.h"
+ 
+-static fal_queue_bmp_t port_queue_map[8] = {0};
++static fal_queue_bmp_t port_queue_map[8] = {{{0}}};
+ 
+ sw_error_t
+ adpt_hppe_l1_flow_map_get(a_uint32_t dev_id,
+--- a/src/adpt/hppe/adpt_hppe_rss_hash.c
++++ b/src/adpt/hppe/adpt_hppe_rss_hash.c
+@@ -29,12 +29,12 @@
+ 	a_uint32_t index;
+ 	union rss_hash_mask_reg_u rss_hash_mask_ipv6 = {0};
+ 	union rss_hash_seed_reg_u rss_hash_seed_ipv6 = {0};
+-	union rss_hash_mix_reg_u rss_hash_mix_ipv6[11] = {0};
+-	union rss_hash_fin_reg_u rss_hash_fin_ipv6[5] = {0};
++	union rss_hash_mix_reg_u rss_hash_mix_ipv6[11] = {{0}};
++	union rss_hash_fin_reg_u rss_hash_fin_ipv6[5] = {{0}};
+ 	union rss_hash_mask_ipv4_reg_u rss_hash_mask_ipv4 = {0};
+ 	union rss_hash_seed_ipv4_reg_u rss_hash_seed_ipv4 = {0};
+-	union rss_hash_mix_ipv4_reg_u rss_hash_mix_ipv4[5] = {0};
+-	union rss_hash_fin_ipv4_reg_u rss_hash_fin_ipv4[5] = {0};
++	union rss_hash_mix_ipv4_reg_u rss_hash_mix_ipv4[5] = {{0}};
++	union rss_hash_fin_ipv4_reg_u rss_hash_fin_ipv4[5] = {{0}};
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+ 
+@@ -120,12 +120,12 @@
+ 	a_uint32_t index;
+ 	union rss_hash_mask_reg_u rss_hash_mask_ipv6 = {0};
+ 	union rss_hash_seed_reg_u rss_hash_seed_ipv6 = {0};
+-	union rss_hash_mix_reg_u rss_hash_mix_ipv6[11] = {0};
+-	union rss_hash_fin_reg_u rss_hash_fin_ipv6[5] = {0};
++	union rss_hash_mix_reg_u rss_hash_mix_ipv6[11] = {{0}};
++	union rss_hash_fin_reg_u rss_hash_fin_ipv6[5] = {{0}};
+ 	union rss_hash_mask_ipv4_reg_u rss_hash_mask_ipv4 = {0};
+ 	union rss_hash_seed_ipv4_reg_u rss_hash_seed_ipv4 = {0};
+-	union rss_hash_mix_ipv4_reg_u rss_hash_mix_ipv4[5] = {0};
+-	union rss_hash_fin_ipv4_reg_u rss_hash_fin_ipv4[5] = {0};
++	union rss_hash_mix_ipv4_reg_u rss_hash_mix_ipv4[5] = {{0}};
++	union rss_hash_fin_ipv4_reg_u rss_hash_fin_ipv4[5] = {{0}};
+ 
+ 	ADPT_DEV_ID_CHECK(dev_id);
+ 

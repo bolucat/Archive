@@ -10,11 +10,13 @@ use std::{
 };
 
 use nyanpasu_core_manager::{
-    HealthPolicy, HealthPolicySpec, HealthThresholds, ProbeHandle, ProbePhase, ProbeResult,
+    CoreManager, CoreState, HealthPolicy, HealthPolicySpec, HealthThresholds, LocalIpcPolicy,
+    ManagerOptions, ProbeHandle, ProbePhase, ProbeResult,
     instance::Instance,
     spec::ResolvedController,
     state::{HealthState, InstanceState},
 };
+use nyanpasu_utils::process::{AtomicStopStrategy, StopStrategy, recorded_process_is_alive};
 use tokio_util::sync::CancellationToken;
 
 fn http_controller(port: u16) -> ResolvedController {
@@ -335,6 +337,72 @@ async fn user_stop_is_terminal_and_releases_the_port() {
         "terminal was {terminal:?}"
     );
     common::wait_port_refused(port).await;
+}
+
+#[tokio::test]
+async fn manager_shares_stop_strategy_with_running_and_future_instances() {
+    let (_guard, dir) = common::utf8_tempdir();
+    let runtime_dir = dir.join("runtime");
+    let port = common::free_port();
+    let config = common::write_config(&dir, &format!("external-controller: 127.0.0.1:{port}\n"));
+    let spec = common::mihomo_spec(&dir, config);
+    let shutdown_helper = {
+        #[cfg(windows)]
+        {
+            let helper = dir.join("nyanpasu-marked-shutdown-helper.exe");
+            std::fs::copy(common::fake_core_bin(), &helper).expect("copy shutdown helper");
+            Some(helper.into_std_path_buf())
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    };
+    let strategy = Arc::new(AtomicStopStrategy::new(StopStrategy::Graceful));
+    let manager = CoreManager::builder(ManagerOptions {
+        runtime_dir: Some(runtime_dir.clone()),
+        local_ipc_policy: LocalIpcPolicy::Disable,
+        windows_shutdown_helper: shutdown_helper.clone(),
+        ..ManagerOptions::default()
+    })
+    .stop_strategy(Arc::clone(&strategy))
+    .build()
+    .await
+    .expect("construct manager with shared stop strategy");
+
+    for started_before_update in [true, false] {
+        manager.start(spec.clone()).await.expect("start core");
+        let CoreState::Running { epoch, pid } = manager.status().state else {
+            panic!("core did not reach running state");
+        };
+        let record = tokio::fs::read_to_string(runtime_dir.join(format!("core-{epoch}.pid")))
+            .await
+            .expect("read running core identity");
+        assert!(
+            recorded_process_is_alive(&record).expect("inspect running core"),
+            "core {pid} was not alive before stop"
+        );
+        if started_before_update {
+            strategy.store(StopStrategy::Kill, Ordering::Release);
+        }
+
+        manager.stop().await.expect("stop core with Kill strategy");
+        assert!(
+            !recorded_process_is_alive(&record).expect("inspect stopped core"),
+            "core {pid} survived stop (started_before_update={started_before_update})"
+        );
+        common::wait_port_refused(port).await;
+        #[cfg(windows)]
+        assert!(
+            !shutdown_helper
+                .as_ref()
+                .expect("configured shutdown helper")
+                .with_extension("started")
+                .exists(),
+            "shutdown helper was launched for Kill (started_before_update={started_before_update})"
+        );
+    }
+    manager.shutdown().await.expect("shut down manager");
 }
 
 #[tokio::test]

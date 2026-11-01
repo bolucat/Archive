@@ -1,0 +1,17 @@
+#!/bin/sh
+# wsdd2 (WS-Discovery) is pulled in unconditionally by ksmbd-tools ("select PACKAGE_wsdd2"),
+# so it cannot be left out of the image. Keep it from running: on 2026-09-28 it was the
+# process closing the netlink socket in a kernel panic (netlink socket lifetime bug, open),
+# and an access point gains nothing from Windows network browsing of the share, which
+# stays reachable by name or address.
+#
+# This runs on the first boot of every image, including after a sysupgrade that keeps
+# the configuration, so `/etc/init.d/wsdd2 enable` lasts only until the next upgrade.
+# Remove this file once the netlink bug is fixed.
+. /lib/functions.sh
+
+[ "$(board_name)" = "gl.inet,gl-be9300" ] || exit 0
+[ -x /etc/init.d/wsdd2 ] || exit 0
+/etc/init.d/wsdd2 disable
+/etc/init.d/wsdd2 stop 2>/dev/null
+exit 0

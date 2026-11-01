@@ -197,6 +197,11 @@ fn visit_config_pems(config: &mut Config, visitor: &mut PemVisitor<'_>) -> std::
         Ok(())
     })?;
     match config {
+        Config::GlobalSettings(settings) => {
+            if let Some(dns) = &mut settings.default_dns {
+                gather_dns_pem_paths(&mut dns.servers, visitor);
+            }
+        }
         Config::Server(server) => gather_pem_file_paths_from_server_config(server, visitor)?,
         Config::ClientConfigGroup(group) => {
             gather_pem_file_paths_from_client_config_group(group, visitor)
@@ -260,11 +265,9 @@ fn gather_dns_pem_paths(
 ) {
     for spec in specs.iter_mut() {
         if let super::DnsServerSpec::WithOptions { client_chain, .. } = spec {
-            for selection in client_chain.iter_mut() {
-                if let ConfigSelection::Config(chain) = selection {
-                    for hop in chain.hops.iter_mut() {
-                        gather_pem_file_paths_from_chain_hop(hop, visitor);
-                    }
+            for chain in client_chain.iter_mut() {
+                for hop in chain.hops.iter_mut() {
+                    gather_pem_file_paths_from_chain_hop(hop, visitor);
                 }
             }
         }
@@ -275,9 +278,17 @@ fn gather_pem_file_paths_from_client_config_group(
     client_group_config: &mut ClientConfigGroup,
     visitor: &mut PemVisitor<'_>,
 ) {
-    for selection in client_group_config.client_proxies.iter_mut() {
-        if let ConfigSelection::Config(client_config) = selection {
-            gather_pem_file_paths_from_client_config(client_config, visitor);
+    for selection in client_group_config.client_chains.iter_mut() {
+        match selection {
+            super::ClientGroupMember::Client(ConfigSelection::Config(client)) => {
+                gather_pem_file_paths_from_client_config(client, visitor)
+            }
+            super::ClientGroupMember::Chain { chain, .. } => {
+                for hop in chain.hops.iter_mut() {
+                    gather_pem_file_paths_from_chain_hop(hop, visitor);
+                }
+            }
+            _ => {}
         }
         // GroupName selections are resolved later, skip here
     }
@@ -640,12 +651,12 @@ mod tests {
             assert_eq!(loaded, 2);
             let validated = crate::config::compile_configs(configs).await.unwrap();
             let download = validated.remote_rules[0].download.as_ref().unwrap();
-            let ClientChainHop::Single(ConfigSelection::Config(client)) =
+            let crate::config::ResolvedClientHop::Single(client) =
                 download.client_chain.hops.iter().next().unwrap()
             else {
                 panic!("expected inline client")
             };
-            let ClientProxyConfig::Tls(tls) = &client.protocol else {
+            let crate::config::ResolvedClientProxyConfig::Tls(tls) = &client.protocol else {
                 panic!("expected TLS")
             };
             assert_eq!(tls.cert.as_deref(), Some(cert.as_str()));
@@ -662,7 +673,7 @@ mod tests {
             serde_yaml::to_value(json!([
                 {"pem": "first", "path": path},
                 {"pem": "second", "path": path},
-                {"client_group": "outbound", "client_proxy": {
+                {"client_group": "outbound", "client_chains": {
                     "address": "127.0.0.1:443", "protocol": {
                         "type": "tls", "cert": path, "key": path, "protocol": {"type": "socks"}
                     }
@@ -684,7 +695,9 @@ mod tests {
         let Config::ClientConfigGroup(group) = &configs[2] else {
             panic!()
         };
-        let ConfigSelection::Config(client) = group.client_proxies.iter().next().unwrap() else {
+        let crate::config::ClientGroupMember::Client(ConfigSelection::Config(client)) =
+            group.client_chains.iter().next().unwrap()
+        else {
             panic!()
         };
         let ClientProxyConfig::Tls(tls) = &client.protocol else {
@@ -784,7 +797,7 @@ mod tests {
                     "override_rules": [{"masks": "0.0.0.0/0", "action": "allow", "client_chain": [client("override")]}]
                 }}},
                 "rules": [{"masks": "0.0.0.0/0", "action": "allow", "client_chain": [client("rule")]}]},
-            {"client_group": "outbound", "client_proxy": {
+            {"client_group": "outbound", "client_chains": {
                 "address": "127.0.0.1:443", "transport": "quic",
                 "quic_settings": {"cert": "client-quic.crt", "key": "client-quic.key"},
                 "protocol": {"type": "tls", "cert": "live.crt", "key": "outbound.key", "protocol": {"type": "socks"}}

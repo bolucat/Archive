@@ -1,0 +1,78 @@
+Subject: [PATCH] edma: map only linear data and retain the TSO mapping length
+
+A frag_list child can have paged fragments. Mapping its total length as
+linear data reads beyond the head and then maps the fragments again. Use
+skb_headlen and skip empty heads. Retain the actual TSO head mapping
+length for the matching DMA unmap rather than the unused zero variable.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma.c
++++ b/edma.c
+@@ -1283,7 +1283,7 @@
+ 	struct sk_buff *iter_skb;
+ 	int i;
+ 	u32 word1 = 0, word3 = 0, lso_word1 = 0, svlan_tag = 0;
+-	u16 buf_len, lso_desc_len = 0;
++	u16 buf_len;
+ 
+ 	if (skb_is_gso(skb)) {
+ 		/* TODO: What additional checks need to be performed here */
+@@ -1374,7 +1374,7 @@
+ 		/* The last buffer info contain the skb address,
+ 		 * so skb will be freed after unmap
+ 		 */
+-		sw_desc->length = lso_desc_len;
++		sw_desc->length = buf_len;
+ 		sw_desc->flags |= EDMA_SW_DESC_FLAG_SKB_HEAD;
+ 
+ 		sw_desc->dma = dma_map_single(&adapter->pdev->dev,
+@@ -1392,7 +1392,7 @@
+ 		/* The last buffer info contain the skb address,
+ 		 * so it will be freed after unmap
+ 		 */
+-		sw_desc->length = lso_desc_len;
++		sw_desc->length = buf_len;
+ 		sw_desc->flags |= EDMA_SW_DESC_FLAG_SKB_HEAD;
+ 
+ 		buf_len = 0;
+@@ -1453,22 +1453,25 @@
+ 
+ 	/* Walk through all fraglist skbs */
+ 	skb_walk_frags(skb, iter_skb) {
+-		buf_len = iter_skb->len;
+-		tpd = edma_get_next_tpd(edma_cinfo, queue_id);
+-		sw_desc = edma_get_tx_buffer(edma_cinfo, tpd, queue_id);
+-		sw_desc->length = buf_len;
+-		sw_desc->dma =  dma_map_single(&adapter->pdev->dev,
+-				iter_skb->data, buf_len, DMA_TO_DEVICE);
++		/* Paged fragments are mapped separately below. */
++		buf_len = skb_headlen(iter_skb);
++		if (buf_len) {
++			tpd = edma_get_next_tpd(edma_cinfo, queue_id);
++			sw_desc = edma_get_tx_buffer(edma_cinfo, tpd, queue_id);
++			sw_desc->length = buf_len;
++			sw_desc->dma =  dma_map_single(&adapter->pdev->dev,
++					iter_skb->data, buf_len, DMA_TO_DEVICE);
+ 
+-		if (dma_mapping_error(NULL, sw_desc->dma))
+-			goto dma_error;
++			if (dma_mapping_error(NULL, sw_desc->dma))
++				goto dma_error;
+ 
+-		tpd->addr = cpu_to_le32(sw_desc->dma);
+-		tpd->len  = cpu_to_le16(buf_len);
+-		tpd->svlan_tag = svlan_tag;
+-		tpd->word1 = word1 | lso_word1;
+-		tpd->word3 = word3;
+-		sw_desc->flags |= EDMA_SW_DESC_FLAG_SKB_FRAGLIST;
++			tpd->addr = cpu_to_le32(sw_desc->dma);
++			tpd->len  = cpu_to_le16(buf_len);
++			tpd->svlan_tag = svlan_tag;
++			tpd->word1 = word1 | lso_word1;
++			tpd->word3 = word3;
++			sw_desc->flags |= EDMA_SW_DESC_FLAG_SKB_FRAGLIST;
++		}
+ 
+ 		i = 0;
+ 

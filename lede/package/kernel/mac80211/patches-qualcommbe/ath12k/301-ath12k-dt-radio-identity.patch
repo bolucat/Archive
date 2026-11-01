@@ -1,0 +1,156 @@
+From: Til Kaiser <mail@tk154.de>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: resolve board identity and radio count from DT
+
+Some PCIe ath12k platforms report an unusable board ID (0xff) from OTP/QMI,
+which makes firmware lookup fall back to `bus=pci,qmi-chip-id=...,qmi-
+board-id=255` and miss the intended board entry.
+
+QCN9274 hw2.0 can expose two PHYs for wideband designs, so ath12k uses
+max_radios = 2 for the generic hardware parameters. Some boards only wire
+one PHY and skip the second radio. On those boards firmware may still
+expose the second WMI service in the HTC setup path, causing the host to
+connect to WMI_CONTROL_MAC1 and fail before WMI service ready.
+
+Merged from:
+  301-ath12k-allow-dt-board-id-override-for-board-data-selection.patch
+  302-ath12k-allow-dt-radio-count-override.patch
+
+Based on work by:
+  JiaY-shi <shi05275@163.com>
+  Til Kaiser <mail@tk154.de>
+
+Signed-off-by: Til Kaiser <mail@tk154.de>
+Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/htc.c
++++ b/drivers/net/wireless/ath/ath12k/htc.c
+@@ -5,6 +5,7 @@
+  */
+ #include <linux/skbuff.h>
+ #include <linux/ctype.h>
++#include <linux/of.h>
+ 
+ #include "debug.h"
+ #include "hif.h"
+@@ -754,6 +755,7 @@ int ath12k_htc_init(struct ath12k_base *
+ 	struct ath12k_htc_svc_conn_req conn_req = { };
+ 	struct ath12k_htc_svc_conn_resp conn_resp = { };
+ 	int ret;
++	u32 num_radios;
+ 
+ 	spin_lock_init(&htc->tx_lock);
+ 
+@@ -777,6 +779,14 @@ int ath12k_htc_init(struct ath12k_base *
+ 		break;
+ 	}
+ 
++	if (!of_property_read_u32(ab->dev->of_node, "qcom,num-radios",
++				  &num_radios) && num_radios) {
++		num_radios = min_t(u32, num_radios, ab->hw_params->max_radios);
++		htc->wmi_ep_count = min_t(u8, htc->wmi_ep_count, num_radios);
++		ath12k_dbg(ab, ATH12K_DBG_BOOT, "boot limiting WMI endpoints to %u\n",
++			   htc->wmi_ep_count);
++	}
++
+ 	/* setup our pseudo HTC control endpoint connection */
+ 	conn_req.ep_ops.ep_tx_complete = ath12k_htc_control_tx_complete;
+ 	conn_req.ep_ops.ep_rx_complete = ath12k_htc_control_rx_complete;
+--- a/drivers/net/wireless/ath/ath12k/mhi.c
++++ b/drivers/net/wireless/ath/ath12k/mhi.c
+@@ -204,9 +204,11 @@ int ath12k_mhi_register(struct ath12k_pc
+ 	mhi_ctrl->rddm_size = ab->hw_params->rddm_size;
+ 
+ 	if (ab->hw_params->otp_board_id_register) {
+-		board_id =
+-			ath12k_pci_read32(ab, ab->hw_params->otp_board_id_register);
+-		board_id = u32_get_bits(board_id, OTP_BOARD_ID_MASK);
++		if (of_property_read_u32(ab->dev->of_node, "qcom,board-id", &board_id)) {
++			board_id =
++				ath12k_pci_read32(ab, ab->hw_params->otp_board_id_register);
++			board_id = u32_get_bits(board_id, OTP_BOARD_ID_MASK);
++		}
+ 
+ 		if (!board_id || (board_id == OTP_INVALID_BOARD_ID)) {
+ 			ath12k_dbg(ab, ATH12K_DBG_BOOT,
+--- a/drivers/net/wireless/ath/ath12k/qmi.c
++++ b/drivers/net/wireless/ath/ath12k/qmi.c
+@@ -2285,6 +2285,7 @@ static void ath12k_qmi_phy_cap_send(stru
+ {
+ 	struct qmi_wlanfw_phy_cap_req_msg_v01 req = {};
+ 	struct qmi_wlanfw_phy_cap_resp_msg_v01 resp = {};
++	u32 num_radios;
+ 	struct qmi_txn txn;
+ 	int ret;
+ 
+@@ -2321,6 +2322,13 @@ static void ath12k_qmi_phy_cap_send(stru
+ 	}
+ 
+ 	ab->qmi.num_radios = resp.num_phy;
++	if (!of_property_read_u32(ab->dev->of_node, "qcom,num-radios",
++				  &num_radios) && num_radios) {
++		num_radios = min_t(u32, num_radios, ab->hw_params->max_radios);
++		ab->qmi.num_radios = min_t(u8, ab->qmi.num_radios, num_radios);
++		ath12k_dbg(ab, ATH12K_DBG_QMI, "phy capability limited num_phy %d\n",
++			   ab->qmi.num_radios);
++	}
+ 
+ 	ath12k_dbg(ab, ATH12K_DBG_QMI,
+ 		   "phy capability resp valid %d single_chip_mlo_support %d valid %d num_phy %d valid %d board_id %d\n",
+@@ -2859,7 +2867,8 @@ int ath12k_qmi_request_target_cap(struct
+ 	struct qmi_wlanfw_cap_req_msg_v01 req = {};
+ 	struct qmi_wlanfw_cap_resp_msg_v01 resp = {};
+ 	struct qmi_txn txn;
+-	unsigned int board_id = ATH12K_BOARD_ID_DEFAULT;
++	struct device *dev = ab->dev;
++	unsigned int board_id;
+ 	int ret = 0;
+ 	int r;
+ 	int i;
+@@ -2898,10 +2907,12 @@ int ath12k_qmi_request_target_cap(struct
+ 		ab->qmi.target.chip_family = resp.chip_info.chip_family;
+ 	}
+ 
+-	if (resp.board_info_valid)
++	if (!of_property_read_u32(dev->of_node, "qcom,board-id", &board_id))
++		ab->qmi.target.board_id = board_id;
++	else if (resp.board_info_valid)
+ 		ab->qmi.target.board_id = resp.board_info.board_id;
+ 	else
+-		ab->qmi.target.board_id = board_id;
++		ab->qmi.target.board_id = ATH12K_BOARD_ID_DEFAULT;
+ 
+ 	if (resp.soc_info_valid)
+ 		ab->qmi.target.soc_id = resp.soc_info.soc_id;
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -4849,17 +4849,27 @@ static int ath12k_wmi_ext_soc_hal_reg_ca
+ 	struct ath12k_wmi_svc_rdy_ext_parse *svc_rdy_ext = data;
+ 	u8 hw_mode_id = le32_to_cpu(svc_rdy_ext->pref_hw_mode_caps.hw_mode_id);
+ 	u32 phy_id_map;
++	u32 max_radios = MAX_RADIOS;
++	u32 num_radios;
+ 	int pdev_index = 0;
+ 	int ret;
+ 
+ 	svc_rdy_ext->soc_hal_reg_caps = ptr;
+ 	svc_rdy_ext->arg.num_phy = le32_to_cpu(svc_rdy_ext->soc_hal_reg_caps->num_phy);
++	if (!of_property_read_u32(soc->dev->of_node, "qcom,num-radios",
++				  &num_radios) && num_radios) {
++		max_radios = min_t(u32, num_radios, soc->hw_params->max_radios);
++		svc_rdy_ext->arg.num_phy = min_t(u32, svc_rdy_ext->arg.num_phy,
++						 max_radios);
++		ath12k_info(soc, "limiting service ready radios to %u\n",
++			    max_radios);
++	}
+ 
+ 	soc->num_radios = 0;
+ 	phy_id_map = le32_to_cpu(svc_rdy_ext->pref_hw_mode_caps.phy_id_map);
+ 	soc->fw_pdev_count = 0;
+ 
+-	while (phy_id_map && soc->num_radios < MAX_RADIOS) {
++	while (phy_id_map && soc->num_radios < max_radios) {
+ 		ret = ath12k_pull_mac_phy_cap_svc_ready_ext(wmi_handle,
+ 							    svc_rdy_ext,
+ 							    hw_mode_id, soc->num_radios,

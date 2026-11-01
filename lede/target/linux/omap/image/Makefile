@@ -33,7 +33,7 @@ define Device/Default
   PROFILES := Default
   KERNEL_NAME := zImage
   KERNEL := kernel-bin
-  DTS_DIR := $(DTS_DIR)/ti/omap
+  DTS_DIR := $(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/ti/omap)
   DEVICE_DTS = $(lastword $(subst _, ,$(1)))
   IMAGES := sdcard.img.gz
   IMAGE/sdcard.img.gz := omap-sdcard | append-metadata | gzip

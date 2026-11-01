@@ -18,7 +18,7 @@ ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
 # Root FS built-in
 define Device/vmlinux
 	KERNEL_SUFFIX := .elf
-	KERNEL := kernel-bin | patch-dtb
+	KERNEL := kernel-bin $(if $(filter 6.18,$(KERNEL_PATCHVER)),,| patch-dtb)
 	KERNEL_INITRAMFS_NAME = vmlinux-initramfs.elf
 endef
 

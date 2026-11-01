@@ -1,0 +1,35 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] backports: retain the older wiphy namespace callback
+
+Use the compatible wiphy namespace callback declaration when building
+against kernels predating the API change.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/net/wireless/sysfs.c
++++ b/net/wireless/sysfs.c
+@@ -160,12 +160,21 @@ static SIMPLE_DEV_PM_OPS(wiphy_pm_ops, w
+ #define WIPHY_PM_OPS NULL
+ #endif
+ 
++#if LINUX_VERSION_IS_GEQ(7,0,0)
+ static const struct ns_common *wiphy_namespace(const struct device *d)
+ {
+ 	struct wiphy *wiphy = container_of(d, struct wiphy, dev);
+ 
+ 	return to_ns_common(wiphy_net(wiphy));
+ }
++#else
++static const void *wiphy_namespace(const struct device *d)
++{
++	struct wiphy *wiphy = container_of(d, struct wiphy, dev);
++
++	return wiphy_net(wiphy);
++}
++#endif
+ 
+ struct class ieee80211_class = {
+ 	.name = "ieee80211",

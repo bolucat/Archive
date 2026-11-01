@@ -49,28 +49,28 @@
 
 &pcie0 {
 	wlan_2g: wifi@0,0 {
-		reg = <0x0 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x0>;
+		ieee80211-freq-limit = <2400000 2500000>;
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
 	};
 };
 
 &pcie1 {
 	wlan_5g: wifi@0,0 {
-		reg = <0x0 0 0 0 0>;
+		ieee80211-freq-limit = <5000000 6000000>;
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
 	};
 };
 
-&gmac0 {
-	mtd-mac-address = <&eeprom 0x0>;
-};
+&gsw {
 
-&switch0 {
-	ports {
 		port@0 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan";
 		};
-	};
+
 };
 
 &state_default {

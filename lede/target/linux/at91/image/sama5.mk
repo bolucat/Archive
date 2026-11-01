@@ -104,8 +104,9 @@ ifeq ($(strip $(CONFIG_EXTERNAL_KERNEL_TREE)),"")
     $(Device/evaluation-fit)
     DEVICE_VENDOR := Laird
     DEVICE_MODEL := WB50N
+    DEVICE_DTS := $(if $(filter 6.18,$(KERNEL_PATCHVER)),at91-wb50n,wb50n)
     DEVICE_PACKAGES := \
-	  kmod-mmc-at91 kmod-ath6kl-sdio ath6k-firmware \
+	  $(if $(filter 5.4,$(KERNEL_PATCHVER)),kmod-mmc-at91) kmod-ath6kl-sdio ath6k-firmware \
 	  kmod-usb-storage kmod-fs-vfat kmod-fs-msdos \
 	  kmod-leds-gpio
     BLOCKSIZE := 128k

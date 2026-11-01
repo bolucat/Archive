@@ -116,6 +116,7 @@ define Device/calamp_lmu5000
   $(Device/production)
   DEVICE_VENDOR := CalAmp
   DEVICE_MODEL := LMU5000
+  DEVICE_DTS := $(if $(filter 6.18,$(KERNEL_PATCHVER)),at91-lmu5000,lmu5000)
   DEVICE_PACKAGES := kmod-rtc-pcf2123 kmod-usb-acm \
 	kmod-usb-serial-option kmod-usb-serial-sierrawireless kmod-gpio-mcp23s08
 endef
@@ -194,8 +195,9 @@ define Device/laird_wb45n
   $(Device/evaluation-fit)
   DEVICE_VENDOR := Laird
   DEVICE_MODEL := WB45N
+  DEVICE_DTS := $(if $(filter 6.18,$(KERNEL_PATCHVER)),at91-wb45n,wb45n)
   DEVICE_PACKAGES := \
-	kmod-mmc-at91 kmod-ath6kl-sdio ath6k-firmware \
+	$(if $(filter 5.4,$(KERNEL_PATCHVER)),kmod-mmc-at91) kmod-ath6kl-sdio ath6k-firmware \
 	kmod-usb-storage kmod-fs-vfat kmod-fs-msdos \
 	kmod-leds-gpio
   BLOCKSIZE := 128k

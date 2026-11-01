@@ -1,0 +1,30 @@
+Subject: [PATCH] edma: unregister GMACs together to release shared flow blocks
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -2038,6 +2038,7 @@
+ 	struct edma_adapter *adapter = netdev_priv(edma_netdev[0]);
+ 	struct edma_common_info *edma_cinfo = adapter->edma_cinfo;
+ 	struct edma_hw *hw = &edma_cinfo->hw;
++	LIST_HEAD(unregister_list);
+ 	int i;
+ 
+ 	if (edma_flow_attached) {
+@@ -2046,8 +2047,14 @@
+ 	}
+ 	edma_switch_unregister();
+ 
++	/* Both GMACs may share one flow block holding device references.
++	 * Unbind both before waiting for either device to be released.
++	 */
++	rtnl_lock();
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++)
+-		unregister_netdev(edma_netdev[i]);
++		unregister_netdevice_queue(edma_netdev[i], &unregister_list);
++	unregister_netdevice_many(&unregister_list);
++	rtnl_unlock();
+ 
+ 	edma_stop_rx_tx(hw);
+ 	for (i = 0; i < CONFIG_NR_CPUS; i++)

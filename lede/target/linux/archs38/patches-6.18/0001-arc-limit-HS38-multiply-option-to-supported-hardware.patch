@@ -1,0 +1,20 @@
+From: Evgeniy Didin <didin@synopsys.com>
+Subject: [PATCH] ARC: keep the HS38 multiply option compatible with AXS10x
+
+Retain the existing HS38 hardware multiply setting using the Linux 6.18
+default CPU tuning variable. GCC 13 otherwise selects plus_qmacw for hs38.
+
+Signed-off-by: Evgeniy Didin <didin@synopsys.com>
+Signed-off-by: lean <chenlin@fnnas.com>
+---
+--- a/arch/arc/Makefile
++++ b/arch/arc/Makefile
+@@ -12,7 +12,7 @@
+ cflags-y	+= -fno-common -pipe -fno-builtin -mmedium-calls -D__linux__
+ 
+ tune-mcpu-def-$(CONFIG_ISA_ARCOMPACT)	:= -mcpu=arc700
+-tune-mcpu-def-$(CONFIG_ISA_ARCV2)	:= -mcpu=hs38
++tune-mcpu-def-$(CONFIG_ISA_ARCV2)	:= -mcpu=hs38 -mmpy-option=2
+ 
+ ifeq ($(CONFIG_ARC_TUNE_MCPU),)
+ cflags-y				+= $(tune-mcpu-def-y)

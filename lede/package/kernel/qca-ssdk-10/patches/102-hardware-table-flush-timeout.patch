@@ -1,0 +1,30 @@
+Subject: [PATCH] ssdk: allow DESS whole-table flushes to complete
+
+R619AC host-table flushes take about 9.7 ms on hardware. Keep the
+short per-entry polling budget, but allow up to 100000 bounded polls
+for a full host/NAT/NAPT/flow table flush before reporting busy.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/hsl/dess/dess_ip.c
++++ b/src/hsl/dess/dess_ip.c
+@@ -348,7 +348,7 @@
+     for (j = 0; j < try_num; j++)
+     {
+         busy = 1;
+-        i = 1000;
++        i = (op == DESS_HOST_ENTRY_FLUSH) ? 100000 : 1000;
+         while (busy && --i)
+         {
+             HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0,
+--- a/src/hsl/dess/dess_nat.c
++++ b/src/hsl/dess/dess_nat.c
+@@ -196,7 +196,7 @@
+     SW_RTN_ON_ERROR(rv);
+ 
+     busy = 1;
+-    i = 1000;
++    i = (op == DESS_NAT_ENTRY_FLUSH) ? 100000 : 1000;
+     while (busy && --i)
+     {
+         HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),

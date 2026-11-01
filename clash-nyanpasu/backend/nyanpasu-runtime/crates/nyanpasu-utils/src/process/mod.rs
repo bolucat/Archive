@@ -57,6 +57,6 @@ pub use pid_file::{
     read_epoch_pid_file, reap_epoch_pid_file, recorded_process_is_alive,
 };
 pub use supervisor::{
-    Backoff, BackoffRange, ReadinessProbe, RestartPolicy, RestartStormPolicy, Supervisor,
-    SupervisorBuilder, SupervisorEvent,
+    AtomicStopStrategy, Backoff, BackoffRange, ReadinessProbe, RestartPolicy, RestartStormPolicy,
+    StopStrategy, Supervisor, SupervisorBuilder, SupervisorEvent,
 };

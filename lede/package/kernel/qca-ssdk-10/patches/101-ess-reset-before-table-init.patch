@@ -1,0 +1,60 @@
+Subject: [PATCH] ssdk: reset ESS before initializing hardware tables
+
+With EDMA no longer owning the ESS reset, establish a reset baseline
+before fal_init accesses the host and NAT engines. Check reset errors
+and identify the failing table when hardware initialization fails.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -1953,7 +1953,7 @@
+ 	struct reset_control *reset, *gates[5];
+ 	struct device_node *np = pdev->dev.of_node;
+ 	char name[24];
+-	int i;
++	int i, ret;
+ 
+ 	if (of_device_is_compatible(np, "qcom,ess-instance"))
+ 		return of_platform_populate(np, NULL, NULL, &pdev->dev);
+@@ -1968,6 +1968,18 @@
+ 			return dev_err_probe(&pdev->dev, PTR_ERR(gates[i]),
+ 					     "ESS MAC clock gate unavailable\n");
+ 	}
++	/* The clock is enabled by ssdk_plat_init before this probe. Bring
++	 * ESS out of the bootloader state before fal_init flushes hardware
++	 * host/NAT tables; the later PSGMII self-test is too late for that.
++	 */
++	ret = reset_control_assert(reset);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "ESS reset assert failed\n");
++	msleep(10);
++	ret = reset_control_deassert(reset);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "ESS reset deassert failed\n");
++	msleep(100);
+ 	ess_rst = reset;
+ 	memcpy(ess_mac_clock_disable, gates, sizeof(gates));
+ 	return 0;
+--- a/src/hsl/dess/dess_ip.c
++++ b/src/hsl/dess/dess_ip.c
+@@ -3739,6 +3739,8 @@
+ 	memset(ip_host_route_ip6_table, 0, sizeof(ip_host_route_ip6_table));
+ 
+     rv = dess_ip_reset(dev_id);
++    if (rv != SW_OK)
++        printk(KERN_ERR "DESS IP table initialization failed: %d\n", rv);
+     SW_RTN_ON_ERROR(rv);
+ 
+ #ifndef HSL_STANDALONG
+--- a/src/hsl/dess/dess_nat.c
++++ b/src/hsl/dess/dess_nat.c
+@@ -3170,6 +3170,8 @@
+ 	aos_lock_init(&dess_nat_lock);
+ 
+     rv = dess_nat_reset(dev_id);
++    if (rv != SW_OK)
++        printk(KERN_ERR "DESS NAT table initialization failed: %d\n", rv);
+     SW_RTN_ON_ERROR(rv);
+ 
+ #ifndef HSL_STANDALONG

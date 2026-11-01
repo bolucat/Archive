@@ -367,11 +367,25 @@ endef
 $(eval $(call KernelPackage,phy-ax88796b))
 
 
+define KernelPackage/phylib-broadcom-ptp
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Broadcom Ethernet PHY PTP helper
+  HIDDEN:=1
+  DEPENDS:=@LINUX_6_18 +kmod-phylib-broadcom +kmod-ptp
+  KCONFIG:=CONFIG_BCM_NET_PHYPTP
+  FILES:=$(LINUX_DIR)/drivers/net/phy/bcm-phy-ptp.ko
+  AUTOLOAD:=$(call AutoProbe,bcm-phy-ptp)
+endef
+
+$(eval $(call KernelPackage,phylib-broadcom-ptp))
+
+
 define KernelPackage/phy-broadcom
    SUBMENU:=$(NETWORK_DEVICES_MENU)
    TITLE:=Broadcom Ethernet PHY driver
    KCONFIG:=CONFIG_BROADCOM_PHY
-   DEPENDS:=+kmod-libphy +kmod-phylib-broadcom
+   DEPENDS:=+kmod-libphy +kmod-phylib-broadcom \
+	+(TARGET_armsr_armv8&&LINUX_6_18):kmod-phylib-broadcom-ptp
    FILES:=$(LINUX_DIR)/drivers/net/phy/broadcom.ko
    AUTOLOAD:=$(call AutoLoad,18,broadcom,1)
 endef
@@ -2139,7 +2153,7 @@ $(eval $(call KernelPackage,sfc-siena))
 define KernelPackage/pcs-xpcs
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Synopsis DesignWare PCS driver
-  DEPENDS:=@(TARGET_x86_64||TARGET_armsr||TARGET_qcom) +kmod-phylink +LINUX_6_12||LINUX_6_18:kmod-mdio-devres
+  DEPENDS:=@(TARGET_x86_64||TARGET_armsr) +kmod-phylink +LINUX_6_12||LINUX_6_18:kmod-mdio-devres
   KCONFIG:=CONFIG_PCS_XPCS
   FILES:=$(LINUX_DIR)/drivers/net/pcs/pcs_xpcs.ko
   AUTOLOAD:=$(call AutoLoad,20,pcs_xpcs)
@@ -2151,7 +2165,7 @@ $(eval $(call KernelPackage,pcs-xpcs))
 define KernelPackage/stmmac-core
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Synopsis Ethernet Controller core (NXP,STMMicro,others)
-  DEPENDS:=@(TARGET_x86_64||TARGET_armsr||TARGET_qcom) +kmod-pcs-xpcs +kmod-ptp
+  DEPENDS:=@(TARGET_x86_64||TARGET_armsr) +kmod-pcs-xpcs +kmod-ptp
   KCONFIG:=CONFIG_STMMAC_ETH \
     CONFIG_STMMAC_SELFTESTS=n \
     CONFIG_STMMAC_PLATFORM \

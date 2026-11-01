@@ -21,7 +21,7 @@ public class HotKeyManager : IDisposable
         // Create a TaskCompletionSource to receive the window handle.
         var tcsHwnd = new TaskCompletionSource<IntPtr>();
 
-        _messageLoopThread = new Thread(new ThreadStart(HotKeyThreadEntry))
+        _messageLoopThread = new Thread(HotKeyThreadEntry)
         {
             Name = "GlobalHotKeyManager Message Loop"
         };
@@ -149,7 +149,7 @@ public class HotKeyManager : IDisposable
             void MessageLoop(IntPtr hWnd)
             {
                 var msg = new TagMSG();
-                var ret = 0;
+                int ret;
                 while (((ret = NativeFunctions.GetMessage(ref msg, hWnd, 0u, 0u)) != -1) && (ret != 0))
                 {
                     NativeFunctions.TranslateMessage(ref msg);
@@ -208,19 +208,11 @@ public class HotKeyManager : IDisposable
         Dispose();
     }
 
-    private class Registration : IRegistration
+    private class Registration(IntPtr hWnd, IntPtr result) : IRegistration
     {
-        private readonly IntPtr _hWnd;
-
-        public Registration(IntPtr hWnd, IntPtr result)
-        {
-            _hWnd = hWnd;
-            Id = result.ToInt32();
-        }
-
         public bool IsSuccessful => Id != -1;
 
-        public int Id { get; }
+        public int Id { get; } = result.ToInt32();
 
         /// <summary>
         /// Dispose method unregisters the hotkey if registration was successful.
@@ -229,7 +221,7 @@ public class HotKeyManager : IDisposable
         {
             if (Id != -1)
             {
-                NativeFunctions.SendMessage(_hWnd, UnregisterHotKeyMsg, new IntPtr(Id), IntPtr.Zero);
+                NativeFunctions.SendMessage(hWnd, UnregisterHotKeyMsg, new IntPtr(Id), IntPtr.Zero);
             }
         }
     }

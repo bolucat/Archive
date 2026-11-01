@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/* Board-specific port masks are defined immediately before this include. */
+&switch {
+	compatible = "qcom,ess-switch";
+	reg = <0xc000000 0x80000>;
+	/delete-property/ reg-names;
+	switch_access_mode = "local bus";
+	mdio-bus = <&mdio>;
+	switch_mac_mode = <0>;
+	switch_cpu_bmp = <0x1>;
+	switch_lan_bmp = <QSDK_LAN_BMP>;
+	switch_wan_bmp = <QSDK_WAN_BMP>;
+	switch_initvlas = <0x7c 0x54>;
+	resets = <&gcc ESS_RESET>, <&gcc ESS_MAC1_CLK_DIS>,
+		 <&gcc ESS_MAC2_CLK_DIS>, <&gcc ESS_MAC3_CLK_DIS>,
+		 <&gcc ESS_MAC4_CLK_DIS>, <&gcc ESS_MAC5_CLK_DIS>;
+	reset-names = "ess_rst", "ess_mac1_clk_dis", "ess_mac2_clk_dis",
+		      "ess_mac3_clk_dis", "ess_mac4_clk_dis", "ess_mac5_clk_dis";
+	clocks = <&gcc GCC_ESS_CLK>;
+	clock-names = "ess_clk";
+};
+
+/ {
+	soc {
+
+		ess-psgmii@98000 {
+			compatible = "qcom,ess-psgmii";
+			reg = <0x98000 0x800>;
+			psgmii_access_mode = "local bus";
+			resets = <&gcc ESS_PSGMII_ARES>;
+			reset-names = "psgmii_rst";
+		};
+	};
+};
+
+&gmac {
+	compatible = "qcom,ess-edma";
+	/delete-property/ phy-mode;
+	/* SSDK owns the shared ESS reset and clock. */
+	/delete-property/ resets;
+	/delete-property/ reset-names;
+	/delete-property/ clocks;
+	/delete-property/ clock-names;
+	qcom,page-mode = <0>;
+	qcom,rx-head-buf-size = <1540>;
+	qcom,num-gmac = <2>;
+	qcom,mdio-supported;
+	/delete-node/ fixed-link;
+
+	qsdk_gmac0: gmac0 {
+		qcom,phy-mdio-addr = <QSDK_WAN_PHY>;
+		qcom,poll-required = <QSDK_WAN_POLL>;
+		qcom,poll-required-dynamic = <1>;
+		qcom,forced-speed = <1000>;
+		qcom,forced-duplex = <1>;
+		vlan-tag = <2 QSDK_WAN_BMP>;
+	};
+
+	qsdk_gmac1: gmac1 {
+		qcom,mac-source = <&gmac>;
+		qcom,poll-required-dynamic = <1>;
+		vlan-tag = <1 QSDK_LAN_BMP>;
+	};
+};
+
+
+#undef QSDK_LAN_BMP
+#undef QSDK_WAN_BMP
+#undef QSDK_WAN_PHY
+#undef QSDK_WAN_POLL
+

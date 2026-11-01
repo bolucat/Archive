@@ -7,24 +7,39 @@
 board=$(board_name)
 
 case "$FIRMWARE" in
+"ath12k/QCN9274/hw1.0/cal-pci-0001:01:00.0.bin"|\
 "ath12k/QCN9274/hw2.0/cal-pci-0001:01:00.0.bin")
 	case "$board" in
 	askey,sbe1v1k)
 		caldata_extract_mmc "0:ART" 0x58800 0x2d000
 		;;
+	xiaomi,be10000)
+		caldata_extract "0:art" 0x1000 0x2d000
+		;;
 	esac
 	;;
+"ath12k/QCN9274/hw1.0/cal-pci-0002:01:00.0.bin"|\
 "ath12k/QCN9274/hw2.0/cal-pci-0002:01:00.0.bin")
 	case "$board" in
 	askey,sbe1v1k)
 		caldata_extract_mmc "0:ART" 0x8a800 0x2d000
 		;;
+	xiaomi,be10000)
+		caldata_extract "0:art" 0x33000 0x2d000
+		;;
+	xiaomi,be7000)
+		caldata_extract "0:art" 0x65000 0x2d000
+		;;
 	esac
 	;;
+"ath12k/QCN9274/hw1.0/cal-pci-0003:01:00.0.bin"|\
 "ath12k/QCN9274/hw2.0/cal-pci-0003:01:00.0.bin")
 	case "$board" in
 	askey,sbe1v1k)
 		caldata_extract_mmc "0:ART" 0xbc800 0x2d000
+		;;
+	xiaomi,be10000)
+		caldata_extract "0:art" 0x65000 0x2d000
 		;;
 	esac
 	;;

@@ -1,0 +1,72 @@
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: serialize and deduplicate regulatory updates
+
+ab->new_alpha2 is written under ab->base_lock by the 11d new country code
+event handler ath12k_reg_11d_new_cc_event() and by the SMBIOS BDF parser,
+and read under the same lock by ath12k_update_11d().
+
+Currently ath12k_mac_hw_register() unconditionally sets ab->new_alpha2 to
+firmware. But when ab->new_alpha2 is the same as the country already
+applied at boot time (stored in ab->default_regd), setting it again is
+meaningless. So skip it in that case.
+
+Merged from:
+  144-wifi-ath12k-protect-new_alpha2-access-with-base_lock.patch
+  145-wifi-ath12k-skip-setting-country-code-when-unchanged.patch
+
+Based on work by:
+  Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+  Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+
+Original-commit: e9e53baf1c0eb4d03c83b7e431f8095530167811
+Link: https://patch.msgid.link/20260729-ath12k-regd-wait-timeout-v1-3-504aa6e7e93c@oss.qualcomm.com
+Original-commit: e15cfef60d907f6687fa75cb5e9807de225cd1b3
+Link: https://patch.msgid.link/20260729-ath12k-regd-wait-timeout-v1-4-504aa6e7e93c@oss.qualcomm.com
+
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -15089,11 +15089,29 @@ static int ath12k_mac_hw_register(struct
+ 			goto err_unregister_hw;
+ 		}
+ 
+-		if (this_ab->hw_params->current_cc_support && this_ab->new_alpha2[0]) {
++		if (this_ab->hw_params->current_cc_support) {
+ 			struct wmi_set_current_country_arg current_cc = {};
++			struct ieee80211_regdomain *default_regd;
++			bool same_cc = false;
+ 
++			spin_lock_bh(&this_ab->base_lock);
+ 			memcpy(&current_cc.alpha2, this_ab->new_alpha2, 2);
+-			memcpy(&ar->alpha2, this_ab->new_alpha2, 2);
++			spin_unlock_bh(&this_ab->base_lock);
++
++			if (!current_cc.alpha2[0])
++				goto fw_stats_init;
++
++			memcpy(&ar->alpha2, current_cc.alpha2, 2);
++
++			spin_lock_bh(&this_ab->base_lock);
++			default_regd = this_ab->default_regd[ar->pdev_idx];
++			if (default_regd)
++				same_cc = !memcmp(default_regd->alpha2,
++						  current_cc.alpha2, 2);
++			spin_unlock_bh(&this_ab->base_lock);
++
++			if (same_cc)
++				goto fw_stats_init;
+ 
+ 			reinit_completion(&ar->regd_update_completed);
+ 
+@@ -15104,6 +15122,7 @@ static int ath12k_mac_hw_register(struct
+ 					    ret);
+ 		}
+ 
++fw_stats_init:
+ 		ath12k_fw_stats_init(ar);
+ 		ath12k_debugfs_register(ar);
+ 	}

@@ -1,8 +1,11 @@
 . /lib/functions.sh
+. /lib/functions/system.sh
+
 
 preinit_set_mac_address() {
 	case $(board_name) in
 	asrock,g10)
+		[ "$(get_linux_version)" -ge "618000" ] && return 0
 		lan_mac=$(mtd_get_mac_ascii hwconfig HW.LAN.MAC.Address)
 		wan_mac=$(mtd_get_mac_ascii hwconfig HW.WAN.MAC.Address)
 		ip link set dev eth0 address "${lan_mac}"

@@ -1,0 +1,543 @@
+From: Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: decode and validate monitor descriptors across hardware revisions
+
+HAL_TLV_HDR_LEN was using the wrong bitmask; fix it to cover bits [21:10].
+Also drop HAL_SRNG_TLV_HDR_{TAG,LEN} and use the generic TLV header bit
+definitions for TLV32/TLV64 encode/decode to avoid redundant macros.
+
+Change TLV decode helpers to return the TLV value pointer and optionally
+decode tag/len/usrid via out parameters. This allows reusing the helpers
+for DP monitor RX status header TLV parsing and avoids duplicated header
+decoding in callers.
+
+Wi-Fi 7 monitor RX status TLV parsing needs to decode TLV headers and
+advance the pointer with the correct header alignment. Different targets
+use different TLV header layouts (32-bit vs 64-bit), but the HAL ops for
+dp_mon RX status header decode and header alignment were not populated for
+all wifi7 targets.
+
+Wi-Fi 7 monitor status parsing in dp_mon currently assumes a 64-bit TLV
+header and directly decodes tag/len/userid from struct hal_tlv_64_hdr. On
+chips using a 32-bit TLV header (e.g. QCC2072), this causes monitor RX
+status packets to be dropped during TLV parsing.
+
+Validate the pointer to the next RX monitor TLV more strictly by ensuring
+that at least a full TLV header is available within the status buffer
+before continuing TLV parsing.
+
+Monitor mode delivers raw 802.11 frames, not 802.3/Ethernet frames. Setting
+RX_FLAG_8023 for monitor RX is incorrect and can break userspace capture
+and analysis. Do not update this flag in the monitor path to ensure correct
+handling of captured frames.
+
+Do not populate peer and link_id in ieee80211_rx_status for monitor MSDUs.
+
+The default memory profile configures rxdma_monitor_dst_ring_size as 8092,
+which is a typo. The intended value is 8192, consistent with all other ring
+sizes in the table being powers of two.
+
+Merged from:
+  127-wifi-ath12k-fix-TLV32-length-mask.patch
+  128-wifi-ath12k-refactor-HAL-TLV32-64-decode-helpers.patch
+  129-wifi-ath12k-add-HAL-ops-for-monitor-TLV-header-decode-and-alignment.patch
+  130-wifi-ath12k-add-dp_mon-support-32-bit-TLV-headers.patch
+  131-wifi-ath12k-tighten-RX-monitor-TLV-bounds-check.patch
+  132-wifi-ath12k-skip-RX_FLAG_8023-for-DIX-frames-in-monitor-mode.patch
+  133-wifi-ath12k-skip-peer-link-info-update-for-monitor-MSDUs.patch
+  134-wifi-ath12k-correct-monitor-destination-ring-size.patch
+
+Based on work by:
+  Aaradhana Sahu <aaradhana.sahu@oss.qualcomm.com>
+  Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+  Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
+  Sushant Butta <sushant.butta@oss.qualcomm.com>
+
+Original-commit: d762bbc08ca70a1985c9f9420c4bf67e0ba0e9be
+Link: https://patch.msgid.link/20260509025819.1641630-2-miaoqing.pan@oss.qualcomm.com
+Original-commit: e264a3dbe866870ed21ef83c67ad956a45391859
+Link: https://patch.msgid.link/20260509025819.1641630-3-miaoqing.pan@oss.qualcomm.com
+Original-commit: 9d1d61121b05c0a854e6da227e37b99b3740dae9
+Link: https://patch.msgid.link/20260509025819.1641630-4-miaoqing.pan@oss.qualcomm.com
+Original-commit: 4c09bbf0c1e11bae19a0643bd9824d4f05d9c281
+Link: https://patch.msgid.link/20260509025819.1641630-5-miaoqing.pan@oss.qualcomm.com
+Original-commit: fffa54aeaeb2e9ac923254b39e89bf07799615aa
+Link: https://patch.msgid.link/20260509025819.1641630-6-miaoqing.pan@oss.qualcomm.com
+Original-commit: 5a2b5d6a5a4a19b86d1c0698a3eb3d21f0b06401
+Link: https://patch.msgid.link/20260609064856.547032-2-sushant.butta@oss.qualcomm.com
+Original-commit: 56f8f12c1a3c5312de0d7312b229d7bca03dbb81
+Link: https://patch.msgid.link/20260609064856.547032-3-sushant.butta@oss.qualcomm.com
+Original-commit: 913998f903fb1432c0046c33003db38a9e8bedb1
+Link: https://patch.msgid.link/20260616062342.4079796-1-aaradhana.sahu@oss.qualcomm.com
+
+Signed-off-by: Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: Sushant Butta <sushant.butta@oss.qualcomm.com>
+Signed-off-by: Aaradhana Sahu <aaradhana.sahu@oss.qualcomm.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -49,7 +49,7 @@ ath12k_mem_profile_based_param ath12k_me
+ 		.dp_params = {
+ 			.tx_comp_ring_size = 32768,
+ 			.rxdma_monitor_buf_ring_size = 4096,
+-			.rxdma_monitor_dst_ring_size = 8092,
++			.rxdma_monitor_dst_ring_size = 8192,
+ 			.num_pool_tx_desc = 32768,
+ 			.rx_desc_count = 12288,
+ 			.rx_release_ring_size = 16384,
+--- a/drivers/net/wireless/ath/ath12k/dp_mon.c
++++ b/drivers/net/wireless/ath/ath12k/dp_mon.c
+@@ -493,12 +493,8 @@ EXPORT_SYMBOL(ath12k_dp_mon_update_radio
+ void ath12k_dp_mon_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev,
+ 				   struct napi_struct *napi,
+ 				   struct sk_buff *msdu,
+-				   const struct hal_rx_mon_ppdu_info *ppduinfo,
+-				   struct ieee80211_rx_status *status,
+-				   u8 decap)
++				   struct ieee80211_rx_status *status)
+ {
+-	struct ath12k_dp *dp = dp_pdev->dp;
+-	struct ath12k_base *ab = dp->ab;
+ 	static const struct ieee80211_radiotap_he known = {
+ 		.data1 = cpu_to_le16(IEEE80211_RADIOTAP_HE_DATA1_DATA_MCS_KNOWN |
+ 				     IEEE80211_RADIOTAP_HE_DATA1_BW_RU_ALLOC_KNOWN),
+@@ -506,14 +502,6 @@ void ath12k_dp_mon_rx_deliver_msdu(struc
+ 	};
+ 	struct ieee80211_rx_status *rx_status;
+ 	struct ieee80211_radiotap_he *he = NULL;
+-	struct ieee80211_sta *pubsta = NULL;
+-	struct ath12k_dp_link_peer *peer;
+-	struct ath12k_skb_rxcb *rxcb = ATH12K_SKB_RXCB(msdu);
+-	struct hal_rx_desc_data rx_info;
+-	bool is_mcbc = rxcb->is_mcbc;
+-	bool is_eapol_tkip = rxcb->is_eapol;
+-	struct hal_rx_desc *rx_desc = (struct hal_rx_desc *)msdu->data;
+-	u8 addr[ETH_ALEN] = {};
+ 
+ 	status->link_valid = 0;
+ 
+@@ -524,64 +512,10 @@ void ath12k_dp_mon_rx_deliver_msdu(struc
+ 		status->flag |= RX_FLAG_RADIOTAP_HE;
+ 	}
+ 
+-	ath12k_dp_extract_rx_desc_data(dp->hal, &rx_info, rx_desc, rx_desc);
+-
+-	rcu_read_lock();
+-	spin_lock_bh(&dp->dp_lock);
+-	peer = ath12k_dp_rx_h_find_link_peer(dp_pdev, msdu, &rx_info);
+-	if (peer && peer->sta) {
+-		pubsta = peer->sta;
+-		memcpy(addr, peer->addr, ETH_ALEN);
+-		if (pubsta->valid_links) {
+-			status->link_valid = 1;
+-			status->link_id = peer->link_id;
+-		}
+-	}
+-
+-	spin_unlock_bh(&dp->dp_lock);
+-	rcu_read_unlock();
+-
+-	ath12k_dbg(ab, ATH12K_DBG_DATA,
+-		   "rx skb %p len %u peer %pM %u %s %s%s%s%s%s%s%s%s %srate_idx %u vht_nss %u freq %u band %u flag 0x%x fcs-err %i mic-err %i amsdu-more %i\n",
+-		   msdu,
+-		   msdu->len,
+-		   addr,
+-		   rxcb->tid,
+-		   (is_mcbc) ? "mcast" : "ucast",
+-		   (status->encoding == RX_ENC_LEGACY) ? "legacy" : "",
+-		   (status->encoding == RX_ENC_HT) ? "ht" : "",
+-		   (status->encoding == RX_ENC_VHT) ? "vht" : "",
+-		   (status->encoding == RX_ENC_HE) ? "he" : "",
+-		   (status->bw == RATE_INFO_BW_40) ? "40" : "",
+-		   (status->bw == RATE_INFO_BW_80) ? "80" : "",
+-		   (status->bw == RATE_INFO_BW_160) ? "160" : "",
+-		   (status->bw == RATE_INFO_BW_320) ? "320" : "",
+-		   status->enc_flags & RX_ENC_FLAG_SHORT_GI ? "sgi " : "",
+-		   status->rate_idx,
+-		   status->nss,
+-		   status->freq,
+-		   status->band, status->flag,
+-		   !!(status->flag & RX_FLAG_FAILED_FCS_CRC),
+-		   !!(status->flag & RX_FLAG_MMIC_ERROR),
+-		   !!(status->flag & RX_FLAG_AMSDU_MORE));
+-
+-	ath12k_dbg_dump(ab, ATH12K_DBG_DP_RX, NULL, "dp rx msdu: ",
+-			msdu->data, msdu->len);
+ 	rx_status = IEEE80211_SKB_RXCB(msdu);
+ 	*rx_status = *status;
+ 
+-	/* TODO: trace rx packet */
+-
+-	/* PN for multicast packets are not validate in HW,
+-	 * so skip 802.3 rx path
+-	 * Also, fast_rx expects the STA to be authorized, hence
+-	 * eapol packets are sent in slow path.
+-	 */
+-	if (decap == DP_RX_DECAP_TYPE_ETHERNET2_DIX && !is_eapol_tkip &&
+-	    !(is_mcbc && rx_status->flag & RX_FLAG_DECRYPTED))
+-		rx_status->flag |= RX_FLAG_8023;
+-
+-	ieee80211_rx_napi(ath12k_pdev_dp_to_hw(dp_pdev), pubsta, msdu, napi);
++	ieee80211_rx_napi(ath12k_pdev_dp_to_hw(dp_pdev), NULL, msdu, napi);
+ }
+ EXPORT_SYMBOL(ath12k_dp_mon_rx_deliver_msdu);
+ 
+--- a/drivers/net/wireless/ath/ath12k/dp_mon.h
++++ b/drivers/net/wireless/ath/ath12k/dp_mon.h
+@@ -112,9 +112,7 @@ void ath12k_dp_mon_update_radiotap(struc
+ void ath12k_dp_mon_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev,
+ 				   struct napi_struct *napi,
+ 				   struct sk_buff *msdu,
+-				   const struct hal_rx_mon_ppdu_info *ppduinfo,
+-				   struct ieee80211_rx_status *status,
+-				   u8 decap);
++				   struct ieee80211_rx_status *status);
+ struct sk_buff *
+ ath12k_dp_mon_rx_merg_msdus(struct ath12k_pdev_dp *dp_pdev,
+ 			    struct dp_mon_mpdu *mon_mpdu,
+--- a/drivers/net/wireless/ath/ath12k/hal.c
++++ b/drivers/net/wireless/ath/ath12k/hal.c
+@@ -828,8 +828,8 @@ void *ath12k_hal_encode_tlv64_hdr(void *
+ {
+ 	struct hal_tlv_64_hdr *tlv64 = tlv;
+ 
+-	tlv64->tl = le64_encode_bits(tag, HAL_TLV_HDR_TAG) |
+-		    le64_encode_bits(len, HAL_TLV_HDR_LEN);
++	tlv64->tl = le64_encode_bits(tag, HAL_TLV_64_HDR_TAG) |
++		    le64_encode_bits(len, HAL_TLV_64_HDR_LEN);
+ 
+ 	return tlv64->value;
+ }
+@@ -846,26 +846,44 @@ void *ath12k_hal_encode_tlv32_hdr(void *
+ }
+ EXPORT_SYMBOL(ath12k_hal_encode_tlv32_hdr);
+ 
+-u16 ath12k_hal_decode_tlv64_hdr(void *tlv, void **desc)
++void *ath12k_hal_decode_tlv64_hdr(void *tlv, u16 *tag, u16 *len, u16 *usrid)
+ {
+ 	struct hal_tlv_64_hdr *tlv64 = tlv;
+-	u16 tag;
+ 
+-	tag = le64_get_bits(tlv64->tl, HAL_SRNG_TLV_HDR_TAG);
+-	*desc = tlv64->value;
++	if (tag)
++		*tag = le64_get_bits(tlv64->tl, HAL_TLV_64_HDR_TAG);
++	if (len)
++		*len = le64_get_bits(tlv64->tl, HAL_TLV_64_HDR_LEN);
++	if (usrid)
++		*usrid = le64_get_bits(tlv64->tl, HAL_TLV_64_USR_ID);
+ 
+-	return tag;
++	return tlv64->value;
+ }
+ EXPORT_SYMBOL(ath12k_hal_decode_tlv64_hdr);
+ 
+-u16 ath12k_hal_decode_tlv32_hdr(void *tlv, void **desc)
++void *ath12k_hal_decode_tlv32_hdr(void *tlv, u16 *tag, u16 *len, u16 *usrid)
+ {
+ 	struct hal_tlv_hdr *tlv32 = tlv;
+-	u16 tag;
+ 
+-	tag = le32_get_bits(tlv32->tl, HAL_SRNG_TLV_HDR_TAG);
+-	*desc = tlv32->value;
++	if (tag)
++		*tag = le32_get_bits(tlv32->tl, HAL_TLV_HDR_TAG);
++	if (len)
++		*len = le32_get_bits(tlv32->tl, HAL_TLV_HDR_LEN);
++	if (usrid)
++		*usrid = le32_get_bits(tlv32->tl, HAL_TLV_USR_ID);
+ 
+-	return tag;
++	return tlv32->value;
+ }
+ EXPORT_SYMBOL(ath12k_hal_decode_tlv32_hdr);
++
++u32 ath12k_hal_get_tlv64_hdr_align(void)
++{
++	return HAL_TLV_64_ALIGN;
++}
++EXPORT_SYMBOL(ath12k_hal_get_tlv64_hdr_align);
++
++u32 ath12k_hal_get_tlv32_hdr_align(void)
++{
++	return HAL_TLV_ALIGN;
++}
++EXPORT_SYMBOL(ath12k_hal_get_tlv32_hdr_align);
+--- a/drivers/net/wireless/ath/ath12k/hal.h
++++ b/drivers/net/wireless/ath/ath12k/hal.h
+@@ -1441,10 +1441,12 @@ struct hal_ops {
+ 					 u8 *rbm, u32 *msdu_cnt);
+ 	void *(*reo_cmd_enc_tlv_hdr)(void *tlv, u64 tag, u64 len);
+ 	u16 (*reo_status_dec_tlv_hdr)(void *tlv, void **desc);
++	void *(*mon_rx_status_dec_tlv_hdr)(void *tlv, u16 *tag, u16 *len, u16 *usrid);
++	u32 (*get_tlv_hdr_align)(void);
+ };
+ 
+ #define HAL_TLV_HDR_TAG		GENMASK(9, 1)
+-#define HAL_TLV_HDR_LEN		GENMASK(25, 10)
++#define HAL_TLV_HDR_LEN		GENMASK(21, 10)
+ #define HAL_TLV_USR_ID		GENMASK(31, 26)
+ 
+ #define HAL_TLV_ALIGN	4
+@@ -1464,9 +1466,6 @@ struct hal_tlv_64_hdr {
+ 	u8 value[];
+ } __packed;
+ 
+-#define HAL_SRNG_TLV_HDR_TAG		GENMASK(9, 1)
+-#define HAL_SRNG_TLV_HDR_LEN		GENMASK(25, 10)
+-
+ dma_addr_t ath12k_hal_srng_get_tp_addr(struct ath12k_base *ab,
+ 				       struct hal_srng *srng);
+ dma_addr_t ath12k_hal_srng_get_hp_addr(struct ath12k_base *ab,
+@@ -1556,6 +1555,8 @@ void ath12k_hal_rx_reo_ent_buf_paddr_get
+ 					 u8 *rbm, u32 *msdu_cnt);
+ void *ath12k_hal_encode_tlv64_hdr(void *tlv, u64 tag, u64 len);
+ void *ath12k_hal_encode_tlv32_hdr(void *tlv, u64 tag, u64 len);
+-u16 ath12k_hal_decode_tlv64_hdr(void *tlv, void **desc);
+-u16 ath12k_hal_decode_tlv32_hdr(void *tlv, void **desc);
++void *ath12k_hal_decode_tlv64_hdr(void *tlv, u16 *tag, u16 *len, u16 *usrid);
++void *ath12k_hal_decode_tlv32_hdr(void *tlv, u16 *tag, u16 *len, u16 *usrid);
++u32 ath12k_hal_get_tlv64_hdr_align(void);
++u32 ath12k_hal_get_tlv32_hdr_align(void);
+ #endif
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c
+@@ -1565,16 +1565,17 @@ ath12k_wifi7_dp_mon_parse_status_msdu_en
+ static enum hal_rx_mon_status
+ ath12k_wifi7_dp_mon_rx_parse_status_tlv(struct ath12k_pdev_dp *dp_pdev,
+ 					struct ath12k_mon_data *pmon,
+-					const struct hal_tlv_64_hdr *tlv)
++					const void *tlv)
+ {
+ 	struct hal_rx_mon_ppdu_info *ppdu_info = &pmon->mon_ppdu_info;
+-	const void *tlv_data = tlv->value;
+-	u32 info[7], userid;
+-	u16 tlv_tag, tlv_len;
++	struct ath12k *ar = ath12k_pdev_dp_to_ar(dp_pdev);
++	struct ath12k_hal *hal = &ar->ab->hal;
++	u16 tlv_tag, tlv_len, userid;
++	void *tlv_data;
++	u32 info[7];
+ 
+-	tlv_tag = le64_get_bits(tlv->tl, HAL_TLV_64_HDR_TAG);
+-	tlv_len = le64_get_bits(tlv->tl, HAL_TLV_64_HDR_LEN);
+-	userid = le64_get_bits(tlv->tl, HAL_TLV_64_USR_ID);
++	tlv_data = hal->ops->mon_rx_status_dec_tlv_hdr((void *)tlv, &tlv_tag,
++						       &tlv_len, &userid);
+ 
+ 	if (ppdu_info->tlv_aggr.in_progress && ppdu_info->tlv_aggr.tlv_tag != tlv_tag) {
+ 		ath12k_wifi7_dp_mon_parse_eht_sig_hdr(ppdu_info,
+@@ -2480,7 +2481,6 @@ ath12k_wifi7_dp_mon_rx_deliver(struct at
+ {
+ 	struct sk_buff *mon_skb, *skb_next, *header;
+ 	struct ieee80211_rx_status *rxs = &dp_pdev->rx_status;
+-	u8 decap = DP_RX_DECAP_TYPE_RAW;
+ 
+ 	mon_skb = ath12k_dp_mon_rx_merg_msdus(dp_pdev, mon_mpdu, ppduinfo, rxs);
+ 	if (!mon_skb)
+@@ -2507,12 +2507,8 @@ ath12k_wifi7_dp_mon_rx_deliver(struct at
+ 		}
+ 		rxs->flag |= RX_FLAG_ONLY_MONITOR;
+ 
+-		if (!(rxs->flag & RX_FLAG_ONLY_MONITOR))
+-			decap = mon_mpdu->decap_format;
+-
+ 		ath12k_dp_mon_update_radiotap(dp_pdev, ppduinfo, mon_skb, rxs);
+-		ath12k_dp_mon_rx_deliver_msdu(dp_pdev, napi, mon_skb, ppduinfo,
+-					      rxs, decap);
++		ath12k_dp_mon_rx_deliver_msdu(dp_pdev, napi, mon_skb, rxs);
+ 		mon_skb = skb_next;
+ 	} while (mon_skb);
+ 	rxs->flag = 0;
+@@ -2930,11 +2926,12 @@ static enum dp_mon_status_buf_state
+ ath12k_wifi7_dp_rx_mon_buf_done(struct ath12k_base *ab, struct hal_srng *srng,
+ 				struct dp_rxdma_mon_ring *rx_ring)
+ {
++	struct ath12k_hal *hal = &ab->hal;
+ 	struct ath12k_skb_rxcb *rxcb;
+-	struct hal_tlv_64_hdr *tlv;
+ 	struct sk_buff *skb;
+ 	void *status_desc;
+ 	dma_addr_t paddr;
++	u16 tlv_tag;
+ 	u32 cookie;
+ 	int buf_id;
+ 	u8 rbm;
+@@ -2959,8 +2956,8 @@ ath12k_wifi7_dp_rx_mon_buf_done(struct a
+ 				skb->len + skb_tailroom(skb),
+ 				DMA_FROM_DEVICE);
+ 
+-	tlv = (struct hal_tlv_64_hdr *)skb->data;
+-	if (le64_get_bits(tlv->tl, HAL_TLV_HDR_TAG) != HAL_RX_STATUS_BUFFER_DONE)
++	hal->ops->mon_rx_status_dec_tlv_hdr(skb->data, &tlv_tag, NULL, NULL);
++	if (tlv_tag != HAL_RX_STATUS_BUFFER_DONE)
+ 		return DP_MON_STATUS_NO_DMA;
+ 
+ 	return DP_MON_STATUS_REPLINISH;
+@@ -2972,41 +2969,40 @@ ath12k_wifi7_dp_mon_parse_rx_dest(struct
+ 				  struct sk_buff *skb)
+ {
+ 	struct ath12k *ar = ath12k_pdev_dp_to_ar(dp_pdev);
+-	struct hal_tlv_64_hdr *tlv;
++	struct ath12k_hal *hal = &ar->ab->hal;
++	u8 *tlv_value, *tlv = skb->data;
+ 	struct ath12k_skb_rxcb *rxcb;
+ 	enum hal_rx_mon_status hal_status;
+ 	u16 tlv_tag, tlv_len;
+-	u8 *ptr = skb->data;
++	u32 tlv_hdr_len;
++
++	tlv_hdr_len = hal->ops->get_tlv_hdr_align();
+ 
+ 	do {
+-		tlv = (struct hal_tlv_64_hdr *)ptr;
+-		tlv_tag = le64_get_bits(tlv->tl, HAL_TLV_64_HDR_TAG);
++		tlv_value = hal->ops->mon_rx_status_dec_tlv_hdr(tlv, &tlv_tag,
++								&tlv_len, NULL);
+ 
+ 		/* The actual length of PPDU_END is the combined length of many PHY
+ 		 * TLVs that follow. Skip the TLV header and
+ 		 * rx_rxpcu_classification_overview that follows the header to get to
+ 		 * next TLV.
+ 		 */
+-
+ 		if (tlv_tag == HAL_RX_PPDU_END)
+ 			tlv_len = sizeof(struct hal_rx_rxpcu_classification_overview);
+-		else
+-			tlv_len = le64_get_bits(tlv->tl, HAL_TLV_64_HDR_LEN);
+ 
+ 		hal_status = ath12k_wifi7_dp_mon_rx_parse_status_tlv(dp_pdev, pmon,
+ 								     tlv);
+ 
+ 		if (ar->monitor_started && ar->ab->hw_params->rxdma1_enable &&
+ 		    ath12k_wifi7_dp_mon_parse_rx_dest_tlv(dp_pdev, pmon, hal_status,
+-							  tlv->value))
++							  tlv_value))
+ 			return HAL_RX_MON_STATUS_PPDU_DONE;
+ 
+-		ptr += sizeof(*tlv) + tlv_len;
+-		ptr = PTR_ALIGN(ptr, HAL_TLV_64_ALIGN);
++		tlv = PTR_ALIGN(tlv + tlv_len + tlv_hdr_len, tlv_hdr_len);
+ 
+-		if ((ptr - skb->data) > skb->len)
++		if (unlikely(tlv - skb->data > skb->len ||
++			     skb->len - (tlv - skb->data) < tlv_hdr_len))
+ 			break;
+-
+ 	} while ((hal_status == HAL_RX_MON_STATUS_PPDU_NOT_DONE) ||
+ 		 (hal_status == HAL_RX_MON_STATUS_BUF_ADDR) ||
+ 		 (hal_status == HAL_RX_MON_STATUS_MPDU_START) ||
+@@ -3056,15 +3052,16 @@ ath12k_wifi7_dp_rx_reap_mon_status_ring(
+ 	int buf_id, srng_id, num_buffs_reaped = 0;
+ 	enum dp_mon_status_buf_state reap_status;
+ 	struct dp_rxdma_mon_ring *rx_ring;
++	struct ath12k_hal *hal = &ab->hal;
+ 	struct ath12k_mon_data *pmon;
+ 	struct ath12k_skb_rxcb *rxcb;
+-	struct hal_tlv_64_hdr *tlv;
+ 	void *rx_mon_status_desc;
+ 	struct hal_srng *srng;
+ 	struct ath12k_dp *dp;
+ 	struct sk_buff *skb;
+ 	struct ath12k *ar;
+ 	dma_addr_t paddr;
++	u16 tlv_tag;
+ 	u32 cookie;
+ 	u8 rbm;
+ 
+@@ -3109,14 +3106,13 @@ ath12k_wifi7_dp_rx_reap_mon_status_ring(
+ 						skb->len + skb_tailroom(skb),
+ 						DMA_FROM_DEVICE);
+ 
+-			tlv = (struct hal_tlv_64_hdr *)skb->data;
+-			if (le64_get_bits(tlv->tl, HAL_TLV_HDR_TAG) !=
+-					HAL_RX_STATUS_BUFFER_DONE) {
++			hal->ops->mon_rx_status_dec_tlv_hdr(skb->data, &tlv_tag,
++							    NULL, NULL);
++			if (tlv_tag != HAL_RX_STATUS_BUFFER_DONE) {
+ 				pmon->buf_state = DP_MON_STATUS_NO_DMA;
+ 				ath12k_warn(ab,
+-					    "mon status DONE not set %llx, buf_id %d\n",
+-					    le64_get_bits(tlv->tl, HAL_TLV_HDR_TAG),
+-					    buf_id);
++					    "mon status DONE not set %x, buf_id %d\n",
++					    tlv_tag, buf_id);
+ 				/* RxDMA status done bit might not be set even
+ 				 * though tp is moved by HW.
+ 				 */
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
+@@ -455,7 +455,7 @@ static u16 ath12k_hal_reo_status_dec_tlv
+ 	struct hal_reo_get_queue_stats_status_qcc2072 *status_tlv;
+ 	u16 tag;
+ 
+-	tag = ath12k_hal_decode_tlv32_hdr(tlv, (void **)&status_tlv);
++	status_tlv = ath12k_hal_decode_tlv32_hdr(tlv, &tag, NULL, NULL);
+ 	/*
+ 	 * actual desc of REO status entry starts after tlv32_padding,
+ 	 * see hal_reo_get_queue_stats_status_qcc2072
+@@ -506,6 +506,8 @@ const struct hal_ops hal_qcc2072_ops = {
+ 	.rx_reo_ent_buf_paddr_get = ath12k_wifi7_hal_rx_reo_ent_buf_paddr_get,
+ 	.reo_cmd_enc_tlv_hdr = ath12k_hal_encode_tlv32_hdr,
+ 	.reo_status_dec_tlv_hdr = ath12k_hal_reo_status_dec_tlv_hdr_qcc2072,
++	.mon_rx_status_dec_tlv_hdr = ath12k_hal_decode_tlv32_hdr,
++	.get_tlv_hdr_align = ath12k_hal_get_tlv32_hdr_align,
+ };
+ 
+ u32 ath12k_hal_rx_desc_get_mpdu_start_offset_qcc2072(void)
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+@@ -950,6 +950,15 @@ void ath12k_hal_extract_rx_desc_data_qcn
+ 	rx_desc_data->err_bitmap = ath12k_hal_rx_h_mpdu_err_qcn9274(rx_desc);
+ }
+ 
++static u16 ath12k_hal_reo_status_dec_tlv_hdr_qcn9274(void *tlv, void **desc)
++{
++	u16 tag;
++
++	*desc = ath12k_hal_decode_tlv64_hdr(tlv, &tag, NULL, NULL);
++
++	return tag;
++}
++
+ const struct ath12k_hw_hal_params ath12k_hw_hal_params_qcn9274 = {
+ 	.rx_buf_rbm = HAL_RX_BUF_RBM_SW3_BM,
+ 	.wbm2sw_cc_enable = HAL_WBM_SW_COOKIE_CONV_CFG_WBM2SW0_EN |
+@@ -1510,5 +1519,7 @@ const struct hal_ops hal_qcn9274_ops = {
+ 	.rx_msdu_list_get = ath12k_wifi7_hal_rx_msdu_list_get,
+ 	.rx_reo_ent_buf_paddr_get = ath12k_wifi7_hal_rx_reo_ent_buf_paddr_get,
+ 	.reo_cmd_enc_tlv_hdr = ath12k_hal_encode_tlv64_hdr,
+-	.reo_status_dec_tlv_hdr = ath12k_hal_decode_tlv64_hdr,
++	.reo_status_dec_tlv_hdr = ath12k_hal_reo_status_dec_tlv_hdr_qcn9274,
++	.mon_rx_status_dec_tlv_hdr = ath12k_hal_decode_tlv64_hdr,
++	.get_tlv_hdr_align = ath12k_hal_get_tlv64_hdr_align,
+ };
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
+@@ -756,6 +756,15 @@ int ath12k_hal_srng_create_config_wcn785
+ 	return 0;
+ }
+ 
++static u16 ath12k_hal_reo_status_dec_tlv_hdr_wcn7850(void *tlv, void **desc)
++{
++	u16 tag;
++
++	*desc = ath12k_hal_decode_tlv64_hdr(tlv, &tag, NULL, NULL);
++
++	return tag;
++}
++
+ const struct ath12k_hal_tcl_to_wbm_rbm_map
+ ath12k_hal_tcl_to_wbm_rbm_map_wcn7850[DP_TCL_NUM_RING_MAX] = {
+ 	{
+@@ -821,5 +830,7 @@ const struct hal_ops hal_wcn7850_ops = {
+ 	.rx_msdu_list_get = ath12k_wifi7_hal_rx_msdu_list_get,
+ 	.rx_reo_ent_buf_paddr_get = ath12k_wifi7_hal_rx_reo_ent_buf_paddr_get,
+ 	.reo_cmd_enc_tlv_hdr = ath12k_hal_encode_tlv64_hdr,
+-	.reo_status_dec_tlv_hdr = ath12k_hal_decode_tlv64_hdr,
++	.reo_status_dec_tlv_hdr = ath12k_hal_reo_status_dec_tlv_hdr_wcn7850,
++	.mon_rx_status_dec_tlv_hdr = ath12k_hal_decode_tlv64_hdr,
++	.get_tlv_hdr_align = ath12k_hal_get_tlv64_hdr_align,
+ };

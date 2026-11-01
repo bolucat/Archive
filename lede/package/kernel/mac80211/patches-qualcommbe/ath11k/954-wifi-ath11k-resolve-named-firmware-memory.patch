@@ -1,0 +1,196 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sat, 24 Oct 2026 22:28:52 +0800
+Subject: [PATCH] wifi: ath11k: resolve firmware memory through named reservations
+
+Resolve host DDR, BDF, M3 dump and calibration memory through named
+memory-region references. A BDF offset permits a bounded view into the
+existing Q6 reservation without reserving overlapping RAM. Prefer explicit
+named CALDB memory to the legacy host-DDR-derived address, while retaining
+the disabled-coldboot zero-address contract.
+
+Reject malformed or undersized named regions. Preserve the positional
+host-DDR and integer-address fallbacks when no matching name is present.
+Use the same BDF resolver for QMI replies and actual board-data writes,
+check the file bounds and retain the original ioremap pointer for cleanup.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2038,9 +2038,65 @@ static int ath11k_qmi_alloc_target_mem_c
+ 	return 0;
+ }
+ 
++static int ath11k_qmi_get_named_mem(struct ath11k_base *ab, const char *name,
++				    const char *offset_prop, u32 size,
++				    struct resource *res)
++{
++	struct device_node *node = ab->dev->of_node;
++	resource_size_t available;
++	u32 offset = 0;
++	int index, ret;
++
++	index = of_property_match_string(node, "memory-region-names", name);
++	if (index < 0)
++		return index == -EILSEQ ? index : -ENOENT;
++
++	ret = of_reserved_mem_region_to_resource(node, index, res);
++	if (ret)
++		return ret == -ENOENT ? -EINVAL : ret;
++
++	if (offset_prop && of_find_property(node, offset_prop, NULL)) {
++		ret = of_property_read_u32(node, offset_prop, &offset);
++		if (ret)
++			return ret;
++	}
++
++	available = resource_size(res);
++	if (offset > available || size > available - offset) {
++		ath11k_err(ab, "memory region %s offset %u size %u exceeds %pa bytes\n",
++			   name, offset, size, &available);
++		return -EINVAL;
++	}
++
++	res->start += offset;
++	return 0;
++}
++
++static int ath11k_qmi_get_bdf_addr(struct ath11k_base *ab, u32 size,
++				   phys_addr_t *paddr)
++{
++	struct resource res;
++	u32 addr;
++	int ret;
++
++	ret = ath11k_qmi_get_named_mem(ab, "bdf", "qcom,bdf-offset", size, &res);
++	if (!ret) {
++		*paddr = res.start;
++		return 0;
++	}
++	if (ret != -ENOENT)
++		return ret;
++
++	if (of_property_read_u32(ab->dev->of_node, "qcom,bdf-addr", &addr))
++		addr = ab->hw_params.bdf_addr;
++	*paddr = addr;
++	return 0;
++}
++
+ static int ath11k_qmi_assign_target_mem_chunk(struct ath11k_base *ab)
+ {
+ 	struct resource res = DEFINE_RES_NAMED(0, 0, NULL, IORESOURCE_UNSET);
++	struct resource region;
+ 	struct device *dev = ab->dev;
+ 	u32 host_ddr_sz;
+ 	u32 addr;
+@@ -2049,7 +2105,11 @@ static int ath11k_qmi_assign_target_mem_
+ 	for (i = 0, idx = 0; i < ab->qmi.mem_seg_count; i++) {
+ 		switch (ab->qmi.target_mem[i].type) {
+ 		case HOST_DDR_REGION_TYPE:
+-			ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &res);
++			ret = ath11k_qmi_get_named_mem(ab, "host-ddr-mem", NULL,
++						       ab->qmi.target_mem[i].size, &res);
++			if (ret == -ENOENT)
++				ret = of_reserved_mem_region_to_resource(dev->of_node,
++									 0, &res);
+ 			if (ret) {
+ 				ath11k_dbg(ab, ATH11K_DBG_QMI,
+ 					   "fail to get reg from hremote\n");
+@@ -2075,9 +2135,11 @@ static int ath11k_qmi_assign_target_mem_
+ 			idx++;
+ 			break;
+ 		case BDF_MEM_REGION_TYPE:
+-			if (of_property_read_u32(dev->of_node, "qcom,bdf-addr", &addr))
+-				addr = ab->hw_params.bdf_addr;
+-			ab->qmi.target_mem[idx].paddr = addr;
++			ret = ath11k_qmi_get_bdf_addr(ab, ab->qmi.target_mem[i].size,
++						      &region.start);
++			if (ret)
++				return ret;
++			ab->qmi.target_mem[idx].paddr = region.start;
+ 			ab->qmi.target_mem[idx].iaddr = NULL;
+ 			ab->qmi.target_mem[idx].size = ab->qmi.target_mem[i].size;
+ 			ab->qmi.target_mem[idx].type = ab->qmi.target_mem[i].type;
+@@ -2090,7 +2152,15 @@ static int ath11k_qmi_assign_target_mem_
+ 			}
+ 
+ 			if (ath11k_core_coldboot_cal_support(ab)) {
+-				if (res.flags != IORESOURCE_UNSET) {
++				ret = ath11k_qmi_get_named_mem(ab, "q6-caldb", NULL,
++							       ab->qmi.target_mem[i].size,
++							       &region);
++				if (!ret) {
++					ab->qmi.target_mem[idx].paddr = region.start;
++					ab->qmi.target_mem[idx].iaddr = NULL;
++				} else if (ret != -ENOENT) {
++					return ret;
++				} else if (res.flags != IORESOURCE_UNSET) {
+ 					ab->qmi.target_mem[idx].paddr =
+ 							res.start + host_ddr_sz;
+ 					ab->qmi.target_mem[idx].iaddr =
+@@ -2113,12 +2183,18 @@ static int ath11k_qmi_assign_target_mem_
+ 			idx++;
+ 			break;
+ 		case M3_DUMP_REGION_TYPE:
+-			if (of_property_read_u32(dev->of_node, "qcom,m3-dump-addr", &addr)) {
+-				ath11k_dbg(ab, ATH11K_DBG_QMI, "qmi fail to get qcom,m3-dump-addr, ignore m3 dump mem req\n");
+-				break;
++			ret = ath11k_qmi_get_named_mem(ab, "m3-dump", NULL,
++						       ab->qmi.target_mem[i].size, &region);
++			if (ret == -ENOENT) {
++				if (of_property_read_u32(dev->of_node, "qcom,m3-dump-addr",
++							 &addr))
++					break;
++				region.start = addr;
++			} else if (ret) {
++				return ret;
+ 			}
+ 
+-			ab->qmi.target_mem[idx].paddr = (phys_addr_t) addr;
++			ab->qmi.target_mem[idx].paddr = region.start;
+ 			ab->qmi.target_mem[idx].vaddr = NULL;
+ 			ab->qmi.target_mem[idx].size = ab->qmi.target_mem[i].size;
+ 			ab->qmi.target_mem[idx].type = ab->qmi.target_mem[i].type;
+@@ -2328,7 +2404,9 @@ static int ath11k_qmi_load_file_target_m
+ 	struct qmi_wlanfw_bdf_download_resp_msg_v01 resp;
+ 	struct qmi_txn txn;
+ 	const u8 *temp = data;
+-	u32 addr;
++	phys_addr_t paddr;
++	u32 offset = type == ATH11K_QMI_FILE_TYPE_CALDATA ?
++		     ab->hw_params.fw.cal_offset : 0;
+ 	void __iomem *bdf_addr = NULL;
+ 	int ret = 0;
+ 	u32 remaining = len;
+@@ -2340,9 +2418,16 @@ static int ath11k_qmi_load_file_target_m
+ 	memset(&resp, 0, sizeof(resp));
+ 
+ 	if (ab->hw_params.fixed_bdf_addr) {
+-		if(of_property_read_u32(ab->dev->of_node, "qcom,bdf-addr", &addr))
+-			addr = ab->hw_params.bdf_addr;
+-		bdf_addr = ioremap(addr, ab->hw_params.fw.board_size);
++		if (offset > ab->hw_params.fw.board_size ||
++		    len > ab->hw_params.fw.board_size - offset) {
++			ret = -EINVAL;
++			goto err_free_req;
++		}
++		ret = ath11k_qmi_get_bdf_addr(ab, ab->hw_params.fw.board_size,
++					      &paddr);
++		if (ret)
++			goto err_free_req;
++		bdf_addr = ioremap(paddr, ab->hw_params.fw.board_size);
+ 		if (!bdf_addr) {
+ 			ath11k_warn(ab, "qmi ioremap error for bdf_addr\n");
+ 			ret = -EIO;
+@@ -2380,10 +2465,7 @@ static int ath11k_qmi_load_file_target_m
+ 		}
+ 
+ 		if (ab->hw_params.fixed_bdf_addr) {
+-			if (type == ATH11K_QMI_FILE_TYPE_CALDATA)
+-				bdf_addr += ab->hw_params.fw.cal_offset;
+-
+-			memcpy_toio(bdf_addr, temp, len);
++			memcpy_toio(bdf_addr + offset, temp, len);
+ 		}
+ 
+ 		ret = qmi_txn_init(&ab->qmi.handle, &txn,

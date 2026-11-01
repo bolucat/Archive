@@ -1,0 +1,55 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: dsa: qca8k: gate MIB autocast on tag support
+
+The QCA_4B and QCA_8021Q taggers have no MIB receive handler.
+Avoid sending an unparseable autocast command and use the existing MDIO
+statistics fallback. Keep legacy QCA autocast available by checking the
+registered handler rather than the initially unset priv->proto.
+
+[viking.yfy@qq.com: complete imported patch metadata]
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/dsa/qca/qca8k-8xxx.c
++++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+@@ -498,6 +498,15 @@ exit:
+ }
+ 
+ 
++static bool qca8k_mib_autocast_supported(struct dsa_switch *ds)
++{
++	struct qca_tagger_data *tagger_data = ds->tagger_data;
++
++	/* QCA_4B and QCA_8021Q do not register a MIB receive handler. */
++	return tagger_data && tagger_data->mib_autocast_handler;
++}
++
++
+ static int
+ qca8k_write_mii(struct qca8k_priv *priv, uint32_t reg, uint32_t val)
+ {
+@@ -1841,6 +1850,12 @@ qca8k_get_ethtool_stats_eth(struct dsa_s
+ 
+ 	mutex_lock(&mib_eth_data->mutex);
+ 
++	/* Do not emit management frames that the selected tagger cannot parse. */
++	if (!qca8k_mib_autocast_supported(ds)) {
++		ret = 0;
++		goto exit;
++	}
++
+ 	reinit_completion(&mib_eth_data->rw_done);
+ 
+ 	mib_eth_data->req_port = dp->index;
+@@ -1857,8 +1872,9 @@ qca8k_get_ethtool_stats_eth(struct dsa_s
+ 
+ 	mutex_unlock(&priv->reg_mutex);
+ 
+-	if (ret)
++	if (ret) {
+ 		goto exit;
++	}
+ 
+ 	ret = wait_for_completion_timeout(&mib_eth_data->rw_done, QCA8K_ETHERNET_TIMEOUT);
+ 

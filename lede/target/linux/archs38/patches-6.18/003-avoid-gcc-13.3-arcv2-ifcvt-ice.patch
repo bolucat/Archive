@@ -1,0 +1,22 @@
+Subject: [PATCH] arc: avoid GCC 13.3 conditional-execution compiler crashes
+
+GCC 13.3 ICEs in arc_ifcvt while building multiple HS38 kernel objects,
+including cgroups, vmscan, random and networking. Disable the affected
+ARC-specific optimization for ARCv2 with this compiler version only.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/arch/arc/Makefile
++++ b/arch/arc/Makefile
+@@ -11,6 +11,11 @@
+ 
+ cflags-y	+= -fno-common -pipe -fno-builtin -mmedium-calls -D__linux__
+ 
++# GCC 13.3 can ICE in arc_ifcvt for ARCv2 kernel code.
++ifeq ($(CONFIG_GCC_VERSION),130300)
++cflags-$(CONFIG_ISA_ARCV2) += -mno-cond-exec
++endif
++
+ tune-mcpu-def-$(CONFIG_ISA_ARCOMPACT)	:= -mcpu=arc700
+ tune-mcpu-def-$(CONFIG_ISA_ARCV2)	:= -mcpu=hs38 -mmpy-option=2
+ 

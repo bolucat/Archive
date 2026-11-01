@@ -1,0 +1,16 @@
+Subject: [PATCH] QSDK 10: 005-disable-qca808x
+
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/config
++++ b/config
+@@ -223,7 +223,7 @@
+ ifeq (ALL_CHIP, $(CHIP_TYPE))
+ IN_AQUANTIA_PHY=TRUE
+ IN_QCA803X_PHY=TRUE
+-IN_QCA808X_PHY=TRUE
++IN_QCA808X_PHY=FALSE
+ IN_SFP_PHY=TRUE
+ else
+ IN_QCA803X_PHY=FALSE

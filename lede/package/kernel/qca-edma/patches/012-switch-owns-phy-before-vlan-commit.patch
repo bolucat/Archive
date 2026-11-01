@@ -1,0 +1,45 @@
+Subject: [PATCH] edma: preserve switch PHY power before the first VLAN commit
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_switch.c
++++ b/edma_switch.c
+@@ -19,7 +19,8 @@
+ 
+ bool edma_switch_managed(void)
+ {
+-	return rcu_access_pointer(edma_switch_current) != NULL;
++	/* The switch owns PHY power even before its first VLAN commit. */
++	return READ_ONCE(edma_switch_registered);
+ }
+ 
+ bool edma_switch_carrier(void)
+@@ -145,7 +146,7 @@
+ 	ret = ssdk_edma_register_notifier(&edma_switch_notifier);
+ 
+ 	if (!ret)
+-		edma_switch_registered = true;
++		WRITE_ONCE(edma_switch_registered, true);
+ 	return ret;
+ }
+ 
+@@ -156,7 +157,7 @@
+ 	if (!edma_switch_registered)
+ 		return;
+ 	ssdk_edma_unregister_notifier(&edma_switch_notifier);
+-	edma_switch_registered = false;
++	WRITE_ONCE(edma_switch_registered, false);
+ 	WRITE_ONCE(edma_switch_paused, true);
+ 	old = rcu_replace_pointer(edma_switch_current, NULL, true);
+ 	synchronize_net();
+--- a/edma.c
++++ b/edma.c
+@@ -2420,7 +2420,7 @@
+ 	netif_tx_stop_all_queues(netdev);
+ 
+ 	mutex_lock(&adapter->poll_mutex);
+-	if (adapter->poll_required) {
++	if (!edma_switch_managed() && adapter->poll_required) {
+ 		if (!IS_ERR_OR_NULL(adapter->phydev))
+ 			phy_stop(adapter->phydev);
+ 	}

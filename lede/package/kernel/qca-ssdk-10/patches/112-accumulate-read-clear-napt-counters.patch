@@ -1,0 +1,39 @@
+Subject: [PATCH] ssdk: accumulate DESS read-clear counters for Flow
+
+The vendor helper adds each counter read to conntrack accounting. Keep
+software totals across GC and directional Flow stats reads; interpreting
+these samples as monotonic registers loses traffic and underflows deltas.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_napt.c
++++ b/src/ref/ref_flow_napt.c
+@@ -16,6 +16,7 @@
+ 	bool used, attempted;
+ 	int public;
+ 	fal_napt_entry_t entry;
++	struct ssdk_flow_counts totals;
+ };
+ struct ssdk_flow_napt {
+ 	unsigned int dev;
+@@ -98,10 +99,16 @@
+ 	    entry.trans_addr != expected->trans_addr || entry.trans_port != expected->trans_port ||
+ 	    ((entry.flags ^ expected->flags) & (FAL_NAT_ENTRY_PROTOCOL_TCP |
+ 		FAL_NAT_ENTRY_PROTOCOL_UDP | FAL_NAT_ENTRY_TRANS_IPADDR_INDEX))) return -EIO;
+-	/* The vendor conntrack accounting maps egress to SNAT original and
+-	 * ingress to its reply; DNAT reverses original/reply, not these axes. */
+-	counts->packets[0] = entry.egress_packet; counts->bytes[0] = entry.egress_byte;
+-	counts->packets[1] = entry.ingress_packet; counts->bytes[1] = entry.ingress_byte;
++	/* DESS counters clear on read. GC and both directional stats callbacks
++	 * all read this table; retain every sample before exposing cumulative
++	 * counts to Flow's delta accounting. The initial sample is its baseline.
++	 * Egress is SNAT original; ingress is its reply, also in the vendor helper.
++	 */
++	table->entries[slot].totals.packets[0] += entry.egress_packet;
++	table->entries[slot].totals.bytes[0] += entry.egress_byte;
++	table->entries[slot].totals.packets[1] += entry.ingress_packet;
++	table->entries[slot].totals.bytes[1] += entry.ingress_byte;
++	*counts = table->entries[slot].totals;
+ 	return 0;
+ }
+ int ssdk_flow_napt_add(struct ssdk_flow_napt *table, unsigned int slot,

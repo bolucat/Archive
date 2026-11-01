@@ -67,7 +67,7 @@ define Package/iwinfo
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Generalized Wireless Information utility
-  DEPENDS:=+@!WIFI_SCRIPTS_UCODE:libiwinfo
+  DEPENDS:=+libiwinfo
 endef
 
 define Package/iwinfo/description

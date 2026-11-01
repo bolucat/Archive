@@ -1,0 +1,381 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+
+/dts-v1/;
+
+#include "ipq9574-common.dtsi"
+#include "ipq9574-common-wifi-ahb.dtsi"
+#include "ipq9574-common-qca8084.dtsi"
+
+/ {
+	model = "Xiaomi BE7000";
+	compatible = "xiaomi,be7000", "qcom,ipq9574";
+
+	aliases {
+		label-mac-device = &ppe_port1;
+
+		led-boot = &led_system_amber;
+		led-failsafe = &led_system_amber;
+		led-running = &led_system_white;
+		led-upgrade = &led_system_white;
+	};
+
+	chosen {
+		bootargs-append = " root=/dev/ubiblock0_1";
+	};
+
+	regulator_fixed_3p3: s3300 {
+		compatible = "regulator-fixed";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-name = "fixed_3p3";
+	};
+
+	regulator_fixed_0p925: s0925 {
+		compatible = "regulator-fixed";
+		regulator-min-microvolt = <925000>;
+		regulator-max-microvolt = <925000>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-name = "fixed_0p925";
+	};
+
+	regulator_fixed_1p8: s1800 {
+		compatible = "regulator-fixed";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-name = "fixed_1p8";
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&gpio_keys_default>;
+		pinctrl-names = "default";
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&tlmm 44 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_KEY>;
+			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-0 = <&gpio_leds_default>;
+		pinctrl-names = "default";
+
+		aiot-white {
+			function = "aiot";
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&tlmm 8 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		led_system_white: system-white {
+			function = "system";
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&tlmm 40 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		led_system_amber: system-amber {
+			function = "system";
+			color = <LED_COLOR_ID_AMBER>;
+			gpios = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		network-white {
+			function = "network";
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		network-amber {
+			function = "network";
+			color = <LED_COLOR_ID_AMBER>;
+			gpios = <&tlmm 43 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+	};
+
+	reserved-memory {
+		qcn9274_pcie2_region: wifi@4f500000 {
+			reg = <0x0 0x4f500000 0x0 0x3a00000>;
+			no-map;
+		};
+	};
+};
+
+&blsp1_i2c1 {
+	clock-frequency = <400000>;
+	pinctrl-0 = <&i2c1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	nfc: nfc@54 {
+		compatible = "miwifi,nfc";
+		reg = <0x54>;
+	};
+};
+
+&mdio {
+	status = "okay";
+	clock-frequency = <6250000>;
+	reset-gpios = <&tlmm 60 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+};
+
+&pcie2 {
+	pinctrl-0 = <&pcie2_default>;
+	pinctrl-names = "default";
+
+	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
+	wake-gpios = <&tlmm 30 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	pcie@0,0 {
+		device_type = "pci";
+		ranges;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		reg = <0 0 0 0 0>;
+
+		wifi1: pcie@0 {
+			compatible = "pci17cb,1109";
+			reg = <0 0 0 0 0>;
+			qcom,board-id = <0x02>;
+			qcom,calibration-variant = "Xiaomi-BE7000";
+			qcom,num-radios = <1>;
+			qcom,force-unique-qrtr-id;
+			nvmem-cells = <&macaddr_art_c 0>;
+			nvmem-cell-names = "mac-address";
+			memory-region = <&qcn9274_pcie2_region>, <&mlo_mem>;
+			memory-region-names = "host-ddr-mem", "mlo-global-mem";
+			qcom,ath12k-fw-memory-mode = <1>;
+		};
+	};
+};
+
+&pcie2_phy {
+	status = "okay";
+};
+
+&pcs1 {
+	status = "disabled";
+};
+
+&pcs2 {
+	status = "disabled";
+};
+
+&ppe_port1 {
+	label = "wan";
+	nvmem-cells = <&macaddr_art_0 0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port2 {
+	label = "lan1";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port3 {
+	label = "lan2";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port4 {
+	label = "lan3";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&qca8084_phy1 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WAN;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy2 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy3 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy4 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <3>;
+			active-high;
+		};
+	};
+};
+
+&qpic_bam {
+	status = "okay";
+};
+
+&qpic_nand {
+	pinctrl-0 = <&qpic_snand_default_state>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	flash@0 {
+		reg = <0>;
+		compatible = "spi-nand";
+		nand-ecc-strength = <8>;
+		nand-ecc-step-size = <512>;
+		nand-bus-width = <0x08>;
+		nand-ecc-engine = <&qpic_nand>;
+		partitions {
+			compatible = "qcom,smem-part";
+
+			partition-0-art {
+				label = "0:art";
+				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					caldata_art_1000: calibration@1000 {
+						reg = <0x1000 0x20000>;
+					};
+
+					macaddr_art_0: macaddr@0 {
+						compatible = "mac-base";
+						reg = <0x0 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_art_6: macaddr@6 {
+						compatible = "mac-base";
+						reg = <0x6 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_art_c: macaddr@c {
+						compatible = "mac-base";
+						reg = <0xc 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&tlmm {
+	wifi-5g-split-disable {
+		gpio-hog;
+		gpios = <6 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "wifi-5g-split-disable";
+	};
+
+	wifi-5g-full-band-enable {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "wifi-5g-full-band-enable";
+	};
+
+	i2c1_pins: i2c1-state {
+		pins = "gpio36", "gpio37";
+		function = "blsp1_i2c";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	gpio_keys_default: gpio-keys-default-state {
+		pins = "gpio44";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	gpio_leds_default: gpio-leds-default-state {
+		pins = "gpio8", "gpio40", "gpio41", "gpio42", "gpio43";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+};
+
+&usb_0_dwc3 {
+	dr_mode = "host";
+};
+
+&usb_0_qmpphy {
+	vdda-pll-supply = <&regulator_fixed_1p8>;
+	vdda-phy-supply = <&regulator_fixed_0p925>;
+
+	status = "okay";
+};
+
+&usb_0_qusbphy {
+	vdd-supply = <&regulator_fixed_0p925>;
+	vdda-pll-supply = <&regulator_fixed_1p8>;
+	vdda-phy-dpdm-supply = <&regulator_fixed_3p3>;
+
+	status = "okay";
+};
+
+&usb3 {
+	status = "okay";
+};
+
+&wifi0 {
+	qcom,calibration-variant = "Xiaomi-BE7000";
+	nvmem-cells = <&macaddr_art_6 0>, <&caldata_art_1000>;
+	nvmem-cell-names = "mac-address", "calibration";
+};

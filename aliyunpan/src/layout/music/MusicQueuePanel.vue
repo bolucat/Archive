@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Clock, Heart, ListMusic, Music, SkipForward, Trash2, X } from 'lucide-vue-next'
+import { Shuffle, Repeat, Repeat1, Infinity, Blend, Clock, Heart, ListMusic, Music, SkipForward, Trash2, X } from 'lucide-vue-next'
 import type { IPageMusicTrack } from '../../store/appstore'
 import { musicTrackKey } from '../../utils/musicPlayerStorage'
 import { t as tt } from '../../i18n'
@@ -8,6 +8,11 @@ import { t as tt } from '../../i18n'
 type PanelTab = 'queue' | 'fav' | 'recent'
 
 const props = defineProps<{
+  automaticContinuation?: boolean
+  crossfade?: boolean
+  crossfadeAvailable?: boolean
+  shuffled?: boolean
+  repeatOne?: boolean
   visible: boolean
   panelTab: PanelTab
   playlist: IPageMusicTrack[]
@@ -19,6 +24,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'automatic-continuation'): void
+  (e: 'crossfade'): void
+  (e: 'shuffle'): void
+  (e: 'repeat'): void
   (e: 'close'): void
   (e: 'update:panelTab', tab: PanelTab): void
   (e: 'update:filter', value: string): void
@@ -55,7 +64,7 @@ function stripExt(name: string) {
 </script>
 
 <template>
-  <aside v-show="visible" :class="['music-queue-panel', 'playlist-panel', visible ? 'show' : '']">
+  <aside :class="['music-queue-panel', 'playlist-panel', visible ? 'show' : '']" :aria-hidden="!visible" :inert="!visible">
     <div class="music-queue-head">
       <div class="music-queue-tabs">
         <button :class="['panel-tab', { on: panelTab === 'queue' }]" @click="emit('update:panelTab', 'queue')"><ListMusic :size="14" /> {{ tt('music.upNext') }} {{ playlist.length }}</button>
@@ -63,6 +72,12 @@ function stripExt(name: string) {
         <button :class="['panel-tab', { on: panelTab === 'recent' }]" @click="emit('update:panelTab', 'recent')"><Clock :size="14" /> {{ tt('music.recent') }} {{ recents.length }}</button>
       </div>
       <button class="music-queue-close" @click="emit('close')"><X :size="16" /></button>
+    </div>
+    <div class="music-queue-controls">
+      <button :aria-label="tt('music.modeShuffle')" :aria-pressed="!!shuffled" :class="{ active: shuffled }" @click="emit('shuffle')"><Shuffle :size="20" /></button>
+      <button :aria-label="tt(repeatOne ? 'music.modeLoopOne' : 'music.modeLoopList')" :aria-pressed="!!repeatOne" @click="emit('repeat')"><Repeat1 v-if="repeatOne" :size="20" /><Repeat v-else :size="20" /></button>
+      <button :aria-label="tt('music.automaticContinuation')" :aria-pressed="!!automaticContinuation" :class="{ active: automaticContinuation }" @click="emit('automatic-continuation')"><Infinity :size="20" /></button>
+      <button :title="tt(crossfadeAvailable ? 'music.crossfadeThreeSeconds' : 'music.crossfadeRequiresUpdatedCore')" :aria-label="tt('music.crossfadeThreeSeconds')" :aria-pressed="!!crossfade" :class="{ active: crossfade }" :disabled="!crossfadeAvailable" @click="emit('crossfade')"><Blend :size="20" /></button>
     </div>
     <div class="music-queue-search">
       <input :value="filter" :placeholder="tt('music.searchQueue')" @input="emit('update:filter', ($event.target as HTMLInputElement).value)" />
@@ -104,11 +119,12 @@ function stripExt(name: string) {
   position: absolute;
   z-index: 17;
   top: 78px;
-  left: -410px;
-  bottom: auto;
+  right: 24px;
+  left: auto;
+  bottom: var(--music-queue-bottom, 144px);
   width: 340px;
-  max-width: calc(100vw - 64px);
-  max-height: calc(100vh - 120px);
+  max-width: calc(100% - 48px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 24px;
@@ -120,11 +136,11 @@ function stripExt(name: string) {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-16px);
-  transition: left .55s cubic-bezier(.2,.8,.2,1), opacity .28s ease, transform .55s cubic-bezier(.2,.8,.2,1);
+  transform: translateX(calc(100% + 24px));
+  transition: opacity .22s ease, transform .28s cubic-bezier(.2,.8,.2,1);
 }
 .music-queue-panel.show {
-  left: 32px;
+  right: 24px;
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -313,4 +329,11 @@ function stripExt(name: string) {
   background: rgba(255,255,255,.05);
   color: rgba(255,255,255,.62);
 }
+</style>
+
+<style scoped>
+.music-queue-controls { display:flex;gap:10px;padding:12px 16px; }
+.music-queue-controls button { flex:1;display:flex;justify-content:center;border:0;border-radius:22px;padding:10px;color:inherit;background:#ffffff18;cursor:pointer; }
+.music-queue-controls button:disabled { opacity:.4;cursor:not-allowed; }
+.music-queue-controls button.active { background:#ffffff60;color:#202020; }
 </style>

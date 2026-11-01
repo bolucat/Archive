@@ -9,8 +9,8 @@ use std::{
 };
 
 use nyanpasu_utils::process::{
-    Backoff, BackoffRange, Command, ProcessError, ProcessEvent, ReadinessProbe, RestartPolicy,
-    Supervisor, SupervisorEvent,
+    AtomicStopStrategy, Backoff, BackoffRange, Command, ProcessError, ProcessEvent, ReadinessProbe,
+    RestartPolicy, StopStrategy, Supervisor, SupervisorEvent,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -42,6 +42,206 @@ impl EventLog {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum StopRequest {
+    Direct,
+    ParentCancellation,
+}
+
+impl StopRequest {
+    async fn stop(self, supervisor: Supervisor, parent: &CancellationToken, log: &EventLog) {
+        if matches!(self, Self::ParentCancellation) {
+            parent.cancel();
+            log.wait_for(
+                |events| matches!(events.last(), Some(SupervisorEvent::Stopped)),
+                Duration::from_secs(10),
+            )
+            .await;
+        }
+        tokio::time::timeout(Duration::from_secs(10), supervisor.stop())
+            .await
+            .expect("supervisor stop timeout")
+            .unwrap();
+        assert!(matches!(
+            log.snapshot().last(),
+            Some(SupervisorEvent::Stopped)
+        ));
+        assert!(
+            !log.snapshot()
+                .iter()
+                .any(|event| matches!(event, SupervisorEvent::Restarting { .. }))
+        );
+    }
+}
+
+#[cfg(windows)]
+fn marked_shutdown_helper(dir: &std::path::Path) -> std::path::PathBuf {
+    let helper = dir.join("nyanpasu-marked-shutdown-helper.exe");
+    std::fs::copy(child(), &helper).unwrap();
+    helper
+}
+
+fn pid_alive(pid: u32) -> bool {
+    use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
+    let kind = RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing());
+    let mut system = System::new_with_specifics(kind);
+    system.refresh_specifics(kind);
+    system.process(Pid::from_u32(pid)).is_some()
+}
+
+async fn kill_supervisor_tree(request: StopRequest) {
+    for initial in [StopStrategy::Kill, StopStrategy::Graceful] {
+        #[cfg(windows)]
+        let dir = tempfile::tempdir().unwrap();
+        #[cfg(windows)]
+        let helper = marked_shutdown_helper(dir.path());
+        #[cfg(windows)]
+        let helper_for_child = helper.clone();
+        let strategy = Arc::new(AtomicStopStrategy::new(initial));
+        let parent = CancellationToken::new();
+        let log = EventLog::default();
+        let log_for_event = log.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let supervisor = Supervisor::builder(move || {
+            let command = Command::new(child()).arg("spawn-grandchild");
+            #[cfg(windows)]
+            let command = command.windows_shutdown_helper(&helper_for_child);
+            command
+        })
+        .cancel_token(parent.clone())
+        .stop_strategy(strategy.clone())
+        .on_event(move |event| log_for_event.push(event))
+        .on_process_event(move |event| {
+            let _ = tx.send(event);
+        })
+        .spawn()
+        .await
+        .unwrap();
+        let grandchild_pid: u32 = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await.expect("grandchild event") {
+                    ProcessEvent::Stdout(line) => {
+                        if let Some(pid) = line.strip_prefix("grandchild-pid:") {
+                            break pid.parse().unwrap();
+                        }
+                    }
+                    ProcessEvent::Terminated(exit) => panic!("exited before grandchild: {exit:?}"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("grandchild start timeout");
+        let pid = match log.snapshot().first() {
+            Some(SupervisorEvent::Started { pid }) => *pid,
+            event => panic!("expected child start, got {event:?}"),
+        };
+        assert!(pid_alive(pid), "child was not running");
+        assert!(pid_alive(grandchild_pid), "grandchild was not running");
+
+        strategy.store(StopStrategy::Kill, Ordering::Release);
+        request.stop(supervisor, &parent, &log).await;
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while pid_alive(pid) || pid_alive(grandchild_pid) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("child or grandchild survived kill");
+        #[cfg(unix)]
+        assert!(log.snapshot().iter().any(|event| {
+            matches!(event, SupervisorEvent::Exited(exit) if exit.signal == Some(libc::SIGKILL))
+        }));
+        #[cfg(windows)]
+        assert!(
+            !helper.with_extension("started").exists(),
+            "shutdown helper was launched for Kill"
+        );
+    }
+}
+
+#[tokio::test]
+async fn kill_strategy_via_stop_reaps_tree_and_observes_updates() {
+    kill_supervisor_tree(StopRequest::Direct).await;
+}
+
+#[tokio::test]
+async fn kill_strategy_via_parent_cancellation_reaps_tree_and_observes_updates() {
+    kill_supervisor_tree(StopRequest::ParentCancellation).await;
+}
+
+async fn graceful_supervisor_stop(request: StopRequest) {
+    assert_eq!(StopStrategy::default(), StopStrategy::Graceful);
+    for strategy in [None, Some(StopStrategy::Graceful)] {
+        #[cfg(windows)]
+        let dir = tempfile::tempdir().unwrap();
+        #[cfg(windows)]
+        let helper = marked_shutdown_helper(dir.path());
+        #[cfg(windows)]
+        let helper_for_child = helper.clone();
+        #[cfg(windows)]
+        let cleanup = dir.path().join("cleanup");
+        #[cfg(windows)]
+        let cleanup_for_child = cleanup.clone();
+        let parent = CancellationToken::new();
+        let log = EventLog::default();
+        let log_for_event = log.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut builder = Supervisor::builder(move || {
+            #[cfg(unix)]
+            let command = Command::new(child()).arg("trap-term");
+            #[cfg(windows)]
+            let command = Command::new(child())
+                .arg("trap-ctrlc")
+                .arg(&cleanup_for_child)
+                .windows_shutdown_helper(&helper_for_child);
+            command
+        })
+        .cancel_token(parent.clone())
+        .on_event(move |event| log_for_event.push(event))
+        .on_process_event(move |event| {
+            let _ = tx.send(event);
+        });
+        if let Some(strategy) = strategy {
+            builder = builder.stop_strategy(Arc::new(AtomicStopStrategy::new(strategy)));
+        }
+        let supervisor = builder.spawn().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await.expect("ready event") {
+                    ProcessEvent::Stdout(line) if line == "ready" => break,
+                    ProcessEvent::Terminated(exit) => panic!("exited before ready: {exit:?}"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("ready timeout");
+
+        request.stop(supervisor, &parent, &log).await;
+
+        assert!(log.snapshot().iter().any(|event| {
+            matches!(event, SupervisorEvent::Exited(exit) if exit.code == Some(0))
+        }));
+        #[cfg(windows)]
+        {
+            assert_eq!(std::fs::read_to_string(cleanup).unwrap(), "dropped");
+            assert!(helper.with_extension("started").exists());
+        }
+    }
+}
+
+#[tokio::test]
+async fn default_and_explicit_graceful_strategy_via_stop() {
+    graceful_supervisor_stop(StopRequest::Direct).await;
+}
+
+#[tokio::test]
+async fn default_and_explicit_graceful_strategy_via_parent_cancellation() {
+    graceful_supervisor_stop(StopRequest::ParentCancellation).await;
 }
 
 #[tokio::test]

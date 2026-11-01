@@ -23,6 +23,7 @@ define Device/Default
   PROFILES := Default
   FILESYSTEMS := squashfs ubifs ext4
   DEVICE_DTS = $(lastword $(subst _, ,$(1)))
+  DTS_DIR := $(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/microchip)
   KERNEL_NAME := zImage
   KERNEL_SIZE := 4096k
   KERNEL := kernel-bin | append-dtb | lzma | uImage lzma

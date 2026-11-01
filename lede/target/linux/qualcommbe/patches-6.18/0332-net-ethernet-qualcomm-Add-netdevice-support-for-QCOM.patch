@@ -1,6 +1,6 @@
 From 9556d8b3d5914e7ed7e5e0f59945f9c3ab2655a0 Mon Sep 17 00:00:00 2001
 From: Suruchi Agarwal <quic_suruchia@quicinc.com>
-Date: Thu, 21 Mar 2024 16:14:46 -0700
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: Add netdevice support for QCOM
  IPQ9574 chipset.
 
@@ -8,8 +8,10 @@ Add EDMA ports and netdevice operations for QCOM IPQ9574 chipset.
 
 Change-Id: I08b2eff52b4ef0d6d428c1c416f5580ef010973f
 Co-developed-by: Pavithra R <quic_pavir@quicinc.com>
+
 Signed-off-by: Pavithra R <quic_pavir@quicinc.com>
 Signed-off-by: Suruchi Agarwal <quic_suruchia@quicinc.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 ---
  drivers/net/ethernet/qualcomm/ppe/Makefile    |   2 +-
  drivers/net/ethernet/qualcomm/ppe/edma.h      |   3 +
@@ -19,7 +21,6 @@ Signed-off-by: Suruchi Agarwal <quic_suruchia@quicinc.com>
  5 files changed, 324 insertions(+), 1 deletion(-)
  create mode 100644 drivers/net/ethernet/qualcomm/ppe/edma_port.c
  create mode 100644 drivers/net/ethernet/qualcomm/ppe/edma_port.h
-
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile
 +++ b/drivers/net/ethernet/qualcomm/ppe/Makefile
 @@ -7,4 +7,4 @@ obj-$(CONFIG_QCOM_PPE) += qcom-ppe.o
@@ -349,7 +350,7 @@ Signed-off-by: Suruchi Agarwal <quic_suruchia@quicinc.com>
 +#endif
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
 +++ b/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
-@@ -13,6 +13,7 @@
+@@ -14,6 +14,7 @@
  #include <linux/regmap.h>
  #include <linux/rtnetlink.h>
  
@@ -357,7 +358,7 @@ Signed-off-by: Suruchi Agarwal <quic_suruchia@quicinc.com>
  #include "ppe.h"
  #include "ppe_port.h"
  #include "ppe_regs.h"
-@@ -1277,12 +1278,26 @@ int ppe_port_mac_init(struct ppe_device
+@@ -1283,12 +1284,26 @@ int ppe_port_mac_init(struct ppe_device
  			goto err_port_node;
  		}
  
@@ -384,7 +385,7 @@ Signed-off-by: Suruchi Agarwal <quic_suruchia@quicinc.com>
  err_port_clk:
  	for (j = 0; j < i; j++)
  		ppe_port_clock_deinit(&ppe_ports->port[j]);
-@@ -1307,6 +1322,10 @@ void ppe_port_mac_deinit(struct ppe_devi
+@@ -1313,6 +1328,10 @@ void ppe_port_mac_deinit(struct ppe_devi
  
  	for (i = 0; i < ppe_dev->ports->num; i++) {
  		ppe_port = &ppe_dev->ports->port[i];

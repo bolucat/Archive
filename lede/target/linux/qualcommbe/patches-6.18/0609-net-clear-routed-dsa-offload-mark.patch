@@ -1,0 +1,75 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 13:00:00 +0800
+Subject: [PATCH] net: preserve routed marks for bridge flowtable egress
+
+The ingress flowtable hook can run before the bridge receive path clears
+its bridge-local forwarding mark. A standalone DSA egress must clear that
+stale mark. Otherwise its tagger can mistake routed traffic for
+bridge-offloaded traffic.
+
+An unconditional clear is wrong for VLAN devices on VLAN-aware bridges.
+The software flowtable direct path then reaches the VSC73XX 802.1Q tagger
+without the bridge mark, which adds a standalone DSA VID outside the
+existing user VLAN and stalls the flow after hardware offload falls back.
+
+Walk through VLAN uppers and retain the mark for bridge masters and ports.
+Clear it for standalone and other routed egress devices across the direct,
+neighbour and XFRM paths. The common nf_flow_queue_xmit() handles both
+direct and neighbour egress. Keep the independent L3 forwarding mark intact.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -343,6 +343,24 @@ struct nf_flow_xmit {
+ 	struct net_device	*outdev;
+ };
+ 
++static bool nf_flow_bridge_egress(const struct net_device *dev)
++{
++	while (is_vlan_dev(dev))
++		dev = vlan_dev_real_dev(dev);
++
++	return netif_is_bridge_master(dev) || netif_is_bridge_port(dev);
++}
++
++static void nf_flow_prepare_routed_mark(struct sk_buff *skb,
++					const struct net_device *outdev)
++{
++	if (!skb->offload_fwd_mark)
++		return;
++
++	if (!nf_flow_bridge_egress(outdev))
++		skb->offload_fwd_mark = 0;
++}
++
+ static unsigned int nf_flow_queue_xmit(struct net *net, struct sk_buff *skb,
+ 				       struct nf_flow_xmit *xmit)
+ {
+@@ -355,6 +373,8 @@ static unsigned int nf_flow_queue_xmit(s
+ 			return NF_STOLEN;
+ 	}
+ 
++	nf_flow_prepare_routed_mark(skb, dev);
++
+ 	skb->dev = dev;
+ 	dev_hard_header(skb, dev, ntohs(skb->protocol),
+ 			xmit->dest, xmit->source, skb->len);
+@@ -537,6 +557,8 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 
+ 	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+ 		rt = dst_rtable(tuplehash->tuple.dst_cache);
++		nf_flow_prepare_routed_mark(skb, rt->dst.dev);
++
+ 		memset(skb->cb, 0, sizeof(struct inet_skb_parm));
+ 		IPCB(skb)->iif = skb->dev->ifindex;
+ 		IPCB(skb)->flags = IPSKB_FORWARDED;
+@@ -858,6 +880,8 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 
+ 	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+ 		rt = dst_rt6_info(tuplehash->tuple.dst_cache);
++		nf_flow_prepare_routed_mark(skb, rt->dst.dev);
++
+ 		memset(skb->cb, 0, sizeof(struct inet6_skb_parm));
+ 		IP6CB(skb)->iif = skb->dev->ifindex;
+ 		IP6CB(skb)->flags = IP6SKB_FORWARDED;

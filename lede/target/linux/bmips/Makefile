@@ -9,7 +9,8 @@ BOARDNAME:=Broadcom BMIPS
 SUBTARGETS:=generic nand
 FEATURES:=gpio source-only squashfs usb
 
-KERNEL_PATCHVER:=5.15
+KERNEL_PATCHVER:=6.18
+KERNEL_TESTING_PATCHVER:=5.15
 
 define Target/Description
 	Build firmware images for BCM33xx cable modem chips,

@@ -10,6 +10,14 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=mac80211
 
+ifeq ($(CONFIG_TARGET_qualcommbe),y)
+# Target-specific IPQ5332 AHB, multi-radio and PPE Direct Switch support.
+PKG_VERSION:=7.2
+PKG_HASH:=6ec76a4cb0988b5382b2fc5053610a56ada90b8ef6a5a4f2807cd433badb9454
+PKG_SOURCE_URL:=https://github.com/openwrt/backports/releases/download/backports-v$(PKG_VERSION)
+PKG_SOURCE:=backports-$(PKG_VERSION).tar.zst
+PATCH_DIR:=./patches-qualcommbe
+else
 ifneq ($(filter y,$(CONFIG_LINUX_6_12) $(CONFIG_LINUX_6_18)),)
 PKG_VERSION:=6.18.39
 PKG_HASH:=8951c1e270d7c311432377bd50951cd1d5dee2b5fedf33d30db41aa8e428aeb0
@@ -23,8 +31,9 @@ PKG_SOURCE_URL:=http://mirror2.openwrt.org/sources/
 PKG_SOURCE:=backports-$(PKG_VERSION).tar.xz
 PATCH_DIR:=./patchs
 endif
+endif
 
-PKG_RELEASE:=6
+PKG_RELEASE:=$(if $(CONFIG_TARGET_qualcommbe),26,6)
 PKG_LICENSE:=GPL-2.0-only
 PKG_LICENSE_FILES:=COPYING
 
@@ -50,6 +59,8 @@ PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_IWLWIFI_DEBUG \
 	CONFIG_PACKAGE_IWLWIFI_DEBUGFS \
 	CONFIG_PACKAGE_RTLWIFI_DEBUG \
+
+SCAN_DEPS = *.mk
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -100,7 +111,11 @@ config-$(CONFIG_PACKAGE_CFG80211_TESTMODE) += NL80211_TESTMODE
 config-$(call config_package,mac80211,$(ALL_VARIANTS)) += MAC80211
 config-$(CONFIG_PACKAGE_MAC80211_MESH) += MAC80211_MESH
 
+ifeq ($(CONFIG_TARGET_qualcommbe),y)
+include ath-qualcommbe.mk
+else
 include ath.mk
+endif
 include broadcom.mk
 include intel.mk
 include marvell.mk

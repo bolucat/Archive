@@ -1,0 +1,29 @@
+From: Igor Kravchenko <igor.kravchenko05@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: phy: qca808x: disable EEE on QCA8084 QXGMII links
+
+Normalize the series position without changing the implementation.
+
+Based on work by:
+  Igor Kravchenko <igor.kravchenko05@gmail.com>
+
+Signed-off-by: Igor Kravchenko <igor.kravchenko05@gmail.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/phy/qcom/qca808x.c
++++ b/drivers/net/phy/qcom/qca808x.c
+@@ -1012,6 +1012,14 @@ static int qca8084_config_init(struct ph
+ 	else
+ 		qca808x_fill_possible_interfaces(phydev);
+ 
++	if (phydev->interface == PHY_INTERFACE_MODE_10G_QXGMII) {
++		/* EEE negotiated on the copper side can disturb the QCA8084
++		 * QXGMII/XGMAC RX path, showing up as raw XGMAC CRC and
++		 * fragment errors. Keep QXGMII package links out of EEE.
++		 */
++		phy_disable_eee(phydev);
++	}
++
+ 	/* Configure the ADC to convert the signal using falling edge
+ 	 * instead of the default rising edge.
+ 	 */

@@ -1,0 +1,85 @@
+Subject: [PATCH] edma: finish device setup before registering netdevices
+
+netifd can open a GMAC immediately after registration. Publishing it
+before PHY attachment and DMA setup allowed phy_start(NULL) and a
+boot panic. Register only after shared hardware and switch setup,
+and unpublish before unwinding any initialized resources.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -1377,6 +1377,7 @@
+ 	int i, j, k, err = 0;
+ 	u32 portid_bmp, ring_count;
+ 	int idx = 0, idx_mac = 0;
++	int registered = 0;
+ 
+ 	if (CONFIG_NR_CPUS != EDMA_CPU_CORES_SUPPORTED) {
+ 		dev_err(&pdev->dev, "Invalid CPU Cores\n");
+@@ -1686,9 +1687,6 @@
+ 			*(edma_netdev[i]->dev_addr + 5));
+ 		}
+ 
+-		err = register_netdev(edma_netdev[i]);
+-		if (err)
+-			goto err_register;
+ 
+ 		/* carrier off reporting is important to
+ 		 * ethtool even BEFORE open
+@@ -1944,6 +1942,16 @@
+ 	if (err)
+ 		goto edma_phy_attach_fail;
+ 
++	/* Publishing a netdev lets netifd call ndo_open immediately. Finish
++	 * DMA, IRQ, PHY and switch setup before exposing either GMAC.
++	 */
++	for (i = 0; i < edma_cinfo->num_gmac; i++) {
++		err = register_netdev(edma_netdev[i]);
++		if (err)
++			goto edma_phy_attach_fail;
++		registered++;
++	}
++
+ 	if (edma_cinfo->num_gmac == 2) {
+ 		err = ssdk_flow_attach(edma_netdev[0], edma_netdev[1]);
+ 		if (!err) {
+@@ -1975,6 +1983,9 @@
+ 	return 0;
+ 
+ edma_phy_attach_fail:
++	while (registered)
++		unregister_netdev(edma_netdev[--registered]);
++	edma_switch_unregister();
+ 	edma_stop_rx_tx(&edma_cinfo->hw);
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++)
+ 		if (adapter[i]->phydev && !IS_ERR(adapter[i]->phydev))
+@@ -1995,8 +2006,6 @@
+ err_reset:
+ err_unregister_sysctl_tbl:
+ err_rmap_alloc_fail:
+-	for (i = 0; i < edma_cinfo->num_gmac; i++)
+-		unregister_netdev(edma_netdev[i]);
+ err_register:
+ err_mdiobus_init_fail:
+ 	edma_free_rx_rings(edma_cinfo);
+--- a/edma.c
++++ b/edma.c
+@@ -2389,7 +2389,7 @@
+ 			netif_carrier_off(netdev);
+ 		}
+ 	} else if (adapter->poll_required) {
+-		if (!IS_ERR(adapter->phydev)) {
++		if (!IS_ERR_OR_NULL(adapter->phydev)) {
+ 			phy_start(adapter->phydev);
+ 			phy_start_aneg(adapter->phydev);
+ 			adapter->link_state = __EDMA_LINKDOWN;
+@@ -2421,7 +2421,7 @@
+ 
+ 	mutex_lock(&adapter->poll_mutex);
+ 	if (adapter->poll_required) {
+-		if (!IS_ERR(adapter->phydev))
++		if (!IS_ERR_OR_NULL(adapter->phydev))
+ 			phy_stop(adapter->phydev);
+ 	}
+ 	mutex_unlock(&adapter->poll_mutex);

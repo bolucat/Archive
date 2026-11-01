@@ -1,0 +1,39 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] crypto: eip93: update platform driver API
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/crypto/mtk-eip93/eip93-main.c
++++ b/crypto/mtk-eip93/eip93-main.c
+@@ -11,7 +11,9 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/of_device.h>
++#include <linux/version.h>
+ #include <linux/platform_device.h>
+ #include <linux/spinlock.h>
+ 
+@@ -432,7 +434,11 @@
+ 	return 0;
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++static void mtk_crypto_remove(struct platform_device *pdev)
++#else
+ static int mtk_crypto_remove(struct platform_device *pdev)
++#endif
+ {
+ 	struct mtk_device *mtk = platform_get_drvdata(pdev);
+ 
+@@ -440,7 +446,9 @@
+ 	mtk_cleanup(mtk);
+ 	dev_info(mtk->dev, "EIP93 removed.\n");
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+ 	return 0;
++#endif
+ }
+ 
+ #if defined(CONFIG_OF)

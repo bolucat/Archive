@@ -1,0 +1,63 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] media/drm: expose helpers needed by external drivers
+
+External MSM and Iris drivers cannot select hidden helper symbols via
+their own Kconfig. Allow the corresponding kernel packages to enable
+the GPU scheduler and V4L2 buffers and memory-to-memory helpers without
+requiring an unrelated in-tree display or video driver.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/gpu/drm/Kconfig
++++ b/drivers/gpu/drm/Kconfig
+@@ -263,7 +263,7 @@
+ 	depends on DRM
+ 
+ config DRM_SCHED
+-	tristate
++	tristate "GPU scheduler support"
+ 	depends on DRM
+ 
+ source "drivers/gpu/drm/sysfb/Kconfig"
+--- a/drivers/media/v4l2-core/Kconfig
++++ b/drivers/media/v4l2-core/Kconfig
+@@ -50,7 +50,7 @@
+ 
+ # Used by drivers that need v4l2-mem2mem.ko
+ config V4L2_MEM2MEM_DEV
+-	tristate
++	tristate "V4L2 memory-to-memory helper"
+ 	depends on VIDEOBUF2_CORE
+ 
+ # Used by LED subsystem flash drivers
+--- a/drivers/media/common/videobuf2/Kconfig
++++ b/drivers/media/common/videobuf2/Kconfig
+@@ -2,16 +2,16 @@
+ # Used by drivers that need Videobuf2 modules
+ config VIDEOBUF2_CORE
+ 	select DMA_SHARED_BUFFER
+-	tristate
++	tristate "Videobuf2 core helper"
+ 
+ config VIDEOBUF2_V4L2
+-	tristate
++	tristate "Videobuf2 V4L2 helper"
+ 
+ config VIDEOBUF2_MEMOPS
+ 	tristate
+ 
+ config VIDEOBUF2_DMA_CONTIG
+-	tristate
++	tristate "Videobuf2 contiguous DMA helper"
+ 	select VIDEOBUF2_CORE
+ 	select VIDEOBUF2_MEMOPS
+ 	select DMA_SHARED_BUFFER
+@@ -23,7 +23,7 @@
+ 	select DMA_SHARED_BUFFER
+ 
+ config VIDEOBUF2_DMA_SG
+-	tristate
++	tristate "Videobuf2 scatter-gather DMA helper"
+ 	select VIDEOBUF2_CORE
+ 	select VIDEOBUF2_MEMOPS
+ 

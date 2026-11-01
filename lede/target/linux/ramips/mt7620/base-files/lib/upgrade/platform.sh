@@ -30,13 +30,13 @@ platform_do_upgrade() {
 		}
 		default_do_upgrade "$1"
 		;;
-	xiaomi,miwifi-r3)
-		# this make it compatible with breed
-		dd if=/dev/mtd0 bs=64 count=1 2>/dev/null | grep -qi breed && CI_KERNPART_EXT="kernel_stock"
-		nand_do_upgrade "$1"
-		;;
-	hiwifi,r33)
-		nand_do_upgrade "$1"
+	rostelecom,rt-fl-1|\
+	rostelecom,s1010)
+		idx="$(find_mtd_index ftd_and_bootflag)"
+		[ -n "$idx" ] && \
+			printf 0 | dd bs=1 seek=$((0x18007)) count=1 \
+				of=/dev/mtdblock$idx
+		default_do_upgrade "$1"
 		;;
 	*)
 		default_do_upgrade "$1"

@@ -1,0 +1,89 @@
+#!/bin/sh
+#
+# Keep the regulatory country populated as PHYs appear.
+#
+# 95-gl-wireless-country runs once from uci-defaults and sets the country from
+# the ART partition. That is too early on this board: the AHB radio can finish
+# probing after netifd's first wireless pass ("PHY is undefined for device"),
+# so a wifi-device section created later ends up with no country. Without one
+# hostapd refuses to start on 6 GHz ("Invalid country_code '00'") and the radio
+# stays down, which presents to the user as "Wi-Fi is broken".
+#
+# This runs on every ieee80211 add event and fills in any radio that is still
+# missing a valid country. It is idempotent and silent when there is nothing to
+# do, so it costs nothing on a normally-booting device.
+
+[ "$ACTION" = add ] || exit 0
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+LOG_TAG=gl-wireless-country
+
+case "$(board_name)" in
+gl.inet,gl-be9300|gl.inet,gl-be6500) ;;
+*) exit 0 ;;
+esac
+
+# A country is valid only if it is two letters and not the "unset" 00 value,
+# which hostapd rejects outright on 6 GHz.
+valid_country() {
+	[ "${#1}" = 2 ] || return 1
+	case "$1" in
+		*[!A-Z]*) return 1 ;;
+	esac
+	return 0
+}
+
+# Nothing to do unless some radio is missing one - check before touching ART.
+needs_country=0
+for dev in $(uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
+	cur=$(uci -q get "wireless.$dev.country" | tr '[:lower:]' '[:upper:]' | tr -dc 'A-Z')
+	valid_country "$cur" || needs_country=1
+done
+[ "$needs_country" = 1 ] || exit 0
+
+art=$(find_mmc_part "0:ART")
+[ -n "$art" ] || {
+	logger -t "$LOG_TAG" -p daemon.warn "ART partition (0:ART) not found; cannot set country automatically"
+	exit 0
+}
+
+# Offset 0x88, 2 bytes.
+country=$(dd if="$art" bs=1 skip=136 count=2 2>/dev/null |
+	tr '[:lower:]' '[:upper:]' | tr -dc 'A-Z')
+
+if ! valid_country "$country"; then
+	# An unprogrammed fuse will still be unprogrammed next boot, so do not
+	# keep retrying - say what the user has to do instead.
+	logger -t "$LOG_TAG" -p daemon.warn \
+		"ART regulatory field at 0x88 is unprogrammed; set one manually:" \
+		"for r in radio0 radio1 radio2; do uci set wireless.\$r.country=XX; done;" \
+		"uci commit wireless; wifi"
+	exit 0
+fi
+
+changed=0
+for dev in $(uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
+	cur=$(uci -q get "wireless.$dev.country" | tr '[:lower:]' '[:upper:]' | tr -dc 'A-Z')
+	valid_country "$cur" && continue
+	uci set "wireless.$dev.country=$country"
+	changed=1
+done
+
+[ "$changed" = 1 ] || exit 0
+
+uci commit wireless
+logger -t "$LOG_TAG" "set regulatory country '$country' from ART on late-registered radio(s)"
+
+# Reload once the event storm settles, and only if nobody else already did.
+# Backgrounded so the hotplug handler returns immediately.
+(
+	sleep 5
+	[ -f /var/run/gl-wireless-country.reload ] && exit 0
+	: > /var/run/gl-wireless-country.reload
+	/sbin/wifi reload
+	rm -f /var/run/gl-wireless-country.reload
+) &
+
+exit 0

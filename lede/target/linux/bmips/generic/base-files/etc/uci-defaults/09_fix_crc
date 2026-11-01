@@ -2,12 +2,14 @@
 
 . /lib/functions.sh
 
-case "$(board_name)" in
-	comtrend,ar-5315u|\
-	comtrend,ar-5387un|\
-	comtrend,vr-3025u)
-		mtd fixtrx firmware
+case "$(uname -r)" in
+	6.18|6.18.*)
+		case "$(board_name)" in
+			comtrend,ar-5315u) . /lib/bmips/6.18/bcm6318/etc/uci-defaults/09_fix_crc ;;
+			comtrend,ar-5387un) . /lib/bmips/6.18/bcm6328/etc/uci-defaults/09_fix_crc ;;
+			comtrend,vr-3025u) . /lib/bmips/6.18/bcm6368/etc/uci-defaults/09_fix_crc ;;
+			*) . /lib/bmips/legacy/generic/etc/uci-defaults/09_fix_crc ;;
+		esac
 		;;
+	*) . /lib/bmips/legacy/generic/etc/uci-defaults/09_fix_crc ;;
 esac
-
-exit 0

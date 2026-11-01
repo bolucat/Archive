@@ -1,3 +1,5 @@
+#include <dt-bindings/leds/common.h>
+
 #include "mt7620a_lenovo_newifi-y1.dtsi"
 
 / {
@@ -14,7 +16,6 @@
 
 	gpio_export {
 		compatible = "gpio-export";
-		#size-cells = <0>;
 
 		usb0 {
 			gpio-export,name = "usb0";
@@ -37,12 +38,14 @@
 		compatible = "gpio-leds";
 
 		power1 {
-			label = "yellow:power";
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_YELLOW>;
 			gpios = <&gpio0 14 GPIO_ACTIVE_LOW>;
 		};
 
 		led_power_blue: power2 {
-			label = "blue:power";
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_BLUE>;
 			gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
 		};
 
@@ -57,12 +60,14 @@
 		};
 
 		usb1 {
-			label = "yellow:usb";
+			function = LED_FUNCTION_USB;
+			color = <LED_COLOR_ID_YELLOW>;
 			gpios = <&gpio2 13 GPIO_ACTIVE_LOW>;
 		};
 
 		usb2 {
-			label = "blue:usb";
+			function = LED_FUNCTION_USB;
+			color = <LED_COLOR_ID_BLUE>;
 			gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 			trigger-sources = <&ohci_port1>, <&ehci_port1>;
 			linux,default-trigger = "usbport";
@@ -79,7 +84,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmii1_pins &rgmii2_pins &mdio_pins>;
 
-	mtd-mac-address = <&factory 0x28>;
+	nvmem-cells = <&macaddr_factory_28>;
+	nvmem-cell-names = "mac-address";
 
 	mediatek,portmap = "wllll";
 

@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "mt7621_xiaomi_mi-router-cr660x.dtsi"
+
+/ {
+	compatible = "xiaomi,cr660x-uboot-mod", "mediatek,mt7621-soc";
+	model = "Xiaomi CR6606/CR6608/CR6609 (U-Boot mod)";
+};
+
+&nand {
+	partitions {
+		partition@0 {
+			label = "u-boot";
+		};
+
+		partition@80000 {
+			label = "u-boot-env";
+			/delete-property/ read-only;
+		};
+
+		partition@100000 {
+			label = "factory";
+
+			nvmem-layout {
+				macaddr_factory_3ffee: macaddr@3ffee {
+					reg = <0x3ffee 0x6>;
+				};
+			};
+		};
+	};
+};
+
+/* Match the vendor CR660x firmware's LAN/WAN MAC allocation. */
+&gmac0 {
+	nvmem-cells = <&macaddr_factory_3ffee>;
+};
+
+&gmac1 {
+	nvmem-cells = <&macaddr_factory_3fff4>;
+};

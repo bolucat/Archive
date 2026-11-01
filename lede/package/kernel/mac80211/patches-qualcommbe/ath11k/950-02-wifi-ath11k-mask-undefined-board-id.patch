@@ -1,0 +1,26 @@
+From: Zheng Zhang <everything411@qq.com>
+Date: Thu, 8 Oct 2026 21:19:52 +0800
+Subject: [PATCH] wifi: ath11k: normalize only the undefined board ID
+
+Preserve valid board IDs wider than eight bits. Only normalize the known
+0xffffffff undefined sentinel to 0xff for the existing BDF lookup.
+
+Signed-off-by: Zheng Zhang <everything411@qq.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2266,6 +2266,13 @@ static int ath11k_qmi_request_target_cap
+ 	else
+ 		ab->qmi.target.board_id = 0xFF;
+ 
++	/* Some firmwares report the undefined board id as 0xffffffff
++	 * instead of 0xff, normalize it to the default so that the board
++	 * file lookup and BDF download keep working.
++	 */
++	if (ab->qmi.target.board_id == U32_MAX)
++		ab->qmi.target.board_id = 0xFF;
++
+ 	if (resp.soc_info_valid)
+ 		ab->qmi.target.soc_id = resp.soc_info.soc_id;
+ 

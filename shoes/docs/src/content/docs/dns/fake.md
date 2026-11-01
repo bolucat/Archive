@@ -1,6 +1,6 @@
 ---
 title: "Fake DNS"
-description: Shoes fake dns configuration.
+description: shoes fake dns configuration.
 ---
 
 Fake DNS is opt-in on a server (including WireGuard) or TUN configuration:
@@ -68,6 +68,9 @@ fake_ip:
   transfers, and non-query operations are refused. Synthesized answers are
   unsigned and do not claim DNSSEC authentication.
 
+A `global_settings.default_dns` with `fake_ip` shares one pool across inheriting
+inbounds; see [global settings](/config/global-settings/#default-dns).
+
 Named DNS groups share one pool across every referencing inbound:
 
 ```yaml
@@ -79,8 +82,8 @@ Named DNS groups share one pool across every referencing inbound:
   dns: {servers: shared-fake}
 ```
 
-Inline `fake_ip` creates a private context, even when `servers` references a
-named group. Omit the inline override to share the group's mappings. Combining
+Per-inbound inline `fake_ip` creates a private context, even when `servers`
+references a named group. Omit the inline override to share the group's mappings. Combining
 fake-enabled groups requires an explicit policy on the composed group.
 
 Private context identity uses the server transport and configured listen addresses
@@ -122,7 +125,7 @@ discovered. Later upstream failures produce DNS failure, not a public-provider f
 UDP and HTTP/3 upstreams remain direct-only; TCP/TLS/HTTPS can use client chains.
 DNS client chains use the configured bootstrap resolver. Downstream proxy
 hostnames remain unresolved when passed through a proxy that supports remote
-name resolution; Shoes cannot inspect addresses resolved by that remote proxy.
+name resolution; shoes cannot inspect addresses resolved by that remote proxy.
 Rule downloads instead pre-resolve downstream proxies through their guarded
 bootstrap resolver.
 UDP truncation retries TCP only when that transport is explicitly configured.

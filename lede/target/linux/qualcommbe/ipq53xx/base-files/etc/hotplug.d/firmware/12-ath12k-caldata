@@ -1,0 +1,33 @@
+[ -e /lib/firmware/$FIRMWARE ] && exit 0
+
+. /lib/functions/caldata.sh
+
+board=$(board_name)
+
+case "$FIRMWARE" in
+"ath12k/IPQ5332/hw1.0/cal-ahb-c000000.wifi.bin")
+	case "$board" in
+	jdcloud,re-cs-06)
+		caldata_extract_mmc "0:ART" 0x1000 0xf800
+		;;
+	gl.inet,gl-be9300)
+		caldata_extract_mmc "0:ART" 0x1000 0x20000
+		;;
+	esac
+	;;
+"ath12k/QCN9274/hw2.0/cal-pci-0001:01:00.0.bin")
+	case "$board" in
+	jdcloud,re-cs-06)
+		caldata_extract_mmc "0:ART" 0x58800 0x2d000
+		;;
+	gl.inet,gl-be9300)
+		# dualmac QCN9274: cal block is 0x27800 long (verified
+		# against the ART partition dump from a live unit)
+		caldata_extract_mmc "0:ART" 0x58800 0x27800
+		;;
+	esac
+	;;
+*)
+	exit 1
+	;;
+esac

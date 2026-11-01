@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Device Tree Source for Meraki MR70 (Toe Biter) / Go GR60 (Dungbeetle)
+
+#include "qcom-ipq4029-meraki-underdog.dtsi"
+
+/ {
+	model = "Meraki MR70";
+	compatible = "meraki,mr70";
+};
+
+
+/* QSDK 10: external RGMII port, retaining its PHY and delay properties. */
+#define QSDK_LAN_BMP 0x20
+#define QSDK_WAN_BMP 0x0
+#define QSDK_WAN_PHY 0
+#define QSDK_WAN_POLL 0
+#include "qcom-ipq40xx-qsdk-10.dtsi"
+
+&switch {
+	switch_mac_mode = <1>; /* PORT_WRAPPER_PSGMII_RGMII5 */
+	qcom,port_phyinfo {
+		port5 { port_id = <5>; phy_address = <0>; };
+	};
+};

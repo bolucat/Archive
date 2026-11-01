@@ -68,7 +68,7 @@ pub enum Error {
     Process(#[from] nyanpasu_utils::process::ProcessError),
     #[error(transparent)]
     OrphanReap(#[from] nyanpasu_utils::process::OrphanReapError),
-    #[error("core log filesystem operation failed at {path}")]
+    #[error("core log filesystem operation failed at {path}: {source}")]
     LogSinkIo {
         path: Utf8PathBuf,
         #[source]

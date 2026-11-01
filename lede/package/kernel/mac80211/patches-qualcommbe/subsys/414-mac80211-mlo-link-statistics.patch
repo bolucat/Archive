@@ -1,0 +1,586 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Fri, 30 Oct 2026 22:23:00 +0800
+Subject: [PATCH] wifi: mac80211: report per-link station rates and counters
+
+cfg80211_sta_set_mld_sinfo() takes the TX and RX rate of an MLO station
+from the link with the least inactive time. The inactive time block before
+it has already stored this link's value as the least one when it is, so the
+comparison against it never holds after the first link. The first link then
+decides alone, and where that link reports no rate the station reports
+none.
+
+Since nl80211_dump_station() builds the aggregated message with
+nl80211_put_sta_info_common() instead of nl80211_send_station(), a station
+dump no longer carries NL80211_ATTR_MLD_ADDR and NL80211_ATTR_MLO_LINK_ID,
+while NL80211_CMD_GET_STATION for one station still does. Userspace that
+dumps the stations of an AP MLD can then no longer tell an MLO station from
+a legacy one, nor its association link.
+
+sta_set_link_sinfo() converts the last TX rate of a link with
+sta_set_rate_info_tx(), which takes the band of a legacy rate from
+ieee80211_get_sband(). That function warns on an MLD interface, and the
+band it returns is not the band of the link.
+
+mac80211 books the TX bytes and packets of an MLO station on the default
+link, because it counts a frame before the driver selects the link, and the
+last TX rate there too, because a TX status names no link. A driver that
+selects the link can keep these per link and report them from its
+link_sta_statistics callback, but it has no way to convert the TX rate it
+recorded to the rate info that cfg80211 reports.
+
+When a link of an MLO station is removed,
+sta_accumulate_removed_link_stats() adds mac80211's own counters of the
+link to rem_link_stats, which then stands for the removed links in the
+station totals. mac80211 books the TX of an MLO station on the default link
+alone, so a driver that reports the TX counters of each link from
+link_sta_statistics, as sta_set_link_sinfo() prefers, makes the totals
+wrong at the removal: removing the default link adds the TX of every link
+once more, and removing another link drops its TX from the totals, which
+then fall.
+
+mac80211 books every frame to an MLO station on the default link, so a per-
+link station dump shows all TX bytes, packets and the TX rate on the
+association link, and none on the other links, whichever link carried the
+frames. Userspace that compares the links of a station, for example to
+report the metrics of each affiliated station, then reads wrong values.
+
+Merged from:
+  414-wifi-cfg80211-take-the-MLO-station-rates-from-the-links-that-report-them.patch
+  415-wifi-cfg80211-report-the-MLD-address-and-link-of-a-dumped-station.patch
+  416-wifi-mac80211-convert-the-TX-rate-of-a-link-with-the-band-of-that-link.patch
+  417-wifi-mac80211-export-the-conversion-of-a-TX-rate-to-a-rate-info.patch
+  418-wifi-mac80211-keep-the-driver-s-counters-of-a-removed-station-link.patch
+  419-wifi-mac80211_hwsim-report-the-TX-counters-and-rate-of-each-station-link.patch
+
+Based on work by:
+  Felix Fietkau <nbd@nbd.name>
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/virtual/mac80211_hwsim_i.h
++++ b/drivers/net/wireless/virtual/mac80211_hwsim_i.h
+@@ -24,11 +24,23 @@ struct hwsim_sta_nan_sched {
+ 	} maps[CFG80211_NAN_MAX_PEER_MAPS];
+ };
+ 
++struct hwsim_link_tx_stats {
++	const struct ieee80211_link_sta *link_sta;
++	u64 bytes[IEEE80211_NUM_ACS];
++	u32 packets[IEEE80211_NUM_ACS];
++	struct ieee80211_tx_rate last_rate;
++	enum nl80211_band band;
++};
++
+ struct hwsim_sta_priv {
+ 	u32 magic;
+ 	unsigned int last_link;
+ 	u16 active_links_rx;
+ 
++	/* mac80211 books TX on the default link only */
++	struct hwsim_link_tx_stats link_tx[IEEE80211_MLD_MAX_NUM_LINKS];
++	u16 link_tx_valid;
++
+ 	/* NAN peer schedule - must be accessed under nan_sched.lock */
+ 	struct hwsim_sta_nan_sched nan_sched;
+ };
+--- a/drivers/net/wireless/virtual/mac80211_hwsim_main.c
++++ b/drivers/net/wireless/virtual/mac80211_hwsim_main.c
+@@ -2255,6 +2255,39 @@ static void mac80211_hwsim_tx_rate_fill(
+ 		mac80211_hwsim_tx_ht(rate, peer, bw);
+ }
+ 
++/* Counted as ieee80211_tx_h_stats() counts on the default link: the length
++ * before encryption, and one packet for all fragments of an MSDU.
++ */
++static void mac80211_hwsim_link_tx_account(struct ieee80211_link_sta *link_sta,
++					   struct sk_buff *skb, unsigned int len,
++					   enum nl80211_band band)
++{
++	struct hwsim_sta_priv *sp = (void *)link_sta->sta->drv_priv;
++	struct hwsim_link_tx_stats *stats = &sp->link_tx[link_sta->link_id];
++	struct ieee80211_tx_rate *rate = &IEEE80211_SKB_CB(skb)->control.rates[0];
++	struct ieee80211_hdr *hdr = (void *)skb->data;
++	int ac = skb_get_queue_mapping(skb);
++
++	/* mac80211 may not report the removal of a link added again */
++	if (READ_ONCE(stats->link_sta) != link_sta) {
++		memset(stats, 0, sizeof(*stats));
++		WRITE_ONCE(stats->link_sta, link_sta);
++	}
++
++	stats->bytes[ac] += len;
++	if (ieee80211_is_ctl(hdr->frame_control) ||
++	    ieee80211_is_first_frag(hdr->seq_ctrl))
++		stats->packets[ac]++;
++
++	if (!ieee80211_is_data(hdr->frame_control) || !ieee80211_rate_valid(rate))
++		return;
++
++	/* the reader takes no lock: a rate is never read against an older band */
++	WRITE_ONCE(stats->band, band);
++	smp_wmb();
++	stats->last_rate = *rate;
++}
++
+ static void mac80211_hwsim_tx(struct ieee80211_hw *hw,
+ 			      struct ieee80211_tx_control *control,
+ 			      struct sk_buff *skb)
+@@ -2268,6 +2301,8 @@ static void mac80211_hwsim_tx(struct iee
+ 	struct ieee80211_vif *vif = txi->control.vif;
+ 	struct ieee80211_link_sta *peer =
+ 		control->sta ? &control->sta->deflink : NULL;
++	struct ieee80211_link_sta *tx_link_sta = NULL;
++	unsigned int tx_len = skb->len;
+ 	bool ack, unicast_data;
+ 	enum nl80211_chan_width confbw = NL80211_CHAN_WIDTH_20_NOHT;
+ 	u32 _portid, i;
+@@ -2328,8 +2363,10 @@ static void mac80211_hwsim_tx(struct iee
+ 								 hdr, &link_sta);
+ 		}
+ 
+-		if (link_sta)
++		if (link_sta) {
+ 			peer = link_sta;
++			tx_link_sta = link_sta;
++		}
+ 
+ 		if (unlikely(!bss_conf)) {
+ 			/* if it's an MLO STA, it might have deactivated all
+@@ -2424,6 +2461,10 @@ static void mac80211_hwsim_tx(struct iee
+ 			return;
+ 	}
+ 
++	if (tx_link_sta && control->sta->valid_links)
++		mac80211_hwsim_link_tx_account(tx_link_sta, skb, tx_len,
++					       channel->band);
++
+ 	/* wmediumd mode check */
+ 	_portid = READ_ONCE(data->wmediumd);
+ 
+@@ -3030,6 +3071,7 @@ static int mac80211_hwsim_sta_add(struct
+ 		     sta->valid_links);
+ 		sp->active_links_rx = sta->valid_links;
+ 	}
++	sp->link_tx_valid = sta->valid_links;
+ 
+ 	spin_lock_init(&sp->nan_sched.lock);
+ 
+@@ -3740,15 +3782,59 @@ static int mac80211_hwsim_change_sta_lin
+ 					   u16 old_links, u16 new_links)
+ {
+ 	struct hwsim_sta_priv *sp = (void *)sta->drv_priv;
++	unsigned long added = sta->valid_links & ~sp->link_tx_valid;
++	unsigned int link_id;
+ 
+ 	hwsim_check_sta_magic(sta);
+ 
+ 	if (vif->type == NL80211_IFTYPE_STATION)
+ 		sp->active_links_rx = new_links;
+ 
++	/* old_links and new_links hold active links only */
++	for_each_set_bit(link_id, &added, IEEE80211_MLD_MAX_NUM_LINKS)
++		memset(&sp->link_tx[link_id], 0, sizeof(sp->link_tx[link_id]));
++	sp->link_tx_valid = sta->valid_links;
++
+ 	return 0;
+ }
+ 
++static void
++mac80211_hwsim_link_sta_statistics(struct ieee80211_hw *hw,
++				   struct ieee80211_vif *vif,
++				   struct ieee80211_link_sta *link_sta,
++				   struct link_station_info *link_sinfo)
++{
++	struct hwsim_sta_priv *sp = (void *)link_sta->sta->drv_priv;
++	struct hwsim_link_tx_stats *stats = &sp->link_tx[link_sta->link_id];
++	struct ieee80211_tx_rate rate;
++	enum nl80211_band band;
++	int ac;
++
++	link_sinfo->tx_bytes = 0;
++	link_sinfo->tx_packets = 0;
++	link_sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BYTES64) |
++			      BIT_ULL(NL80211_STA_INFO_TX_PACKETS);
++
++	if (READ_ONCE(stats->link_sta) != link_sta)
++		return;
++
++	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
++		link_sinfo->tx_bytes += stats->bytes[ac];
++		link_sinfo->tx_packets += stats->packets[ac];
++	}
++
++	rate = stats->last_rate;
++	smp_rmb();
++	band = READ_ONCE(stats->band);
++
++	if (!ieee80211_rate_valid(&rate))
++		return;
++
++	ieee80211_tx_rate_to_rate_info(hw->wiphy->bands[band], &rate,
++				       &link_sinfo->txrate);
++	link_sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
++}
++
+ static int mac80211_hwsim_send_pmsr_ftm_request_peer(struct sk_buff *msg,
+ 						     struct cfg80211_pmsr_ftm_request_peer *request)
+ {
+@@ -4513,6 +4599,7 @@ static const struct ieee80211_ops mac802
+ 	HWSIM_CHANCTX_OPS
+ 	.change_vif_links = mac80211_hwsim_change_vif_links,
+ 	.change_sta_links = mac80211_hwsim_change_sta_links,
++	.link_sta_statistics = mac80211_hwsim_link_sta_statistics,
+ 	.sta_state = mac80211_hwsim_sta_state,
+ 	.can_neg_ttlm = mac80211_hwsim_can_neg_ttlm,
+ };
+--- a/include/net/mac80211.h
++++ b/include/net/mac80211.h
+@@ -5625,6 +5625,17 @@ void ieee80211_tx_rate_update(struct iee
+ 			      struct ieee80211_tx_info *info);
+ 
+ /**
++ * ieee80211_tx_rate_to_rate_info - convert a TX rate to a rate info
++ *
++ * @sband: the band the frame was sent on, for a legacy rate; may be %NULL
++ * @rate: the TX rate, as in &struct ieee80211_tx_info
++ * @rinfo: the rate info to fill, zeroed by the caller
++ */
++void ieee80211_tx_rate_to_rate_info(struct ieee80211_supported_band *sband,
++				    const struct ieee80211_tx_rate *rate,
++				    struct rate_info *rinfo);
++
++/**
+  * ieee80211_tx_status_skb - transmit status callback
+  *
+  * Call this function for all transmitted frames after they have been
+--- a/net/mac80211/cfg.c
++++ b/net/mac80211/cfg.c
+@@ -964,9 +964,9 @@ static int ieee80211_config_default_beac
+ 	return 0;
+ }
+ 
+-void sta_set_rate_info_tx(struct sta_info *sta,
+-			  const struct ieee80211_tx_rate *rate,
+-			  struct rate_info *rinfo)
++void ieee80211_tx_rate_to_rate_info(struct ieee80211_supported_band *sband,
++				    const struct ieee80211_tx_rate *rate,
++				    struct rate_info *rinfo)
+ {
+ 	rinfo->flags = 0;
+ 	if (rate->flags & IEEE80211_TX_RC_MCS) {
+@@ -977,11 +977,9 @@ void sta_set_rate_info_tx(struct sta_inf
+ 		rinfo->mcs = ieee80211_rate_get_vht_mcs(rate);
+ 		rinfo->nss = ieee80211_rate_get_vht_nss(rate);
+ 	} else {
+-		struct ieee80211_supported_band *sband;
+-
+-		sband = ieee80211_get_sband(sta->sdata);
+ 		WARN_ON_ONCE(sband && !sband->bitrates);
+-		if (sband && sband->bitrates)
++		if (sband && sband->bitrates && rate->idx >= 0 &&
++		    rate->idx < sband->n_bitrates)
+ 			rinfo->legacy = sband->bitrates[rate->idx].bitrate;
+ 	}
+ 	if (rate->flags & IEEE80211_TX_RC_40_MHZ_WIDTH)
+@@ -995,6 +993,15 @@ void sta_set_rate_info_tx(struct sta_inf
+ 	if (rate->flags & IEEE80211_TX_RC_SHORT_GI)
+ 		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
+ }
++EXPORT_SYMBOL(ieee80211_tx_rate_to_rate_info);
++
++void sta_set_rate_info_tx(struct sta_info *sta,
++			  const struct ieee80211_tx_rate *rate,
++			  struct rate_info *rinfo)
++{
++	ieee80211_tx_rate_to_rate_info(ieee80211_get_sband(sta->sdata), rate,
++				       rinfo);
++}
+ 
+ static int ieee80211_dump_station(struct wiphy *wiphy, struct wireless_dev *wdev,
+ 				  int idx, u8 *mac, struct station_info *sinfo)
+--- a/net/mac80211/sta_info.c
++++ b/net/mac80211/sta_info.c
+@@ -364,31 +364,57 @@ static void sta_link_free_rcu(struct rcu
+ 	kfree(alloc);
+ }
+ 
+-static void sta_accumulate_removed_link_stats(struct sta_info *sta, int link_id)
++static bool sta_link_drv_filled(const struct link_station_info *drv, u64 bits)
++{
++	return drv && (drv->filled & bits);
++}
++
++static void sta_accumulate_removed_link_stats(struct sta_info *sta, int link_id,
++					      const struct link_station_info *drv)
+ {
+ 	struct link_sta_info *link_sta = wiphy_dereference(sta->local->hw.wiphy,
+ 							   sta->link[link_id]);
+ 	struct ieee80211_link_data *link;
++	u64 tx_packets = 0, tx_bytes = 0;
+ 	unsigned int start;
+ 	int ac, tid;
+ 	u64 value;
+ 	u32 thr;
+ 
+ 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+-		sta->rem_link_stats.tx_packets +=
+-			link_sta->tx_stats.packets[ac];
+-		sta->rem_link_stats.tx_bytes += link_sta->tx_stats.bytes[ac];
++		tx_packets += link_sta->tx_stats.packets[ac];
++		tx_bytes += link_sta->tx_stats.bytes[ac];
+ 	}
+ 
++	/* As in sta_set_link_sinfo(), the driver's counters take precedence */
++	if (sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_TX_PACKETS)))
++		tx_packets = drv->tx_packets;
++	if (sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_TX_BYTES64) |
++				     BIT_ULL(NL80211_STA_INFO_TX_BYTES)))
++		tx_bytes = drv->tx_bytes;
++
++	sta->rem_link_stats.tx_packets += tx_packets;
++	sta->rem_link_stats.tx_bytes += tx_bytes;
++
+ 	do {
+ 		start = u64_stats_fetch_begin(&link_sta->rx_stats.syncp);
+ 		value = u64_stats_read(&link_sta->rx_stats.bytes);
+ 	} while (u64_stats_fetch_retry(&link_sta->rx_stats.syncp, start));
+ 
+-	sta->rem_link_stats.rx_packets += link_sta->rx_stats.packets;
++	if (sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_RX_BYTES64) |
++				     BIT_ULL(NL80211_STA_INFO_RX_BYTES)))
++		value = drv->rx_bytes;
++
++	sta->rem_link_stats.rx_packets +=
++		sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_RX_PACKETS)) ?
++		drv->rx_packets : link_sta->rx_stats.packets;
+ 	sta->rem_link_stats.rx_bytes += value;
+-	sta->rem_link_stats.tx_retries += link_sta->status_stats.retry_count;
+-	sta->rem_link_stats.tx_failed += link_sta->status_stats.retry_failed;
++	sta->rem_link_stats.tx_retries +=
++		sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_TX_RETRIES)) ?
++		drv->tx_retries : link_sta->status_stats.retry_count;
++	sta->rem_link_stats.tx_failed +=
++		sta_link_drv_filled(drv, BIT_ULL(NL80211_STA_INFO_TX_FAILED)) ?
++		drv->tx_failed : link_sta->status_stats.retry_failed;
+ 	sta->rem_link_stats.rx_dropped_misc += link_sta->rx_stats.dropped;
+ 
+ 	thr = sta_get_expected_throughput(sta);
+@@ -421,7 +447,7 @@ static void sta_accumulate_removed_link_
+ }
+ 
+ static void sta_remove_link(struct sta_info *sta, unsigned int link_id,
+-			    bool unhash)
++			    bool unhash, const struct link_station_info *drv)
+ {
+ 	struct sta_link_alloc *alloc = NULL;
+ 	struct link_sta_info *link_sta;
+@@ -444,7 +470,7 @@ static void sta_remove_link(struct sta_i
+ 	sta->sta.valid_links &= ~BIT(link_id);
+ 
+ 	/* store removed link info for accumulated stats consistency */
+-	sta_accumulate_removed_link_stats(sta, link_id);
++	sta_accumulate_removed_link_stats(sta, link_id, drv);
+ 
+ 	RCU_INIT_POINTER(sta->link[link_id], NULL);
+ 	RCU_INIT_POINTER(sta->sta.link[link_id], NULL);
+@@ -476,7 +502,7 @@ void sta_info_free(struct ieee80211_loca
+ 		if (!link_sta)
+ 			continue;
+ 
+-		sta_remove_link(sta, i, false);
++		sta_remove_link(sta, i, false, NULL);
+ 	}
+ 
+ 	/*
+@@ -3009,8 +3035,9 @@ static void sta_set_link_sinfo(struct st
+ 
+ 	if (!(link_sinfo->filled & BIT_ULL(NL80211_STA_INFO_TX_BITRATE)) &&
+ 	    ieee80211_rate_valid(&link_sta_info->tx_stats.last_rate)) {
+-		sta_set_rate_info_tx(sta, &link_sta_info->tx_stats.last_rate,
+-				     &link_sinfo->txrate);
++		ieee80211_tx_rate_to_rate_info(ieee80211_get_link_sband(link),
++					       &link_sta_info->tx_stats.last_rate,
++					       &link_sinfo->txrate);
+ 		link_sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
+ 	}
+ 
+@@ -3443,7 +3470,7 @@ void ieee80211_sta_free_link(struct sta_
+ 
+ 	WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED));
+ 
+-	sta_remove_link(sta, link_id, false);
++	sta_remove_link(sta, link_id, false, NULL);
+ }
+ 
+ int ieee80211_sta_activate_link(struct sta_info *sta, unsigned int link_id)
+@@ -3484,7 +3511,7 @@ int ieee80211_sta_activate_link(struct s
+ 				   old_links, new_links);
+ 	if (ret) {
+ 		sta->sta.valid_links = old_links;
+-		sta_remove_link(sta, link_id, false);
++		sta_remove_link(sta, link_id, false, NULL);
+ 		return ret;
+ 	}
+ 
+@@ -3494,20 +3521,60 @@ hash:
+ 	return 0;
+ }
+ 
++/* Read before drv_change_sta_links(), which may let the driver drop the
++ * counters it keeps for the link.
++ */
++static struct link_station_info *
++sta_link_drv_stats_get(struct sta_info *sta, unsigned int link_id)
++{
++	struct ieee80211_local *local = sta->local;
++	struct link_station_info *link_sinfo;
++	struct link_sta_info *link_sta;
++
++	if (!local->ops->link_sta_statistics ||
++	    !test_sta_flag(sta, WLAN_STA_INSERTED))
++		return NULL;
++
++	link_sta = wiphy_dereference(local->hw.wiphy, sta->link[link_id]);
++	if (!link_sta)
++		return NULL;
++
++	link_sinfo = kzalloc(sizeof(*link_sinfo), GFP_KERNEL);
++	if (!link_sinfo)
++		return NULL;
++
++	drv_link_sta_statistics(local, sta->sdata, link_sta->pub, link_sinfo);
++
++	return link_sinfo;
++}
++
++static void sta_link_drv_stats_free(struct link_station_info *link_sinfo)
++{
++	if (!link_sinfo)
++		return;
++
++	kfree(link_sinfo->pertid);
++	kfree(link_sinfo);
++}
++
+ void ieee80211_sta_remove_link(struct sta_info *sta, unsigned int link_id)
+ {
+ 	struct ieee80211_sub_if_data *sdata = sta->sdata;
+ 	u16 old_links = sta->sta.valid_links;
++	struct link_station_info *drv;
+ 
+ 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
+ 
++	drv = sta_link_drv_stats_get(sta, link_id);
++
+ 	sta->sta.valid_links &= ~BIT(link_id);
+ 
+ 	if (!WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED)))
+ 		drv_change_sta_links(sdata->local, sdata, &sta->sta,
+ 				     old_links, sta->sta.valid_links);
+ 
+-	sta_remove_link(sta, link_id, true);
++	sta_remove_link(sta, link_id, true, drv);
++	sta_link_drv_stats_free(drv);
+ }
+ 
+ static u8 ieee80211_sta_nss_capability(struct link_sta_info *link_sta)
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -8241,6 +8241,22 @@ nla_put_failure:
+ 	return -EMSGSIZE;
+ }
+ 
++static int nl80211_put_sta_mlo_params(struct sk_buff *msg,
++				      struct station_info *sinfo)
++{
++	if (!sinfo->mlo_params_valid)
++		return 0;
++
++	if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, sinfo->assoc_link_id))
++		return -EMSGSIZE;
++
++	if (!is_zero_ether_addr(sinfo->mld_addr) &&
++	    nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, sinfo->mld_addr))
++		return -EMSGSIZE;
++
++	return 0;
++}
++
+ static int nl80211_send_station(struct sk_buff *msg, u32 cmd, u32 portid,
+ 				u32 seq, int flags,
+ 				struct cfg80211_registered_device *rdev,
+@@ -8276,16 +8292,8 @@ static int nl80211_send_station(struct s
+ 		    sinfo->assoc_resp_ies))
+ 		goto nla_put_failure;
+ 
+-	if (sinfo->mlo_params_valid) {
+-		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID,
+-			       sinfo->assoc_link_id))
+-			goto nla_put_failure;
+-
+-		if (!is_zero_ether_addr(sinfo->mld_addr) &&
+-		    nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN,
+-			    sinfo->mld_addr))
+-			goto nla_put_failure;
+-	}
++	if (nl80211_put_sta_mlo_params(msg, sinfo))
++		goto nla_put_failure;
+ 
+ 	cfg80211_sinfo_release_content(sinfo);
+ 	genlmsg_end(msg, hdr);
+@@ -8302,6 +8310,7 @@ static void cfg80211_sta_set_mld_sinfo(s
+ 	struct link_station_info *link_sinfo;
+ 	int link_id, init = 0;
+ 	u32 link_inactive_time;
++	u32 txrate_inactive_time = U32_MAX, rxrate_inactive_time = U32_MAX;
+ 
+ 	sinfo->signal = -99;
+ 
+@@ -8428,31 +8437,27 @@ static void cfg80211_sta_set_mld_sinfo(s
+ 		/* Update MLO rates as per last updated link rate */
+ 		if ((link_sinfo->filled &
+ 		     BIT_ULL(NL80211_STA_INFO_TX_BITRATE)) &&
+-		    (!init ||
+-		     link_inactive_time > link_sinfo->inactive_time)) {
++		    link_sinfo->inactive_time <= txrate_inactive_time) {
++			txrate_inactive_time = link_sinfo->inactive_time;
+ 			sinfo->txrate = link_sinfo->txrate;
+ 			sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
+ 		}
+ 		if ((link_sinfo->filled &
+ 		     BIT_ULL(NL80211_STA_INFO_RX_BITRATE)) &&
+-		    (!init ||
+-		     link_inactive_time > link_sinfo->inactive_time)) {
++		    link_sinfo->inactive_time <= rxrate_inactive_time) {
++			rxrate_inactive_time = link_sinfo->inactive_time;
+ 			sinfo->rxrate = link_sinfo->rxrate;
+ 			sinfo->filled |= BIT_ULL(NL80211_STA_INFO_RX_BITRATE);
+ 		}
+ 
+ 		if (link_sinfo->filled &
+-		    BIT_ULL(NL80211_STA_INFO_TX_DURATION) &&
+-		    (!init ||
+-		     link_inactive_time > link_sinfo->inactive_time)) {
++		    BIT_ULL(NL80211_STA_INFO_TX_DURATION)) {
+ 			sinfo->tx_duration += link_sinfo->tx_duration;
+ 			sinfo->filled |=
+ 				BIT_ULL(NL80211_STA_INFO_TX_DURATION);
+ 		}
+ 		if (link_sinfo->filled &
+-		    BIT_ULL(NL80211_STA_INFO_RX_DURATION) &&
+-		    (!init ||
+-		     link_inactive_time > link_sinfo->inactive_time)) {
++		    BIT_ULL(NL80211_STA_INFO_RX_DURATION)) {
+ 			sinfo->rx_duration += link_sinfo->rx_duration;
+ 			sinfo->filled |=
+ 				BIT_ULL(NL80211_STA_INFO_RX_DURATION);
+@@ -8683,6 +8688,8 @@ static int nl80211_dump_station(struct s
+ 		switch (ctx->phase) {
+ 		case NL80211_DUMP_STA_PHASE_AGGREGATED:
+ 			ret = nl80211_put_sta_info_common(skb, rdev, &ctx->sinfo);
++			if (!ret)
++				ret = nl80211_put_sta_mlo_params(skb, &ctx->sinfo);
+ 			if (ret) {
+ 				genlmsg_cancel(skb, hdr);
+ 				err = ret;

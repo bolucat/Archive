@@ -1,5 +1,7 @@
 /dts-v1/;
 
+#include <dt-bindings/clock/mediatek,mtmips-sysc.h>
+
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
@@ -38,14 +40,18 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		sysc: sysc@0 {
-			compatible = "ralink,rt2880-sysc";
-			reg = <0x000 0x100>;
+		sysc: syscon@0 {
+			compatible = "ralink,rt2880-sysc", "syscon";
+			reg = <0x0 0x100>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
 		};
 
 		timer: timer@100 {
 			compatible = "ralink,rt2880-timer";
 			reg = <0x100 0x20>;
+
+			clocks = <&sysc RT2880_CLK_TIMER>;
 
 			interrupt-parent = <&intc>;
 			interrupts = <1>;
@@ -56,6 +62,8 @@
 		watchdog: watchdog@120 {
 			compatible = "ralink,rt2880-wdt";
 			reg = <0x120 0x10>;
+
+			clocks = <&sysc RT2880_CLK_WATCHDOG>;
 		};
 
 		intc: intc@200 {
@@ -81,8 +89,12 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 
+			interrupt-parent = <&intc>;
+			interrupts = <6>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+
 			ngpios = <24>;
-			ralink,gpio-base = <0>;
 			ralink,register-map = [ 00 04 08 0c
 						20 24 28 2c
 						30 34 ];
@@ -95,8 +107,12 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 
+			interrupt-parent = <&intc>;
+			interrupts = <6>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+
 			ngpios = <16>;
-			ralink,gpio-base = <24>;
 			ralink,register-map = [ 00 04 08 0c
 						10 14 18 1c
 						20 24 ];
@@ -111,8 +127,12 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 
+			interrupt-parent = <&intc>;
+			interrupts = <6>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+
 			ngpios = <32>;
-			ralink,gpio-base = <40>;
 			ralink,register-map = [ 00 04 08 0c
 						10 14 18 1c
 						20 24 ];
@@ -124,7 +144,9 @@
 			compatible = "ralink,rt2880-i2c";
 			reg = <0x900 0x100>;
 
-			resets = <&rstctrl 9>;
+			clocks = <&sysc RT2880_CLK_I2C>;
+
+			resets = <&sysc 9>;
 			reset-names = "i2c";
 
 			#address-cells = <1>;
@@ -136,9 +158,11 @@
 			pinctrl-0 = <&i2c_pins>;
 		};
 
-		uartlite: uartlite@c00 {
+		uartlite: serial@c00 {
 			compatible = "ralink,rt2880-uart", "ns16550a";
 			reg = <0xc00 0x100>;
+
+			clocks = <&sysc RT2880_CLK_UARTLITE>;
 
 			interrupt-parent = <&intc>;
 			interrupts = <8>;
@@ -182,16 +206,6 @@
 		};
 	};
 
-	rstctrl: rstctrl {
-		compatible = "ralink,rt2880-reset";
-		#reset-cells = <1>;
-	};
-
-	clkctrl: clkctrl {
-		compatible = "ralink,rt2880-clock";
-		#clock-cells = <1>;
-	};
-
 	pci: pci@440000 {
 		compatible = "ralink,rt288x-pci";
 		reg = <0x00440000 0x20000>;
@@ -207,7 +221,9 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		resets = <&rstctrl 18>;
+		clocks = <&sysc RT2880_CLK_ETHERNET>;
+
+		resets = <&sysc 18>;
 		reset-names = "fe";
 
 		interrupt-parent = <&cpuintc>;
@@ -216,7 +232,7 @@
 		status = "disabled";
 
 		port@0 {
-			compatible = "ralink,rt2880-port", "mediatek,eth-port";
+			compatible = "mediatek,eth-port";
 			reg = <0>;
 		};
 
@@ -229,8 +245,10 @@
 	};
 
 	wmac: wmac@480000 {
-		compatible = "ralink,rt2880-wmac";
+		compatible = "ralink,rt2880-wifi";
 		reg = <0x480000 0x40000>;
+
+		clocks = <&sysc RT2880_CLK_WMAC>;
 
 		interrupt-parent = <&cpuintc>;
 		interrupts = <6>;

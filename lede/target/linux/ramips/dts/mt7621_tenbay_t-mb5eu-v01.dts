@@ -14,7 +14,7 @@
 		led-failsafe = &led_red;
 		led-running = &led_blue;
 		led-upgrade = &led_red;
-		label-mac-device = &wan_port;
+		label-mac-device = &gmac1;
 	};
 
 	chosen {
@@ -103,43 +103,58 @@
 
 &pcie1 {
 	wifi@0,0 {
-		reg = <0x0 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x0>;
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&eeprom_factory_0>;
+		nvmem-cell-names = "eeprom";
+		mediatek,disable-radar-background;
 	};
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0x4>;
+	nvmem-cells = <&macaddr_factory_4 0>;
+	nvmem-cell-names = "mac-address";
 };
 
-&switch0 {
-	ports {
-		wan_port: port@0 {
-			status = "okay";
-			label = "wan";
-			mtd-mac-address = <&factory 0x28>;
-		};
+&gmac1 {
+	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy0>;
+
+	nvmem-cells = <&macaddr_factory_4 (-2)>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy0 {
+	/delete-property/ interrupts;
+};
+
+&gsw {
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
 		port@4 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan4";
 		};
-	};
+
 };
 
 &state_default {
@@ -180,10 +195,26 @@
 				read-only;
 			};
 
-			factory: partition@50000 {
+			partition@50000 {
 				label = "factory";
 				reg = <0x50000 0x40000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_factory_0: eeprom@0 {
+						reg = <0x0 0xe00>;
+					};
+
+					macaddr_factory_4: macaddr@4 {
+						compatible = "mac-base";
+						reg = <0x4 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@90000 {

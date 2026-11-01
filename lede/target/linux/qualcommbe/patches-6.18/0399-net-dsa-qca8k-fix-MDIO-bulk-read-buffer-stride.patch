@@ -1,0 +1,29 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Mon, 12 Oct 2026 14:30:00 +0800
+Subject: [PATCH] net: dsa: qca8k: fix MDIO bulk read buffer stride
+
+The MDIO fallback stores each 32-bit register at val_buf + i, where
+val_buf is a void pointer. Successive stores overlap by three bytes
+and leave trailing output words unwritten. Advance in u32 units,
+as the register loop and bulk write path already do.
+
+QCA8386 uses this fallback for all switch accesses. A read-only
+runtime comparison of three port status registers returned success
+but disagreed with all three scalar reads, with the final bulk word
+left at its initialized sentinel. FDB reads also use this bulk path.
+This fixes a demonstrated data corruption bug; whether it contributes
+to the separately observed shared egress stall requires traffic tests.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/dsa/qca/qca8k-8xxx.c
++++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+@@ -630,7 +630,7 @@ qca8k_bulk_read(void *ctx, const void *r
+ 
+ 	/* loop count times and increment reg of 4 */
+ 	for (i = 0; i < count; i++, reg += sizeof(u32)) {
+-		ret = qca8k_read_mii(priv, reg, val_buf + i);
++		ret = qca8k_read_mii(priv, reg, (u32 *)val_buf + i);
+ 		if (ret < 0)
+ 			return ret;
+ 	}

@@ -9,8 +9,9 @@ use std::{
 };
 
 use nyanpasu_utils::process::{
-    Command, EpochPidFile, EpochPidFileSpec, OrphanReapOutcome, ProcessError, ProcessEvent,
-    ReadinessProbe, Supervisor, SupervisorEvent, TerminatedPayload, reap_epoch_pid_file,
+    AtomicStopStrategy, Command, EpochPidFile, EpochPidFileSpec, OrphanReapOutcome, ProcessError,
+    ProcessEvent, ReadinessProbe, Supervisor, SupervisorEvent, TerminatedPayload,
+    reap_epoch_pid_file,
 };
 use tokio::{
     sync::{broadcast, mpsc, oneshot, watch},
@@ -169,6 +170,7 @@ pub struct InstanceBuilder {
     native_store: Option<Arc<dyn crate::native_store::StoreLease>>,
     source_data_dir: Option<camino::Utf8PathBuf>,
     windows_shutdown_helper: Option<std::path::PathBuf>,
+    stop_strategy: Option<Arc<AtomicStopStrategy>>,
 }
 
 impl Instance {
@@ -191,6 +193,7 @@ impl Instance {
             native_store: None,
             source_data_dir: None,
             windows_shutdown_helper: None,
+            stop_strategy: None,
         }
     }
 
@@ -217,6 +220,7 @@ impl Instance {
             native_store,
             source_data_dir,
             windows_shutdown_helper,
+            stop_strategy,
         } = builder;
         if tokio::fs::metadata(&spec.config_path).await.is_err() {
             return Err(Error::ConfigNotFound(spec.config_path.clone()));
@@ -314,6 +318,11 @@ impl Instance {
                 }
             }
         });
+        let supervisor = if let Some(strategy) = stop_strategy {
+            supervisor.stop_strategy(strategy)
+        } else {
+            supervisor
+        };
         let supervisor = if let Some(store) = shared.native_store.clone() {
             let shared = shared.clone();
             supervisor.before_spawn(move || {
@@ -546,6 +555,12 @@ impl Instance {
 }
 
 impl InstanceBuilder {
+    /// Shares the host's stop strategy with this instance's supervisor, including later updates.
+    pub fn stop_strategy(mut self, strategy: Arc<AtomicStopStrategy>) -> Self {
+        self.stop_strategy = Some(strategy);
+        self
+    }
+
     pub fn windows_shutdown_helper(mut self, helper: Option<std::path::PathBuf>) -> Self {
         self.windows_shutdown_helper = helper;
         self

@@ -31,6 +31,7 @@
 		partition@140000 {
 			label = "rootfs";
 			reg = <0x140000 0xec0000>;
+			linux,rootfs;
 		};
 	};
 };
@@ -39,33 +40,42 @@
 	status = "okay";
 };
 
-&switch0 {
-	ports {
+&gmac1 {
+	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy4>;
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
+};
+
+&gsw {
+
 		port@0 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan4";
 		};
 
-		port@4 {
-			status = "okay";
-			label = "wan";
-		};
-	};
 };
 
 &state_default {

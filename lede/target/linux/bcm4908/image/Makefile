@@ -3,6 +3,8 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
+BCM4908_DTS_DIR := broadcom/$(if $(filter 6.18,$(KERNEL_PATCHVER)),bcmbca,bcm4908)
+
 DEVICE_VARS += ASUS_PRODUCTID ASUS_BUILD_NO ASUS_FW_REV ASUS_EXT_NO
 DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_REGION
 
@@ -54,7 +56,7 @@ endef
 define Device/asus_gt-ac5300
   DEVICE_VENDOR := Asus
   DEVICE_MODEL := GT-AC5300
-  DEVICE_DTS := broadcom/bcm4908/bcm4908-asus-gt-ac5300
+  DEVICE_DTS := $(BCM4908_DTS_DIR)/bcm4908-asus-gt-ac5300
   IMAGES := bin
   IMAGE/bin := append-ubi | bcm4908img | bcm4908asus
   ASUS_PRODUCTID := GT-AC5300
@@ -67,7 +69,7 @@ TARGET_DEVICES += asus_gt-ac5300
 define Device/netgear_r8000p
   DEVICE_VENDOR := Netgear
   DEVICE_MODEL := R8000P
-  DEVICE_DTS := broadcom/bcm4908/bcm4906-netgear-r8000p
+  DEVICE_DTS := $(BCM4908_DTS_DIR)/bcm4906-netgear-r8000p
   IMAGES := bin
   IMAGE/chk := append-ubi | bcm4908img | netgear-chk
   NETGEAR_BOARD_ID := U12H359T00_NETGEAR
@@ -79,7 +81,7 @@ define Device/tplink_archer-c2300-v1
   DEVICE_VENDOR := TP-Link
   DEVICE_MODEL := Archer C2300
   DEVICE_VARIANT := v1
-  DEVICE_DTS := broadcom/bcm4908/bcm4906-tplink-archer-c2300-v1
+  DEVICE_DTS := $(BCM4908_DTS_DIR)/bcm4906-tplink-archer-c2300-v1
   IMAGES := bin
   IMAGE/bin := append-ubi | bcm4908img
   BROKEN := y

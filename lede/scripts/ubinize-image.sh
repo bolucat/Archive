@@ -58,7 +58,7 @@ ubilayout() {
 
 		size="$part"
 
-		ubivol $vol_id "$name" "$image" "" "${size}MiB"
+		ubivol $vol_id "$name" "$image" "" "${size:+${size}MiB}"
 		vol_id=$(( $vol_id + 1 ))
 	done
 	if [ "$3" ]; then

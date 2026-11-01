@@ -1,0 +1,35 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] clk: qcom: restore IPQ4019 ESS MAC clock gating controls
+
+Port QWRT GCC reset controls for temporarily gating individual MAC
+clocks while SSDK changes link speed; these are distinct from MAC reset.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/include/dt-bindings/clock/qcom,gcc-ipq4019.h
++++ b/include/dt-bindings/clock/qcom,gcc-ipq4019.h
+@@ -172,4 +172,10 @@
+ #define ESS_MAC5_ARES					76
+ #define ESS_PSGMII_ARES					77
+ 
++#define ESS_MAC1_CLK_DIS				78
++#define ESS_MAC2_CLK_DIS				79
++#define ESS_MAC3_CLK_DIS				80
++#define ESS_MAC4_CLK_DIS				81
++#define ESS_MAC5_CLK_DIS				82
++
+ #endif
+--- a/drivers/clk/qcom/gcc-ipq4019.c
++++ b/drivers/clk/qcom/gcc-ipq4019.c
+@@ -1721,6 +1721,11 @@
+ 	[ESS_MAC4_ARES] = {0x1200C, 3},
+ 	[ESS_MAC5_ARES] = {0x1200C, 4},
+ 	[ESS_PSGMII_ARES] = {0x1200C, 5},
++	[ESS_MAC1_CLK_DIS] = {0x1200C, 8},
++	[ESS_MAC2_CLK_DIS] = {0x1200C, 9},
++	[ESS_MAC3_CLK_DIS] = {0x1200C, 10},
++	[ESS_MAC4_CLK_DIS] = {0x1200C, 11},
++	[ESS_MAC5_CLK_DIS] = {0x1200C, 12},
+ };
+ 
+ static const struct regmap_config gcc_ipq4019_regmap_config = {

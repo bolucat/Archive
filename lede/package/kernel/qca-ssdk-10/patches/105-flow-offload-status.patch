@@ -1,0 +1,90 @@
+Subject: [PATCH] ssdk: expose native flow lifecycle and hardware statistics
+
+Provide read-only debugfs status for distinguishing failed replacements,
+software fallback and packet/byte deltas reported by the hardware backend.
+Keep sampling under the existing control mutex and remove files on cleanup.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -1,5 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/module.h>
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
+ #include <linux/inetdevice.h>
+ #include <linux/mutex.h>
+ #include <linux/rcupdate.h>
+@@ -28,6 +30,25 @@
+ static LIST_HEAD(driver_blocks);
+ static void collect_work(struct work_struct *work);
+ static DECLARE_DELAYED_WORK(collector, collect_work);
++static struct dentry *flow_debug_dir;
++static u64 replace_calls, replace_ok, stats_calls, stats_ok;
++static u64 reported_packets, reported_bytes;
++static int last_replace_result, last_start_result;
++static int flow_status_show(struct seq_file *s, void *unused)
++{
++	mutex_lock(&control_lock);
++	seq_printf(s, "attached %u\nbound %u\nengine %u\nclosing %u\nchanging %u\n",
++		attached, !!bound_block, !!engine, closing, changing);
++	seq_printf(s, "wan_vid %u\nlan_vid %u\n", vlan_map.default_vid[0], vlan_map.default_vid[1]);
++	seq_printf(s, "replace_calls %llu\nreplace_ok %llu\nlast_replace_result %d\nlast_start_result %d\n",
++		replace_calls, replace_ok, last_replace_result, last_start_result);
++	seq_printf(s, "stats_calls %llu\nstats_ok %llu\nreported_packets %llu\nreported_bytes %llu\n",
++		stats_calls, stats_ok, reported_packets, reported_bytes);
++	mutex_unlock(&control_lock);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(flow_status);
++
+ 
+ static void release_devices(void)
+ {
+@@ -194,6 +215,11 @@
+ 	ret = register_switchdev_notifier(&bridge_nb); if (ret) goto neighbour;
+ 	ret = register_fib_notifier(&init_net, &route_nb, NULL, NULL); if (ret) goto bridge;
+ 	mutex_lock(&control_lock); initializing = false; attached = true; mutex_unlock(&control_lock);
++	if (!flow_debug_dir) {
++		flow_debug_dir = debugfs_create_dir("ssdk_flow", NULL);
++		if (IS_ERR(flow_debug_dir)) flow_debug_dir = NULL;
++		else debugfs_create_file("status", 0400, flow_debug_dir, NULL, &flow_status_fops);
++	}
+ 	return 0;
+ bridge:
+ 	unregister_switchdev_notifier(&bridge_nb);
+@@ -231,6 +257,8 @@
+ EXPORT_SYMBOL_GPL(ssdk_flow_detach);
+ void ssdk_flow_control_cleanup(void)
+ {
++	debugfs_remove_recursive(flow_debug_dir);
++	flow_debug_dir = NULL;
+ 	ssdk_flow_detach();
+ 	cancel_delayed_work_sync(&collector);
+ 	WARN_ON(engine || bound_block);
+@@ -246,11 +274,23 @@
+ 		stop_engine(); goto out;
+ 	}
+ 	if (!engine && flow->command == FLOW_CLS_REPLACE) {
+-		ret = start_engine(); if (ret) goto out;
++		ret = start_engine(); last_start_result = ret; if (ret) goto out;
+ 	}
+ 	if (!engine) { ret = flow->command == FLOW_CLS_DESTROY ? 0 : -ENOENT; goto out; }
+ 	ret = ssdk_flow_engine_command(engine, flow);
+ out:
++	if (flow->command == FLOW_CLS_REPLACE) {
++		replace_calls++;
++		if (!ret) replace_ok++;
++		last_replace_result = ret;
++	} else if (flow->command == FLOW_CLS_STATS) {
++		stats_calls++;
++		if (!ret) {
++			stats_ok++;
++			reported_packets += flow->stats.pkts;
++			reported_bytes += flow->stats.bytes;
++		}
++	}
+ 	mutex_unlock(&control_lock); return ret;
+ }
+ static void block_release(void *priv) { module_put(THIS_MODULE); }

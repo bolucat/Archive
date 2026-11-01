@@ -1,0 +1,182 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sat, 24 Oct 2026 22:28:52 +0800
+Subject: [PATCH] net: dsa: qca8k: reset QCA8386 after PHY package setup
+
+MHT has a switch-core reset independent of its PHY and PCS resets.
+QSDK R48 configures SRAM timing, PCS1 and clock sources before resetting
+that core and MAC0-5 TX/RX, then programs switch forwarding. Resetting
+the core at probe, before phylink initializes the shared PHY package,
+leaves QM running across those package changes. Rebinding after package
+initialization drains a reproduced stuck queue without a system reboot.
+
+Initialize the shared package through its first PHY, then pulse the
+optional ordered NSSCC reset array at the start of DSA setup. Correct
+the core reset register from 0xc to CBCR 0x8 bit 2 and use R48's 10us
+pulse. Leave other QCA8K families and old device trees unchanged. This
+is one-time initialization, not a running-switch recovery mechanism.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+Signed-off-by: lean <chenlin@fnnas.com>
+
+---
+
+--- a/Documentation/devicetree/bindings/net/dsa/qca8k.yaml
++++ b/Documentation/devicetree/bindings/net/dsa/qca8k.yaml
+@@ -45,6 +45,14 @@
+       GPIO to be used to reset the whole device
+     maxItems: 1
+ 
++  resets:
++    description:
++      QCA8386 NSSCC resets, ordered as switch core then MAC0 through MAC5,
++      each with TX followed by RX. Reset the core after its clocks are
++      available and before configuring DSA forwarding.
++    minItems: 13
++    maxItems: 13
++
+   qca,ignore-power-on-sel:
+     $ref: /schemas/types.yaml#/definitions/flag
+     description:
+--- a/drivers/clk/qcom/nsscc-qca8k.c
++++ b/drivers/clk/qcom/nsscc-qca8k.c
+@@ -1951,47 +1951,47 @@
+ };
+ 
+ static const struct qcom_reset_map nss_cc_qca8k_resets[] = {
+-	[NSS_CC_SWITCH_CORE_ARES] = { 0xc, 2 },
++	[NSS_CC_SWITCH_CORE_ARES] = { 0x8, 2, 10 },
+ 	[NSS_CC_APB_BRIDGE_ARES] = { 0x10, 2 },
+-	[NSS_CC_MAC0_TX_ARES] = { 0x20, 2 },
++	[NSS_CC_MAC0_TX_ARES] = { 0x20, 2, 10 },
+ 	[NSS_CC_MAC0_TX_SRDS1_ARES] = { 0x24, 2 },
+-	[NSS_CC_MAC0_RX_ARES] = { 0x34, 2 },
++	[NSS_CC_MAC0_RX_ARES] = { 0x34, 2, 10 },
+ 	[NSS_CC_MAC0_RX_SRDS1_ARES] = { 0x3c, 2 },
+ 	[NSS_CC_MAC1_SRDS1_CH0_RX_ARES] = { 0x50, 2 },
+-	[NSS_CC_MAC1_TX_ARES] = { 0x54, 2 },
++	[NSS_CC_MAC1_TX_ARES] = { 0x54, 2, 10 },
+ 	[NSS_CC_MAC1_GEPHY0_TX_ARES] = { 0x58, 2 },
+ 	[NSS_CC_MAC1_SRDS1_CH0_XGMII_RX_ARES] = { 0x5c, 2 },
+ 	[NSS_CC_MAC1_SRDS1_CH0_TX_ARES] = { 0x70, 2 },
+-	[NSS_CC_MAC1_RX_ARES] = { 0x74, 2 },
++	[NSS_CC_MAC1_RX_ARES] = { 0x74, 2, 10 },
+ 	[NSS_CC_MAC1_GEPHY0_RX_ARES] = { 0x78, 2 },
+ 	[NSS_CC_MAC1_SRDS1_CH0_XGMII_TX_ARES] = { 0x7c, 2 },
+ 	[NSS_CC_MAC2_SRDS1_CH1_RX_ARES] = { 0x90, 2 },
+-	[NSS_CC_MAC2_TX_ARES] = { 0x94, 2 },
++	[NSS_CC_MAC2_TX_ARES] = { 0x94, 2, 10 },
+ 	[NSS_CC_MAC2_GEPHY1_TX_ARES] = { 0x98, 2 },
+ 	[NSS_CC_MAC2_SRDS1_CH1_XGMII_RX_ARES] = { 0x9c, 2 },
+ 	[NSS_CC_MAC2_SRDS1_CH1_TX_ARES] = { 0xb0, 2 },
+-	[NSS_CC_MAC2_RX_ARES] = { 0xb4, 2 },
++	[NSS_CC_MAC2_RX_ARES] = { 0xb4, 2, 10 },
+ 	[NSS_CC_MAC2_GEPHY1_RX_ARES] = { 0xb8, 2 },
+ 	[NSS_CC_MAC2_SRDS1_CH1_XGMII_TX_ARES] = { 0xbc, 2 },
+ 	[NSS_CC_MAC3_SRDS1_CH2_RX_ARES] = { 0xd0, 2 },
+-	[NSS_CC_MAC3_TX_ARES] = { 0xd4, 2 },
++	[NSS_CC_MAC3_TX_ARES] = { 0xd4, 2, 10 },
+ 	[NSS_CC_MAC3_GEPHY2_TX_ARES] = { 0xd8, 2 },
+ 	[NSS_CC_MAC3_SRDS1_CH2_XGMII_RX_ARES] = { 0xdc, 2 },
+ 	[NSS_CC_MAC3_SRDS1_CH2_TX_ARES] = { 0xf0, 2 },
+-	[NSS_CC_MAC3_RX_ARES] = { 0xf4, 2 },
++	[NSS_CC_MAC3_RX_ARES] = { 0xf4, 2, 10 },
+ 	[NSS_CC_MAC3_GEPHY2_RX_ARES] = { 0xf8, 2 },
+ 	[NSS_CC_MAC3_SRDS1_CH2_XGMII_TX_ARES] = { 0xfc, 2 },
+ 	[NSS_CC_MAC4_SRDS1_CH3_RX_ARES] = { 0x110, 2 },
+-	[NSS_CC_MAC4_TX_ARES] = { 0x114, 2 },
++	[NSS_CC_MAC4_TX_ARES] = { 0x114, 2, 10 },
+ 	[NSS_CC_MAC4_GEPHY3_TX_ARES] = { 0x118, 2 },
+ 	[NSS_CC_MAC4_SRDS1_CH3_XGMII_RX_ARES] = { 0x11c, 2 },
+ 	[NSS_CC_MAC4_SRDS1_CH3_TX_ARES] = { 0x130, 2 },
+-	[NSS_CC_MAC4_RX_ARES] = { 0x134, 2 },
++	[NSS_CC_MAC4_RX_ARES] = { 0x134, 2, 10 },
+ 	[NSS_CC_MAC4_GEPHY3_RX_ARES] = { 0x138, 2 },
+ 	[NSS_CC_MAC4_SRDS1_CH3_XGMII_TX_ARES] = { 0x13c, 2 },
+-	[NSS_CC_MAC5_TX_ARES] = { 0x14c, 2 },
++	[NSS_CC_MAC5_TX_ARES] = { 0x14c, 2, 10 },
+ 	[NSS_CC_MAC5_TX_SRDS0_ARES] = { 0x150, 2 },
+-	[NSS_CC_MAC5_RX_ARES] = { 0x160, 2 },
++	[NSS_CC_MAC5_RX_ARES] = { 0x160, 2, 10 },
+ 	[NSS_CC_MAC5_RX_SRDS0_ARES] = { 0x164, 2 },
+ 	[NSS_CC_AHB_ARES] = { 0x170, 2 },
+ 	[NSS_CC_SEC_CTRL_AHB_ARES] = { 0x174, 2 },
+--- a/drivers/net/dsa/qca/qca8k-8xxx.c
++++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+@@ -16,6 +16,7 @@
+ #include <linux/of_mdio.h>
+ #include <linux/of_platform.h>
+ #include <linux/mdio.h>
++#include <linux/reset.h>
+ #include <linux/phylink.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/etherdevice.h>
+@@ -2165,6 +2166,56 @@
+ 			   mask);
+ }
+ 
++static int qca8k_qca8386_reset(struct qca8k_priv *priv)
++{
++	struct reset_control *resets;
++	struct device_node *phy_np;
++	struct phy_device *phydev;
++	struct dsa_port *dp;
++	int ret;
++
++	resets = devm_reset_control_array_get_optional_exclusive(priv->dev);
++	if (IS_ERR(resets))
++		return dev_err_probe(priv->dev, PTR_ERR(resets),
++				     "failed to get switch resets\n");
++	if (!resets)
++		return 0;
++
++	/* The first integrated PHY initializes the shared SRAM timing, PCS1
++	 * and clocks. Resetting the core before that sequence leaves its QM
++	 * running while the package changes mode and clock sources.
++	 */
++	dsa_switch_for_each_user_port(dp, priv->ds) {
++		phy_np = of_parse_phandle(dp->dn, "phy-handle", 0);
++		if (!phy_np)
++			continue;
++
++		phydev = of_phy_find_device(phy_np);
++		of_node_put(phy_np);
++		if (!phydev)
++			return -EPROBE_DEFER;
++
++		mutex_lock(&phydev->lock);
++		ret = phydev->drv ? phy_init_hw(phydev) : -EPROBE_DEFER;
++		mutex_unlock(&phydev->lock);
++		put_device(&phydev->mdio.dev);
++		if (ret)
++			return dev_err_probe(priv->dev, ret,
++					     "failed to initialize switch PHY package\n");
++		break;
++	}
++
++	/* The ordered array pulses the core, then MAC0-5 TX/RX, before any
++	 * DSA header, forwarding or MIB configuration is written.
++	 */
++	ret = reset_control_reset(resets);
++	if (ret)
++		return dev_err_probe(priv->dev, ret,
++				     "failed to reset switch core\n");
++
++	return 0;
++}
++
+ static int
+ qca8k_setup(struct dsa_switch *ds)
+ {
+@@ -2179,6 +2230,12 @@
+ 		return cpu_port;
+ 	}
+ 
++	if (qca8k_is_qca8386(priv)) {
++		ret = qca8k_qca8386_reset(priv);
++		if (ret)
++			return ret;
++	}
++
+ 	/* Parse CPU port config to be later used in phy_link mac_config */
+ 	ret = qca8k_parse_port_config(priv);
+ 	if (ret)

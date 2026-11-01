@@ -1,0 +1,67 @@
+Subject: [PATCH] QSDK 10: 0002-port-stats
+
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/include/ref/ref_mib.h
++++ b/include/ref/ref_mib.h
+@@ -42,6 +42,10 @@
+ 		       						const struct switch_attr *attr,
+ 		       						struct switch_val *val);
+ 
++int
++qca_ar8327_sw_get_port_stats(struct switch_dev *dev, int port,
++              struct switch_port_stats *stats);
++
+ #endif
+ #ifdef __cplusplus
+ }
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -1133,6 +1133,7 @@
+ 	.apply_config = qca_ar8327_sw_hw_apply,
+ 	.reset_switch = qca_ar8327_sw_reset_switch,
+ 	.get_port_link = qca_ar8327_sw_get_port_link,
++	.get_port_stats = qca_ar8327_sw_get_port_stats,
+ #ifndef BOARD_AR71XX
+ 	.get_reg_val = qca_ar8327_sw_get_reg_val,
+ 	.set_reg_val = qca_ar8327_sw_set_reg_val,
+--- a/src/ref/ref_mib.c
++++ b/src/ref/ref_mib.c
+@@ -475,6 +475,36 @@
+ 
+     return 0;
+ }
++
++int
++qca_ar8327_sw_get_port_stats(struct switch_dev *dev, int port,
++              struct switch_port_stats *stats)
++{
++    fal_xgmib_info_t xgmib_info;
++    int pos = 0;
++    struct qca_phy_priv *priv = qca_phy_priv_get(dev);
++
++    if (port >= dev->ports)
++        return -EINVAL;
++
++    if (priv->version == QCA_VER_HPPE &&
++        qca_hppe_port_mac_type_get(priv->device_id, port) == PORT_XGMAC_TYPE)
++    {
++        fal_get_xgmib_info(priv->device_id, port, &xgmib_info);
++        mutex_lock(&priv->mib_lock);
++        stats->rx_bytes = xgmib_info.RxByte;
++        stats->tx_bytes = xgmib_info.TxByte;
++        mutex_unlock(&priv->mib_lock);
++    } else {
++        mutex_lock(&priv->mib_lock);
++        _qca_ar8327_sw_capture_port_counter(dev, port);
++        pos = port * (sizeof(fal_mib_counter_t)/sizeof(a_uint64_t));
++        stats->rx_bytes = priv->mib_counters[pos + 15];
++        stats->tx_bytes = priv->mib_counters[pos + 31];
++        mutex_unlock(&priv->mib_lock);
++    }
++    return 0;
++}
+ #endif
+ 
+ int

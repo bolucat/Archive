@@ -1,6 +1,9 @@
 . /lib/functions.sh
+. /lib/functions/system.sh
+
 
 preinit_reorder_eth() {
+	[ "$(get_linux_version)" -ge "618000" ] && return 0
 	case $(board_name) in
 	ubnt,unifi-ac-hd)
 		ip link set eth0 name ethtmp

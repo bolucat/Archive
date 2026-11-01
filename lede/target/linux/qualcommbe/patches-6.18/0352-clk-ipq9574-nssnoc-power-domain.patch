@@ -1,0 +1,98 @@
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] clk: qcom: attach IPQ9574 NSSNOC clocks to the power domain
+
+There is currently a problem with ICC clock disabling the NSSNOC clock as
+there isn't any user for them on calling sync_state. This cause the kernel
+to stall if NSS is enabled and reboot with the watchdog.
+
+Add NSSNOC clock to nss node to attach the clock with PM clock and fix the
+boot stall after ICC sync_state.
+
+Merged from:
+  0352-clk-qcom-nsscc-Attach-required-NSSNOC-clock-to-PM-do.patch
+  0353-arm64-dts-qcom-ipq9574-add-NSSNOC-clock-to-nss-node.patch
+
+Based on work by:
+  Alexandru Gagniuc <mr.nuke.me@gmail.com>
+  Christian Marangi <ansuelsmth@gmail.com>
+
+Original-commit: acbd594bd043db9df90394f40e503143637a5f3e
+Original-commit: 7767d4651734a63576282cdbd93a5a7e7318d557
+
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/arch/arm64/boot/dts/qcom/ipq9574.dtsi
++++ b/arch/arm64/boot/dts/qcom/ipq9574.dtsi
+@@ -1280,7 +1280,10 @@
+ 				 <&pcs1 1>,
+ 				 <&pcs2 0>,
+ 				 <&pcs2 1>,
+-				 <&gcc GCC_NSSCC_CLK>;
++				 <&gcc GCC_NSSCC_CLK>,
++				 <&gcc GCC_NSSNOC_NSSCC_CLK>,
++				 <&gcc GCC_NSSNOC_SNOC_CLK>,
++				 <&gcc GCC_NSSNOC_SNOC_1_CLK>;
+ 			clock-names = "xo",
+ 				      "nss_1200",
+ 				      "ppe_353",
+@@ -1291,7 +1294,10 @@
+ 				      "uniphy1_tx",
+ 				      "uniphy2_rx",
+ 				      "uniphy2_tx",
+-				      "bus";
++				      "bus",
++				      "nssnoc",
++				      "snoc",
++				      "snoc_1";
+ 			#clock-cells = <1>;
+ 			#reset-cells = <1>;
+ 			#interconnect-cells = <1>;
+--- a/drivers/clk/qcom/nsscc-ipq9574.c
++++ b/drivers/clk/qcom/nsscc-ipq9574.c
+@@ -3060,6 +3060,7 @@ MODULE_DEVICE_TABLE(of, nss_cc_ipq9574_m
+ 
+ static int nss_cc_ipq9574_probe(struct platform_device *pdev)
+ {
++	struct device *dev = &pdev->dev;
+ 	struct regmap *regmap;
+ 	int ret;
+ 
+@@ -3075,6 +3076,18 @@ static int nss_cc_ipq9574_probe(struct p
+ 	if (ret)
+ 		return dev_err_probe(&pdev->dev, ret, "Fail to add bus clock\n");
+ 
++	ret = pm_clk_add(&pdev->dev, "nssnoc");
++	if (ret)
++		return dev_err_probe(dev, ret,"failed to acquire nssnoc clock\n");
++
++	ret = pm_clk_add(&pdev->dev, "snoc");
++	if (ret)
++		return dev_err_probe(dev, ret,"failed to acquire snoc clock\n");
++
++	ret = pm_clk_add(&pdev->dev, "snoc_1");
++	if (ret)
++		return dev_err_probe(dev, ret,"failed to acquire snoc_1 clock\n");
++
+ 	ret = pm_runtime_resume_and_get(&pdev->dev);
+ 	if (ret)
+ 		return dev_err_probe(&pdev->dev, ret, "Fail to resume\n");
+@@ -3089,8 +3102,16 @@ static int nss_cc_ipq9574_probe(struct p
+ 	clk_alpha_pll_configure(&ubi32_pll_main, regmap, &ubi32_pll_config);
+ 
+ 	ret = qcom_cc_really_probe(&pdev->dev, &nss_cc_ipq9574_desc, regmap);
++	if (ret)
++		goto err_put_pm;
++
+ 	pm_runtime_put(&pdev->dev);
+ 
++	return 0;
++
++err_put_pm:
++	pm_runtime_put_sync(dev);
++
+ 	return ret;
+ }
+ 

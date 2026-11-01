@@ -1,0 +1,19 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] MIPS: retain built-in module metadata with section GC
+
+Keep modules.builtin populated so built-in crypto is recognized by packaging.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/arch/mips/kernel/vmlinux.lds.S
++++ b/arch/mips/kernel/vmlinux.lds.S
+@@ -230,6 +230,9 @@
+ 		*(.gptab.sbss)
+ 	}
+ 
++	/* Keep built-in module metadata with --gc-sections. */
++	.modinfo 0 : { KEEP(*(.modinfo)) }
++
+ 	/* Sections to be discarded */
+ 	DISCARDS
+ 	/DISCARD/ : {

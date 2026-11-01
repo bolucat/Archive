@@ -1,0 +1,145 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sat, 24 Oct 2026 22:28:52 +0800
+Subject: [PATCH] net: phy: qca8084: serialize and retry package initialization
+
+phy_package_init_once() claims its bit before running shared hardware
+initialization. Another PHY can therefore skip a partially initialized
+package, and a failed SRAM, PCS or clock operation permanently suppresses
+later attempts while the package remains joined.
+
+Serialize QCA8084 package configuration and publish completion only on
+success. Unwind package clocks enabled by an unsuccessful attempt so
+retries do not accumulate enable references. Keep the existing
+successful clock order and apply the same handling to QXGMII and
+switch package modes.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/phy/qcom/qca808x.c
++++ b/drivers/net/phy/qcom/qca808x.c
+@@ -192,6 +192,7 @@ struct qca808x_priv {
+ };
+ 
+ struct qca808x_shared_priv {
++	bool config_initialized;
+ 	int package_mode;
+ 	int phy_addr[4];
+ 	struct clk *clk[PACKAGE_CLK_MAX];
+@@ -940,7 +941,12 @@ static void qca808x_get_phy_stats(struct
+ 
+ static int qca8084_package_clock_init(struct qca808x_shared_priv *shared_priv)
+ {
+-	int ret;
++	static const unsigned int clocks[] = {
++		SWITCH_CORE_CLK, APB_BRIDGE_CLK, AHB_CLK,
++		SEC_CTRL_AHB_CLK, TLMM_CLK, TLMM_AHB_CLK, CNOC_AHB_CLK,
++		MDIO_MASTER_AHB_CLK, MDIO_AHB_CLK,
++	};
++	int i, ret;
+ 
+ 	/* Configure clock rate 312.5MHZ for the PHY package
+ 	 * APB bridge clock tree.
+@@ -949,46 +955,25 @@ static int qca8084_package_clock_init(st
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = clk_prepare_enable(shared_priv->clk[SWITCH_CORE_CLK]);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(shared_priv->clk[APB_BRIDGE_CLK]);
+-	if (ret)
+-		return ret;
+-
+-	/* Configure clock rate 104.17MHZ for the PHY package
+-	 * AHB clock tree.
+-	 */
+-	ret = clk_set_rate(shared_priv->clk[AHB_CLK], 104170000);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(shared_priv->clk[AHB_CLK]);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(shared_priv->clk[SEC_CTRL_AHB_CLK]);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(shared_priv->clk[TLMM_CLK]);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(shared_priv->clk[TLMM_AHB_CLK]);
+-	if (ret)
+-		return ret;
++	for (i = 0; i < ARRAY_SIZE(clocks); i++) {
++		/* The AHB source is changed after its upstream clocks are on. */
++		if (clocks[i] == AHB_CLK) {
++			ret = clk_set_rate(shared_priv->clk[AHB_CLK], 104170000);
++			if (ret)
++				goto disable_clocks;
++		}
+ 
+-	ret = clk_prepare_enable(shared_priv->clk[CNOC_AHB_CLK]);
+-	if (ret)
+-		return ret;
++		ret = clk_prepare_enable(shared_priv->clk[clocks[i]]);
++		if (ret)
++			goto disable_clocks;
++	}
+ 
+-	ret = clk_prepare_enable(shared_priv->clk[MDIO_MASTER_AHB_CLK]);
+-	if (ret)
+-		return ret;
++	return 0;
+ 
+-	return clk_prepare_enable(shared_priv->clk[MDIO_AHB_CLK]);
++disable_clocks:
++	while (i--)
++		clk_disable_unprepare(shared_priv->clk[clocks[i]]);
++	return ret;
+ }
+ 
+ static int qca8084_phy_package_config_init_once(struct phy_device *phydev)
+@@ -1085,15 +1070,35 @@ static int qca8084_mac_clock_set(struct
+ 	return 0;
+ }
+ 
+-static int qca8084_config_init(struct phy_device *phydev)
++static DEFINE_MUTEX(qca8084_package_init_lock);
++
++static int qca8084_phy_package_config_init(struct phy_device *phydev)
+ {
+-	int ret;
++	struct qca808x_shared_priv *shared_priv = phy_package_get_priv(phydev);
++	int ret = 0;
+ 
+-	if (phy_package_init_once(phydev)) {
++	/* The package once bit is set before initialization runs. Serialize
++	 * the sequence and publish completion only after every step succeeds,
++	 * so another PHY neither skips a failure nor uses partial setup.
++	 */
++	mutex_lock(&qca8084_package_init_lock);
++	if (!shared_priv->config_initialized) {
+ 		ret = qca8084_phy_package_config_init_once(phydev);
+-		if (ret)
+-			return ret;
++		if (!ret)
++			shared_priv->config_initialized = true;
+ 	}
++	mutex_unlock(&qca8084_package_init_lock);
++
++	return ret;
++}
++
++static int qca8084_config_init(struct phy_device *phydev)
++{
++	int ret;
++
++	ret = qca8084_phy_package_config_init(phydev);
++	if (ret)
++		return ret;
+ 
+ 	/* Never-up ports also need the QSDK 1G idle MAC clocks. */
+ 	if (!phydev->link && of_property_read_bool(phy_package_get_node(phydev),

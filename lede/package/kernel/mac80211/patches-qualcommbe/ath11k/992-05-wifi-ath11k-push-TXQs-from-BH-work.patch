@@ -1,0 +1,105 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath11k: push TXQs from BH work
+
+Normalize the series position without changing the implementation.
+
+Based on work by:
+  Julius Bairaktaris <julius@bairaktaris.de>
+
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -721,6 +721,9 @@ struct ath11k {
+ 	spinlock_t txq_lock[IEEE80211_NUM_ACS];
+ 	/* access categories whose round ended for lack of room */
+ 	unsigned long txq_starved;
++	/* access categories woken since txq_work last ran */
++	unsigned long txq_woken;
++	struct work_struct txq_work;
+ 
+ 	struct list_head arvifs;
+ 	/* should never be NULL; needed for regular htt rx */
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -6774,6 +6774,9 @@ static void ath11k_mac_op_stop(struct ie
+ 	cancel_work_sync(&ar->channel_update_work);
+ 	cancel_work_sync(&ar->regd_update_work);
+ 	cancel_work_sync(&ar->ab->update_11d_work);
++	cancel_work_sync(&ar->txq_work);
++	ar->txq_woken = 0;
++	ar->txq_starved = 0;
+ 
+ 	if (ar->state_11d == ATH11K_11D_PREPARING) {
+ 		ar->state_11d = ATH11K_11D_IDLE;
+@@ -10211,10 +10214,32 @@ static void ath11k_mac_schedule_txq(stru
+ 	spin_unlock_bh(&ar->txq_lock[ac]);
+ }
+ 
++/* A frame queued from a receive poll wakes its TXQ on its own, so pushing
++ * from the wake would hand the hardware one frame per round. The rounds run
++ * from BH work instead, after the poll, and take every frame it queued.
++ */
++static void ath11k_mac_txq_work(struct work_struct *work)
++{
++	struct ath11k *ar = container_of(work, struct ath11k, txq_work);
++	unsigned long woken = xchg(&ar->txq_woken, 0);
++	u8 ac;
++
++	rcu_read_lock();
++	for_each_set_bit(ac, &woken, IEEE80211_NUM_ACS)
++		ath11k_mac_schedule_txq(ar, ac);
++	rcu_read_unlock();
++}
++
+ static void ath11k_mac_op_wake_tx_queue(struct ieee80211_hw *hw,
+ 					struct ieee80211_txq *txq)
+ {
+-	ath11k_mac_schedule_txq(hw->priv, txq->ac);
++	struct ath11k *ar = hw->priv;
++
++	if (unlikely(test_bit(ATH11K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
++		return;
++
++	set_bit(txq->ac, &ar->txq_woken);
++	queue_work(system_bh_wq, &ar->txq_work);
+ }
+ 
+ void ath11k_mac_tx_push_pending(struct ath11k *ar, u8 ac)
+@@ -10954,6 +10979,7 @@ int ath11k_mac_allocate(struct ath11k_ba
+ 
+ 		for (j = 0; j < IEEE80211_NUM_ACS; j++)
+ 			spin_lock_init(&ar->txq_lock[j]);
++		INIT_WORK(&ar->txq_work, ath11k_mac_txq_work);
+ 		INIT_LIST_HEAD(&ar->arvifs);
+ 		INIT_LIST_HEAD(&ar->ppdu_stats_info);
+ 		mutex_init(&ar->conf_mutex);
+--- a/drivers/net/wireless/ath/ath11k/core.c
++++ b/drivers/net/wireless/ath/ath11k/core.c
+@@ -2478,7 +2478,7 @@ err_firmware_stop:
+ 
+ static int ath11k_core_reconfigure_on_crash(struct ath11k_base *ab)
+ {
+-	int ret;
++	int ret, i;
+ 
+ 	mutex_lock(&ab->core_lock);
+ 	ath11k_thermal_unregister(ab);
+@@ -2492,6 +2492,15 @@ static int ath11k_core_reconfigure_on_cr
+ 		ath11k_hif_ce_irq_disable(ab);
+ 	}
+ 
++	/* No BH producer may retain a TCL ring across firmware recovery. */
++	for (i = 0; i < ab->num_radios; i++) {
++		struct ath11k *ar = ab->pdevs[i].ar;
++
++		cancel_work_sync(&ar->txq_work);
++		ar->txq_woken = 0;
++		ar->txq_starved = 0;
++	}
++
+ 	ath11k_dp_pdev_free(ab);
+ 	ath11k_cfr_deinit(ab);
+ 	ath11k_spectral_deinit(ab);

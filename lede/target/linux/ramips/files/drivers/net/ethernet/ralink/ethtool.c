@@ -13,7 +13,7 @@
  */
 
 #include "mtk_eth_soc.h"
-#include <linux/version.h>
+#include "ethtool.h"
 
 static const char fe_gdma_str[][ETH_GSTRING_LEN] = {
 #define _FE(x...)	# x,
@@ -126,15 +126,10 @@ out_get_link:
 	return ethtool_op_get_link(dev);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
 static int fe_set_ringparam(struct net_device *dev,
 			    struct ethtool_ringparam *ring,
 			    struct kernel_ethtool_ringparam *kernel_rp,
 			    struct netlink_ext_ack *extack)
-#else
-static int fe_set_ringparam(struct net_device *dev,
-			    struct ethtool_ringparam *ring)
-#endif
 {
 	struct fe_priv *priv = netdev_priv(dev);
 
@@ -154,15 +149,10 @@ static int fe_set_ringparam(struct net_device *dev,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
 static void fe_get_ringparam(struct net_device *dev,
 			     struct ethtool_ringparam *ring,
 			     struct kernel_ethtool_ringparam *kernel_rp,
 			     struct netlink_ext_ack *extack)
-#else
-static void fe_get_ringparam(struct net_device *dev,
-			     struct ethtool_ringparam *ring)
-#endif
 {
 	struct fe_priv *priv = netdev_priv(dev);
 
@@ -176,7 +166,7 @@ static void fe_get_strings(struct net_device *dev, u32 stringset, u8 *data)
 {
 	switch (stringset) {
 	case ETH_SS_STATS:
-		memcpy(data, *fe_gdma_str, sizeof(fe_gdma_str));
+		ethtool_puts(&data, *fe_gdma_str);
 		break;
 	}
 }
@@ -210,12 +200,12 @@ static void fe_get_ethtool_stats(struct net_device *dev,
 	do {
 		data_src = &hwstats->tx_bytes;
 		data_dst = data;
-		start = u64_stats_fetch_begin_irq(&hwstats->syncp);
+		start = u64_stats_fetch_begin(&hwstats->syncp);
 
 		for (i = 0; i < ARRAY_SIZE(fe_gdma_str); i++)
 			*data_dst++ = *data_src++;
 
-	} while (u64_stats_fetch_retry_irq(&hwstats->syncp, start));
+	} while (u64_stats_fetch_retry(&hwstats->syncp, start));
 }
 
 static struct ethtool_ops fe_ethtool_ops = {

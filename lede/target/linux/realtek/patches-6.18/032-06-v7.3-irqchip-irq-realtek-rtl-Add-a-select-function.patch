@@ -32,15 +32,16 @@ Signed-off-by: Markus Stockhausen <markus.stockhausen@gmx.de>
 
 --- a/drivers/irqchip/irq-realtek-rtl.c
 +++ b/drivers/irqchip/irq-realtek-rtl.c
-@@ -31,6 +31,8 @@
+@@ -31,7 +31,9 @@
  #define REG(cpu, x)		(realtek_ictl_base[cpu] + x)
  
  struct realtek_ictl_output {
-+	struct fwnode_handle *fwnode;
-+	unsigned int index;
++	struct fwnode_handle	*fwnode;
  	struct irq_domain	*domain;
++	unsigned int		index;
  	u32			mask;
  };
+ 
 @@ -130,9 +132,25 @@ static int intc_map(struct irq_domain *d
  	return 0;
  }

@@ -1,0 +1,137 @@
+Subject: [PATCH] ssdk: allow flowtable probes alongside the active binding
+
+Keep hardware ownership scoped to one active flow block, while allowing
+nft check and replacement bindings without destroying the live engine.
+Reject commands from a second active block to preserve cookie isolation.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/module.h>
++#include <linux/slab.h>
+ #include <linux/etherdevice.h>
+ #include <linux/spinlock.h>
+ #include <linux/debugfs.h>
+@@ -29,7 +30,11 @@
+ static struct ssdk_edma_vlan_config vlan_map;
+ static struct ssdk_flow_engine *engine;
+ static struct ssdk_flow_engine __rcu *notifier_engine;
+-static struct flow_block *bound_block;
++/* Bindings may coexist during nft validation/replacement. Only the block
++ * owning the first installed flow may use the shared hardware engine. */
++struct ssdk_flow_binding { bool bound; };
++static unsigned int bound_blocks;
++static struct ssdk_flow_binding *active_binding;
+ static LIST_HEAD(driver_blocks);
+ static void collect_work(struct work_struct *work);
+ static DECLARE_DELAYED_WORK(collector, collect_work);
+@@ -41,7 +46,7 @@
+ {
+ 	mutex_lock(&control_lock);
+ 	seq_printf(s, "attached %u\nbound %u\nengine %u\nclosing %u\nchanging %u\n",
+-		attached, !!bound_block, !!engine, closing, changing);
++		attached, bound_blocks, !!engine, closing, changing);
+ 	seq_printf(s, "wan_vid %u\nlan_vid %u\n", vlan_map.default_vid[0], vlan_map.default_vid[1]);
+ 	seq_printf(s, "replace_calls %llu\nreplace_ok %llu\nlast_replace_result %d\nlast_start_result %d\n",
+ 		replace_calls, replace_ok, last_replace_result, last_start_result);
+@@ -56,7 +61,7 @@
+ static void release_devices(void)
+ {
+ 	unsigned int i;
+-	if (attached || initializing || bound_block || (engine && !closing)) return;
++	if (attached || initializing || bound_blocks || (engine && !closing)) return;
+ 	for (i = 0; i < 2; i++) if (gmac[i]) { dev_put(gmac[i]); gmac[i] = NULL; }
+ }
+ static int stop_engine(void)
+@@ -129,7 +134,7 @@
+ {
+ 	mutex_lock(&control_lock);
+ 	if (engine) {
+-		if (closing || !attached || !bound_block) stop_engine();
++		if (closing || !attached || !bound_blocks) stop_engine();
+ 		else ssdk_flow_engine_collect(engine);
+ 		if (engine) mod_delayed_work(system_wq, &collector, HZ);
+ 	}
+@@ -330,20 +335,27 @@
+ 	flow_debug_dir = NULL;
+ 	ssdk_flow_detach();
+ 	cancel_delayed_work_sync(&collector);
+-	WARN_ON(engine || bound_block);
++	WARN_ON(engine || bound_blocks);
+ }
+ static int block_command(enum tc_setup_type type, void *data, void *priv)
+ {
+ 	struct flow_cls_offload *flow = data;
++	struct ssdk_flow_binding *binding = priv;
+ 	int ret = -EOPNOTSUPP;
+ 	if (type != TC_SETUP_CLSFLOWER) return ret;
+ 	mutex_lock(&control_lock);
+-	if (!attached || changing || !bound_block || closing) goto out;
++	if (!attached || changing || !binding || !binding->bound || closing) goto out;
++	if (active_binding && active_binding != binding) {
++		ret = flow->command == FLOW_CLS_DESTROY ? 0 :
++			flow->command == FLOW_CLS_STATS ? -ENOENT : -EBUSY;
++		goto out;
++	}
+ 	if (!(gmac[0]->features & NETIF_F_HW_TC) || !(gmac[1]->features & NETIF_F_HW_TC)) {
+ 		stop_engine(); goto out;
+ 	}
+ 	if (!engine && flow->command == FLOW_CLS_REPLACE) {
+ 		ret = start_engine(); last_start_result = ret; if (ret) goto out;
++		active_binding = binding;
+ 	}
+ 	if (!engine) { ret = flow->command == FLOW_CLS_DESTROY ? 0 : -ENOENT; goto out; }
+ 	ret = ssdk_flow_engine_command(engine, flow);
+@@ -362,11 +374,12 @@
+ 	}
+ 	mutex_unlock(&control_lock); return ret;
+ }
+-static void block_release(void *priv) { module_put(THIS_MODULE); }
++static void block_release(void *priv) { kfree(priv); module_put(THIS_MODULE); }
+ int ssdk_flow_setup_tc(struct net_device *dev, enum tc_setup_type type, void *data)
+ {
+ 	struct flow_block_offload *offload = data;
+ 	struct flow_block_cb *cb;
++	struct ssdk_flow_binding *binding;
+ 	int ret = -EOPNOTSUPP;
+ 	if (type != TC_SETUP_FT || !offload || offload->binder_type != FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
+ 		return ret;
+@@ -376,23 +389,30 @@
+ 	if (offload->command == FLOW_BLOCK_BIND) {
+ 		if (!attached) { ret = -EAGAIN; goto out; }
+ 		if (!tc_can_offload(dev)) goto out;
+-		if (bound_block && bound_block != offload->block) { ret = -EBUSY; goto out; }
+ 		cb = flow_block_cb_lookup(offload->block, block_command, &control_lock);
+ 		if (cb) { flow_block_cb_incref(cb); ret = 0; goto out; }
+ 		/* Binding a flowtable must not depend on a configured switch or
+ 		 * free hardware tables. Claim the engine on the first REPLACE;
+ 		 * unavailable hardware then falls back per flow, not per firewall. */
+ 		if (!try_module_get(THIS_MODULE)) { ret = -ENODEV; goto out; }
+-		cb = flow_block_cb_alloc(block_command, &control_lock, NULL, block_release);
+-		if (IS_ERR(cb)) { ret = PTR_ERR(cb); module_put(THIS_MODULE); goto out; }
++		binding = kzalloc(sizeof(*binding), GFP_KERNEL);
++		if (!binding) { ret = -ENOMEM; module_put(THIS_MODULE); goto out; }
++		cb = flow_block_cb_alloc(block_command, &control_lock, binding, block_release);
++		if (IS_ERR(cb)) { ret = PTR_ERR(cb); kfree(binding); module_put(THIS_MODULE); goto out; }
++		binding->bound = true;
+ 		flow_block_cb_incref(cb); flow_block_cb_add(cb, offload);
+-		list_add_tail(&cb->driver_list, &driver_blocks); bound_block = offload->block; ret = 0;
++		list_add_tail(&cb->driver_list, &driver_blocks); bound_blocks++; ret = 0;
+ 	} else if (offload->command == FLOW_BLOCK_UNBIND) {
+ 		cb = flow_block_cb_lookup(offload->block, block_command, &control_lock);
+ 		if (!cb) { ret = -ENOENT; goto out; }
+ 		if (!flow_block_cb_decref(cb)) {
+ 			flow_block_cb_remove(cb, offload); list_del(&cb->driver_list);
+-			bound_block = NULL; stop_engine(); release_devices();
++			binding = cb->cb_priv;
++			binding->bound = false; bound_blocks--;
++			if (active_binding == binding) {
++				active_binding = NULL; stop_engine();
++			}
++			release_devices();
+ 		}
+ 		ret = 0;
+ 	}

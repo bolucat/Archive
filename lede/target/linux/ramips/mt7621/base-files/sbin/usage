@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# LuCI system status: CPU load and the live MT7621 PPE BIND count.
+cpu="$(busybox top -bn1 | awk '/^CPU/ { printf "%d%%", 100 - $8; exit }')"
+printf 'CPU: %s' "${cpu:-?}"
+if [ -r /sys/kernel/debug/hnat/hnat_stats ]; then
+	awk -F= '$1 == "BIND_PPE0" && $2 ~ /^[0-9]+$/ {
+		printf ", PPE0: %s", $2
+	}' /sys/kernel/debug/hnat/hnat_stats
+fi
+printf '\n'

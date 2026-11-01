@@ -1,0 +1,413 @@
+From: Manikanta Mylavarapu <manikanta.mylavarapu@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] arm64: dts: qcom: describe IPQ9574 radio and WSI resources
+
+Enable nodes required for q6 remoteproc bring up.
+
+Describe the IPQ9574-family WLAN register window and named interrupts
+observed on the Linksys LN6001. Connect the AHB device to the WCSS remote
+processor using the upstream ath11k binding.
+
+Add the IPQ9574 compatible proposed for ath11k support. Describe its
+interrupt layout separately from IPQ8074 and IPQ6018: the observed
+IPQ9574-family interface omits the watchdog interrupt and provides a fourth
+transmit-completion ring. Both layouts contain 52 interrupts.
+
+QCN9274 supports single-PHY and split-PHY configurations. Some fixed split-
+PHY designs do not identify that configuration through the OTP board
+identifier.
+
+Merged from:
+  2013-01-arm64-dts-qcom-ipq9574-add-nodes-to-bring-up-q6.patch
+  2013-02-arm64-dts-qcom-ipq9574-add-ath11k-resources.patch
+  2013-03-dt-bindings-net-ath11k-describe-ipq9574.patch
+  2013-04-dt-bindings-net-ath12k-describe-split-phy.patch
+
+Based on work by:
+  George Moussalem <george.moussalem@outlook.com>
+  Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+  Manikanta Mylavarapu <manikanta.mylavarapu@oss.qualcomm.com>
+  Satoshi Ikeuchi <satosan.ikm@gmail.com>
+  Varadarajan Narayanan <varadarajan.narayanan@oss.qualcomm.com>
+
+Link: https://lore.kernel.org/r/20260713-rproc-v13-6-41011cbcda3e@oss.qualcomm.com
+Original-commit: 0000000000000000000000000000000000000000
+Link: https://lists.infradead.org/pipermail/ath11k/2026-January/008112.html
+
+Signed-off-by: Manikanta Mylavarapu <manikanta.mylavarapu@oss.qualcomm.com>
+Signed-off-by: Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
+Signed-off-by: Varadarajan Narayanan <varadarajan.narayanan@oss.qualcomm.com>
+Signed-off-by: Satoshi Ikeuchi <satosan.ikm@gmail.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/Documentation/devicetree/bindings/net/wireless/qcom,ath11k.yaml
++++ b/Documentation/devicetree/bindings/net/wireless/qcom,ath11k.yaml
+@@ -18,6 +18,7 @@ properties:
+   compatible:
+     enum:
+       - qcom,ipq8074-wifi
++      - qcom,ipq9574-wifi
+       - qcom,ipq6018-wifi
+       - qcom,wcn6750-wifi
+       - qcom,ipq5018-wifi
+@@ -217,6 +218,124 @@ allOf:
+ 
+   - if:
+       properties:
++        compatible:
++          contains:
++            const: qcom,ipq9574-wifi
++    then:
++      properties:
++        interrupts:
++          items:
++            - description: misc-pulse1 interrupt events
++            - description: misc-latch interrupt events
++            - description: sw exception interrupt events
++            - description: interrupt event for ring CE0
++            - description: interrupt event for ring CE1
++            - description: interrupt event for ring CE2
++            - description: interrupt event for ring CE3
++            - description: interrupt event for ring CE4
++            - description: interrupt event for ring CE5
++            - description: interrupt event for ring CE6
++            - description: interrupt event for ring CE7
++            - description: interrupt event for ring CE8
++            - description: interrupt event for ring CE9
++            - description: interrupt event for ring CE10
++            - description: interrupt event for ring CE11
++            - description: interrupt event for ring host2wbm-desc-feed
++            - description: interrupt event for ring host2reo-re-injection
++            - description: interrupt event for ring host2reo-command
++            - description: interrupt event for ring host2rxdma-monitor-ring3
++            - description: interrupt event for ring host2rxdma-monitor-ring2
++            - description: interrupt event for ring host2rxdma-monitor-ring1
++            - description: interrupt event for ring reo2ost-exception
++            - description: interrupt event for ring wbm2host-rx-release
++            - description: interrupt event for ring reo2host-status
++            - description: interrupt event for ring reo2host-destination-ring4
++            - description: interrupt event for ring reo2host-destination-ring3
++            - description: interrupt event for ring reo2host-destination-ring2
++            - description: interrupt event for ring reo2host-destination-ring1
++            - description: interrupt event for ring rxdma2host-monitor-destination-mac3
++            - description: interrupt event for ring rxdma2host-monitor-destination-mac2
++            - description: interrupt event for ring rxdma2host-monitor-destination-mac1
++            - description: interrupt event for ring ppdu-end-interrupts-mac3
++            - description: interrupt event for ring ppdu-end-interrupts-mac2
++            - description: interrupt event for ring ppdu-end-interrupts-mac1
++            - description: interrupt event for ring rxdma2host-monitor-status-ring-mac3
++            - description: interrupt event for ring rxdma2host-monitor-status-ring-mac2
++            - description: interrupt event for ring rxdma2host-monitor-status-ring-mac1
++            - description: interrupt event for ring host2rxdma-host-buf-ring-mac3
++            - description: interrupt event for ring host2rxdma-host-buf-ring-mac2
++            - description: interrupt event for ring host2rxdma-host-buf-ring-mac1
++            - description: interrupt event for ring rxdma2host-destination-ring-mac3
++            - description: interrupt event for ring rxdma2host-destination-ring-mac2
++            - description: interrupt event for ring rxdma2host-destination-ring-mac1
++            - description: interrupt event for ring host2tcl-input-ring4
++            - description: interrupt event for ring host2tcl-input-ring3
++            - description: interrupt event for ring host2tcl-input-ring2
++            - description: interrupt event for ring host2tcl-input-ring1
++            - description: interrupt event for ring wbm2host-tx-completions-ring4
++            - description: interrupt event for ring wbm2host-tx-completions-ring3
++            - description: interrupt event for ring wbm2host-tx-completions-ring2
++            - description: interrupt event for ring wbm2host-tx-completions-ring1
++            - description: interrupt event for ring tcl2host-status-ring
++        interrupt-names:
++          items:
++            - const: misc-pulse1
++            - const: misc-latch
++            - const: sw-exception
++            - const: ce0
++            - const: ce1
++            - const: ce2
++            - const: ce3
++            - const: ce4
++            - const: ce5
++            - const: ce6
++            - const: ce7
++            - const: ce8
++            - const: ce9
++            - const: ce10
++            - const: ce11
++            - const: host2wbm-desc-feed
++            - const: host2reo-re-injection
++            - const: host2reo-command
++            - const: host2rxdma-monitor-ring3
++            - const: host2rxdma-monitor-ring2
++            - const: host2rxdma-monitor-ring1
++            - const: reo2ost-exception
++            - const: wbm2host-rx-release
++            - const: reo2host-status
++            - const: reo2host-destination-ring4
++            - const: reo2host-destination-ring3
++            - const: reo2host-destination-ring2
++            - const: reo2host-destination-ring1
++            - const: rxdma2host-monitor-destination-mac3
++            - const: rxdma2host-monitor-destination-mac2
++            - const: rxdma2host-monitor-destination-mac1
++            - const: ppdu-end-interrupts-mac3
++            - const: ppdu-end-interrupts-mac2
++            - const: ppdu-end-interrupts-mac1
++            - const: rxdma2host-monitor-status-ring-mac3
++            - const: rxdma2host-monitor-status-ring-mac2
++            - const: rxdma2host-monitor-status-ring-mac1
++            - const: host2rxdma-host-buf-ring-mac3
++            - const: host2rxdma-host-buf-ring-mac2
++            - const: host2rxdma-host-buf-ring-mac1
++            - const: rxdma2host-destination-ring-mac3
++            - const: rxdma2host-destination-ring-mac2
++            - const: rxdma2host-destination-ring-mac1
++            - const: host2tcl-input-ring4
++            - const: host2tcl-input-ring3
++            - const: host2tcl-input-ring2
++            - const: host2tcl-input-ring1
++            - const: wbm2host-tx-completions-ring4
++            - const: wbm2host-tx-completions-ring3
++            - const: wbm2host-tx-completions-ring2
++            - const: wbm2host-tx-completions-ring1
++            - const: tcl2host-status-ring
++      required:
++        - interrupt-names
++
++  - if:
++      properties:
+         compatible:
+           contains:
+             enum:
+--- a/Documentation/devicetree/bindings/net/wireless/qcom,ath12k-wsi.yaml
++++ b/Documentation/devicetree/bindings/net/wireless/qcom,ath12k-wsi.yaml
+@@ -52,6 +52,14 @@ properties:
+   reg:
+     maxItems: 1
+ 
++  qcom,split-phy:
++    type: boolean
++    description:
++      The device has a fixed split-PHY configuration with two independent
++      PHYs. This property describes the radio topology on designs where
++      the device's OTP board identifier does not identify that configuration.
++      Only applicable to QCN9274 hw2.0.
++
+   qcom,calibration-variant:
+     $ref: /schemas/types.yaml#/definitions/string
+     description:
+@@ -201,3 +209,23 @@ examples:
+             };
+         };
+     };
++  - |
++    pcie {
++        #address-cells = <3>;
++        #size-cells = <2>;
++
++        pcie@0 {
++            device_type = "pci";
++            reg = <0x0 0x0 0x0 0x0 0x0>;
++            #address-cells = <3>;
++            #size-cells = <2>;
++            ranges;
++
++            wifi@0 {
++                compatible = "pci17cb,1109";
++                reg = <0x0 0x0 0x0 0x0 0x0>;
++
++                qcom,split-phy;
++            };
++        };
++    };
+--- a/arch/arm64/boot/dts/qcom/ipq9574.dtsi
++++ b/arch/arm64/boot/dts/qcom/ipq9574.dtsi
+@@ -3,7 +3,7 @@
+  * IPQ9574 SoC device tree source
+  *
+  * Copyright (c) 2020-2021 The Linux Foundation. All rights reserved.
+- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
++ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
+ #include <dt-bindings/clock/qcom,apss-ipq.h>
+@@ -228,6 +228,35 @@
+ 			hwlocks = <&tcsr_mutex 3>;
+ 			no-map;
+ 		};
++
++		q6_region: wcss@4ab00000 {
++			reg = <0x0 0x4ab00000 0x0 0x2b00000>;
++			no-map;
++		};
++	};
++
++	wcss: smp2p-wcss {
++		compatible = "qcom,smp2p";
++		qcom,smem = <435>, <428>;
++
++		interrupt-parent = <&intc>;
++		interrupts = <GIC_SPI 322 IRQ_TYPE_EDGE_RISING>;
++
++		mboxes = <&apcs_glb 9>;
++
++		qcom,local-pid = <0>;
++		qcom,remote-pid = <1>;
++
++		smp2p_wcss_out: master-kernel {
++			qcom,entry-name = "master-kernel";
++			#qcom,smem-state-cells = <1>;
++		};
++
++		smp2p_wcss_in: slave-kernel {
++			qcom,entry-name = "slave-kernel";
++			interrupt-controller;
++			#interrupt-cells = <2>;
++		};
+ 	};
+ 
+ 	soc: soc@0 {
+@@ -934,6 +963,146 @@
+ 			};
+ 		};
+ 
++		wifi0: wifi@c000000 {
++			compatible = "qcom,ipq9574-wifi";
++			reg = <0x0c000000 0x01000000>;
++			interrupts = <GIC_SPI 320 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 319 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 318 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 316 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 315 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 314 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 311 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 310 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 411 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 410 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 40 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 39 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 302 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 301 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 37 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 36 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 296 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 295 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 294 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 293 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 292 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 291 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 290 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 289 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 288 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 239 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 236 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 235 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 234 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 233 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 232 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 231 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 230 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 229 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 228 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 224 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 223 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 203 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 183 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 180 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 179 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 178 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 177 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 176 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 163 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 162 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 160 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 414 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 159 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 158 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 157 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 156 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "misc-pulse1",
++					  "misc-latch",
++					  "sw-exception",
++					  "ce0",
++					  "ce1",
++					  "ce2",
++					  "ce3",
++					  "ce4",
++					  "ce5",
++					  "ce6",
++					  "ce7",
++					  "ce8",
++					  "ce9",
++					  "ce10",
++					  "ce11",
++					  "host2wbm-desc-feed",
++					  "host2reo-re-injection",
++					  "host2reo-command",
++					  "host2rxdma-monitor-ring3",
++					  "host2rxdma-monitor-ring2",
++					  "host2rxdma-monitor-ring1",
++					  "reo2ost-exception",
++					  "wbm2host-rx-release",
++					  "reo2host-status",
++					  "reo2host-destination-ring4",
++					  "reo2host-destination-ring3",
++					  "reo2host-destination-ring2",
++					  "reo2host-destination-ring1",
++					  "rxdma2host-monitor-destination-mac3",
++					  "rxdma2host-monitor-destination-mac2",
++					  "rxdma2host-monitor-destination-mac1",
++					  "ppdu-end-interrupts-mac3",
++					  "ppdu-end-interrupts-mac2",
++					  "ppdu-end-interrupts-mac1",
++					  "rxdma2host-monitor-status-ring-mac3",
++					  "rxdma2host-monitor-status-ring-mac2",
++					  "rxdma2host-monitor-status-ring-mac1",
++					  "host2rxdma-host-buf-ring-mac3",
++					  "host2rxdma-host-buf-ring-mac2",
++					  "host2rxdma-host-buf-ring-mac1",
++					  "rxdma2host-destination-ring-mac3",
++					  "rxdma2host-destination-ring-mac2",
++					  "rxdma2host-destination-ring-mac1",
++					  "host2tcl-input-ring4",
++					  "host2tcl-input-ring3",
++					  "host2tcl-input-ring2",
++					  "host2tcl-input-ring1",
++					  "wbm2host-tx-completions-ring4",
++					  "wbm2host-tx-completions-ring3",
++					  "wbm2host-tx-completions-ring2",
++					  "wbm2host-tx-completions-ring1",
++					  "tcl2host-status-ring";
++			qcom,rproc = <&q6v5_wcss>;
++			status = "disabled";
++		};
++
++		q6v5_wcss: remoteproc@cd00000 {
++			compatible = "qcom,ipq9574-wcss-sec-pil";
++			reg = <0x0cd00000 0x10000>;
++			firmware-name = "ath11k/IPQ9574/hw1.0/q6_fw.mbn";
++			interrupts-extended = <&intc GIC_SPI 325 IRQ_TYPE_EDGE_RISING>,
++					      <&smp2p_wcss_in 0 IRQ_TYPE_NONE>,
++					      <&smp2p_wcss_in 1 IRQ_TYPE_NONE>,
++					      <&smp2p_wcss_in 2 IRQ_TYPE_NONE>,
++					      <&smp2p_wcss_in 3 IRQ_TYPE_NONE>;
++			interrupt-names = "wdog",
++					  "fatal",
++					  "ready",
++					  "handover",
++					  "stop-ack";
++
++			qcom,smem-states = <&smp2p_wcss_out 1>,
++					   <&smp2p_wcss_out 0>;
++			qcom,smem-state-names = "stop",
++						"shutdown";
++			memory-region = <&q6_region>;
++
++			glink-edge {
++				interrupts = <GIC_SPI 321 IRQ_TYPE_EDGE_RISING>;
++				label = "rtr";
++				qcom,remote-pid = <1>;
++				mboxes = <&apcs_glb 8>;
++			};
++		};
++
+ 		pcie1: pcie@10000000 {
+ 			compatible = "qcom,pcie-ipq9574";
+ 			reg = <0x10000000 0xf1d>,

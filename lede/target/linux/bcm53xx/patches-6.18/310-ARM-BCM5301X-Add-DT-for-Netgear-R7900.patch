@@ -5,11 +5,12 @@ Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 Signed-off-by: Rafał Miłecki <zajec5@gmail.com>
+Signed-off-by: lean <chenlin@fnnas.com>
 ---
 
 --- a/arch/arm/boot/dts/broadcom/Makefile
 +++ b/arch/arm/boot/dts/broadcom/Makefile
-@@ -73,6 +73,7 @@ dtb-$(CONFIG_ARCH_BCM_5301X) += \
+@@ -73,6 +73,7 @@
  	bcm4709-buffalo-wxr-1900dhp.dtb \
  	bcm4709-linksys-ea9200.dtb \
  	bcm4709-netgear-r7000.dtb \
@@ -17,9 +18,9 @@ Signed-off-by: Rafał Miłecki <zajec5@gmail.com>
  	bcm4709-netgear-r8000.dtb \
  	bcm4709-tplink-archer-c9-v1.dtb \
  	bcm47094-asus-rt-ac3100.dtb \
---- /dev/null
+--- a/arch/arm/boot/dts/broadcom/bcm4709-netgear-r7900.dts
 +++ b/arch/arm/boot/dts/broadcom/bcm4709-netgear-r7900.dts
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,52 @@
 +/*
 + * Broadcom BCM470X / BCM5301X ARM platform code.
 + * DTS for Netgear R7900
@@ -54,8 +55,18 @@ Signed-off-by: Rafał Miłecki <zajec5@gmail.com>
 +			#address-cells = <1>;
 +			#size-cells = <1>;
 +
-+			vcc-gpio = <&chipcommon 0 GPIO_ACTIVE_HIGH>;
++			vbus-supply = <&usb_power>;
 +		};
++	};
++
++	usb_power: regulator-usb {
++		compatible = "regulator-fixed";
++		regulator-name = "usb-vcc";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-boot-on;
++		gpios = <&chipcommon 0 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
 +	};
 +};
 +

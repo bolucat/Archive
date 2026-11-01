@@ -4,9 +4,13 @@ description: Choose resolvers, reusable groups, bootstrap, and proxy routing.
 ---
 
 A server, WireGuard listener, or TUN entry can select an inline resolver or a
-named `dns_group`. Omitted `dns` uses the native system resolver; see
+named `dns_group`. Omitted or null `dns` inherits `global_settings.default_dns`
+when set, otherwise it uses the native system resolver; see
 [native DNS freshness](/dns/native/) for its cache behavior. Use
 [Fake DNS](/dns/fake/) only when synthetic address mapping is needed.
+
+An explicit `dns` object, including `dns: {}`, replaces the default; see
+[global settings](/config/global-settings/#default-dns) for precedence and scope.
 
 **Complete example:** [dns_tuning.yaml](/examples/dns_tuning/). Its proxy
 addresses and credentials need deployment-specific values.
@@ -35,7 +39,7 @@ respectively. A URL object accepts these options:
 | `url` | Required | Resolver endpoint or `system` |
 | `server_name` | URL hostname | TLS name override for TLS/HTTPS/H3 |
 | `bootstrap_url` | System resolver | IP-literal DNS URL, `system`, or named DNS group for resolving endpoint/proxy hostnames |
-| `client_chain` | Direct | Proxy chain(s) used to reach this DNS upstream |
+| `client_chain` / `client_chains` | Direct | Proxy chain(s) used to reach this DNS upstream |
 | `ip_strategy` | `ipv4_then_ipv6` | Address-family query order |
 | `timeout_secs` | 5 | Whole lookup timeout; `0` disables it |
 | `connect_timeout_secs` | 5 | Connection setup timeout |
@@ -53,3 +57,12 @@ direct-only, except a direct chain can set an interface binding; `system` does
 not support a client chain. WireGuard-routed DNS requires a literal upstream
 IP and no `bootstrap_url`. See [remote rule sources](/routing/remote-sources/)
 for their stricter startup-bootstrap rules.
+
+`client_chain` and `client_chains` are exact aliases and use the
+[routing chain syntax](/routing/rules/#client-chains): `[a, b]` means sequential
+hops, while `[{chain: [a]}, {chain: [b]}]` means alternatives. Named client groups
+retain their whole-path choices and selection policies.
+
+**Migration:** DNS previously interpreted a bare list as alternatives. It now
+uses sequential hops, without a compatibility mode or warning. Use explicit
+chain wrappers or a named group to preserve alternative routes.

@@ -7,3 +7,9 @@
 	model = "TP-Link Archer C6 v3";
 
 };
+
+&hnat {
+	mtketh-lan = "eth0.1";
+	mtketh-wan = "eth0.2";
+	mtketh-max-gmac = <1>;
+};

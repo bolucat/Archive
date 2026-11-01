@@ -1,0 +1,81 @@
+Subject: [PATCH] ssdk: expose current hardware-bound connection count
+
+Count committed bidirectional connections under the existing lock order.
+Exclude pending direction halves and quarantined failed transactions.
+Expose a live snapshot for usage rather than cumulative replace counters.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_state.c
++++ b/src/ref/ref_flow_state.c
+@@ -27,6 +27,20 @@
+ 	struct ssdk_flow_entry entries[FLOW_ENTRIES];
+ 	struct ssdk_flow_slot slots[SSDK_FLOW_COUNTERS];
+ };
++/* Count committed bidirectional connections, not pending halves or failed
++ * hardware transactions retained for cleanup. The caller retains state. */
++unsigned int ssdk_flow_state_bound_count(struct ssdk_flow_state *state)
++{
++	unsigned int i, count = 0;
++
++	if (!state) return 0;
++	mutex_lock(&state->lock);
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (state->slots[i].used && !state->slots[i].quarantine)
++			count++;
++	mutex_unlock(&state->lock);
++	return count;
++}
+ static void drop_entry(struct ssdk_flow_entry *entry)
+ {
+ 	if (entry->rule.egress) dev_put(entry->rule.egress);
+--- a/include/ref/ssdk_flow_state.h
++++ b/include/ref/ssdk_flow_state.h
+@@ -19,6 +19,7 @@
+ 	int (*remove)(void *ctx, unsigned int slot);
+ 	int (*read)(void *ctx, unsigned int slot, struct ssdk_flow_counts *counts);
+ };
++unsigned int ssdk_flow_state_bound_count(struct ssdk_flow_state *state);
+ struct ssdk_flow_state *ssdk_flow_state_create(const struct ssdk_flow_ops *ops, void *ctx);
+ int ssdk_flow_state_replace(struct ssdk_flow_state *state, unsigned long cookie,
+ 			    const struct ssdk_flow_rule *rule, unsigned long now);
+--- a/src/ref/ref_flow_engine.c
++++ b/src/ref/ref_flow_engine.c
+@@ -26,6 +26,16 @@
+ 	struct ssdk_flow_hw *hw;
+ 	struct ssdk_flow_state *state;
+ };
++unsigned int ssdk_flow_engine_bound_count(struct ssdk_flow_engine *engine)
++{
++	unsigned int count;
++
++	if (!engine) return 0;
++	mutex_lock(&engine->lock);
++	count = ssdk_flow_state_bound_count(engine->state);
++	mutex_unlock(&engine->lock);
++	return count;
++}
+ void ssdk_flow_engine_invalidate(struct ssdk_flow_engine *engine)
+ {
+ 	if (!engine) return;
+--- a/include/ref/ssdk_flow_engine.h
++++ b/include/ref/ssdk_flow_engine.h
+@@ -11,6 +11,8 @@
+  * retries. Never discard a non-NULL output pointer after an error. */
+ int ssdk_flow_engine_create(unsigned int dev, void __iomem *base, size_t size,
+ 	const struct ssdk_flow_resolver *resolver, struct ssdk_flow_engine **out);
++/* Process context; outer owner retains engine during this snapshot. */
++unsigned int ssdk_flow_engine_bound_count(struct ssdk_flow_engine *engine);
+ /* Atomic notifier entry; caller guarantees object lifetime. */
+ void ssdk_flow_engine_invalidate(struct ssdk_flow_engine *engine);
+ /* Process-context callback/worker APIs. replace uses rtnl_trylock because
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -47,6 +47,7 @@
+ 	mutex_lock(&control_lock);
+ 	seq_printf(s, "attached %u\nbound %u\nengine %u\nclosing %u\nchanging %u\n",
+ 		attached, bound_blocks, !!engine, closing, changing);
++	seq_printf(s, "bound_flows %u\n", ssdk_flow_engine_bound_count(engine));
+ 	seq_printf(s, "wan_vid %u\nlan_vid %u\n", vlan_map.default_vid[0], vlan_map.default_vid[1]);
+ 	seq_printf(s, "replace_calls %llu\nreplace_ok %llu\nlast_replace_result %d\nlast_start_result %d\n",
+ 		replace_calls, replace_ok, last_replace_result, last_start_result);

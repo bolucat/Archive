@@ -1,0 +1,74 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] net: edma: restore QWRT PHY power control
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma.c
++++ b/edma.c
+@@ -22,6 +22,7 @@
+ 
+ extern struct net_device *edma_netdev[EDMA_MAX_PORTID_SUPPORTED];
+ extern u32 edma_disable_queue_stop;
++extern struct mii_bus *miibus_gb;
+ 
+ bool edma_stp_rstp;
+ u16 edma_ath_eth_type;
+@@ -2301,6 +2302,27 @@
+ 	return 0;
+ }
+ 
++void edma_phy_power(struct edma_adapter *adapter, int operate) {
++	int i;
++    
++	u32 portid_bmp = adapter->dp_bitmap >> 1; /* Ignore CPU Port bit 0 */
++	
++	if(!adapter || miibus_gb == NULL)
++		return;
++
++	dev_info(&adapter->pdev->dev, "mii bus phy power %s \n", operate?"on":"down" );
++    
++	for(i = 0; i < EDMA_MAX_PORTID_SUPPORTED; i++) {
++		if (portid_bmp & (1 << i)) {
++			uint16_t val;
++			/* MII PHY REG 0 */
++			val = mdiobus_read(miibus_gb, i, 0);
++			val = operate? 0x3300:0x3900;
++			mdiobus_write(miibus_gb, i, 0, val);
++	    } 
++	}
++}
++
+ /* edma_open()
+  *	gets called when netdevice is up, start the queue.
+  */
+@@ -2309,7 +2331,9 @@
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+ 	struct platform_device *pdev = adapter->edma_cinfo->pdev;
+ 	struct edma_common_info *edma_cinfo = adapter->edma_cinfo;
+-
++    
++    edma_phy_power(adapter, 1);
++    
+ 	edma_initialise_rfs_flow_table(adapter);
+ 
+ 	/* We enable irq only in first edma_open call.
+@@ -2355,6 +2379,8 @@
+ {
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+ 
++    edma_phy_power(adapter, 0);
++
+ 	edma_free_rfs_flow_table(adapter);
+ 	netif_carrier_off(netdev);
+ 	netif_tx_stop_all_queues(netdev);
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -149,7 +149,7 @@
+ static u32 edma_hw_addr;
+ 
+ struct timer_list edma_stats_timer;
+-static struct mii_bus *miibus_gb;
++struct mii_bus *miibus_gb;
+ 
+ char edma_tx_irq[16][64];
+ char edma_rx_irq[8][64];

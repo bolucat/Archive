@@ -1,0 +1,1760 @@
+From: Lei Wei <quic_leiwei@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: pcs: ipq9574: implement link modes and UNIPHY bring-up
+
+The 'UNIPHY' PCS block in the IPQ9574 SoC includes PCS and SerDes
+functions. It supports different interface modes to enable Ethernet MAC
+connections to different types of external PHYs/switch. It includes PCS
+functions for 1Gbps and 2.5Gbps interface modes and XPCS functions for
+10Gbps interface modes. There are three UNIPHY (PCS) instances in IPQ9574
+SoC which provide PCS/XPCS functions to the six Ethernet ports.
+
+The 'UNIPHY' PCS hardware block in Qualcomm's IPQ SoC supports different
+interface modes to enable Ethernet MAC connections for different types of
+external PHYs/switch. Each UNIPHY block includes a SerDes and PCS/XPCS
+blocks, and can operate in either PCS or XPCS modes. It supports 1Gbps and
+2.5Gbps interface modes (Ex: SGMII) using the PCS, and 10Gbps interface
+modes (Ex: USXGMII) using the XPCS. There are three UNIPHY (PCS) instances
+in IPQ9574 SoC which support the six Ethernet ports in the SoC.
+
+This patch adds the following PCS functionality for the PCS driver for
+IPQ9574 SoC:
+
+USXGMII mode is enabled by PCS when 10Gbps PHYs are connected, such as
+Aquantia 10Gbps PHY.
+
+10GBASER mode is used when PCS connects with a 10G SFP module.
+
+2500BASEX mode is used when PCS connects with QCA8386 switch in a fixed
+2500M link. It is also used when PCS connectes with QCA8081 PHY which works
+at 2500M link speed. In addition, it can be also used when PCS connects
+with a 2.5G SFP module.
+
+1000BASEX is used when PCS connects with a 1G SFP module.
+
+10G_QXGMII is used when PCS connectes with QCA8084 four ports 2.5G PHYs.
+
+When 2500base-x mode is enabled MISC2 regsister needs to have different
+value than for other 1G modes.
+
+Keep the PCS driver synced with the latest version posted to the kernel
+community and add the XPCS reset support.
+
+The XPCS signals USXGMII in-band autonegotiation completion through an
+interrupt that is never enabled, waited for or acknowledged, so rate
+adaptation never starts and the MAC receives nothing even though the SerDes
+achieves block lock. The advertised speed and duplex are also left at their
+reset values while autonegotiation runs.
+
+Some board designs feed an external PHY its reference clock from the uniphy
+25MHz clock output instead of a local crystal. Enable the output when the
+devicetree opts in with "qcom,uniphy-clkout-25mhz".
+
+The uniphy never receives a software reset pulse during interface mode
+configuration. The vendor SSDK asserts the GCC system reset and the NSSCC
+soft reset together for 100ms on every uniphy mode change; without the
+pulse, parts of the uniphy analog block can remain in their power-on state.
+
+The MISC2 phy mode field is modelled as two bits at the wrong offset: the
+hardware field is three bits wide and starts one bit lower. The SGMII and
+2500BASE-X values only come out right because the power-on default happens
+to keep the missed bit set, and USXGMII is not programmed at all, leaving
+the uniphy in its power-on SGMII personality.
+
+Align the USXGMII configuration sequence with the SSDK:
+
+Reuse the qcom-ipq9574 PCS driver for IPQ5332 with an explicit MII clock
+rate request during link-up.
+
+Use the SFP state machine to gate forced 1000BASE-X and 2500BASE-X links
+without in-band negotiation. Select the SGMII+ MAC personality explicitly
+without inheriting bootloader or previous interface settings.
+
+Merged from:
+  0313-dt-bindings-net-pcs-Add-Ethernet-PCS-for-Qualcomm-IP.patch
+  0314-net-pcs-Add-PCS-driver-for-Qualcomm-IPQ9574-SoC.patch
+  0315-net-pcs-qcom-ipq9574-Add-PCS-instantiation-and-phyli.patch
+  0316-net-pcs-qcom-ipq9574-Add-USXGMII-interface-mode-supp.patch
+  0317-net-pcs-Add-10GBASER-interface-mode-support-to-IPQ-U.patch
+  0318-net-pcs-Add-2500BASEX-interface-mode-support-to-IPQ-.patch
+  0319-net-pcs-Add-1000BASEX-interface-mode-support-to-IPQ-.patch
+  0320-net-pcs-Add-10G_QXGMII-interface-mode-support-to-IPQ.patch
+  0321-net-pcs-ipq-uniphy-control-MISC2-register-for-2.5G-s.patch
+  0323-01-net-pcs-qcom-ipq9574-Update-IPQ9574-PCS-driver.patch
+  0323-02-net-pcs-qcom-ipq9574-complete-USXGMII-in-band-AN.patch
+  0323-03-net-pcs-qcom-ipq9574-enable-uniphy-25MHz-clock-output.patch
+  0323-04-net-pcs-qcom-ipq9574-pulse-uniphy-sys-reset.patch
+  0323-05-net-pcs-qcom-ipq9574-set-MISC2-phy-mode-for-USXGMII.patch
+  0323-06-net-pcs-qcom-ipq9574-align-USXGMII-bring-up-with-SSDK.patch
+  0323-07-net-pcs-qcom-ipq9574-set-IPQ5332-MII-clocks-on-link-up.patch
+  0323-08-net-pcs-qcom-ipq9574-initialize-basex-sfp.patch
+
+Based on work by:
+  Alexandru Gagniuc <mr.nuke.me@gmail.com>
+  Kenneth Kasilag <kenneth@kasilag.me>
+  Lei Wei <quic_leiwei@quicinc.com>
+  Luo Jie <quic_luoj@quicinc.com>
+  Mantas Pucka <mantas@8devices.com>
+  Til Kaiser <mail@tk154.de>
+
+Original-commit: 0828bc67d0fee47eb1224a4fba93e9917f838ffc
+Original-commit: c03b5a514b319c03a1883142694afa5deb69af6f
+Original-commit: 58403accdc0c62dbba55befe607051a0ef68d64a
+Original-commit: bc30bc70975d985b05864d54d6c294022633cf8c
+Original-commit: 827dda24d66b1ecfaa4981b6fe505cedf0579e51
+Original-commit: aaa1ff298e5b354a9368bf27230e9f314d6a51eb
+Original-commit: adc1625e7096b4da6802c6c8ef1f398f1670e856
+Original-commit: 99115669f98a98bedaca1ec147440a205d3c90c1
+Original-commit: b5c662f1fd1f894a49e3f95582db5d48999e98ce
+Original-commit: d7b52f91ca08479291817c5ac22991d032911e12
+
+Signed-off-by: Lei Wei <quic_leiwei@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: Mantas Pucka <mantas@8devices.com>
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+Signed-off-by: Til Kaiser <mail@tk154.de>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- /dev/null
++++ b/Documentation/devicetree/bindings/net/pcs/qcom,ipq9574-pcs.yaml
+@@ -0,0 +1,197 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/net/pcs/qcom,ipq9574-pcs.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Ethernet PCS for Qualcomm IPQ9574 SoC
++
++maintainers:
++  - Lei Wei <quic_leiwei@quicinc.com>
++
++description:
++  The UNIPHY hardware blocks in the Qualcomm IPQ SoC include PCS and SerDes
++  functions. They enable connectivity between the Ethernet MAC inside the
++  PPE (packet processing engine) and external Ethernet PHY/switch. There are
++  three UNIPHY instances in IPQ9574 SoC which provide PCS functions to the
++  six Ethernet ports.
++
++  For SGMII (1Gbps PHY) or 2500BASE-X (2.5Gbps PHY) interface modes, the PCS
++  function is enabled by using the PCS block inside UNIPHY. For USXGMII (10Gbps
++  PHY), the XPCS block in UNIPHY is used.
++
++  The SerDes provides 125M (1Gbps mode) or 312.5M (2.5Gbps and 10Gbps modes)
++  RX and TX clocks to the NSSCC (Networking Sub System Clock Controller). The
++  NSSCC divides these clocks and generates the MII RX and TX clocks to each
++  of the MII interfaces between the PCS and MAC, as per the link speeds and
++  interface modes.
++
++  Different IPQ SoC may support different number of UNIPHYs (PCSes) since the
++  number of ports and their capabilities can be different between these SoCs
++
++  Below diagram depicts the UNIPHY (PCS) connections for an IPQ9574 SoC based
++  board. In this example, the PCS0 has four GMIIs/XGMIIs, which can connect
++  with four MACs to support QSGMII (4 x 1Gbps) or 10G_QXGMII (4 x 2.5Gbps)
++  interface modes.
++
++  -           +-------+ +---------+  +-------------------------+
++    +---------+CMN PLL| |  GCC    |  |   NSSCC (Divider)       |
++    |         +----+--+ +----+----+  +--+-------+--------------+
++    |              |         |          ^       |
++    |       31.25M |  SYS/AHB|clk  RX/TX|clk    +------------+
++    |       ref clk|         |          |       |            |
++    |              |         v          | MII RX|TX clk   MAC| RX/TX clk
++    |25/50M     +--+---------+----------+-------+---+      +-+---------+
++    |ref clk    |  |   +----------------+       |   |      | |     PPE |
++    v           |  |   |     UNIPHY0            V   |      | V         |
++  +-------+     |  v   |       +-----------+ (X)GMII|      |           |
++  |       |     |  +---+---+   |           |--------|------|-- MAC0    |
++  |       |     |  |       |   |           | (X)GMII|      |           |
++  |  Quad |     |  |SerDes |   | PCS/XPCS  |--------|------|-- MAC1    |
++  |       +<----+  |       |   |           | (X)GMII|      |           |
++  |(X)GPHY|     |  |       |   |           |--------|------|-- MAC2    |
++  |       |     |  |       |   |           | (X)GMII|      |           |
++  |       |     |  +-------+   |           |--------|------|-- MAC3    |
++  +-------+     |              |           |        |      |           |
++                |              +-----------+        |      |           |
++                +-----------------------------------+      |           |
++                +--+---------+----------+-------+---+      |           |
++  +-------+     |            UNIPHY1                |      |           |
++  |       |     |              +-----------+        |      |           |
++  |(X)GPHY|     | +-------+    |           | (X)GMII|      |           |
++  |       +<----+ |SerDes |    | PCS/XPCS  |--------|------|- MAC4     |
++  |       |     | |       |    |           |        |      |           |
++  +-------+     | +-------+    |           |        |      |           |
++                |              +-----------+        |      |           |
++                +-----------------------------------+      |           |
++                +--+---------+----------+-------+---+      |           |
++  +-------+     |           UNIPHY2                 |      |           |
++  |       |     |              +-----------+        |      |           |
++  |(X)GPHY|     | +-------+    |           | (X)GMII|      |           |
++  |       +<----+ |SerDes |    | PCS/XPCS  |--------|------|- MAC5     |
++  |       |     | |       |    |           |        |      |           |
++  +-------+     | +-------+    |           |        |      |           |
++                |              +-----------+        |      |           |
++                +-----------------------------------+      +-----------+
++
++properties:
++  compatible:
++    enum:
++      - qcom,ipq9574-pcs
++
++  reg:
++    maxItems: 1
++
++  '#address-cells':
++    const: 1
++
++  '#size-cells':
++    const: 0
++
++  clocks:
++    items:
++      - description: System clock
++      - description: AHB clock needed for register interface access
++
++  clock-names:
++    items:
++      - const: sys
++      - const: ahb
++
++  resets:
++    maxItems: 1
++    description: XPCS reset
++
++  '#clock-cells':
++    const: 1
++    description: See include/dt-bindings/net/qcom,ipq9574-pcs.h for constants
++
++patternProperties:
++  '^pcs-mii@[0-4]$':
++    type: object
++    description: PCS MII interface.
++
++    properties:
++      reg:
++        minimum: 0
++        maximum: 4
++        description: MII index
++
++      clocks:
++        items:
++          - description: PCS MII RX clock
++          - description: PCS MII TX clock
++
++      clock-names:
++        items:
++          - const: rx
++          - const: tx
++
++    required:
++      - reg
++      - clocks
++      - clock-names
++
++    additionalProperties: false
++
++required:
++  - compatible
++  - reg
++  - '#address-cells'
++  - '#size-cells'
++  - clocks
++  - clock-names
++  - resets
++  - '#clock-cells'
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/clock/qcom,ipq9574-gcc.h>
++    #include <dt-bindings/reset/qcom,ipq9574-gcc.h>
++
++    ethernet-pcs@7a00000 {
++        compatible = "qcom,ipq9574-pcs";
++        reg = <0x7a00000 0x10000>;
++        #address-cells = <1>;
++        #size-cells = <0>;
++        clocks = <&gcc GCC_UNIPHY0_SYS_CLK>,
++                 <&gcc GCC_UNIPHY0_AHB_CLK>;
++        clock-names = "sys",
++                      "ahb";
++        resets = <&gcc GCC_UNIPHY0_XPCS_RESET>;
++        #clock-cells = <1>;
++
++        pcs-mii@0 {
++            reg = <0>;
++            clocks = <&nsscc 116>,
++                     <&nsscc 117>;
++            clock-names = "rx",
++                          "tx";
++        };
++
++        pcs-mii@1 {
++            reg = <1>;
++            clocks = <&nsscc 118>,
++                     <&nsscc 119>;
++            clock-names = "rx",
++                          "tx";
++        };
++
++        pcs-mii@2 {
++            reg = <2>;
++            clocks = <&nsscc 120>,
++                     <&nsscc 121>;
++            clock-names = "rx",
++                          "tx";
++        };
++
++        pcs-mii@3 {
++            reg = <3>;
++            clocks = <&nsscc 122>,
++                     <&nsscc 123>;
++            clock-names = "rx",
++                          "tx";
++        };
++    };
+--- a/drivers/net/pcs/Kconfig
++++ b/drivers/net/pcs/Kconfig
+@@ -45,6 +45,15 @@ config PCS_MTK_USXGMII
+ 	  1000Base-X, 2500Base-X and Cisco SGMII are supported on the same
+ 	  differential pairs via an embedded LynxI PCS.
+ 
++config PCS_QCOM_IPQ9574
++	tristate "Qualcomm IPQ9574 PCS"
++	depends on OF && (ARCH_QCOM || COMPILE_TEST)
++	depends on HAS_IOMEM && COMMON_CLK
++	help
++	  This module provides driver for UNIPHY PCS available on Qualcomm
++	  IPQ9574 SoC. The UNIPHY PCS supports both PCS and XPCS functions
++	  to support different interface modes for MAC to PHY connections.
++
+ config PCS_RZN1_MIIC
+ 	tristate "Renesas RZ/N1, RZ/N2H, RZ/T2H MII converter"
+ 	depends on OF
+--- a/drivers/net/pcs/Makefile
++++ b/drivers/net/pcs/Makefile
+@@ -10,3 +10,4 @@ obj-$(CONFIG_PCS_LYNX)		+= pcs-lynx.o
+ obj-$(CONFIG_PCS_MTK_LYNXI)	+= pcs-mtk-lynxi.o
+ obj-$(CONFIG_PCS_MTK_USXGMII)	+= pcs-mtk-usxgmii.o
+ obj-$(CONFIG_PCS_RZN1_MIIC)	+= pcs-rzn1-miic.o
++obj-$(CONFIG_PCS_QCOM_IPQ9574)	+= pcs-qcom-ipq9574.o
+--- /dev/null
++++ b/drivers/net/pcs/pcs-qcom-ipq9574.c
+@@ -0,0 +1,1378 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/clk.h>
++#include <linux/clk-provider.h>
++#include <linux/device.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/pcs/pcs-qcom-ipq9574.h>
++#include <linux/phy.h>
++#include <linux/phylink.h>
++#include <linux/platform_device.h>
++#include <linux/regmap.h>
++#include <linux/reset.h>
++
++#include <dt-bindings/net/qcom,ipq9574-pcs.h>
++
++/* Maximum number of MIIs per PCS instance. There are 5 MIIs for PSGMII. */
++#define PCS_MAX_MII_NRS			5
++
++#define PCS_CALIBRATION			0x1e0
++#define PCS_CALIBRATION_DONE		BIT(7)
++
++/* 25MHz reference clock output to an external PHY */
++#define PCS_CLKOUT_50M_CTRL		0x610
++#define PCS_CLKOUT_50M_25M_EN		BIT(0)
++#define PCS_CLKOUT_50M_DIV2_SEL		BIT(5)
++
++#define PCS_MISC2			0x218
++#define PCS_MISC2_RATE_MASK		GENMASK(1, 0)
++#define PCS_MISC2_MODE_MASK		GENMASK(6, 4)
++#define PCS_MISC2_MODE_SGMII		FIELD_PREP(PCS_MISC2_MODE_MASK, 0x3)
++#define PCS_MISC2_MODE_SGMII_PLUS	FIELD_PREP(PCS_MISC2_MODE_MASK, 0x5)
++#define PCS_MISC2_MODE_USXGMII		FIELD_PREP(PCS_MISC2_MODE_MASK, 0x7)
++
++#define PCS_MODE_CTRL			0x46c
++#define PCS_MODE_SEL_MASK		GENMASK(12, 8)
++#define PCS_MODE_SGMII			FIELD_PREP(PCS_MODE_SEL_MASK, 0x4)
++#define PCS_MODE_QSGMII			FIELD_PREP(PCS_MODE_SEL_MASK, 0x1)
++#define PCS_MODE_PSGMII			FIELD_PREP(PCS_MODE_SEL_MASK, 0x2)
++#define PCS_MODE_2500BASEX		FIELD_PREP(PCS_MODE_SEL_MASK, 0x8)
++#define PCS_MODE_XPCS			FIELD_PREP(PCS_MODE_SEL_MASK, 0x10)
++#define PCS_MODE_SGMII_MODE_MASK	GENMASK(6, 4)
++#define PCS_MODE_SGMII_MODE_MAC		FIELD_PREP(PCS_MODE_SGMII_MODE_MASK, \
++						   0x2)
++#define PCS_MODE_SGMII_MODE_1000BASEX	FIELD_PREP(PCS_MODE_SGMII_MODE_MASK, \
++						   0x0)
++
++#define PCS_MII_CTRL(x)			(0x480 + 0x18 * (x))
++#define PCS_MII_ADPT_RESET		BIT(11)
++#define PCS_MII_FORCE_MODE		BIT(3)
++#define PCS_MII_SPEED_MASK		GENMASK(2, 1)
++#define PCS_MII_SPEED_1000		FIELD_PREP(PCS_MII_SPEED_MASK, 0x2)
++#define PCS_MII_SPEED_100		FIELD_PREP(PCS_MII_SPEED_MASK, 0x1)
++#define PCS_MII_SPEED_10		FIELD_PREP(PCS_MII_SPEED_MASK, 0x0)
++
++#define PCS_MII_STS(x)			(0x488 + 0x18 * (x))
++#define PCS_MII_LINK_STS		BIT(7)
++#define PCS_MII_STS_DUPLEX_FULL		BIT(6)
++#define PCS_MII_STS_SPEED_MASK		GENMASK(5, 4)
++#define PCS_MII_STS_SPEED_10		0
++#define PCS_MII_STS_SPEED_100		1
++#define PCS_MII_STS_SPEED_1000		2
++#define PCS_MII_STS_PAUSE_TX_EN		BIT(1)
++#define PCS_MII_STS_PAUSE_RX_EN		BIT(0)
++
++#define PCS_QP_USXG_OPTION		0x584
++#define PCS_QP_USXG_GMII_SRC_XPCS	BIT(0)
++
++#define PCS_PLL_RESET			0x780
++#define PCS_ANA_SW_RESET		BIT(6)
++#define PCS_PLL_RESET_ASSERT		0x2bf
++#define PCS_PLL_RESET_RELEASE		0x2ff
++
++/* LOS-from-SFP select; 0x7 on SFP ports, 0 otherwise */
++#define PCS_LINK_DETECT			0x570
++#define PCS_DETECT_LOS_FROM_SFP		GENMASK(8, 6)
++
++#define XPCS_INDIRECT_ADDR		0x8000
++#define XPCS_INDIRECT_AHB_ADDR		0x83fc
++#define XPCS_INDIRECT_ADDR_H		GENMASK(20, 8)
++#define XPCS_INDIRECT_ADDR_L		GENMASK(7, 0)
++#define XPCS_INDIRECT_DATA_ADDR(reg)	(FIELD_PREP(GENMASK(15, 10), 0x20) | \
++					 FIELD_PREP(GENMASK(9, 2), \
++					 FIELD_GET(XPCS_INDIRECT_ADDR_L, reg)))
++
++#define XPCS_KR_STS			0x30020
++#define XPCS_KR_LINK_STS		BIT(12)
++
++#define XPCS_DIG_CTRL			0x38000
++#define XPCS_SOFT_RESET			BIT(15)
++#define XPCS_USXG_ADPT_RESET		BIT(10)
++#define XPCS_USXG_EN			BIT(9)
++
++#define XPCS_KR_CTRL			0x38007
++#define XPCS_USXG_MODE_MASK		GENMASK(12, 10)
++#define XPCS_10G_QXGMII_MODE		FIELD_PREP(XPCS_USXG_MODE_MASK, 0x5)
++
++#define XPCS_DIG_STS			0x3800a
++#define XPCS_DIG_STS_AM_COUNT		GENMASK(14, 0)
++
++/* DIG control for MII1 - MII3 */
++#define XPCS_MII1_DIG_CTRL(x)		(0x1a8000 + 0x10000 * ((x) - 1))
++#define XPCS_MII1_USXG_ADPT_RESET	BIT(5)
++
++#define XPCS_MII_CTRL			0x1f0000
++#define XPCS_MII1_CTRL(x)		(0x1a0000 + 0x10000 * ((x) - 1))
++#define XPCS_MII_AN_EN			BIT(12)
++#define XPCS_MII_AN_RESTART		BIT(9)
++#define XPCS_DUPLEX_FULL		BIT(8)
++#define XPCS_SPEED_MASK			(BIT(13) | BIT(6) | BIT(5))
++#define XPCS_SPEED_10000		(BIT(13) | BIT(6))
++#define XPCS_SPEED_5000			(BIT(13) | BIT(5))
++#define XPCS_SPEED_2500			BIT(5)
++#define XPCS_SPEED_1000			BIT(6)
++#define XPCS_SPEED_100			BIT(13)
++#define XPCS_SPEED_10			0
++
++#define XPCS_MII_AN_CTRL		0x1f8001
++#define XPCS_MII1_AN_CTRL(x)		(0x1a8001 + 0x10000 * ((x) - 1))
++#define XPCS_MII_AN_8BIT		BIT(8)
++#define XPCS_MII_AN_INTR_EN		BIT(0)
++
++#define XPCS_MII_AN_INTR_STS		0x1f8002
++#define XPCS_MII1_AN_INTR_STS(x)	(0x1a8002 + 0x10000 * ((x) - 1))
++#define XPCS_USXG_AN_LINK_STS		BIT(14)
++#define XPCS_MII_AN_CL37_CMPLT		BIT(0)
++#define XPCS_USXG_AN_SPEED_MASK		GENMASK(12, 10)
++#define XPCS_USXG_AN_SPEED_10		0
++#define XPCS_USXG_AN_SPEED_100		1
++#define XPCS_USXG_AN_SPEED_1000		2
++#define XPCS_USXG_AN_SPEED_2500		4
++#define XPCS_USXG_AN_SPEED_5000		5
++#define XPCS_USXG_AN_SPEED_10000	3
++
++#define XPCS_XAUI_MODE_CTRL		0x1f8004
++#define XPCS_MII1_XAUI_MODE_CTRL(x)	(0x1a8004 + 0x10000 * ((x) - 1))
++#define XPCS_TX_IPG_CHECK_DIS		BIT(0)
++
++/* Per PCS MII private data */
++struct ipq_pcs_mii {
++	struct ipq_pcs *qpcs;
++	struct phylink_pcs pcs;
++	int index;
++
++	/* RX clock from NSSCC to PCS MII */
++	struct clk *rx_clk;
++	/* TX clock from NSSCC to PCS MII */
++	struct clk *tx_clk;
++	bool usxgmii_initialized;
++};
++
++/* PCS private data */
++struct ipq_pcs {
++	struct device *dev;
++	void __iomem *base;
++	struct regmap *regmap;
++	phy_interface_t interface;
++
++	/* RX clock supplied to NSSCC */
++	struct clk_hw rx_hw;
++	/* TX clock supplied to NSSCC */
++	struct clk_hw tx_hw;
++
++	struct ipq_pcs_mii *qpcs_mii[PCS_MAX_MII_NRS];
++	struct reset_control *xpcs_rstc;
++	struct reset_control *sys_rstc;
++	struct reset_control *soft_rstc;
++};
++
++#define phylink_pcs_to_qpcs_mii(_pcs)	\
++	container_of(_pcs, struct ipq_pcs_mii, pcs)
++
++static void ipq_pcs_get_state_sgmii(struct ipq_pcs *qpcs,
++				    int index,
++				    struct phylink_link_state *state)
++{
++	unsigned int val;
++	int ret;
++
++	ret = regmap_read(qpcs->regmap, PCS_MII_STS(index), &val);
++	if (ret) {
++		state->link = 0;
++		return;
++	}
++
++	state->link = !!(val & PCS_MII_LINK_STS);
++
++	if (!state->link)
++		return;
++
++	switch (FIELD_GET(PCS_MII_STS_SPEED_MASK, val)) {
++	case PCS_MII_STS_SPEED_1000:
++		state->speed = SPEED_1000;
++		break;
++	case PCS_MII_STS_SPEED_100:
++		state->speed = SPEED_100;
++		break;
++	case PCS_MII_STS_SPEED_10:
++		state->speed = SPEED_10;
++		break;
++	default:
++		state->link = false;
++		return;
++	}
++
++	if (val & PCS_MII_STS_DUPLEX_FULL)
++		state->duplex = DUPLEX_FULL;
++	else
++		state->duplex = DUPLEX_HALF;
++
++	if (val & PCS_MII_STS_PAUSE_TX_EN)
++		state->pause |= MLO_PAUSE_TX;
++	if (val & PCS_MII_STS_PAUSE_RX_EN)
++		state->pause |= MLO_PAUSE_RX;
++}
++
++static void ipq_pcs_get_state_2500basex(struct ipq_pcs *qpcs,
++					unsigned int neg_mode,
++					struct phylink_link_state *state)
++{
++	unsigned int val;
++	int ret;
++
++	/* A copper SFP without PHY I2C access cannot provide 2500BASE-X
++	 * in-band status. In that mode the SFP state machine already gates
++	 * phylink through its LOS-driven link_up and link_down callbacks.
++	 */
++	if (neg_mode == PHYLINK_PCS_NEG_INBAND_DISABLED) {
++		state->link = true;
++		state->speed = SPEED_2500;
++		state->duplex = DUPLEX_FULL;
++		state->pause |= MLO_PAUSE_TXRX_MASK;
++		return;
++	}
++
++	ret = regmap_read(qpcs->regmap, PCS_MII_STS(0), &val);
++	if (ret) {
++		state->link = 0;
++		return;
++	}
++
++	state->link = !!(val & PCS_MII_LINK_STS);
++
++	if (!state->link)
++		return;
++
++	state->speed = SPEED_2500;
++	state->duplex = DUPLEX_FULL;
++	state->pause |= MLO_PAUSE_TXRX_MASK;
++}
++
++static void ipq_pcs_get_state_usxgmii(struct ipq_pcs *qpcs, int index,
++				      struct phylink_link_state *state)
++{
++	unsigned int reg, val;
++	int ret;
++
++	reg = (index == 0) ? XPCS_MII_AN_INTR_STS : XPCS_MII1_AN_INTR_STS(index);
++	ret = regmap_read(qpcs->regmap, reg, &val);
++	if (ret) {
++		state->link = 0;
++		return;
++	}
++
++	state->link = !!(val & XPCS_USXG_AN_LINK_STS);
++
++	if (!state->link)
++		return;
++
++	switch (FIELD_GET(XPCS_USXG_AN_SPEED_MASK, val)) {
++	case XPCS_USXG_AN_SPEED_10000:
++		state->speed = SPEED_10000;
++		break;
++	case XPCS_USXG_AN_SPEED_5000:
++		state->speed = SPEED_5000;
++		break;
++	case XPCS_USXG_AN_SPEED_2500:
++		state->speed = SPEED_2500;
++		break;
++	case XPCS_USXG_AN_SPEED_1000:
++		state->speed = SPEED_1000;
++		break;
++	case XPCS_USXG_AN_SPEED_100:
++		state->speed = SPEED_100;
++		break;
++	case XPCS_USXG_AN_SPEED_10:
++		state->speed = SPEED_10;
++		break;
++	default:
++		state->link = false;
++		return;
++	}
++
++	state->duplex = DUPLEX_FULL;
++}
++
++static void ipq_pcs_get_state_10gbaser(struct ipq_pcs *qpcs,
++				       struct phylink_link_state *state)
++{
++	unsigned int val;
++	int ret;
++
++	ret = regmap_read(qpcs->regmap, XPCS_KR_STS, &val);
++	if (ret) {
++		state->link = 0;
++		return;
++	}
++
++	state->link = !!(val & XPCS_KR_LINK_STS);
++
++	if (!state->link)
++		return;
++
++	state->speed = SPEED_10000;
++	state->duplex = DUPLEX_FULL;
++	state->pause |= MLO_PAUSE_TXRX_MASK;
++}
++
++/* Re-enable the port clocks held off across a USXGMII reconfiguration */
++static int ipq_pcs_restore_port_clks(struct ipq_pcs *qpcs,
++				     phy_interface_t interface)
++{
++	int ret;
++
++	if (interface != PHY_INTERFACE_MODE_USXGMII || !qpcs->qpcs_mii[0])
++		return 0;
++
++	ret = clk_prepare_enable(qpcs->qpcs_mii[0]->rx_clk);
++	if (ret)
++		return ret;
++
++	return clk_prepare_enable(qpcs->qpcs_mii[0]->tx_clk);
++}
++
++static int ipq_pcs_config_mode(struct ipq_pcs *qpcs,
++			       phy_interface_t interface)
++{
++	unsigned long rate = 125000000;
++	unsigned int val, mask, misc2 = 0;
++	bool xpcs_mode = false;
++	int ret;
++
++	/* The port clocks must be held off across the reconfiguration */
++	if (interface == PHY_INTERFACE_MODE_USXGMII && qpcs->qpcs_mii[0]) {
++		clk_disable_unprepare(qpcs->qpcs_mii[0]->rx_clk);
++		clk_disable_unprepare(qpcs->qpcs_mii[0]->tx_clk);
++	}
++
++	/* Assert XPCS reset */
++	reset_control_assert(qpcs->xpcs_rstc);
++
++	/* Configure PCS interface mode */
++	mask = PCS_MODE_SEL_MASK;
++	switch (interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++		mask |= PCS_MODE_SGMII_MODE_MASK;
++		val = PCS_MODE_SGMII | PCS_MODE_SGMII_MODE_MAC;
++		misc2 = PCS_MISC2_MODE_SGMII;
++		break;
++	case PHY_INTERFACE_MODE_QSGMII:
++		mask |= PCS_MODE_SGMII_MODE_MASK;
++		val = PCS_MODE_QSGMII | PCS_MODE_SGMII_MODE_MAC;
++		break;
++	case PHY_INTERFACE_MODE_PSGMII:
++		mask |= PCS_MODE_SGMII_MODE_MASK;
++		val = PCS_MODE_PSGMII | PCS_MODE_SGMII_MODE_MAC;
++		break;
++	case PHY_INTERFACE_MODE_1000BASEX:
++		mask |= PCS_MODE_SGMII_MODE_MASK;
++		val = PCS_MODE_SGMII | PCS_MODE_SGMII_MODE_1000BASEX;
++		misc2 = PCS_MISC2_MODE_SGMII;
++		break;
++	case PHY_INTERFACE_MODE_2500BASEX:
++		/* SSDK explicitly selects MAC mode for SGMII+ SFP ports.
++		 * Do not inherit the 1000BASE-X/SGMII personality from a
++		 * previously configured interface or from the bootloader.
++		 */
++		mask |= PCS_MODE_SGMII_MODE_MASK;
++		val = PCS_MODE_2500BASEX | PCS_MODE_SGMII_MODE_MAC;
++		misc2 = PCS_MISC2_MODE_SGMII_PLUS;
++		rate = 312500000;
++		break;
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++	case PHY_INTERFACE_MODE_10GBASER:
++		val = PCS_MODE_XPCS;
++		rate = 312500000;
++		xpcs_mode = true;
++		break;
++	default:
++		ret = -EOPNOTSUPP;
++		goto err_clk;
++	}
++
++	ret = regmap_update_bits(qpcs->regmap, PCS_MODE_CTRL, mask, val);
++	if (ret)
++		goto err_clk;
++
++	if (interface == PHY_INTERFACE_MODE_10G_QXGMII) {
++		ret = regmap_set_bits(qpcs->regmap, PCS_QP_USXG_OPTION,
++				      PCS_QP_USXG_GMII_SRC_XPCS);
++		if (ret)
++			goto err_clk;
++	}
++
++	if (interface == PHY_INTERFACE_MODE_USXGMII)
++		misc2 = PCS_MISC2_MODE_USXGMII;
++
++	if (misc2) {
++		ret = regmap_update_bits(qpcs->regmap, PCS_MISC2,
++					 PCS_MISC2_MODE_MASK |
++					 PCS_MISC2_RATE_MASK, misc2);
++		if (ret)
++			goto err_clk;
++	}
++
++	/* Link detection is in-band; there is no SFP LOS input here */
++	if (interface == PHY_INTERFACE_MODE_USXGMII) {
++		ret = regmap_update_bits(qpcs->regmap, PCS_LINK_DETECT,
++					 PCS_DETECT_LOS_FROM_SFP, 0);
++		if (ret)
++			goto err_clk;
++	}
++
++	/* Pulse the resets as the vendor SSDK does: both held for
++	 * 100ms, then another 100ms to settle after release.
++	 */
++	if (qpcs->sys_rstc || qpcs->soft_rstc) {
++		reset_control_assert(qpcs->sys_rstc);
++		reset_control_assert(qpcs->soft_rstc);
++		msleep(100);
++		reset_control_deassert(qpcs->sys_rstc);
++		reset_control_deassert(qpcs->soft_rstc);
++		msleep(100);
++	}
++
++	/* PCS PLL reset */
++	if (interface == PHY_INTERFACE_MODE_USXGMII) {
++		/* Program the whole register: the analog enables must not
++		 * be left at their power-on state.
++		 */
++		ret = regmap_write(qpcs->regmap, PCS_PLL_RESET,
++				   PCS_PLL_RESET_ASSERT);
++		if (ret)
++			goto err_clk;
++
++		msleep(100);
++		ret = regmap_write(qpcs->regmap, PCS_PLL_RESET,
++				   PCS_PLL_RESET_RELEASE);
++		if (ret)
++			goto err_clk;
++
++		msleep(100);
++	} else {
++		ret = regmap_clear_bits(qpcs->regmap, PCS_PLL_RESET,
++					PCS_ANA_SW_RESET);
++		if (ret)
++			goto err_clk;
++
++		fsleep(20000);
++		ret = regmap_set_bits(qpcs->regmap, PCS_PLL_RESET,
++				      PCS_ANA_SW_RESET);
++		if (ret)
++			goto err_clk;
++	}
++
++	/* Wait for calibration completion */
++	ret = regmap_read_poll_timeout(qpcs->regmap, PCS_CALIBRATION,
++				       val, val & PCS_CALIBRATION_DONE,
++				       1000, 100000);
++	if (ret) {
++		dev_err(qpcs->dev, "PCS calibration timed-out\n");
++		goto err_clk;
++	}
++
++	/* Re-enable the port clocks disabled at entry */
++	ret = ipq_pcs_restore_port_clks(qpcs, interface);
++	if (ret)
++		return ret;
++
++	qpcs->interface = interface;
++
++	/* The clock output register is only writable after PLL reset
++	 * and calibration, so this cannot be done at probe.
++	 */
++	if (of_property_read_bool(qpcs->dev->of_node,
++				  "qcom,uniphy-clkout-25mhz")) {
++		ret = regmap_set_bits(qpcs->regmap, PCS_CLKOUT_50M_CTRL,
++				      PCS_CLKOUT_50M_25M_EN |
++				      PCS_CLKOUT_50M_DIV2_SEL);
++		if (ret)
++			return ret;
++	}
++
++	/* Configure the RX and TX clock to NSSCC as 125M or 312.5M based
++	 * on current interface mode.
++	 */
++	ret = clk_set_rate(qpcs->rx_hw.clk, rate);
++	if (ret) {
++		dev_err(qpcs->dev, "Failed to set RX clock rate\n");
++		return ret;
++	}
++
++	ret = clk_set_rate(qpcs->tx_hw.clk, rate);
++	if (ret) {
++		dev_err(qpcs->dev, "Failed to set TX clock rate\n");
++		return ret;
++	}
++
++	/* Deassert XPCS */
++	if (xpcs_mode)
++		reset_control_deassert(qpcs->xpcs_rstc);
++
++	return 0;
++
++err_clk:
++	/* Best-effort restore of the clocks disabled at entry */
++	ipq_pcs_restore_port_clks(qpcs, interface);
++
++	return ret;
++}
++
++static int ipq_pcs_config_sgmii(struct ipq_pcs *qpcs,
++				int index,
++				unsigned int neg_mode,
++				phy_interface_t interface)
++{
++	int ret;
++
++	/* Configure the PCS mode if required */
++	if (qpcs->interface != interface) {
++		ret = ipq_pcs_config_mode(qpcs, interface);
++		if (ret)
++			return ret;
++	}
++
++	/* Set AN mode or force mode */
++	if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED)
++		return regmap_clear_bits(qpcs->regmap,
++					 PCS_MII_CTRL(index), PCS_MII_FORCE_MODE);
++	else
++		return regmap_set_bits(qpcs->regmap,
++				       PCS_MII_CTRL(index), PCS_MII_FORCE_MODE);
++}
++
++static int ipq_pcs_config_2500basex(struct ipq_pcs *qpcs)
++{
++	/* Configure PCS for 2500BASEX mode if required */
++	if (qpcs->interface == PHY_INTERFACE_MODE_2500BASEX)
++		return 0;
++
++	return ipq_pcs_config_mode(qpcs, PHY_INTERFACE_MODE_2500BASEX);
++}
++
++static int ipq_pcs_config_usxgmii(struct ipq_pcs *qpcs,
++				  int index,
++				  phy_interface_t interface)
++{
++	unsigned int reg, val;
++	int i, ret;
++
++	/* Configure the XPCS for USXGMII mode if required */
++	if (qpcs->interface != interface) {
++		ret = ipq_pcs_config_mode(qpcs, interface);
++		if (ret)
++			return ret;
++
++		/* A shared XPCS reset invalidates every channel's setup. */
++		for (i = 0; i < PCS_MAX_MII_NRS; i++)
++			if (qpcs->qpcs_mii[i])
++				qpcs->qpcs_mii[i]->usxgmii_initialized = false;
++
++		/* Best-effort wait for the receiver to link before enabling
++		 * adaptation; the PHY SerDes may only come up later.
++		 */
++		ret = regmap_read_poll_timeout(qpcs->regmap, XPCS_KR_STS,
++					       val, val & XPCS_KR_LINK_STS,
++					       1000, 100000);
++		if (ret)
++			dev_warn(qpcs->dev,
++				 "10GBASE-R link not up before USXG_EN\n");
++
++		ret = regmap_set_bits(qpcs->regmap, XPCS_DIG_CTRL, XPCS_USXG_EN);
++		if (ret)
++			return ret;
++
++		if (interface == PHY_INTERFACE_MODE_10G_QXGMII) {
++			ret = regmap_update_bits(qpcs->regmap, XPCS_KR_CTRL,
++						 XPCS_USXG_MODE_MASK, XPCS_10G_QXGMII_MODE);
++			if (ret)
++				return ret;
++
++			/* Set Alignment Marker Interval value as 0x6018 */
++			ret = regmap_update_bits(qpcs->regmap, XPCS_DIG_STS,
++						 XPCS_DIG_STS_AM_COUNT, 0x6018);
++			if (ret)
++				return ret;
++
++			ret = regmap_set_bits(qpcs->regmap, XPCS_DIG_CTRL, XPCS_SOFT_RESET);
++			if (ret)
++				return ret;
++		}
++	}
++
++	/* Disable Tx IPG check for 10G_QXGMII */
++	if (interface == PHY_INTERFACE_MODE_10G_QXGMII) {
++		reg = (index == 0) ? XPCS_XAUI_MODE_CTRL : XPCS_MII1_XAUI_MODE_CTRL(index);
++		ret = regmap_set_bits(qpcs->regmap, reg, XPCS_TX_IPG_CHECK_DIS);
++		if (ret)
++			return ret;
++	}
++
++	reg = (index == 0) ? XPCS_MII_AN_CTRL : XPCS_MII1_AN_CTRL(index);
++	ret = regmap_set_bits(qpcs->regmap, reg,
++			      XPCS_MII_AN_8BIT | XPCS_MII_AN_INTR_EN);
++	if (ret)
++		return ret;
++
++	reg = (index == 0) ? XPCS_MII_CTRL : XPCS_MII1_CTRL(index);
++	/* Advertise 10G only after reset. Reopening a channel must retain
++	 * its negotiated rate: overwriting 1G with 10G can latch link down
++	 * until link-up, while link-up itself waits for the PCS link bit.
++	 */
++	if (!qpcs->qpcs_mii[index]->usxgmii_initialized) {
++		ret = regmap_update_bits(qpcs->regmap, reg, XPCS_SPEED_MASK,
++					 XPCS_SPEED_10000);
++		if (ret)
++			return ret;
++	}
++	ret = regmap_set_bits(qpcs->regmap, reg,
++			      XPCS_MII_AN_EN | XPCS_DUPLEX_FULL);
++	if (!ret)
++		qpcs->qpcs_mii[index]->usxgmii_initialized = true;
++	return ret;
++}
++
++static int ipq_pcs_config_10gbaser(struct ipq_pcs *qpcs)
++{
++	/* Configure 10GBASER mode if required */
++	if (qpcs->interface == PHY_INTERFACE_MODE_10GBASER)
++		return 0;
++
++	return ipq_pcs_config_mode(qpcs, PHY_INTERFACE_MODE_10GBASER);
++}
++
++static int ipq_pcs_link_up_config_sgmii(struct ipq_pcs *qpcs,
++					int index,
++					unsigned int neg_mode,
++					int speed)
++{
++	unsigned int val;
++	int ret;
++
++	/* PCS speed need not be configured if in-band autoneg is enabled */
++	if (neg_mode != PHYLINK_PCS_NEG_INBAND_ENABLED) {
++		/* PCS speed set for force mode */
++		switch (speed) {
++		case SPEED_1000:
++			val = PCS_MII_SPEED_1000;
++			break;
++		case SPEED_100:
++			val = PCS_MII_SPEED_100;
++			break;
++		case SPEED_10:
++			val = PCS_MII_SPEED_10;
++			break;
++		default:
++			dev_err(qpcs->dev, "Invalid SGMII speed %d\n", speed);
++			return -EINVAL;
++		}
++
++		ret = regmap_update_bits(qpcs->regmap, PCS_MII_CTRL(index),
++					 PCS_MII_SPEED_MASK, val);
++		if (ret)
++			return ret;
++	}
++
++	/* PCS adapter reset */
++	ret = regmap_clear_bits(qpcs->regmap,
++				PCS_MII_CTRL(index), PCS_MII_ADPT_RESET);
++	if (ret)
++		return ret;
++
++	return regmap_set_bits(qpcs->regmap,
++			       PCS_MII_CTRL(index), PCS_MII_ADPT_RESET);
++}
++
++static int ipq_pcs_link_up_config_2500basex(struct ipq_pcs *qpcs, int speed)
++{
++	int ret;
++
++	/* 2500BASEX does not support autoneg and does not need to
++	 * configure PCS speed. Only reset PCS adapter here.
++	 */
++	ret = regmap_clear_bits(qpcs->regmap,
++				PCS_MII_CTRL(0), PCS_MII_ADPT_RESET);
++	if (ret)
++		return ret;
++
++	return regmap_set_bits(qpcs->regmap,
++			       PCS_MII_CTRL(0), PCS_MII_ADPT_RESET);
++}
++
++static int ipq_pcs_link_up_config_usxgmii(struct ipq_pcs *qpcs,
++					  int index, int speed)
++{
++	unsigned int reg, val;
++	int ret;
++
++	/* Rate adaptation is held off until the AN completion is acked:
++	 * restart in-band AN, wait for it and ack it.
++	 */
++	reg = (index == 0) ? XPCS_MII_CTRL : XPCS_MII1_CTRL(index);
++	ret = regmap_set_bits(qpcs->regmap, reg, XPCS_MII_AN_RESTART);
++	if (ret)
++		return ret;
++
++	reg = (index == 0) ? XPCS_MII_AN_INTR_STS : XPCS_MII1_AN_INTR_STS(index);
++	ret = regmap_read_poll_timeout(qpcs->regmap, reg, val,
++				       val & XPCS_MII_AN_CL37_CMPLT,
++				       1000, 100000);
++	if (ret)
++		dev_warn(qpcs->dev, "USXGMII in-band AN did not complete\n");
++	else
++		regmap_clear_bits(qpcs->regmap, reg, XPCS_MII_AN_CL37_CMPLT);
++
++	switch (speed) {
++	case SPEED_10000:
++		val = XPCS_SPEED_10000;
++		break;
++	case SPEED_5000:
++		val = XPCS_SPEED_5000;
++		break;
++	case SPEED_2500:
++		val = XPCS_SPEED_2500;
++		break;
++	case SPEED_1000:
++		val = XPCS_SPEED_1000;
++		break;
++	case SPEED_100:
++		val = XPCS_SPEED_100;
++		break;
++	case SPEED_10:
++		val = XPCS_SPEED_10;
++		break;
++	default:
++		dev_err(qpcs->dev, "Invalid USXGMII speed %d\n", speed);
++		return -EINVAL;
++	}
++
++	/* Configure XPCS speed */
++	reg = (index == 0) ? XPCS_MII_CTRL : XPCS_MII1_CTRL(index);
++	ret = regmap_update_bits(qpcs->regmap, reg,
++				 XPCS_SPEED_MASK, val | XPCS_DUPLEX_FULL);
++	if (ret)
++		return ret;
++
++	/* XPCS adapter reset */
++	reg = (index == 0) ? XPCS_DIG_CTRL : XPCS_MII1_DIG_CTRL(index);
++	val = (index == 0) ? XPCS_USXG_ADPT_RESET : XPCS_MII1_USXG_ADPT_RESET;
++	return regmap_set_bits(qpcs->regmap, reg, val);
++}
++
++static int ipq_pcs_validate(struct phylink_pcs *pcs, unsigned long *supported,
++			    const struct phylink_link_state *state)
++{
++	switch (state->interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++	case PHY_INTERFACE_MODE_10GBASER:
++		return 0;
++	case PHY_INTERFACE_MODE_2500BASEX:
++		/* In-band autoneg is not supported for 2500BASEX */
++		phylink_clear(supported, Autoneg);
++		return 0;
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++		/* USXGMII only supports full duplex mode */
++		phylink_clear(supported, 100baseT_Half);
++		phylink_clear(supported, 10baseT_Half);
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static unsigned int ipq_pcs_inband_caps(struct phylink_pcs *pcs,
++					phy_interface_t interface)
++{
++	switch (interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++		return LINK_INBAND_DISABLE | LINK_INBAND_ENABLE;
++	case PHY_INTERFACE_MODE_2500BASEX:
++	case PHY_INTERFACE_MODE_10GBASER:
++		return LINK_INBAND_DISABLE;
++	default:
++		return 0;
++	}
++}
++
++static int ipq_pcs_enable(struct phylink_pcs *pcs)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++	struct ipq_pcs *qpcs = qpcs_mii->qpcs;
++	int index = qpcs_mii->index;
++	int ret;
++
++	ret = clk_prepare_enable(qpcs_mii->rx_clk);
++	if (ret) {
++		dev_err(qpcs->dev, "Failed to enable MII %d RX clock\n", index);
++		return ret;
++	}
++
++	ret = clk_prepare_enable(qpcs_mii->tx_clk);
++	if (ret) {
++		/* This is a fatal event since phylink does not support unwinding
++		 * the state back for this error. So, we only report the error
++		 * and do not disable the clocks.
++		 */
++		dev_err(qpcs->dev, "Failed to enable MII %d TX clock\n", index);
++		return ret;
++	}
++
++	return 0;
++}
++
++static void ipq_pcs_disable(struct phylink_pcs *pcs)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++
++	clk_disable_unprepare(qpcs_mii->rx_clk);
++	clk_disable_unprepare(qpcs_mii->tx_clk);
++}
++
++static void ipq_pcs_get_state(struct phylink_pcs *pcs, unsigned int neg_mode,
++			      struct phylink_link_state *state)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++	struct ipq_pcs *qpcs = qpcs_mii->qpcs;
++	int index = qpcs_mii->index;
++
++	switch (state->interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
++		ipq_pcs_get_state_sgmii(qpcs, index, state);
++		break;
++	case PHY_INTERFACE_MODE_1000BASEX:
++		/* Without in-band negotiation, the module's LOS signal gates
++		 * phylink. The PCS status bit does not track a forced Base-X
++		 * SFP host connection on this hardware.
++		 */
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_DISABLED) {
++			state->link = true;
++			state->speed = SPEED_1000;
++			state->duplex = DUPLEX_FULL;
++			state->pause |= MLO_PAUSE_TXRX_MASK;
++			break;
++		}
++		/* SGMII and 1000BASEX in-band autoneg word format are decoded
++		 * by PCS hardware and both placed to the same status register.
++		 */
++		ipq_pcs_get_state_sgmii(qpcs, index, state);
++		break;
++	case PHY_INTERFACE_MODE_2500BASEX:
++		ipq_pcs_get_state_2500basex(qpcs, neg_mode, state);
++		break;
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++		ipq_pcs_get_state_usxgmii(qpcs, index, state);
++		break;
++	case PHY_INTERFACE_MODE_10GBASER:
++		ipq_pcs_get_state_10gbaser(qpcs, state);
++		break;
++	default:
++		break;
++	}
++
++	dev_dbg_ratelimited(qpcs->dev,
++			    "mode=%s/%s/%s link=%u\n",
++			    phy_modes(state->interface),
++			    phy_speed_to_str(state->speed),
++			    phy_duplex_to_str(state->duplex),
++			    state->link);
++}
++
++static int ipq_pcs_config(struct phylink_pcs *pcs,
++			  unsigned int neg_mode,
++			  phy_interface_t interface,
++			  const unsigned long *advertising,
++			  bool permit)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++	struct ipq_pcs *qpcs = qpcs_mii->qpcs;
++	int index = qpcs_mii->index;
++
++	switch (interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++		return ipq_pcs_config_sgmii(qpcs, index, neg_mode, interface);
++	case PHY_INTERFACE_MODE_2500BASEX:
++		return ipq_pcs_config_2500basex(qpcs);
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++		return ipq_pcs_config_usxgmii(qpcs, index, interface);
++	case PHY_INTERFACE_MODE_10GBASER:
++		return ipq_pcs_config_10gbaser(qpcs);
++	default:
++		return -EOPNOTSUPP;
++	};
++}
++
++static void ipq_pcs_an_restart(struct phylink_pcs *pcs)
++{
++	/* Currently not used */
++}
++
++static unsigned long ipq_pcs_mii_clk_rate_get(phy_interface_t interface,
++					       int speed)
++{
++	if (interface != PHY_INTERFACE_MODE_USXGMII &&
++	    interface != PHY_INTERFACE_MODE_10G_QXGMII)
++		return 0;
++
++	switch (speed) {
++	case SPEED_10:
++		return 1250000;
++	case SPEED_100:
++		return 12500000;
++	case SPEED_1000:
++		return 125000000;
++	case SPEED_2500:
++		return 78125000;
++	case SPEED_5000:
++		return 156250000;
++	case SPEED_10000:
++		return 312500000;
++	default:
++		return 0;
++	}
++}
++
++static int ipq_pcs_mii_clk_set_rate(struct ipq_pcs_mii *qpcs_mii,
++				    phy_interface_t interface, int speed)
++{
++	unsigned long rate = ipq_pcs_mii_clk_rate_get(interface, speed);
++
++	if (!rate)
++		return 0;
++
++	return clk_set_rate(qpcs_mii->rx_clk, rate) ?:
++	       clk_set_rate(qpcs_mii->tx_clk, rate);
++}
++
++static void ipq_pcs_link_up(struct phylink_pcs *pcs,
++			    unsigned int neg_mode,
++			    phy_interface_t interface,
++			    int speed, int duplex)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++	struct ipq_pcs *qpcs = qpcs_mii->qpcs;
++	int index = qpcs_mii->index;
++	int ret;
++
++	if (of_device_is_compatible(qpcs->dev->of_node, "qcom,ipq5332-pcs")) {
++		ret = ipq_pcs_mii_clk_set_rate(qpcs_mii, interface, speed);
++		if (ret)
++			goto err;
++	}
++
++	switch (interface) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++		ret = ipq_pcs_link_up_config_sgmii(qpcs, index,
++						   neg_mode, speed);
++		break;
++	case PHY_INTERFACE_MODE_2500BASEX:
++		ret = ipq_pcs_link_up_config_2500basex(qpcs, speed);
++		break;
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++		ret = ipq_pcs_link_up_config_usxgmii(qpcs, index, speed);
++		break;
++	case PHY_INTERFACE_MODE_10GBASER:
++		/* Nothing to do here */
++		return;
++	default:
++		return;
++	}
++
++err:
++	if (ret)
++		dev_err(qpcs->dev, "PCS link up fail for interface %s\n",
++			phy_modes(interface));
++}
++
++static const struct phylink_pcs_ops ipq_pcs_phylink_ops = {
++	.pcs_validate = ipq_pcs_validate,
++	.pcs_inband_caps = ipq_pcs_inband_caps,
++	.pcs_enable = ipq_pcs_enable,
++	.pcs_disable = ipq_pcs_disable,
++	.pcs_get_state = ipq_pcs_get_state,
++	.pcs_config = ipq_pcs_config,
++	.pcs_an_restart = ipq_pcs_an_restart,
++	.pcs_link_up = ipq_pcs_link_up,
++};
++
++/* Parse the PCS MII DT nodes which are child nodes of the PCS node,
++ * and instantiate each MII PCS instance.
++ */
++static int ipq_pcs_create_miis(struct ipq_pcs *qpcs)
++{
++	struct device *dev = qpcs->dev;
++	struct ipq_pcs_mii *qpcs_mii;
++	struct device_node *mii_np;
++	u32 index;
++	int ret;
++
++	for_each_available_child_of_node(dev->of_node, mii_np) {
++		ret = of_property_read_u32(mii_np, "reg", &index);
++		if (ret) {
++			dev_err(dev, "Failed to read MII index\n");
++			of_node_put(mii_np);
++			return ret;
++		}
++
++		if (index >= PCS_MAX_MII_NRS) {
++			dev_err(dev, "Invalid MII index\n");
++			of_node_put(mii_np);
++			return -EINVAL;
++		}
++
++		qpcs_mii = devm_kzalloc(dev, sizeof(*qpcs_mii), GFP_KERNEL);
++		if (!qpcs_mii) {
++			of_node_put(mii_np);
++			return -ENOMEM;
++		}
++
++		qpcs_mii->qpcs = qpcs;
++		qpcs_mii->index = index;
++		qpcs_mii->pcs.ops = &ipq_pcs_phylink_ops;
++		qpcs_mii->pcs.poll = true;
++
++		qpcs_mii->rx_clk = devm_get_clk_from_child(dev, mii_np, "rx");
++		if (IS_ERR(qpcs_mii->rx_clk)) {
++			of_node_put(mii_np);
++			return dev_err_probe(dev, PTR_ERR(qpcs_mii->rx_clk),
++					     "Failed to get MII %d RX clock\n", index);
++		}
++
++		qpcs_mii->tx_clk = devm_get_clk_from_child(dev, mii_np, "tx");
++		if (IS_ERR(qpcs_mii->tx_clk)) {
++			of_node_put(mii_np);
++			return dev_err_probe(dev, PTR_ERR(qpcs_mii->tx_clk),
++					     "Failed to get MII %d TX clock\n", index);
++		}
++
++		qpcs->qpcs_mii[index] = qpcs_mii;
++	}
++
++	return 0;
++}
++
++static unsigned long ipq_pcs_clk_rate_get(struct ipq_pcs *qpcs)
++{
++	switch (qpcs->interface) {
++	case PHY_INTERFACE_MODE_2500BASEX:
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10G_QXGMII:
++	case PHY_INTERFACE_MODE_10GBASER:
++		return 312500000;
++	default:
++		return 125000000;
++	}
++}
++
++/* Return clock rate for the RX clock supplied to NSSCC
++ * as per the interface mode.
++ */
++static unsigned long ipq_pcs_rx_clk_recalc_rate(struct clk_hw *hw,
++						unsigned long parent_rate)
++{
++	struct ipq_pcs *qpcs = container_of(hw, struct ipq_pcs, rx_hw);
++
++	return ipq_pcs_clk_rate_get(qpcs);
++}
++
++/* Return clock rate for the TX clock supplied to NSSCC
++ * as per the interface mode.
++ */
++static unsigned long ipq_pcs_tx_clk_recalc_rate(struct clk_hw *hw,
++						unsigned long parent_rate)
++{
++	struct ipq_pcs *qpcs = container_of(hw, struct ipq_pcs, tx_hw);
++
++	return ipq_pcs_clk_rate_get(qpcs);
++}
++
++static int ipq_pcs_clk_determine_rate(struct clk_hw *hw,
++				      struct clk_rate_request *req)
++{
++	switch (req->rate) {
++	case 125000000:
++	case 312500000:
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++/* Clock ops for the RX clock supplied to NSSCC */
++static const struct clk_ops ipq_pcs_rx_clk_ops = {
++	.determine_rate = ipq_pcs_clk_determine_rate,
++	.recalc_rate = ipq_pcs_rx_clk_recalc_rate,
++};
++
++/* Clock ops for the TX clock supplied to NSSCC */
++static const struct clk_ops ipq_pcs_tx_clk_ops = {
++	.determine_rate = ipq_pcs_clk_determine_rate,
++	.recalc_rate = ipq_pcs_tx_clk_recalc_rate,
++};
++
++static struct clk_hw *ipq_pcs_clk_hw_get(struct of_phandle_args *clkspec,
++					 void *data)
++{
++	struct ipq_pcs *qpcs = data;
++
++	switch (clkspec->args[0]) {
++	case PCS_RX_CLK:
++		return &qpcs->rx_hw;
++	case PCS_TX_CLK:
++		return &qpcs->tx_hw;
++	}
++
++	return ERR_PTR(-EINVAL);
++}
++
++/* Register the RX and TX clock which are output from SerDes to
++ * the NSSCC. The NSSCC driver assigns the RX and TX clock as
++ * parent, divides them to generate the MII RX and TX clock to
++ * each MII interface of the PCS as per the link speeds and
++ * interface modes.
++ */
++static int ipq_pcs_clk_register(struct ipq_pcs *qpcs)
++{
++	struct clk_init_data init = { };
++	int ret;
++
++	init.ops = &ipq_pcs_rx_clk_ops;
++	init.name = devm_kasprintf(qpcs->dev, GFP_KERNEL, "%s::rx_clk",
++				   dev_name(qpcs->dev));
++	if (!init.name)
++		return -ENOMEM;
++
++	qpcs->rx_hw.init = &init;
++	ret = devm_clk_hw_register(qpcs->dev, &qpcs->rx_hw);
++	if (ret)
++		return ret;
++
++	init.ops = &ipq_pcs_tx_clk_ops;
++	init.name = devm_kasprintf(qpcs->dev, GFP_KERNEL, "%s::tx_clk",
++				   dev_name(qpcs->dev));
++	if (!init.name)
++		return -ENOMEM;
++
++	qpcs->tx_hw.init = &init;
++	ret = devm_clk_hw_register(qpcs->dev, &qpcs->tx_hw);
++	if (ret)
++		return ret;
++
++	return devm_of_clk_add_hw_provider(qpcs->dev, ipq_pcs_clk_hw_get, qpcs);
++}
++
++static int ipq_pcs_regmap_read(void *context, unsigned int reg,
++			       unsigned int *val)
++{
++	struct ipq_pcs *qpcs = context;
++
++	/* PCS uses direct AHB access while XPCS uses indirect AHB access */
++	if (reg >= XPCS_INDIRECT_ADDR) {
++		writel(FIELD_GET(XPCS_INDIRECT_ADDR_H, reg),
++		       qpcs->base + XPCS_INDIRECT_AHB_ADDR);
++		*val = readl(qpcs->base + XPCS_INDIRECT_DATA_ADDR(reg));
++	} else {
++		*val = readl(qpcs->base + reg);
++	}
++
++	return 0;
++}
++
++static int ipq_pcs_regmap_write(void *context, unsigned int reg,
++				unsigned int val)
++{
++	struct ipq_pcs *qpcs = context;
++
++	/* PCS uses direct AHB access while XPCS uses indirect AHB access */
++	if (reg >= XPCS_INDIRECT_ADDR) {
++		writel(FIELD_GET(XPCS_INDIRECT_ADDR_H, reg),
++		       qpcs->base + XPCS_INDIRECT_AHB_ADDR);
++		writel(val, qpcs->base + XPCS_INDIRECT_DATA_ADDR(reg));
++	} else {
++		writel(val, qpcs->base + reg);
++	}
++
++	return 0;
++}
++
++static const struct regmap_config ipq_pcs_regmap_cfg = {
++	.reg_bits = 32,
++	.val_bits = 32,
++	.reg_read = ipq_pcs_regmap_read,
++	.reg_write = ipq_pcs_regmap_write,
++	.fast_io = true,
++};
++
++static int ipq9574_pcs_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct ipq_pcs *qpcs;
++	struct clk *clk;
++	int ret;
++
++	qpcs = devm_kzalloc(dev, sizeof(*qpcs), GFP_KERNEL);
++	if (!qpcs)
++		return -ENOMEM;
++
++	qpcs->dev = dev;
++
++	qpcs->base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(qpcs->base))
++		return dev_err_probe(dev, PTR_ERR(qpcs->base),
++				     "Failed to ioremap resource\n");
++
++	qpcs->regmap = devm_regmap_init(dev, NULL, qpcs, &ipq_pcs_regmap_cfg);
++	if (IS_ERR(qpcs->regmap))
++		return dev_err_probe(dev, PTR_ERR(qpcs->regmap),
++				     "Failed to allocate register map\n");
++
++	clk = devm_clk_get_enabled(dev, "sys");
++	if (IS_ERR(clk))
++		return dev_err_probe(dev, PTR_ERR(clk),
++				     "Failed to enable SYS clock\n");
++
++	clk = devm_clk_get_enabled(dev, "ahb");
++	if (IS_ERR(clk))
++		return dev_err_probe(dev, PTR_ERR(clk),
++				     "Failed to enable AHB clock\n");
++
++	qpcs->xpcs_rstc = devm_reset_control_get_optional(dev, NULL);
++	if (IS_ERR_OR_NULL(qpcs->xpcs_rstc))
++		return dev_err_probe(dev, PTR_ERR(qpcs->xpcs_rstc),
++				     "Failed to get XPCS reset\n");
++
++	qpcs->sys_rstc = devm_reset_control_get_optional_exclusive(dev, "sys");
++	if (IS_ERR(qpcs->sys_rstc))
++		return dev_err_probe(dev, PTR_ERR(qpcs->sys_rstc),
++				     "Failed to get uniphy sys reset\n");
++
++	qpcs->soft_rstc = devm_reset_control_get_optional_exclusive(dev, "soft");
++	if (IS_ERR(qpcs->soft_rstc))
++		return dev_err_probe(dev, PTR_ERR(qpcs->soft_rstc),
++				     "Failed to get uniphy soft reset\n");
++
++	ret = ipq_pcs_clk_register(qpcs);
++	if (ret)
++		return ret;
++
++	ret = ipq_pcs_create_miis(qpcs);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, qpcs);
++
++	return 0;
++}
++
++static const struct of_device_id ipq9574_pcs_of_mtable[] = {
++	{ .compatible = "qcom,ipq5332-pcs" },
++	{ .compatible = "qcom,ipq9574-pcs" },
++	{ /* sentinel */ },
++};
++MODULE_DEVICE_TABLE(of, ipq9574_pcs_of_mtable);
++
++/**
++ * ipq_pcs_get() - Get the IPQ PCS MII instance
++ * @np: Device tree node to the PCS MII
++ *
++ * Description: Get the phylink PCS instance for the given PCS MII node @np.
++ * This instance is associated with the specific MII of the PCS and the
++ * corresponding Ethernet netdevice.
++ *
++ * Return: A pointer to the phylink PCS instance or an error-pointer value.
++ */
++struct phylink_pcs *ipq_pcs_get(struct device_node *np)
++{
++	struct platform_device *pdev;
++	struct ipq_pcs_mii *qpcs_mii;
++	struct ipq_pcs *qpcs;
++	u32 index;
++
++	if (of_property_read_u32(np, "reg", &index))
++		return ERR_PTR(-EINVAL);
++
++	if (index >= PCS_MAX_MII_NRS)
++		return ERR_PTR(-EINVAL);
++
++	if (!of_match_node(ipq9574_pcs_of_mtable, np->parent))
++		return ERR_PTR(-EINVAL);
++
++	/* Get the parent device */
++	pdev = of_find_device_by_node(np->parent);
++	if (!pdev)
++		return ERR_PTR(-ENODEV);
++
++	qpcs = platform_get_drvdata(pdev);
++	if (!qpcs) {
++		put_device(&pdev->dev);
++
++		/* If probe is not yet completed, return DEFER to
++		 * the dependent driver.
++		 */
++		return ERR_PTR(-EPROBE_DEFER);
++	}
++
++	qpcs_mii = qpcs->qpcs_mii[index];
++	if (!qpcs_mii) {
++		put_device(&pdev->dev);
++		return ERR_PTR(-ENOENT);
++	}
++
++	return &qpcs_mii->pcs;
++}
++EXPORT_SYMBOL(ipq_pcs_get);
++
++/**
++ * ipq_pcs_put() - Release the IPQ PCS MII instance
++ * @pcs: PCS instance
++ *
++ * Description: Release a phylink PCS instance.
++ */
++void ipq_pcs_put(struct phylink_pcs *pcs)
++{
++	struct ipq_pcs_mii *qpcs_mii = phylink_pcs_to_qpcs_mii(pcs);
++
++	/* Put reference taken by of_find_device_by_node() in
++	 * ipq_pcs_get().
++	 */
++	put_device(qpcs_mii->qpcs->dev);
++}
++EXPORT_SYMBOL(ipq_pcs_put);
++
++static struct platform_driver ipq9574_pcs_driver = {
++	.driver = {
++		.name = "ipq9574_pcs",
++		.suppress_bind_attrs = true,
++		.of_match_table = ipq9574_pcs_of_mtable,
++	},
++	.probe = ipq9574_pcs_probe,
++};
++module_platform_driver(ipq9574_pcs_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Qualcomm IPQ9574 PCS driver");
++MODULE_AUTHOR("Lei Wei <quic_leiwei@quicinc.com>");
+--- /dev/null
++++ b/include/dt-bindings/net/qcom,ipq9574-pcs.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++/*
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ *
++ * Device Tree constants for the Qualcomm IPQ9574 PCS
++ */
++
++#ifndef _DT_BINDINGS_PCS_QCOM_IPQ9574_H
++#define _DT_BINDINGS_PCS_QCOM_IPQ9574_H
++
++/* The RX and TX clocks which are provided from the SerDes to NSSCC. */
++#define PCS_RX_CLK		0
++#define PCS_TX_CLK		1
++
++#endif /* _DT_BINDINGS_PCS_QCOM_IPQ9574_H */
+--- /dev/null
++++ b/include/linux/pcs/pcs-qcom-ipq9574.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#ifndef __LINUX_PCS_QCOM_IPQ9574_H
++#define __LINUX_PCS_QCOM_IPQ9574_H
++
++struct device_node;
++struct phylink_pcs;
++
++struct phylink_pcs *ipq_pcs_get(struct device_node *np);
++void ipq_pcs_put(struct phylink_pcs *pcs);
++
++#endif /* __LINUX_PCS_QCOM_IPQ9574_H */

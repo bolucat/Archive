@@ -1,18 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-. /lib/functions/uci-defaults.sh
+. /lib/functions.sh
 
-board_config_update
-
-case "$(board_name)" in
-comtrend,ar-5315u |\
-comtrend,ar-5387un |\
-comtrend,vr-3025u)
-	ucidef_set_bridge_device switch
-	ucidef_set_interface_lan "lan1 lan2 lan3 lan4"
-	;;
+case "$(uname -r)" in
+	6.18|6.18.*)
+		case "$(board_name)" in
+			comtrend,ar-5315u) . /lib/bmips/6.18/bcm6318/etc/board.d/02_network ;;
+			comtrend,ar-5387un) . /lib/bmips/6.18/bcm6328/etc/board.d/02_network ;;
+			comtrend,vr-3025u) . /lib/bmips/6.18/bcm6368/etc/board.d/02_network ;;
+			huawei,hg556a-b) . /lib/bmips/6.18/bcm6358/etc/board.d/02_network ;;
+			*) . /lib/bmips/legacy/generic/etc/board.d/02_network ;;
+		esac
+		;;
+	*) . /lib/bmips/legacy/generic/etc/board.d/02_network ;;
 esac
-
-board_config_flush
-
-exit 0

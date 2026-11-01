@@ -9,7 +9,7 @@ FEATURES:=squashfs nand usb pci pcie gpio
 CPU_TYPE:=cortex-a53
 SUBTARGETS:=generic
 
-KERNEL_PATCHVER:=5.4
+KERNEL_PATCHVER:=6.18
 KERNEL_TESTING_PATCHVER:=5.4
 
 define Target/Description

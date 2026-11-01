@@ -1,0 +1,291 @@
+Subject: [PATCH] ssdk: use native NAPT admission with DNAT and TTL classification
+
+Let Linux flowtable own the native NAPT connection table. Trap ordinary route
+misses to CPU, classify public ingress for DNAT with MAC/VID/port bounds, and
+return TTL expiry to Linux. Preserve and restore all route-miss settings.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_acl.c
++++ b/src/ref/ref_flow_acl.c
+@@ -1,5 +1,5 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+-/* Exact DESS permissions. These constructors never modify hardware. */
++/* Native NAPT owns connection admission; ACLs supply classification/traps. */
+ #include <linux/etherdevice.h>
+ #include <linux/in.h>
+ #include "ssdk_flow_acl.h"
+@@ -11,79 +11,41 @@
+ 	memset(acl->dest_mac_mask.uc, 0xff, ETH_ALEN);
+ }
+ 
+-int ssdk_flow_acl(const struct ssdk_flow_rule *rule, const u8 router[ETH_ALEN],
+-		 u16 vid, u16 arp, bool outbound, fal_acl_rule_t *result)
++int ssdk_flow_dnat(__be32 public, const u8 router[ETH_ALEN], u16 vid,
++		   fal_acl_rule_t *result)
+ {
+ 	fal_acl_rule_t acl = {};
+ 
+-	/* ARP_PTR is only seven bits in DESS ACL actions. Never truncate a
+-	 * host-table handle into an unrelated neighbour entry. */
+-	if (!rule || !router || !result || !is_valid_ether_addr(router) ||
+-	    !vid || vid >= 4095 || arp >= 128 ||
+-	    (rule->protocol != IPPROTO_TCP && rule->protocol != IPPROTO_UDP))
++	if (!router || !result || !is_valid_ether_addr(router) ||
++	    !vid || vid >= 4095 || ipv4_is_zeronet(public) ||
++	    ipv4_is_loopback(public) || ntohl(public) >= 0xe0000000)
+ 		return -EOPNOTSUPP;
+ 	acl.rule_type = FAL_ACL_RULE_IP4;
+ 	ssdk_flow_router(&acl, router);
+ 	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_MAC_VID);
+ 	acl.vid_val = vid; acl.vid_mask = 4095; acl.vid_op = FAL_ACL_FIELD_MASK;
+-	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP4_SIP);
+ 	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP4_DIP);
+-	acl.src_ip4_val = ntohl(rule->match.src);
+-	acl.dest_ip4_val = ntohl(rule->match.dst);
+-	acl.src_ip4_mask = acl.dest_ip4_mask = ~0U;
+-	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP_PROTO);
+-	acl.ip_proto_val = rule->protocol; acl.ip_proto_mask = 0xff;
+-	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_L4_SPORT);
+-	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_L4_DPORT);
+-	acl.src_l4port_val = ntohs(rule->match.sport);
+-	acl.dest_l4port_val = ntohs(rule->match.dport);
+-	acl.src_l4port_mask = acl.dest_l4port_mask = 0xffff;
+-	acl.src_l4port_op = acl.dest_l4port_op = FAL_ACL_FIELD_MASK;
+-	if (rule->protocol == IPPROTO_TCP) {
+-		FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_TCP_FLAG);
+-		acl.tcp_flag_mask = 7; /* FIN/SYN/RST always go to CPU. */
+-	}
+-	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_UDF);
+-	acl.udf_len = SSDK_FLOW_UDF_L3_LENGTH + SSDK_FLOW_UDF_L4_LENGTH;
+-	/* No IP options, reserved fragment flag, MF or fragment offset. DF
+-	 * may be set. DESS ignores the generic FAL fragment match flags. */
+-	acl.udf_val[0] = 0x45; acl.udf_mask[0] = 0xff;
+-	acl.udf_mask[6] = 0xbf; acl.udf_mask[7] = 0xff;
+-	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_ARP_EN);
++	acl.dest_ip4_val = ntohl(public); acl.dest_ip4_mask = ~0U;
++	/* No ARP override or per-connection ACL permit. The native NAPT table
++	 * must match a flow installed by Linux, otherwise its miss goes to CPU. */
+ 	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_POLICY_FORWARD_EN);
+-	acl.arp_ptr = arp;
+-	acl.policy_fwd = outbound ? FAL_ACL_POLICY_SNAT : FAL_ACL_POLICY_DNAT;
++	acl.policy_fwd = FAL_ACL_POLICY_DNAT;
+ 	*result = acl;
+ 	return 0;
+ }
+ 
+-int ssdk_flow_trap(const u8 router[ETH_ALEN], enum ssdk_flow_exception exception,
+-		  fal_acl_rule_t *result)
++int ssdk_flow_ttl(const u8 router[ETH_ALEN], fal_acl_rule_t *result)
+ {
+ 	fal_acl_rule_t acl = {};
+ 
+-	if (!router || !result || !is_valid_ether_addr(router) ||
+-	    exception < SSDK_FLOW_TRAP_ALL || exception > SSDK_FLOW_TRAP_UDP_ZERO)
+-		return -EOPNOTSUPP;
+-	acl.rule_type = FAL_ACL_RULE_MAC;
++	if (!router || !result || !is_valid_ether_addr(router)) return -EOPNOTSUPP;
++	acl.rule_type = FAL_ACL_RULE_IP4;
+ 	ssdk_flow_router(&acl, router);
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_UDF);
++	acl.udf_len = SSDK_FLOW_UDF_L3_LENGTH;
++	/* One L3 byte at offset eight: TTL 0/1 must reach Linux for ICMP. */
++	acl.udf_mask[0] = 0xfe;
+ 	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_RDTCPU);
+-	if (exception != SSDK_FLOW_TRAP_ALL) {
+-		acl.rule_type = FAL_ACL_RULE_IP4;
+-		FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_UDF);
+-		acl.udf_len = SSDK_FLOW_UDF_L3_LENGTH + SSDK_FLOW_UDF_L4_LENGTH;
+-		if (exception == SSDK_FLOW_TRAP_TTL) {
+-			/* Matches TTL 0 and 1 before any per-connection permission. */
+-			acl.udf_mask[8] = 0xfe;
+-		} else {
+-			FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP_PROTO);
+-			acl.ip_proto_val = IPPROTO_UDP; acl.ip_proto_mask = 0xff;
+-			/* DESS's zero UDP checksum path needs special handling. The
+-			 * 16-byte key fits only its high byte: trap the superset with
+-			 * high byte zero, including all checksum-disabled datagrams. */
+-			acl.udf_mask[15] = 0xff;
+-		}
+-	}
+ 	*result = acl;
+ 	return 0;
+ }
+--- a/src/ref/ref_flow_acl_owner.c
++++ b/src/ref/ref_flow_acl_owner.c
+@@ -16,7 +16,7 @@
+ 	bool used, ready;
+ 	unsigned int refs;
+ 	u8 mac[ETH_ALEN];
+-	struct owned_list fallback, exceptions;
++	struct owned_list exceptions;
+ };
+ struct owned_permission {
+ 	bool used;
+@@ -74,7 +74,7 @@
+ int ssdk_flow_guard_get(struct ssdk_flow_acl_owner *owner, const u8 *mac, int *handle)
+ {
+ 	struct owned_guard *guard;
+-	fal_acl_rule_t rules[2];
++	fal_acl_rule_t rule;
+ 	int i, free = -1, ret;
+ 	if (!handle) return -EINVAL;
+ 	*handle = -1;
+@@ -92,18 +92,10 @@
+ 	guard = &owner->guards[free];
+ 	guard->used = true; guard->refs = 1; ether_addr_copy(guard->mac, mac);
+ 	*handle = free;
+-	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_ALL, &rules[0]);
+-	if (ret) return ret;
+-	/* Install the fallback guard before the higher-priority exceptions. */
+-	ret = owned_list_add(owner, &guard->fallback, GUARD_LIST_BASE + 2*free + 1,
+-		       SSDK_FLOW_ACL_GUARD_PRIORITY, rules, 1, EXTERNAL_PORTS);
+-	if (ret) return ret;
+-	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_TTL, &rules[0]);
+-	if (ret) return ret;
+-	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_UDP_ZERO, &rules[1]);
++	ret = ssdk_flow_ttl(mac, &rule);
+ 	if (ret) return ret;
+ 	ret = owned_list_add(owner, &guard->exceptions, GUARD_LIST_BASE + 2*free,
+-		       SSDK_FLOW_ACL_EXCEPTION_PRIORITY, rules, 2, EXTERNAL_PORTS);
++		       SSDK_FLOW_ACL_EXCEPTION_PRIORITY, &rule, 1, EXTERNAL_PORTS);
+ 	if (!ret) guard->ready = true;
+ 	return ret;
+ }
+@@ -124,8 +116,6 @@
+ 	guard->ready = false;
+ 	ret = owned_list_remove(owner, &guard->exceptions);
+ 	if (ret) return ret;
+-	ret = owned_list_remove(owner, &guard->fallback);
+-	if (ret) return ret;
+ 	memset(guard, 0, sizeof(*guard)); return 0;
+ }
+ int ssdk_flow_permission_add(struct ssdk_flow_acl_owner *owner, unsigned int slot,
+@@ -147,14 +137,13 @@
+ 	}
+ 	permission->used = true;
+ 	permission->guard[0] = paths[0].guard; permission->guard[1] = paths[1].guard;
+-	for (i = 0; i < 2; i++) {
+-		ret = ssdk_flow_acl(&rules[i], owner->guards[paths[i].guard].mac,
+-				    paths[i].vid, paths[i].arp, i == outbound, &acl);
+-		if (ret) return ret;
+-		ret = owned_list_add(owner, &permission->lists[i], PERMISSION_LIST_BASE + 2*slot + i,
+-			       SSDK_FLOW_ACL_PERMIT_PRIORITY, &acl, 1, BIT(paths[i].port));
+-		if (ret) return ret;
+-	}
++	i = 1 - outbound;
++	ret = ssdk_flow_dnat(rules[i].match.dst, owner->guards[paths[i].guard].mac,
++			     paths[i].vid, &acl);
++	if (ret) return ret;
++	ret = owned_list_add(owner, &permission->lists[i], PERMISSION_LIST_BASE + 2*slot + i,
++		       SSDK_FLOW_ACL_PERMIT_PRIORITY, &acl, 1, BIT(paths[i].port));
++	if (ret) return ret;
+ 	return 0;
+ }
+ int ssdk_flow_permission_remove(struct ssdk_flow_acl_owner *owner, unsigned int slot)
+--- a/src/ref/ref_flow_profile.c
++++ b/src/ref/ref_flow_profile.c
+@@ -8,8 +8,10 @@
+ #include "fal_nat.h"
+ #include "dess_acl.h"
+ #include "ssdk_flow_profile.h"
++#include "ssdk_flow_acl.h"
+ #define PROFILE_PORTS 6
+ #define PROFILE_WINDOWS FAL_ACL_UDF_TYPE_BUTT
++#define PROFILE_FLOW_TYPES (FAL_FLOW_WAN_TO_WAN + 1)
+ struct ssdk_flow_profile {
+ 	unsigned int dev;
+ 	bool attempted, restored, ready, prefix_attempted, prefix_ready;
+@@ -19,6 +21,7 @@
+ 	struct { a_uint32_t offset, length; } udf[PROFILE_PORTS][PROFILE_WINDOWS];
+ 	fal_napt_mode_t mode;
+ 	fal_fwd_cmd_t miss;
++	fal_default_flow_cmd_t route_miss[PROFILE_FLOW_TYPES];
+ };
+ struct ssdk_flow_profile *ssdk_flow_profile_create(unsigned int dev)
+ {
+@@ -37,6 +40,8 @@
+ 	    fal_nat_unk_session_cmd_get(dev, &p->miss) != SW_OK ||
+ 	    fal_ip_vrf_base_addr_get(dev, 0, &p->original_base) != SW_OK ||
+ 	    fal_ip_vrf_base_mask_get(dev, 0, &p->original_mask) != SW_OK) goto fail;
++	for (port = 0; port < PROFILE_FLOW_TYPES; port++)
++		if (fal_default_rt_flow_cmd_get(dev, 0, port, &p->route_miss[port]) != SW_OK) goto fail;
+ 	for (port = 0; port < PROFILE_PORTS; port++) {
+ 		if (fal_ip_pt_arp_learn_get(dev, port, &p->learn[port]) != SW_OK) goto fail;
+ 		for (window = 0; window < PROFILE_WINDOWS; window++) {
+@@ -83,6 +88,15 @@
+ 	    fal_nat_unk_session_cmd_get(p->dev, &got) != SW_OK || got != miss) return -EIO;
+ 	return 0;
+ }
++static int set_route_miss(struct ssdk_flow_profile *p, unsigned int type,
++			  fal_default_flow_cmd_t command)
++{
++	fal_default_flow_cmd_t got;
++	if (fal_default_rt_flow_cmd_set(p->dev, 0, type, command) != SW_OK ||
++	    fal_default_rt_flow_cmd_get(p->dev, 0, type, &got) != SW_OK || got != command)
++		return -EIO;
++	return 0;
++}
+ static int set_acl(struct ssdk_flow_profile *p, a_bool_t enable)
+ {
+ 	a_bool_t got;
+@@ -101,12 +115,15 @@
+ 		if (set_learn(p, port, 0)) return -EIO;
+ 	for (port = 0; port < PROFILE_PORTS; port++)
+ 		for (window = 0; window < PROFILE_WINDOWS; window++) {
+-			length = window == FAL_ACL_UDF_TYPE_L3 ? 9 :
+-				 window == FAL_ACL_UDF_TYPE_L4 ? 7 : 0;
+-			if (set_udf(p, port, window, 0, length)) return -EIO;
++			length = window == FAL_ACL_UDF_TYPE_L3 ? SSDK_FLOW_UDF_L3_LENGTH : 0;
++			if (set_udf(p, port, window, window == FAL_ACL_UDF_TYPE_L3 ?
++			    SSDK_FLOW_UDF_L3_OFFSET : 0, length)) return -EIO;
+ 		}
+ 	if (set_mode(p, FAL_NAPT_SYNMETRIC) || set_miss(p, FAL_MAC_RDT_TO_CPU) ||
+ 	    set_acl(p, A_TRUE)) return -EIO;
++	/* NAT misses alone do not protect ordinary hardware routing. */
++	for (port = 0; port < PROFILE_FLOW_TYPES; port++)
++		if (set_route_miss(p, port, FAL_DEFAULT_FLOW_RDT_TO_CPU)) return -EIO;
+ 	p->ready = true;
+ 	return 0;
+ }
+@@ -164,6 +181,8 @@
+ 			    p->udf[port][window].length)) error = -EIO;
+ 	if (set_mode(p, p->mode)) error = -EIO;
+ 	if (set_miss(p, p->miss)) error = -EIO;
++	for (port = 0; port < PROFILE_FLOW_TYPES; port++)
++		if (set_route_miss(p, port, p->route_miss[port])) error = -EIO;
+ 	for (port = 0; port < PROFILE_PORTS; port++)
+ 		if (set_learn(p, port, p->learn[port])) error = -EIO;
+ 	if (!error) p->restored = true;
+--- a/include/ref/ssdk_flow_acl.h
++++ b/include/ref/ssdk_flow_acl.h
+@@ -4,21 +4,14 @@
+ #include "sw.h"
+ #include "fal_acl.h"
+ #include "ssdk_flow.h"
+-/* DESS concatenates extraction windows. All other windows must have length 0.
+- * L3 bytes 0..8 followed by L4 bytes 0..6 give a 16-byte UDF key. */
+-#define SSDK_FLOW_UDF_L3_LENGTH 9
+-#define SSDK_FLOW_UDF_L4_LENGTH 7
+-/* Smaller list priority wins. Exceptions precede permissions and the guard. */
++/* Extract only IPv4 TTL. All other windows must have length zero. */
++#define SSDK_FLOW_UDF_L3_OFFSET 8
++#define SSDK_FLOW_UDF_L3_LENGTH 1
++#define SSDK_FLOW_UDF_L4_LENGTH 0
++/* Smaller list priority wins: TTL exceptions precede DNAT classification. */
+ #define SSDK_FLOW_ACL_EXCEPTION_PRIORITY 10
+ #define SSDK_FLOW_ACL_PERMIT_PRIORITY 20
+-#define SSDK_FLOW_ACL_GUARD_PRIORITY 30
+-enum ssdk_flow_exception {
+-	SSDK_FLOW_TRAP_ALL,
+-	SSDK_FLOW_TRAP_TTL,
+-	SSDK_FLOW_TRAP_UDP_ZERO,
+-};
+-int ssdk_flow_acl(const struct ssdk_flow_rule *rule, const u8 router[ETH_ALEN],
+-		 u16 vid, u16 arp, bool outbound, fal_acl_rule_t *result);
+-int ssdk_flow_trap(const u8 router[ETH_ALEN], enum ssdk_flow_exception exception,
+-		  fal_acl_rule_t *result);
++int ssdk_flow_dnat(__be32 public, const u8 router[ETH_ALEN], u16 vid,
++		   fal_acl_rule_t *result);
++int ssdk_flow_ttl(const u8 router[ETH_ALEN], fal_acl_rule_t *result);
+ #endif

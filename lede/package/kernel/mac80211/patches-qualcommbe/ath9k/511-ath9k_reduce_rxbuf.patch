@@ -1,0 +1,22 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] wifi: ath9k: reduce the receive buffer count
+
+Reduce the receive buffer pool to 256 entries to lower the driver memory
+footprint.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath9k/ath9k.h
++++ b/drivers/net/wireless/ath/ath9k/ath9k.h
+@@ -90,7 +90,7 @@ int ath_descdma_setup(struct ath_softc *
+ 		(_l) &= ((_sz) - 1);		\
+ 	} while (0)
+ 
+-#define ATH_RXBUF               512
++#define ATH_RXBUF               256
+ #define ATH_TXBUF               512
+ #define ATH_TXBUF_RESERVE       5
+ #define ATH_TXMAXTRY            13

@@ -1,0 +1,79 @@
+Subject: [PATCH] ath25: adapt GPIO providers to Linux 6.18
+
+Include the GPIO provider API explicitly, register with gpiochip_add_data,
+and return success from the GPIO set callbacks.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/gpio/gpio-ar2315.c
++++ b/drivers/gpio/gpio-ar2315.c
+@@ -13,7 +13,8 @@
+ #include <linux/kernel.h>
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/driver.h>
++#include <linux/module.h>
+ #include <linux/irq.h>
+ 
+ #define DRIVER_NAME	"ar2315-gpio"
+@@ -139,12 +140,13 @@
+ 	return (ar2315_gpio_reg_read(AR2315_GPIO_DI) >> gpio) & 1;
+ }
+ 
+-static void ar2315_gpio_set_val(struct gpio_chip *chip, unsigned gpio, int val)
++static int ar2315_gpio_set_val(struct gpio_chip *chip, unsigned gpio, int val)
+ {
+ 	u32 reg = ar2315_gpio_reg_read(AR2315_GPIO_DO);
+ 
+ 	reg = val ? reg | (1 << gpio) : reg & ~(1 << gpio);
+ 	ar2315_gpio_reg_write(AR2315_GPIO_DO, reg);
++	return 0;
+ }
+ 
+ static int ar2315_gpio_dir_in(struct gpio_chip *chip, unsigned gpio)
+@@ -207,7 +209,7 @@
+ 		return PTR_ERR(ar2315_mem);
+ 
+ 	ar2315_gpio_chip.parent = dev;
+-	ret = gpiochip_add(&ar2315_gpio_chip);
++	ret = gpiochip_add_data(&ar2315_gpio_chip, NULL);
+ 	if (ret) {
+ 		dev_err(dev, "failed to add gpiochip\n");
+ 		return ret;
+--- a/drivers/gpio/gpio-ar5312.c
++++ b/drivers/gpio/gpio-ar5312.c
+@@ -13,7 +13,8 @@
+ #include <linux/kernel.h>
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/driver.h>
++#include <linux/module.h>
+ 
+ #define DRIVER_NAME	"ar5312-gpio"
+ 
+@@ -51,12 +52,13 @@
+ 	return (ar5312_gpio_reg_read(AR5312_GPIO_DI) >> gpio) & 1;
+ }
+ 
+-static void ar5312_gpio_set_val(struct gpio_chip *chip, unsigned gpio, int val)
++static int ar5312_gpio_set_val(struct gpio_chip *chip, unsigned gpio, int val)
+ {
+ 	u32 reg = ar5312_gpio_reg_read(AR5312_GPIO_DO);
+ 
+ 	reg = val ? reg | (1 << gpio) : reg & ~(1 << gpio);
+ 	ar5312_gpio_reg_write(AR5312_GPIO_DO, reg);
++	return 0;
+ }
+ 
+ static int ar5312_gpio_dir_in(struct gpio_chip *chip, unsigned gpio)
+@@ -97,7 +99,7 @@
+ 		return PTR_ERR(ar5312_mem);
+ 
+ 	ar5312_gpio_chip.parent = dev;
+-	ret = gpiochip_add(&ar5312_gpio_chip);
++	ret = gpiochip_add_data(&ar5312_gpio_chip, NULL);
+ 	if (ret) {
+ 		dev_err(dev, "failed to add gpiochip\n");
+ 		return ret;

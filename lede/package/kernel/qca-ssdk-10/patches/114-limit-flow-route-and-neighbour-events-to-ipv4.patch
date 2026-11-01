@@ -1,0 +1,43 @@
+Subject: [PATCH] ssdk: avoid flushing IPv4 NAPT on IPv6 neighbour events
+
+IPv6 neighbour discovery repeatedly stopped the IPv4-only engine even when
+its paths were unchanged. Limit route and neighbour invalidations to the
+address family that the backend actually installs.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -11,6 +11,7 @@
+ #include <net/pkt_cls.h>
+ #include <net/fib_notifier.h>
+ #include <net/netevent.h>
++#include <net/arp.h>
+ #include <net/switchdev.h>
+ #include "ssdk_init.h"
+ #include "ssdk_plat.h"
+@@ -156,10 +157,22 @@
+ 	return NOTIFY_DONE;
+ }
+ static int route_event(struct notifier_block *nb, unsigned long event, void *ptr)
+-{ invalidate(); return NOTIFY_DONE; }
++{
++	struct fib_notifier_info *info = ptr;
++	/* Only IPv4 paths can be installed in this NAPT backend. */
++	if (info->family == AF_INET) invalidate();
++	return NOTIFY_DONE;
++}
+ static int neighbour_event(struct notifier_block *nb, unsigned long event, void *ptr)
+ {
+-	if (event == NETEVENT_NEIGH_UPDATE || event == NETEVENT_REDIRECT) invalidate();
++	struct neighbour *neighbour;
++	if (event == NETEVENT_NEIGH_UPDATE) neighbour = ptr;
++	else if (event == NETEVENT_REDIRECT)
++		neighbour = ((struct netevent_redirect *)ptr)->neigh;
++	else return NOTIFY_DONE;
++	/* IPv6 NUD changes must not tear down unrelated IPv4 NAPT flows. */
++	if (neighbour && neighbour->tbl == &arp_tbl &&
++	    net_eq(dev_net(neighbour->dev), &init_net)) invalidate();
+ 	return NOTIFY_DONE;
+ }
+ static int bridge_event(struct notifier_block *nb, unsigned long event, void *ptr)

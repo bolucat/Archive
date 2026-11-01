@@ -10,7 +10,7 @@ use super::context::{DnsContext, FakeDnsResolver};
 use super::fake_ip::{FakeIpOptions, FakeIpPool};
 use super::real_only;
 use super::system::SystemResolver;
-use crate::config::{DnsConfig, ExpandedDnsGroup, ExpandedDnsSpec, GlobalLimits};
+use crate::config::{ExpandedDnsGroup, ExpandedDnsSpec, GlobalLimits, ResolvedDnsConfig};
 use crate::dns::composite_resolver::CompositeResolver;
 use crate::dns::hickory_resolver::{HickoryResolver, HickoryResolverOptions};
 use crate::dns::parsed::{ParsedDnsServer, ParsedDnsServerEntry, ParsedDnsUrl};
@@ -22,7 +22,7 @@ use crate::resolver::{
 use crate::tcp::chain_builder::{build_client_chain_group_with_limits, build_direct_chain_group};
 
 pub(crate) async fn check_interception(
-    configs: &[crate::config::Config],
+    configs: &[crate::config::ResolvedConfig],
     groups: &[ExpandedDnsGroup],
 ) -> std::io::Result<()> {
     let mut forbidden: Vec<IpNetwork> = groups
@@ -36,13 +36,13 @@ pub(crate) async fn check_interception(
     );
     let forbidden: Arc<[IpNetwork]> = forbidden.into();
     for config in configs {
-        let crate::config::Config::TunServer(tun) = config else {
+        let crate::config::ResolvedConfig::TunServer(tun) = config else {
             continue;
         };
         if tun.dns_hijack != Some(true) {
             continue;
         }
-        let uses_system = match tun.dns.as_ref().and_then(DnsConfig::resolved_group) {
+        let uses_system = match tun.dns.as_ref().and_then(ResolvedDnsConfig::resolved_group) {
             None => true,
             Some(name) => groups
                 .iter()
@@ -105,6 +105,10 @@ impl DnsRegistry {
         let mut forbidden = retained_ranges.to_vec();
         for config in configs {
             let policy = match config {
+                crate::config::Config::GlobalSettings(settings) => settings
+                    .default_dns
+                    .as_ref()
+                    .and_then(|dns| dns.fake_ip.as_ref()),
                 crate::config::Config::DnsConfigGroup(group) => group.fake_ip.as_ref(),
                 crate::config::Config::Server(server) => {
                     server.dns.as_ref().and_then(|dns| dns.fake_ip.as_ref())
@@ -121,10 +125,12 @@ impl DnsRegistry {
                 }
             }
         }
-        let protect_tun_endpoints = crate::config::protects_tun_endpoints(configs);
+        let protect_tun_endpoints = configs.iter().any(|config| {
+            matches!(config, crate::config::Config::TunServer(tun) if tun.auto_route || tun.dns_hijack == Some(true))
+        });
         if !forbidden.is_empty() || protect_tun_endpoints {
             forbidden.extend(
-                crate::config::tun_endpoint_ips(configs)
+                crate::config::source_tun_endpoint_ips(configs)
                     .map(|ip| IpNetwork::from(ip.to_canonical())),
             );
         }
@@ -201,8 +207,8 @@ impl DnsRegistry {
         &self.forbidden
     }
 
-    /// Get or create the guarded system resolver with cached native lookups.
-    /// Used when a server has no `dns` field configured.
+    /// Gets or creates the guarded underlying system resolver with cached native lookups.
+    /// Used when the effective DNS binding has no group after inheritance.
     pub fn get_or_create_default(&mut self) -> Arc<dyn Resolver> {
         let forbidden = self.forbidden.clone();
         self.default_resolver
@@ -219,9 +225,8 @@ impl DnsRegistry {
             .clone()
     }
 
-    /// Get resolver for a server config's dns field.
-    /// After validation, dns.servers should be a single group name or None.
-    pub fn get_for_server(&mut self, dns: Option<&DnsConfig>) -> Arc<dyn Resolver> {
+    /// Gets the resolver for a compiled listener binding, or the underlying system resolver.
+    pub fn get_for_server(&mut self, dns: Option<&ResolvedDnsConfig>) -> Arc<dyn Resolver> {
         match dns.and_then(|c| c.resolved_group()) {
             Some(group_name) => self
                 .groups
@@ -319,7 +324,7 @@ fn group_uses_system(
         let mut proxy_hostname = false;
         for chain in &mut spec.client_chains {
             for hop in chain.hops.iter_mut() {
-                crate::config::client_visit::visit_hop(hop, &mut |client| {
+                crate::config::resolved_visit::visit_hop(hop, &mut |client| {
                     proxy_hostname |= client.address.address().hostname().is_some();
                     Ok(())
                 })?;
@@ -1088,7 +1093,7 @@ async fn build_entry_and_plan(
             bootstrap_resolver: bootstrap_resolver.clone(),
             chain_key: serde_yaml::to_string(&(
                 &spec.client_chains,
-                crate::control::catalog::chain_selection_key(&spec.client_chains)?,
+                crate::control::catalog::chain_selection_key(&spec.client_chains),
             ))
             .map_err(|e| {
                 std::io::Error::other(format!("failed to serialize client_chains: {e}"))

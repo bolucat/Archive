@@ -1,20 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-. /lib/functions/uci-defaults.sh
+. /lib/functions.sh
 
-board_config_update
-
-case "$(board_name)" in
-comtrend,vr-3032u)
-	ucidef_set_bridge_device switch
-	ucidef_set_interface_lan "lan1 lan2 lan3 lan4"
-	;;
-netgear,dgnd3700-v2)
-	ucidef_set_bridge_device switch
-	ucidef_set_interface_lan "extsw"
-	;;
+case "$(uname -r)" in
+	6.18|6.18.*)
+		case "$(board_name)" in
+			comtrend,vr-3032u) . /lib/bmips/6.18/bcm63268/etc/board.d/02_network ;;
+			netgear,dgnd3700-v2) . /lib/bmips/6.18/bcm6362/etc/board.d/02_network ;;
+			*) . /lib/bmips/legacy/nand/etc/board.d/02_network ;;
+		esac
+		;;
+	*) . /lib/bmips/legacy/nand/etc/board.d/02_network ;;
 esac
-
-board_config_flush
-
-exit 0

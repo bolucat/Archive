@@ -128,6 +128,16 @@ struct Ctx {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    #[cfg(windows)]
+    if std::env::args().nth(1).as_deref() == Some("--nyanpasu-process-shutdown") {
+        let marker = std::env::current_exe()
+            .expect("shutdown helper executable path")
+            .with_extension("started");
+        std::fs::write(marker, "started").expect("write shutdown helper marker");
+        if let Some(result) = nyanpasu_utils::process::windows_shutdown_helper_entry() {
+            exit(if result.is_ok() { 0 } else { 1 });
+        }
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "-v") {
         if let Ok(binary) = std::env::current_exe()

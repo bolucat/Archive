@@ -1,0 +1,1661 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] net: port QSDK EDMA and SSDK dual-GMAC integration to Linux 6.18
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/Makefile
++++ b/Makefile
+@@ -9,10 +9,11 @@
+ essedma-objs +=    edma_axi.o \
+                    edma.o \
+                    edma_stats.o \
+-                   edma_ethtool.o
++                   edma_ethtool.o \
++                   edma_switch.o
+ 
+ ESSEDMA_INCLUDE = -I$(obj)
+ 
+-ccflags-y += $(ESSEDMA_INCLUDE)
++ccflags-y += $(ESSEDMA_INCLUDE) -I$(SSDK_INCLUDE)
+ 
+ 
+--- a/edma.c
++++ b/edma.c
+@@ -545,13 +545,13 @@
+ 		skb_fill_page_desc(skb, 0, skb_frag_page(frag),
+ 				  16, length);
+ 	} else {
+-		frag->size -= 16;
+-		skb->data_len = frag->size;
++		skb_frag_size_sub(frag, 16);
++		skb->data_len = skb_frag_size(frag);
+ 		skb->truesize += edma_cinfo->rx_page_buffer_len;
+-		size_remaining = length - frag->size;
++		size_remaining = length - skb_frag_size(frag);
+ 
+ 		skb_fill_page_desc(skb, 0, skb_frag_page(frag),
+-				16, frag->size);
++				16, skb_frag_size(frag));
+ 
+ 		/* clean-up all related sw_descs */
+ 		for (i = 1; i < num_rfds; i++) {
+@@ -562,18 +562,18 @@
+ 				      sw_desc->length, DMA_FROM_DEVICE);
+ 
+ 			if (size_remaining < edma_cinfo->rx_page_buffer_len)
+-				frag->size = size_remaining;
++				skb_frag_size_set(frag, size_remaining);
+ 
+ 			skb_fill_page_desc(skb, i, skb_frag_page(frag),
+-					  0, frag->size);
++					  0, skb_frag_size(frag));
+ 
+ 			/* We used frag pages from skb_temp in skb */
+ 			skb_shinfo(skb_temp)->nr_frags = 0;
+ 			dev_kfree_skb_any(skb_temp);
+ 
+-			skb->data_len += frag->size;
++			skb->data_len += skb_frag_size(frag);
+ 			skb->truesize += edma_cinfo->rx_page_buffer_len;
+-			size_remaining -= frag->size;
++			size_remaining -= skb_frag_size(frag);
+ 
+ 			/* Increment SW index */
+ 			sw_next_to_clean = (sw_next_to_clean + 1) & (erdr->count - 1);
+@@ -616,6 +616,7 @@
+ 			u8 *vaddr;
+ 			int port_id, i, drop_count = 0;
+ 			u32 priority;
++			u16 strip_vid = 0;
+ 
+ 			if (!work_to_do)
+ 				break;
+@@ -672,9 +673,10 @@
+ 				continue;
+ 			}
+ 
+-			netdev = edma_cinfo->portid_netdev_lookup_tbl[port_id];
++			netdev = edma_switch_rx(edma_cinfo, port_id, rd->rrd4,
++					!!(rd->rrd7 & EDMA_RRD_CVLAN), &strip_vid);
+ 			if (!netdev) {
+-				dev_err(&pdev->dev, "Invalid netdev");
++				/* A disabled group intentionally drops received packets. */
+ 				for (i = 0; i < num_rfds; i++) {
+ 					edma_clean_rfd(pdev, erdr, sw_next_to_clean, i);
+ 					sw_next_to_clean = (sw_next_to_clean + 1) & (erdr->count - 1);
+@@ -782,7 +784,7 @@
+ 			edma_receive_checksum(rd, skb);
+ 
+ 			/* Process VLAN HW acceleration indication provided by HW */
+-			if (adapter->default_vlan_tag != rd->rrd4) {
++			if (strip_vid != (rd->rrd4 & VLAN_VID_MASK)) {
+ 				vlan = rd->rrd4;
+ 				if (likely(rd->rrd7 & EDMA_RRD_CVLAN))
+ 					__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan);
+@@ -807,8 +809,10 @@
+ 			 * We increment per-precedence counters for the rx packets
+ 			 */
+ 			if (edma_per_prec_stats_enable) {
+-				atomic_inc(&edma_cinfo->edma_ethstats.rx_prec[priority]);
++				spin_lock_bh(&edma_cinfo->stats_lock);
++				atomic64_inc(&edma_cinfo->edma_ethstats.rx_prec[priority]);
+ 				edma_cinfo->edma_ethstats.rx_ac[edma_dscp2ac_tbl[priority]]++;
++				spin_unlock_bh(&edma_cinfo->stats_lock);
+ 
+ 				if (edma_iad_stats_enable) {
+ 					if (edma_dscp2ac_tbl[priority] == EDMA_AC_VI)
+@@ -953,9 +957,7 @@
+ 	adapter->rfs.hashtoclean = 0;
+ 
+ 	/* Add timer to get periodic RFS updates from OS */
+-	init_timer(&adapter->rfs.expire_rfs);
+-	adapter->rfs.expire_rfs.function = edma_flow_may_expire;
+-	adapter->rfs.expire_rfs.data = (unsigned long)adapter;
++	timer_setup(&adapter->rfs.expire_rfs, edma_flow_may_expire, 0);
+ 	mod_timer(&adapter->rfs.expire_rfs, jiffies + HZ/4);
+ }
+ 
+@@ -967,7 +969,7 @@
+ 	int i;
+ 
+ 	/* Remove sync timer */
+-	del_timer_sync(&adapter->rfs.expire_rfs);
++	timer_delete_sync(&adapter->rfs.expire_rfs);
+ 	spin_lock_bh(&adapter->rfs.rfs_ftab_lock);
+ 
+ 	/* Free EDMA RFS table entries */
+@@ -1260,7 +1262,7 @@
+ 				struct edma_adapter *adapter,
+ 				struct sk_buff *skb, int queue_id,
+ 				unsigned int flags_transmit,
+-				u16 from_cpu, u16 dp_bitmap,
++				u16 from_cpu, u16 dp_bitmap, u16 default_vid,
+ 				bool packet_is_rstp, int nr_frags)
+ {
+ 	struct edma_sw_desc *sw_desc = NULL;
+@@ -1326,14 +1328,14 @@
+ 		}
+ 	} else if (flags_transmit & EDMA_VLAN_TX_TAG_INSERT_DEFAULT_FLAG) {
+ 		word3 |= (1 << EDMA_TX_INS_CVLAN);
+-		word3 |= (adapter->default_vlan_tag) << EDMA_TX_CVLAN_TAG_SHIFT;
++		word3 |= default_vid << EDMA_TX_CVLAN_TAG_SHIFT;
+ 	}
+ 
+ 	if (packet_is_rstp) {
+ 		word3 |= dp_bitmap << EDMA_TPD_PORT_BITMAP_SHIFT;
+ 		word3 |= from_cpu << EDMA_TPD_FROM_CPU_SHIFT;
+ 	} else {
+-		word3 |= adapter->dp_bitmap << EDMA_TPD_PORT_BITMAP_SHIFT;
++		word3 |= dp_bitmap << EDMA_TPD_PORT_BITMAP_SHIFT;
+ 	}
+ 
+ 	buf_len = skb_headlen(skb);
+@@ -1492,8 +1494,10 @@
+ 			/* Increment per-precedence counters for tx packets
+ 			 * and set the precedence in the TPD.
+ 			 */
+-			atomic_inc(&edma_cinfo->edma_ethstats.tx_prec[precedence]);
++			spin_lock_bh(&edma_cinfo->stats_lock);
++				atomic64_inc(&edma_cinfo->edma_ethstats.tx_prec[precedence]);
+ 			edma_cinfo->edma_ethstats.tx_ac[edma_dscp2ac_tbl[precedence]]++;
++				spin_unlock_bh(&edma_cinfo->stats_lock);
+ 			if (tpd)
+ 				tpd->word3 |= precedence << EDMA_TPD_PRIO_SHIFT;
+ 		}
+@@ -1548,6 +1552,9 @@
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+ 	struct phy_device *phydev = adapter->phydev;
+ 
++	if (edma_switch_managed())
++		return;
++
+ 	if (!test_bit(__EDMA_UP, &adapter->state_flags))
+ 		return;
+ 
+@@ -1570,14 +1577,14 @@
+ /* edma_get_stats64()
+  *	Statistics api used to retreive the tx/rx statistics
+  */
+-struct rtnl_link_stats64 *edma_get_stats64(struct net_device *netdev,
++void edma_get_stats64(struct net_device *netdev,
+ 				     struct rtnl_link_stats64 *stats)
+ {
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+ 
+ 	memcpy(stats, &adapter->stats, sizeof(*stats));
+ 
+-	return stats;
++	return;
+ }
+ 
+ /* edma_xmit()
+@@ -1589,7 +1596,7 @@
+ 	struct edma_adapter *adapter = netdev_priv(net_dev);
+ 	struct edma_common_info *edma_cinfo = adapter->edma_cinfo;
+ 	struct edma_tx_desc_ring *etdr;
+-	u16 from_cpu = 0, dp_bitmap = 0, txq_id;
++	u16 from_cpu = 0, dp_bitmap = 0, txq_id, default_vid, vlan_ports;
+ 	int ret, nr_frags_first = 0, num_tpds_needed = 1, queue_id = 0;
+ 	unsigned int flags_transmit = 0;
+ 	bool packet_is_rstp = false;
+@@ -1636,6 +1643,21 @@
+ 		}
+ 	}
+ 
++	if (!edma_switch_tx(net_dev, skb, &default_vid, &vlan_ports)) {
++		dev_kfree_skb_any(skb);
++		adapter->stats.tx_dropped++;
++		return NETDEV_TX_OK;
++	}
++	if (packet_is_rstp)
++		dp_bitmap &= vlan_ports;
++	else
++		dp_bitmap = vlan_ports;
++	if (!dp_bitmap) {
++		dev_kfree_skb_any(skb);
++		adapter->stats.tx_dropped++;
++		return NETDEV_TX_OK;
++	}
++
+ 	/* this will be one of the 4 TX queues exposed to linux kernel */
+ 	txq_id = skb_get_queue_mapping(skb);
+ 	queue_id = edma_tx_queue_get(adapter, skb, txq_id);
+@@ -1671,7 +1693,7 @@
+ 	if (skb_vlan_tag_present(skb))
+ #endif
+ 		flags_transmit |= EDMA_VLAN_TX_TAG_INSERT_FLAG;
+-	else if (adapter->default_vlan_tag)
++	else if (default_vid)
+ 		flags_transmit |= EDMA_VLAN_TX_TAG_INSERT_DEFAULT_FLAG;
+ 
+ 	/* Check and mark checksum offload */
+@@ -1680,7 +1702,7 @@
+ 
+ 	/* Map and fill descriptor for Tx */
+ 	ret = edma_tx_map_and_fill(edma_cinfo, adapter, skb, queue_id,
+-		flags_transmit, from_cpu, dp_bitmap,
++		flags_transmit, from_cpu, dp_bitmap, default_vid,
+ 		packet_is_rstp, nr_frags_first);
+ 	if (ret) {
+ 		dev_kfree_skb_any(skb);
+@@ -1704,9 +1726,9 @@
+  * edma_flow_may_expire()
+  *	Timer function called periodically to delete the node
+  */
+-void edma_flow_may_expire(unsigned long data)
++void edma_flow_may_expire(struct timer_list *t)
+ {
+-	struct edma_adapter *adapter = (struct edma_adapter *)data;
++	struct edma_adapter *adapter = timer_container_of(adapter, t, rfs.expire_rfs);
+ 	int j;
+ 
+ 	spin_lock_bh(&adapter->rfs.rfs_ftab_lock);
+@@ -1861,7 +1883,7 @@
+  *	Called by Linux TX stack to populate Linux TX queue
+  */
+ u16 edma_select_xps_queue(struct net_device *dev, struct sk_buff *skb,
+-				void *accel_priv, select_queue_fallback_t fallback)
++				struct net_device *sb_dev)
+ {
+ #if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 18, 21))
+ 	return smp_processor_id();
+@@ -2269,7 +2291,7 @@
+ 	if (netif_running(netdev))
+ 		return -EBUSY;
+ 
+-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
++	eth_hw_addr_set(netdev, addr->sa_data);
+ 	return 0;
+ }
+ 
+@@ -2306,6 +2328,10 @@
+ 	int i;
+     
+ 	u32 portid_bmp = adapter->dp_bitmap >> 1; /* Ignore CPU Port bit 0 */
++
++	/* VLANs can share PHYs; a logical GMAC down must not power them off. */
++	if (edma_switch_managed())
++		return;
+ 	
+ 	if(!adapter || miibus_gb == NULL)
+ 		return;
+@@ -2354,7 +2380,15 @@
+ 	 * do a phy start, else always set link as UP
+ 	 */
+ 	mutex_lock(&adapter->poll_mutex);
+-	if (adapter->poll_required) {
++	if (edma_switch_managed()) {
++		if (edma_switch_carrier()) {
++			adapter->link_state = __EDMA_LINKUP;
++			netif_carrier_on(netdev);
++		} else {
++			adapter->link_state = __EDMA_LINKDOWN;
++			netif_carrier_off(netdev);
++		}
++	} else if (adapter->poll_required) {
+ 		if (!IS_ERR(adapter->phydev)) {
+ 			phy_start(adapter->phydev);
+ 			phy_start_aneg(adapter->phydev);
+--- a/edma.h
++++ b/edma.h
+@@ -36,6 +36,7 @@
+ #include <linux/sysctl.h>
+ #include <linux/phy.h>
+ #include <linux/of_net.h>
++#include <linux/of_mdio.h>
+ #include <net/checksum.h>
+ #include <net/ip6_checksum.h>
+ #include <asm-generic/bug.h>
+@@ -493,7 +494,7 @@
+ irqreturn_t edma_interrupt(int irq, void *dev);
+ void edma_write_reg(u16 reg_addr, u32 reg_value);
+ void edma_read_reg(u16 reg_addr, volatile u32 *reg_value);
+-struct rtnl_link_stats64 *edma_get_stats64(struct net_device *dev,
++void edma_get_stats64(struct net_device *dev,
+ 				     struct rtnl_link_stats64 *stats);
+ int edma_set_mac_addr(struct net_device *netdev, void *p);
+ int edma_rx_flow_steer(struct net_device *dev, const struct sk_buff *skb,
+@@ -502,41 +503,49 @@
+ int edma_register_rfs_filter(struct net_device *netdev,
+ 		set_rfs_filter_callback_t set_filter);
+ #endif
+-void edma_flow_may_expire(unsigned long data);
++void edma_flow_may_expire(struct timer_list *t);
+ void edma_set_ethtool_ops(struct net_device *netdev);
+ int edma_change_mtu(struct net_device *netdev, int new_mtu);
+ void edma_set_stp_rstp(bool tag);
+ void edma_assign_ath_hdr_type(int tag);
+ int edma_get_default_vlan_tag(struct net_device *netdev);
++bool edma_switch_managed(void);
++bool edma_switch_carrier(void);
++int edma_switch_register(void);
++void edma_switch_unregister(void);
++struct net_device *edma_switch_rx(struct edma_common_info *cinfo, u8 port,
++                                  u16 tag, bool tagged, u16 *strip_vid);
++bool edma_switch_tx(struct net_device *dev, struct sk_buff *skb,
++                    u16 *default_vid, u16 *ports);
+ void edma_adjust_link(struct net_device *netdev);
+ int edma_fill_netdev(struct edma_common_info *edma_cinfo, int qid, int num, int txq_id);
+ u16 edma_select_xps_queue(struct net_device *dev, struct sk_buff *skb,
+-	void *accel_priv, select_queue_fallback_t fallback);
++	struct net_device *sb_dev);
+ void edma_read_append_stats(struct edma_common_info *edma_cinfo);
+ void edma_change_tx_coalesce(int usecs);
+ void edma_change_rx_coalesce(int usecs);
+ void edma_get_tx_rx_coalesce(u32 *reg_val);
+ void edma_clear_irq_status(void);
+ 
+-int edma_dscp2ac_mapping_update(struct ctl_table *table, int write,
++int edma_dscp2ac_mapping_update(const struct ctl_table *table, int write,
+ 				void __user *buffer, size_t *lenp,
+ 				loff_t *ppos);
+-int edma_per_prec_stats_enable_handler(struct ctl_table *table, int write,
++int edma_per_prec_stats_enable_handler(const struct ctl_table *table, int write,
+ 				       void __user *buffer, size_t *lenp,
+ 				       loff_t *ppos);
+-int edma_prec_stats_reset_handler(struct ctl_table *table, int write,
++int edma_prec_stats_reset_handler(const struct ctl_table *table, int write,
+ 				  void __user *buffer, size_t *lenp,
+ 				  loff_t *ppos);
+-int edma_iad_stats_enable_handler(struct ctl_table *table, int write,
++int edma_iad_stats_enable_handler(const struct ctl_table *table, int write,
+ 				  void __user *buffer, size_t *lenp,
+ 				  loff_t *ppos);
+-int edma_iad_stats_reset_handler(struct ctl_table *table, int write,
++int edma_iad_stats_reset_handler(const struct ctl_table *table, int write,
+ 				 void __user *buffer, size_t *lenp,
+ 				 loff_t *ppos);
+-int edma_print_flow_table_handler(struct ctl_table *table, int write,
++int edma_print_flow_table_handler(const struct ctl_table *table, int write,
+ 				  void __user *buffer, size_t *lenp,
+ 				  loff_t *ppos);
+-int edma_max_valid_ifd_usec_handler(struct ctl_table *table, int write,
++int edma_max_valid_ifd_usec_handler(const struct ctl_table *table, int write,
+ 				    void __user *buffer, size_t *lenp,
+ 				    loff_t *ppos);
+ void edma_iad_process_flow(struct edma_common_info *edma_cinfo,
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -13,6 +13,7 @@
+  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ 
++#include <ssdk_flow_control.h>
+ #include <linux/cpu_rmap.h>
+ #include <linux/of_net.h>
+ #include <linux/timer.h>
+@@ -148,6 +149,7 @@
+ 
+ static u32 edma_hw_addr;
+ 
++static struct edma_common_info *edma_stats_cinfo;
+ struct timer_list edma_stats_timer;
+ struct mii_bus *miibus_gb;
+ 
+@@ -292,16 +294,16 @@
+ 	spin_unlock(&edma_cinfo->stats_lock);
+ }
+ 
+-static void edma_statistics_timer(unsigned long data)
++static void edma_statistics_timer(struct timer_list *t)
+ {
+-	struct edma_common_info *edma_cinfo = (struct edma_common_info *)data;
++	struct edma_common_info *edma_cinfo = edma_stats_cinfo;
+ 
+ 	edma_read_append_stats(edma_cinfo);
+ 
+ 	mod_timer(&edma_stats_timer, jiffies + 1*HZ);
+ }
+ 
+-static int edma_enable_stp_rstp(struct ctl_table *table, int write,
++static int edma_enable_stp_rstp(const struct ctl_table *table, int write,
+ 				void __user *buffer, size_t *lenp,
+ 				loff_t *ppos)
+ {
+@@ -314,7 +316,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_ath_hdr_eth_type(struct ctl_table *table, int write,
++static int edma_ath_hdr_eth_type(const struct ctl_table *table, int write,
+ 				 void __user *buffer, size_t *lenp,
+ 				 loff_t *ppos)
+ {
+@@ -355,7 +357,7 @@
+ 	return 0;
+ }
+ 
+-static int edma_change_default_lan_vlan(struct ctl_table *table, int write,
++static int edma_change_default_lan_vlan(const struct ctl_table *table, int write,
+ 					void __user *buffer, size_t *lenp,
+ 					loff_t *ppos)
+ {
+@@ -369,6 +371,10 @@
+ 
+ 	adapter = netdev_priv(edma_netdev[1]);
+ 
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	if (!write && edma_switch_managed())
++		*(u32 *)table->data = READ_ONCE(adapter->default_vlan_tag);
+ 	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+ 
+ 	if (write)
+@@ -377,7 +383,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_default_wan_vlan(struct ctl_table *table, int write,
++static int edma_change_default_wan_vlan(const struct ctl_table *table, int write,
+ 					void __user *buffer, size_t *lenp,
+ 					loff_t *ppos)
+ {
+@@ -391,6 +397,10 @@
+ 
+ 	adapter = netdev_priv(edma_netdev[0]);
+ 
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	if (!write && edma_switch_managed())
++		*(u32 *)table->data = READ_ONCE(adapter->default_vlan_tag);
+ 	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+ 
+ 	if (write)
+@@ -399,7 +409,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group1_vtag(struct ctl_table *table, int write,
++static int edma_change_group1_vtag(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -415,6 +425,10 @@
+ 	adapter = netdev_priv(edma_netdev[0]);
+ 	edma_cinfo = adapter->edma_cinfo;
+ 
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	if (!write && edma_switch_managed())
++		*(u32 *)table->data = READ_ONCE(adapter->default_vlan_tag);
+ 	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+ 
+ 	if (write)
+@@ -423,7 +437,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group2_vtag(struct ctl_table *table, int write,
++static int edma_change_group2_vtag(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -439,6 +453,10 @@
+ 	adapter = netdev_priv(edma_netdev[1]);
+ 	edma_cinfo = adapter->edma_cinfo;
+ 
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	if (!write && edma_switch_managed())
++		*(u32 *)table->data = READ_ONCE(adapter->default_vlan_tag);
+ 	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+ 
+ 	if (write)
+@@ -447,7 +465,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group3_vtag(struct ctl_table *table, int write,
++static int edma_change_group3_vtag(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -471,7 +489,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group4_vtag(struct ctl_table *table, int write,
++static int edma_change_group4_vtag(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -495,7 +513,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group5_vtag(struct ctl_table *table, int write,
++static int edma_change_group5_vtag(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -519,7 +537,46 @@
+ 	return ret;
+ }
+ 
+-static int edma_change_group1_bmp(struct ctl_table *table, int write,
++/* Serialize group updates: parsing must not publish invalid masks. */
++static DEFINE_MUTEX(edma_group_mutex);
++
++static int edma_parse_group_bmp(const struct ctl_table *table, int write,
++		void __user *buffer, size_t *lenp, loff_t *ppos, int group)
++{
++	struct ctl_table temporary = *table;
++	struct edma_adapter *other;
++	int candidate = *(u32 *)table->data;
++	int ret;
++
++	temporary.data = &candidate;
++	ret = proc_dointvec(&temporary, write, buffer, lenp, ppos);
++	if (ret || !write)
++		return ret;
++	if (candidate < 0 || (candidate & ~0x3e))
++		return -EINVAL;
++	if (edma_netdev[1 - group]) {
++		other = netdev_priv(edma_netdev[1 - group]);
++		if (candidate & other->dp_bitmap)
++			return -EBUSY;
++	}
++	*(u32 *)table->data = candidate;
++	return 0;
++}
++
++static void edma_publish_group(struct edma_common_info *cinfo,
++		struct net_device *dev, u32 mask)
++{
++	int port;
++
++	for (port = 1; port <= EDMA_MAX_PORTID_SUPPORTED; port++) {
++		if (mask & BIT(port))
++			WRITE_ONCE(cinfo->portid_netdev_lookup_tbl[port], dev);
++		else if (READ_ONCE(cinfo->portid_netdev_lookup_tbl[port]) == dev)
++			WRITE_ONCE(cinfo->portid_netdev_lookup_tbl[port], NULL);
++	}
++}
++
++static int edma_change_group1_bmp_locked(const struct ctl_table *table, int write,
+ 		void __user *buffer, size_t *lenp, loff_t *ppos)
+ {
+ 	struct edma_adapter *adapter;
+@@ -535,9 +592,13 @@
+ 		return -1;
+ 	}
+ 
++	if (!write && edma_switch_managed())
++		edma_default_group1_bmp = ((struct edma_adapter *)netdev_priv(ndev))->dp_bitmap;
+ 	prev_bmp = edma_default_group1_bmp;
+ 
+-	ret = proc_dointvec(table, write, buffer, lenp, ppos);
++	ret = edma_parse_group_bmp(table, write, buffer, lenp, ppos, 0);
++	if (ret)
++		return ret;
+ 	if ((!write) || (prev_bmp == edma_default_group1_bmp))
+ 		return ret;
+ 
+@@ -554,21 +615,21 @@
+ 	 * we disable polling for the adapter, stop the queues and return
+ 	 */
+ 	if (!port_bit) {
++		edma_publish_group(edma_cinfo, ndev, 0);
+ 		adapter->dp_bitmap = edma_default_group1_bmp;
+ 		if (adapter->poll_required) {
+ 			mutex_lock(&adapter->poll_mutex);
+ 			adapter->poll_required = 0;
+ 			mutex_unlock(&adapter->poll_mutex);
+-			adapter->link_state = __EDMA_LINKDOWN;
+-			netif_carrier_off(ndev);
+-			netif_tx_stop_all_queues(ndev);
+ 		}
++		adapter->link_state = __EDMA_LINKDOWN;
++		netif_carrier_off(ndev);
++		netif_tx_stop_all_queues(ndev);
+ 		return 0;
+ 	}
+ 
+ 	/* Our array indexes are for 5 ports (0 - 4) */
+ 	port_bit--;
+-	edma_link_detect_bmp = 0;
+ 
+ 	/* Do we have more ports in this group */
+ 	num_ports_enabled = bitmap_weight((long unsigned int *)&portid_bmp, 32);
+@@ -591,7 +652,7 @@
+ 				 * the state machine for the phy
+ 				 */
+ 				if (phy_dev_state[port_id]) {
+-					phy_stop_machine(adapter->phydev);
++					phy_stop(adapter->phydev);
+ 					phy_dev_state[port_id] = 0;
+ 				}
+ 
+@@ -653,7 +714,8 @@
+ 		if (IS_ERR(adapter->phydev)) {
+ 			adapter->phydev = phydev;
+ 			pr_err("PHY attach FAIL for port %d", port_bit);
+-			return -1;
++			edma_default_group1_bmp = prev_bmp;
++			return -ENODEV;
+ 		}
+ 
+ 		if (adapter->phydev->attached_dev != ndev)
+@@ -662,12 +724,10 @@
+ 		edma_phydev[port_bit] = adapter->phydev;
+ 		phy_dev_state[port_bit] = 1;
+ 		set_bit(port_bit, (long unsigned int *)&edma_link_detect_bmp);
+-		adapter->phydev->advertising |=
+-			(ADVERTISED_Pause |
+-			ADVERTISED_Asym_Pause);
+-		adapter->phydev->supported |=
+-			(SUPPORTED_Pause |
+-			SUPPORTED_Asym_Pause);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter->phydev->advertising);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter->phydev->advertising);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter->phydev->supported);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter->phydev->supported);
+ 		phy_start(adapter->phydev);
+ 		phy_start_aneg(adapter->phydev);
+ 	}
+@@ -675,10 +735,10 @@
+ 	/* We check if this phydev is in use by other Groups
+ 	 * and stop phy machine only if it is not stopped
+ 	 */
+-	if (phydev) {
++	if (phydev && phydev != adapter->phydev) {
+ 		port_id = edma_get_port_from_phydev(phydev);
+ 		if (phy_dev_state[port_id]) {
+-			phy_stop_machine(phydev);
++			phy_stop(phydev);
+ 			phy_dev_state[port_id] = 0;
+ 		}
+ 	}
+@@ -689,18 +749,20 @@
+ 	adapter->link_state = __EDMA_LINKDOWN;
+ 
+ set_bitmap:
+-	while (portid_bmp) {
+-		int port_bit_set = ffs(portid_bmp);
+-		edma_cinfo->portid_netdev_lookup_tbl[port_bit_set] = ndev;
+-		portid_bmp &= ~(1 << (port_bit_set - 1));
+-	}
++	edma_publish_group(edma_cinfo, ndev, edma_default_group1_bmp);
+ 
+ 	adapter->dp_bitmap = edma_default_group1_bmp;
++	if (!adapter->poll_required) {
++		adapter->link_state = __EDMA_LINKUP;
++		netif_carrier_on(ndev);
++		if (netif_running(ndev))
++			netif_tx_start_all_queues(ndev);
++	}
+ 
+ 	return 0;
+ }
+ 
+-static int edma_change_group2_bmp(struct ctl_table *table, int write,
++static int edma_change_group2_bmp_locked(const struct ctl_table *table, int write,
+ 		void __user *buffer, size_t *lenp, loff_t *ppos)
+ {
+ 	struct edma_adapter *adapter;
+@@ -716,9 +778,13 @@
+ 		return -1;
+ 	}
+ 
++	if (!write && edma_switch_managed())
++		edma_default_group2_bmp = ((struct edma_adapter *)netdev_priv(ndev))->dp_bitmap;
+ 	prev_bmp = edma_default_group2_bmp;
+ 
+-	ret = proc_dointvec(table, write, buffer, lenp, ppos);
++	ret = edma_parse_group_bmp(table, write, buffer, lenp, ppos, 1);
++	if (ret)
++		return ret;
+ 	if ((!write) || (prev_bmp == edma_default_group2_bmp))
+ 		return ret;
+ 
+@@ -735,15 +801,16 @@
+ 	 * we disable polling for the adapter, stop the queues and return
+ 	 */
+ 	if (!port_bit) {
++		edma_publish_group(edma_cinfo, ndev, 0);
+ 		adapter->dp_bitmap = edma_default_group2_bmp;
+ 		if (adapter->poll_required) {
+ 			mutex_lock(&adapter->poll_mutex);
+ 			adapter->poll_required = 0;
+ 			mutex_unlock(&adapter->poll_mutex);
+-			adapter->link_state = __EDMA_LINKDOWN;
+-			netif_carrier_off(ndev);
+-			netif_tx_stop_all_queues(ndev);
+ 		}
++		adapter->link_state = __EDMA_LINKDOWN;
++		netif_carrier_off(ndev);
++		netif_tx_stop_all_queues(ndev);
+ 		return 0;
+ 	}
+ 
+@@ -772,7 +839,7 @@
+ 				 */
+ 				if (!edma_is_port_used(port_id)) {
+ 					if (phy_dev_state[port_id]) {
+-						phy_stop_machine(
++						phy_stop(
+ 							adapter->phydev);
+ 						phy_dev_state[port_id] = 0;
+ 					}
+@@ -837,7 +904,8 @@
+ 		if (IS_ERR(adapter->phydev)) {
+ 			adapter->phydev = phydev;
+ 			pr_err("PHY attach FAIL for port %d", port_bit);
+-			return -1;
++			edma_default_group2_bmp = prev_bmp;
++			return -ENODEV;
+ 		}
+ 
+ 		if (adapter->phydev->attached_dev != ndev)
+@@ -846,12 +914,10 @@
+ 		edma_phydev[port_bit] = adapter->phydev;
+ 		phy_dev_state[port_bit] = 1;
+ 		set_bit(port_bit, (long unsigned int *)&edma_link_detect_bmp);
+-		adapter->phydev->advertising |=
+-			(ADVERTISED_Pause |
+-			ADVERTISED_Asym_Pause);
+-		adapter->phydev->supported |=
+-			(SUPPORTED_Pause |
+-			SUPPORTED_Asym_Pause);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter->phydev->advertising);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter->phydev->advertising);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter->phydev->supported);
++		linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter->phydev->supported);
+ 		phy_start(adapter->phydev);
+ 		phy_start_aneg(adapter->phydev);
+ 	}
+@@ -859,11 +925,11 @@
+ 	/* We check if this phydev is in use by other Groups
+ 	 * and stop phy machine only if that is NOT the case
+ 	 */
+-	if (phydev) {
++	if (phydev && phydev != adapter->phydev) {
+ 		port_id = edma_get_port_from_phydev(phydev);
+ 		if (!edma_is_port_used(port_id)) {
+ 			if (phy_dev_state[port_id]) {
+-				phy_stop_machine(phydev);
++				phy_stop(phydev);
+ 				phy_dev_state[port_id] = 0;
+ 			}
+ 		}
+@@ -875,18 +941,46 @@
+ 	adapter->link_state = __EDMA_LINKDOWN;
+ 
+ set_bitmap:
+-	while (portid_bmp) {
+-		int port_bit_set = ffs(portid_bmp);
+-		edma_cinfo->portid_netdev_lookup_tbl[port_bit_set] = ndev;
+-		portid_bmp &= ~(1 << (port_bit_set - 1));
+-	}
++	edma_publish_group(edma_cinfo, ndev, edma_default_group2_bmp);
+ 
+ 	adapter->dp_bitmap = edma_default_group2_bmp;
++	if (!adapter->poll_required) {
++		adapter->link_state = __EDMA_LINKUP;
++		netif_carrier_on(ndev);
++		if (netif_running(ndev))
++			netif_tx_start_all_queues(ndev);
++	}
+ 
+ 	return 0;
+ }
+ 
+-static int edma_disable_rss_func(struct ctl_table *table, int write,
++static int edma_change_group1_bmp(const struct ctl_table *table, int write,
++		void __user *buffer, size_t *lenp, loff_t *ppos)
++{
++	int ret;
++
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	mutex_lock(&edma_group_mutex);
++	ret = edma_change_group1_bmp_locked(table, write, buffer, lenp, ppos);
++	mutex_unlock(&edma_group_mutex);
++	return ret;
++}
++
++static int edma_change_group2_bmp(const struct ctl_table *table, int write,
++		void __user *buffer, size_t *lenp, loff_t *ppos)
++{
++	int ret;
++
++	if (write && edma_switch_managed())
++		return -EBUSY;
++	mutex_lock(&edma_group_mutex);
++	ret = edma_change_group2_bmp_locked(table, write, buffer, lenp, ppos);
++	mutex_unlock(&edma_group_mutex);
++	return ret;
++}
++
++static int edma_disable_rss_func(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -936,7 +1030,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_rss_acl_queue_map_handler(struct ctl_table *table, int write,
++static int edma_rss_acl_queue_map_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -955,7 +1049,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_weight_assigned_to_queues(struct ctl_table *table, int write,
++static int edma_weight_assigned_to_queues(const struct ctl_table *table, int write,
+ 					  void __user *buffer, size_t *lenp,
+ 					  loff_t *ppos)
+ {
+@@ -987,7 +1081,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_queue_to_virtual_queue_map(struct ctl_table *table, int write,
++static int edma_queue_to_virtual_queue_map(const struct ctl_table *table, int write,
+ 					   void __user *buffer, size_t *lenp,
+ 					   loff_t *ppos)
+ {
+@@ -1020,7 +1114,7 @@
+ 	return ret;
+ }
+ 
+-static int edma_disable_queue_stop_func(struct ctl_table *table, int write,
++static int edma_disable_queue_stop_func(const struct ctl_table *table, int write,
+ 					void __user *buffer, size_t *lenp,
+ 					loff_t *ppos)
+ {
+@@ -1231,20 +1325,25 @@
+ 		.mode           = 0644,
+ 		.proc_handler   = edma_rss_acl_queue_map_handler,
+ 	},
+-	{}
+ };
+ 
+ /* edma_axi_netdev_ops
+  *	Describe the operations supported by registered netdevices
+  *
+- * static const struct net_device_ops edma_axi_netdev_ops = {
++ * static bool edma_flow_attached;
++
++static const struct net_device_ops edma_axi_netdev_ops = {
++	.ndo_setup_tc = ssdk_flow_setup_tc,
+  *	.ndo_open               = edma_open,
+  *	.ndo_stop               = edma_close,
+  *	.ndo_start_xmit         = edma_xmit_frame,
+  *	.ndo_set_mac_address    = edma_set_mac_addr,
+  * }
+  */
++static bool edma_flow_attached;
++
+ static const struct net_device_ops edma_axi_netdev_ops = {
++	.ndo_setup_tc = ssdk_flow_setup_tc,
+ 	.ndo_open		= edma_open,
+ 	.ndo_stop		= edma_close,
+ 	.ndo_start_xmit		= edma_xmit,
+@@ -1274,11 +1373,9 @@
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct device_node *pnp;
+ 	struct device_node *mdio_node = NULL;
+-	struct platform_device *mdio_plat = NULL;
+ 	struct mii_bus *miibus = NULL;
+-	struct edma_mdio_data *mdio_data = NULL;
+ 	int i, j, k, err = 0;
+-	u32 portid_bmp;
++	u32 portid_bmp, ring_count;
+ 	int idx = 0, idx_mac = 0;
+ 
+ 	if (CONFIG_NR_CPUS != EDMA_CPU_CORES_SUPPORTED) {
+@@ -1357,13 +1454,12 @@
+ 			edma_num_cores = EDMA_CPU_CORES_SUPPORTED;
+ 	}
+ 
+-	if (of_property_read_bool(np, "qcom,tx-ring-count"))
+-		of_property_read_u32(np, "qcom,tx-ring-count",
+-			&edma_cinfo->tx_ring_count);
+-
+-	if (of_property_read_bool(np, "qcom,rx-ring-count"))
+-		of_property_read_u32(np, "qcom,rx-ring-count",
+-				     &edma_cinfo->rx_ring_count);
++	if (!of_property_read_u32(np, "qcom,tx-ring-count", &ring_count) &&
++	    ring_count >= 32 && ring_count <= 4096 && is_power_of_2(ring_count))
++		edma_cinfo->tx_ring_count = ring_count;
++	if (!of_property_read_u32(np, "qcom,rx-ring-count", &ring_count) &&
++	    ring_count >= 32 && ring_count <= 4096 && is_power_of_2(ring_count))
++		edma_cinfo->rx_ring_count = ring_count;
+ 
+ 	/* Set tx completion affinity map for the edma script */
+ 	for (i = 0; i < EDMA_CPU_CORES_SUPPORTED; i++) {
+@@ -1476,37 +1572,24 @@
+ 
+ 	if (of_property_read_bool(np, "qcom,mdio-supported")) {
+ 		mdio_node = of_find_compatible_node(NULL, NULL,
+-						    "qcom,ipq40xx-mdio");
++						    "qcom,ipq4019-mdio");
+ 		if (!mdio_node) {
+ 			dev_err(&pdev->dev, "cannot find mdio node by phandle");
+ 			err = -EIO;
+ 			goto err_mdiobus_init_fail;
+ 		}
+ 
+-		mdio_plat = of_find_device_by_node(mdio_node);
+-		if (!mdio_plat) {
+-			dev_err(&pdev->dev,
+-				"cannot find platform device from mdio node");
+-			of_node_put(mdio_node);
+-			err = -EIO;
++		miibus = of_mdio_find_bus(mdio_node);
++		of_node_put(mdio_node);
++		if (!miibus) {
++			err = -EPROBE_DEFER;
+ 			goto err_mdiobus_init_fail;
+ 		}
+-
+-		mdio_data = dev_get_drvdata(&mdio_plat->dev);
+-		if (!mdio_data) {
+-			dev_err(&pdev->dev,
+-				"cannot get mii bus reference from device data");
+-			of_node_put(mdio_node);
+-			err = -EIO;
+-			goto err_mdiobus_init_fail;
+-		}
+-
+-		miibus = mdio_data->mii_bus;
+-		miibus_gb = mdio_data->mii_bus;
++		miibus_gb = miibus;
+ 	}
+ 
+ 	for_each_available_child_of_node(np, pnp) {
+-		const char *mac_addr;
++		u8 mac_addr[ETH_ALEN];
+ 
+ 		/* this check is needed if parent and daughter dts have
+ 		 * different number of gmac nodes
+@@ -1516,9 +1599,17 @@
+ 			break;
+ 		}
+ 
+-		mac_addr = of_get_mac_address(pnp);
+-		if (mac_addr)
+-			memcpy(edma_netdev[idx_mac]->dev_addr, mac_addr, ETH_ALEN);
++		{
++			struct device_node *source;
++			int mac_err = of_get_mac_address(pnp, mac_addr);
++
++			source = of_parse_phandle(pnp, "qcom,mac-source", 0);
++			if (mac_err && source)
++				mac_err = of_get_mac_address(source, mac_addr);
++			of_node_put(source);
++			if (!mac_err)
++				eth_hw_addr_set(edma_netdev[idx_mac], mac_addr);
++		}
+ 
+ 		idx_mac++;
+ 	}
+@@ -1584,7 +1675,7 @@
+ 		/* This just fill in some default MAC address
+ 		 */
+ 		if (!is_valid_ether_addr(edma_netdev[i]->dev_addr)) {
+-			random_ether_addr(edma_netdev[i]->dev_addr);
++			eth_hw_addr_random(edma_netdev[i]);
+ 			pr_info("EDMA using MAC@ - using");
+ 			pr_info("%02x:%02x:%02x:%02x:%02x:%02x\n",
+ 			*(edma_netdev[i]->dev_addr),
+@@ -1641,6 +1732,16 @@
+ 		vlan_tag++;
+ 		portid_bmp = of_read_number(vlan_tag, 1);
+ 		adapter[idx]->dp_bitmap = portid_bmp;
++		if (idx == 0) {
++			edma_default_group1_bmp = portid_bmp;
++			edma_default_wtag = adapter[idx]->default_vlan_tag;
++			edma_default_group1_vtag = adapter[idx]->default_vlan_tag;
++		} else if (idx == 1) {
++			edma_default_group2_bmp = portid_bmp;
++			edma_default_ltag = adapter[idx]->default_vlan_tag;
++			edma_default_group2_vtag = adapter[idx]->default_vlan_tag;
++		}
++
+ 
+ 		portid_bmp = portid_bmp >> 1; /* We ignore CPU Port bit 0 */
+ 		while (portid_bmp) {
+@@ -1709,7 +1810,7 @@
+ 
+ 		edma_cinfo->edma_percpu_info[i].napi.state = 0;
+ 
+-		netif_napi_add(edma_netdev[0],
++		netif_napi_add_weight(edma_netdev[0],
+ 			       &edma_cinfo->edma_percpu_info[i].napi,
+ 			       edma_poll, 64);
+ 		napi_enable(&edma_cinfo->edma_percpu_info[i].napi);
+@@ -1826,12 +1927,10 @@
+ 				err = -EIO;
+ 				goto edma_phy_attach_fail;
+ 			} else {
+-				adapter[i]->phydev->advertising |=
+-					ADVERTISED_Pause |
+-					ADVERTISED_Asym_Pause;
+-				adapter[i]->phydev->supported |=
+-					SUPPORTED_Pause |
+-					SUPPORTED_Asym_Pause;
++				linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter[i]->phydev->advertising);
++				linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter[i]->phydev->advertising);
++				linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, adapter[i]->phydev->supported);
++				linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, adapter[i]->phydev->supported);
+ 				portid_bmp = adapter[i]->dp_bitmap >> 1;
+ 				port_id = ffs(portid_bmp);
+ 				edma_phydev[port_id - 1] = adapter[i]->phydev;
+@@ -1841,12 +1940,29 @@
+ 	}
+ 
+ 	spin_lock_init(&edma_cinfo->stats_lock);
++	err = edma_switch_register();
++	if (err)
++		goto edma_phy_attach_fail;
++
++	if (edma_cinfo->num_gmac == 2) {
++		err = ssdk_flow_attach(edma_netdev[0], edma_netdev[1]);
++		if (!err) {
++			edma_flow_attached = true;
++			rtnl_lock();
++			for (i = 0; i < 2; i++) {
++				edma_netdev[i]->hw_features |= NETIF_F_HW_TC;
++				edma_netdev[i]->wanted_features |= NETIF_F_HW_TC;
++				netdev_update_features(edma_netdev[i]);
++			}
++			rtnl_unlock();
++		} else {
++			dev_warn(&pdev->dev, "native flow offload unavailable: %d\n", err);
++		}
++	}
+ 
+-	init_timer(&edma_stats_timer);
+-	edma_stats_timer.expires = jiffies + 1*HZ;
+-	edma_stats_timer.data = (unsigned long)edma_cinfo;
+-	edma_stats_timer.function = edma_statistics_timer; /* timer handler */
+-	add_timer(&edma_stats_timer);
++	edma_stats_cinfo = edma_cinfo;
++	timer_setup(&edma_stats_timer, edma_statistics_timer, 0);
++	mod_timer(&edma_stats_timer, jiffies + HZ);
+ 
+ 	/*
+ 	 * Initialize dscp2ac mapping table
+@@ -1859,6 +1975,11 @@
+ 	return 0;
+ 
+ edma_phy_attach_fail:
++	edma_stop_rx_tx(&edma_cinfo->hw);
++	for (i = 0; i < edma_cinfo->num_gmac; i++)
++		if (adapter[i]->phydev && !IS_ERR(adapter[i]->phydev))
++			phy_disconnect(adapter[i]->phydev);
++	memset(edma_phydev, 0, sizeof(edma_phydev));
+ 	miibus = NULL;
+ err_configure:
+ #ifdef CONFIG_RFS_ACCEL
+@@ -1903,13 +2024,19 @@
+  * edma_axi_remove is called by the platform subsystem to alert the driver
+  * that it should release a platform device.
+  */
+-static int edma_axi_remove(struct platform_device *pdev)
++static void edma_axi_remove(struct platform_device *pdev)
+ {
+ 	struct edma_adapter *adapter = netdev_priv(edma_netdev[0]);
+ 	struct edma_common_info *edma_cinfo = adapter->edma_cinfo;
+ 	struct edma_hw *hw = &edma_cinfo->hw;
+ 	int i;
+ 
++	if (edma_flow_attached) {
++		ssdk_flow_detach();
++		edma_flow_attached = false;
++	}
++	edma_switch_unregister();
++
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++)
+ 		unregister_netdev(edma_netdev[i]);
+ 
+@@ -1932,7 +2059,7 @@
+ 			phy_disconnect(edma_phydev[i]);
+ 	}
+ 
+-	del_timer_sync(&edma_stats_timer);
++	timer_delete_sync(&edma_stats_timer);
+ 	edma_free_irqs(adapter);
+ 	unregister_net_sysctl_table(edma_cinfo->edma_ctl_table_hdr);
+ 	edma_free_tx_resources(edma_cinfo);
+@@ -1945,7 +2072,7 @@
+ 
+ 	kfree(edma_cinfo);
+ 
+-	return 0;
++	return;
+ }
+ 
+ static const struct of_device_id edma_of_mtable[] = {
+--- a/edma_ethtool.c
++++ b/edma_ethtool.c
+@@ -205,8 +205,8 @@
+ static void edma_get_drvinfo(struct net_device *dev,
+ 			     struct ethtool_drvinfo *info)
+ {
+-	strlcpy(info->driver, "ess_edma", DRVINFO_LEN);
+-	strlcpy(info->bus_info, "axi", ETHTOOL_BUSINFO_LEN);
++	strscpy(info->driver, "ess_edma", DRVINFO_LEN);
++	strscpy(info->bus_info, "axi", ETHTOOL_BUSINFO_LEN);
+ }
+ 
+ /* edma_nway_reset()
+@@ -238,119 +238,47 @@
+ /* edma_get_settings()
+  *	Get edma settings
+  */
+-static int edma_get_settings(struct net_device *netdev,
+-			     struct ethtool_cmd *ecmd)
++static int edma_get_link_ksettings(struct net_device *netdev,
++                                  struct ethtool_link_ksettings *cmd)
+ {
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
++	int ret = 0;
+ 
+ 	mutex_lock(&adapter->poll_mutex);
+-	if (!(adapter->poll_required)) {
+-		/* If the speed/duplex for this GMAC is forced and we
+-		 * are not polling for link state changes, return the
+-		 * values as specified by platform. This will be true
+-		 * for GMACs connected to switch, and interfaces that
+-		 * do not use a PHY.
+-		 */
+-		if (adapter->forced_speed != SPEED_UNKNOWN) {
+-			/* set speed and duplex */
+-			ethtool_cmd_speed_set(ecmd, SPEED_1000);
+-			ecmd->duplex = DUPLEX_FULL;
+-
+-			/* Populate capabilities advertised by self */
+-			ecmd->advertising = 0;
+-			ecmd->autoneg = 0;
+-			ecmd->port = PORT_TP;
+-			ecmd->transceiver = XCVR_EXTERNAL;
+-		} else {
+-			/* non link polled and non
+-			 * forced speed/duplex interface
+-			 */
+-			mutex_unlock(&adapter->poll_mutex);
+-			return -EIO;
+-		}
++	if (adapter->poll_required && adapter->phydev) {
++		phy_ethtool_ksettings_get(adapter->phydev, cmd);
++	} else if (adapter->forced_speed != SPEED_UNKNOWN) {
++		cmd->base.speed = adapter->forced_speed;
++		cmd->base.duplex = DUPLEX_FULL;
++		cmd->base.autoneg = AUTONEG_DISABLE;
++		cmd->base.port = PORT_TP;
+ 	} else {
+-		struct phy_device *phydev = NULL;
+-		uint16_t phyreg;
+-
+-		if ((adapter->forced_speed != SPEED_UNKNOWN)
+-			&& !(adapter->poll_required)) {
+-			mutex_unlock(&adapter->poll_mutex);
+-			return -EPERM;
+-		}
+-
+-		phydev = adapter->phydev;
+-
+-		ecmd->advertising = phydev->advertising;
+-		ecmd->autoneg = phydev->autoneg;
+-
+-		if (adapter->link_state == __EDMA_LINKDOWN) {
+-			ecmd->speed =  SPEED_UNKNOWN;
+-			ecmd->duplex = DUPLEX_UNKNOWN;
+-		} else {
+-			ecmd->speed = phydev->speed;
+-			ecmd->duplex = phydev->duplex;
+-		}
+-
+-		ecmd->phy_address = adapter->phy_mdio_addr;
+-
+-		phyreg = (uint16_t)phy_read(adapter->phydev, MII_LPA);
+-		if (phyreg & LPA_10HALF)
+-			ecmd->lp_advertising |= ADVERTISED_10baseT_Half;
+-
+-		if (phyreg & LPA_10FULL)
+-			ecmd->lp_advertising |= ADVERTISED_10baseT_Full;
+-
+-		if (phyreg & LPA_100HALF)
+-			ecmd->lp_advertising |= ADVERTISED_100baseT_Half;
+-
+-		if (phyreg & LPA_100FULL)
+-			ecmd->lp_advertising |= ADVERTISED_100baseT_Full;
+-
+-		phyreg = (uint16_t)phy_read(adapter->phydev, MII_STAT1000);
+-		if (phyreg & LPA_1000HALF)
+-			ecmd->lp_advertising |= ADVERTISED_1000baseT_Half;
+-
+-		if (phyreg & LPA_1000FULL)
+-			ecmd->lp_advertising |= ADVERTISED_1000baseT_Full;
++		ret = -EIO;
+ 	}
+ 	mutex_unlock(&adapter->poll_mutex);
+-
+-	return 0;
++	return ret;
+ }
+ 
+-/* edma_set_settings()
+- *	Set EDMA settings
+- */
+-static int edma_set_settings(struct net_device *netdev,
+-			     struct ethtool_cmd *ecmd)
++static int edma_set_link_ksettings(struct net_device *netdev,
++                                  const struct ethtool_link_ksettings *cmd)
+ {
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+-	struct phy_device *phydev = NULL;
++	int ret;
+ 
+ 	mutex_lock(&adapter->poll_mutex);
+-	if ((adapter->forced_speed != SPEED_UNKNOWN) &&
+-	     !adapter->poll_required) {
+-		mutex_unlock(&adapter->poll_mutex);
+-		return -EPERM;
+-	}
+-
+-	phydev = adapter->phydev;
+-	phydev->advertising = ecmd->advertising;
+-	phydev->autoneg = ecmd->autoneg;
+-	phydev->speed = ethtool_cmd_speed(ecmd);
+-	phydev->duplex = ecmd->duplex;
+-
+-	genphy_config_aneg(phydev);
++	ret = adapter->poll_required && adapter->phydev ?
++		phy_ethtool_ksettings_set(adapter->phydev, cmd) : -EOPNOTSUPP;
+ 	mutex_unlock(&adapter->poll_mutex);
+-
+-	return 0;
++	return ret;
+ }
+ 
+ /* edma_get_coalesce
+  *	get interrupt mitigation
+  */
+ static int edma_get_coalesce(struct net_device *netdev,
+-			     struct ethtool_coalesce *ec)
++			     struct ethtool_coalesce *ec,
++                             struct kernel_ethtool_coalesce *kernel_coal,
++                             struct netlink_ext_ack *extack)
+ {
+ 	u32 reg_val;
+ 
+@@ -372,7 +300,9 @@
+  *	set interrupt mitigation
+  */
+ static int edma_set_coalesce(struct net_device *netdev,
+-			     struct ethtool_coalesce *ec)
++			     struct ethtool_coalesce *ec,
++                             struct kernel_ethtool_coalesce *kernel_coal,
++                             struct netlink_ext_ack *extack)
+ {
+ 	if (ec->tx_coalesce_usecs)
+ 		edma_change_tx_coalesce(ec->tx_coalesce_usecs);
+@@ -402,7 +332,9 @@
+  *	get ring size
+  */
+ static void edma_get_ringparam(struct net_device *netdev,
+-			       struct ethtool_ringparam *ring)
++			       struct ethtool_ringparam *ring,
++                               struct kernel_ethtool_ringparam *kernel_ring,
++                               struct netlink_ext_ack *extack)
+ {
+ 	struct edma_adapter *adapter = netdev_priv(netdev);
+ 	struct edma_common_info *edma_cinfo = adapter->edma_cinfo;
+@@ -414,13 +346,14 @@
+ /* Ethtool operations
+  */
+ static const struct ethtool_ops edma_ethtool_ops = {
++	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
+ 	.get_drvinfo = &edma_get_drvinfo,
+ 	.get_link = &ethtool_op_get_link,
+ 	.get_msglevel = &edma_get_msglevel,
+ 	.nway_reset = &edma_nway_reset,
+ 	.get_wol = &edma_get_wol,
+-	.get_settings = &edma_get_settings,
+-	.set_settings = &edma_set_settings,
++	.get_link_ksettings = edma_get_link_ksettings,
++	.set_link_ksettings = edma_set_link_ksettings,
+ 	.get_strings = &edma_get_strings,
+ 	.get_sset_count = &edma_get_strset_count,
+ 	.get_ethtool_stats = &edma_get_ethtool_stats,
+--- a/edma_stats.c
++++ b/edma_stats.c
+@@ -42,7 +42,7 @@
+ /* edma_dscp2ac_mapping_update()
+  *	Map dscp to user-provided Access category values
+  */
+-int edma_dscp2ac_mapping_update(struct ctl_table *table, int write,
++int edma_dscp2ac_mapping_update(const struct ctl_table *table, int write,
+ 				       void __user *buffer, size_t *lenp,
+ 				       loff_t *ppos)
+ {
+@@ -136,7 +136,7 @@
+ /* edma_per_prec_stats_enable_handler()
+  *	Enable per precedence statistics
+  */
+-int edma_per_prec_stats_enable_handler(struct ctl_table *table, int write,
++int edma_per_prec_stats_enable_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -168,7 +168,7 @@
+ /* edma_prec_stats_reset_handler()
+  *	Reset per-precedence statistics
+  */
+-int edma_prec_stats_reset_handler(struct ctl_table *table, int write,
++int edma_prec_stats_reset_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -212,7 +212,7 @@
+ 	return ret;
+ }
+ 
+-int edma_iad_stats_enable_handler(struct ctl_table *table, int write,
++int edma_iad_stats_enable_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -245,7 +245,7 @@
+ 	return ret;
+ }
+ 
+-int edma_iad_stats_reset_handler(struct ctl_table *table, int write,
++int edma_iad_stats_reset_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -292,7 +292,7 @@
+ 	return ret;
+ }
+ 
+-int edma_print_flow_table_handler(struct ctl_table *table, int write,
++int edma_print_flow_table_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -330,7 +330,7 @@
+ 	return 0;
+ }
+ 
+-int edma_max_valid_ifd_usec_handler(struct ctl_table *table, int write,
++int edma_max_valid_ifd_usec_handler(const struct ctl_table *table, int write,
+ 				   void __user *buffer, size_t *lenp,
+ 				   loff_t *ppos)
+ {
+@@ -381,8 +381,8 @@
+  */
+ uint64_t edma_get_time_usec(void)
+ {
+-	struct timespec ts;
+-	ktime_get_ts(&ts);
++	struct timespec64 ts;
++	ktime_get_ts64(&ts);
+ 
+ 	return ((uint64_t) ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
+ }
+--- a/edma_switch.c
++++ b/edma_switch.c
+@@ -0,0 +1,255 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/if_vlan.h>
++#include <linux/delay.h>
++#include <linux/rcupdate.h>
++#include <linux/slab.h>
++#include "edma.h"
++#include <ssdk_edma.h>
++
++extern struct net_device *edma_netdev[EDMA_MAX_PORTID_SUPPORTED];
++struct edma_switch_table {
++	struct rcu_head rcu;
++	struct ssdk_edma_vlan_config config;
++	bool carrier;
++};
++static struct edma_switch_table __rcu *edma_switch_current;
++static struct edma_switch_table *edma_switch_pending;
++static bool edma_switch_paused;
++static bool edma_switch_registered;
++
++bool edma_switch_managed(void)
++{
++	return rcu_access_pointer(edma_switch_current) != NULL;
++}
++
++bool edma_switch_carrier(void)
++{
++	struct edma_switch_table *table;
++	bool up;
++
++	rcu_read_lock();
++	table = rcu_dereference(edma_switch_current);
++	up = table && table->carrier && !READ_ONCE(edma_switch_paused);
++	rcu_read_unlock();
++	return up;
++}
++
++static void edma_switch_resume(void)
++{
++	int i;
++
++	WRITE_ONCE(edma_switch_paused, false);
++	for (i = 0; i < 2; i++)
++		if (edma_netdev[i] && netif_running(edma_netdev[i]) &&
++		    netif_carrier_ok(edma_netdev[i]))
++			netif_tx_wake_all_queues(edma_netdev[i]);
++}
++
++static int edma_switch_drain(void)
++{
++	int attempt, queue;
++
++	for (attempt = 0; attempt < 100; attempt++) {
++		bool drained = true;
++
++		for (queue = 0; queue < EDMA_MAX_TRANSMIT_QUEUE; queue++) {
++			u32 indices;
++
++			edma_read_reg(EDMA_REG_TPD_IDX_Q(queue), &indices);
++			if ((indices & EDMA_TPD_PROD_IDX_MASK) !=
++			    ((indices >> EDMA_TPD_CONS_IDX_SHIFT) & EDMA_TPD_CONS_IDX_MASK)) {
++				drained = false;
++				break;
++			}
++		}
++		if (drained)
++			return 0;
++		msleep(1);
++	}
++	return -ETIMEDOUT;
++}
++
++static int edma_switch_event(struct notifier_block *nb, unsigned long event, void *data)
++{
++	struct ssdk_edma_vlan_config *config = data;
++	struct edma_switch_table *old;
++	int i, ret;
++	bool cpu_active = false;
++
++	switch (event) {
++	case SSDK_EDMA_PREPARE:
++		if (WARN_ON(edma_switch_pending))
++			return notifier_from_errno(-EBUSY);
++		edma_switch_pending = kmalloc(sizeof(*edma_switch_pending), GFP_KERNEL);
++		if (!edma_switch_pending)
++			return notifier_from_errno(-ENOMEM);
++		edma_switch_pending->config = *config;
++		WRITE_ONCE(edma_switch_paused, true);
++		for (i = 0; i < 2; i++)
++			if (edma_netdev[i])
++				netif_tx_disable(edma_netdev[i]);
++		synchronize_net();
++		ret = edma_switch_drain();
++		return notifier_from_errno(ret);
++	case SSDK_EDMA_ABORT:
++		kfree(edma_switch_pending);
++		edma_switch_pending = NULL;
++		edma_switch_resume();
++		break;
++	case SSDK_EDMA_COMMIT:
++	case SSDK_EDMA_FAILED:
++		if (WARN_ON(!edma_switch_pending))
++			return NOTIFY_BAD;
++		/* FAILED supplies an empty map; never resume the previous mapping
++		 * after partially successful switch register writes. */
++		edma_switch_pending->config = *config;
++		for (i = 1; i < SSDK_EDMA_VIDS; i++)
++			if ((config->tagged[i] & 1) && (config->members[i] & 0x3e))
++				cpu_active = true;
++		edma_switch_pending->carrier = cpu_active;
++		old = rcu_replace_pointer(edma_switch_current, edma_switch_pending, true);
++		edma_switch_pending = NULL;
++		for (i = 0; i < 2; i++) {
++			struct edma_adapter *adapter;
++			u16 vid = config->default_vid[i];
++
++			if (!edma_netdev[i])
++				continue;
++			adapter = netdev_priv(edma_netdev[i]);
++			WRITE_ONCE(adapter->default_vlan_tag, vid);
++			WRITE_ONCE(adapter->dp_bitmap, config->members[vid] & 0x3e);
++			/* The GMAC is a CPU link. Physical port carrier is reported by
++			 * SSDK; a fixed PHY cannot represent a changing VLAN/trunk. */
++			mutex_lock(&adapter->poll_mutex);
++			adapter->poll_required = 0;
++			mutex_unlock(&adapter->poll_mutex);
++			if (cpu_active)
++				netif_carrier_on(edma_netdev[i]);
++			else
++				netif_carrier_off(edma_netdev[i]);
++		}
++		if (old)
++			kfree_rcu(old, rcu);
++		edma_switch_resume();
++		break;
++	}
++	return NOTIFY_OK;
++}
++static struct notifier_block edma_switch_notifier = { .notifier_call = edma_switch_event };
++
++int edma_switch_register(void)
++{
++	int ret;
++
++	WRITE_ONCE(edma_switch_paused, false);
++	ret = ssdk_edma_register_notifier(&edma_switch_notifier);
++
++	if (!ret)
++		edma_switch_registered = true;
++	return ret;
++}
++
++void edma_switch_unregister(void)
++{
++	struct edma_switch_table *old;
++
++	if (!edma_switch_registered)
++		return;
++	ssdk_edma_unregister_notifier(&edma_switch_notifier);
++	edma_switch_registered = false;
++	WRITE_ONCE(edma_switch_paused, true);
++	old = rcu_replace_pointer(edma_switch_current, NULL, true);
++	synchronize_net();
++	kfree(old);
++	/* Ensure callbacks queued by previous commits finish before module exit. */
++	rcu_barrier();
++}
++
++struct net_device *edma_switch_rx(struct edma_common_info *cinfo, u8 port,
++				 u16 tag, bool tagged, u16 *strip_vid)
++{
++	struct edma_switch_table *table;
++	struct net_device *dev = NULL;
++	u16 vid = tag & VLAN_VID_MASK;
++	int i, selected = -1;
++
++	if (READ_ONCE(edma_switch_paused))
++		return NULL;
++	rcu_read_lock();
++	table = rcu_dereference(edma_switch_current);
++	if (!table) {
++		dev = READ_ONCE(cinfo->portid_netdev_lookup_tbl[port]);
++		if (dev)
++			*strip_vid = ((struct edma_adapter *)netdev_priv(dev))->default_vlan_tag;
++		goto out;
++	}
++	if (!tagged || !(table->config.members[vid] & BIT(port)) ||
++	    !(table->config.tagged[vid] & BIT(0)))
++		goto out;
++	/* Respect an explicit Linux VLAN interface on either GMAC. Two copies
++	 * of the same VID on the shared CPU port are ambiguous and are dropped. */
++	for (i = 0; i < 2; i++) {
++		if (edma_netdev[i] && __vlan_find_dev_deep_rcu(edma_netdev[i], htons(ETH_P_8021Q), vid)) {
++			if (selected >= 0)
++				goto out;
++			selected = i;
++		}
++	}
++	if (selected >= 0) {
++		dev = edma_netdev[selected];
++		*strip_vid = 0;
++		goto out;
++	}
++	for (i = 0; i < 2; i++)
++		if (vid && vid == table->config.default_vid[i]) {
++			dev = edma_netdev[i];
++			*strip_vid = vid;
++			goto out;
++		}
++	/* Untargeted tagged VLANs arrive on the LAN CPU trunk. */
++	dev = edma_netdev[1];
++	*strip_vid = 0;
++out:
++	rcu_read_unlock();
++	return dev;
++}
++
++bool edma_switch_tx(struct net_device *dev, struct sk_buff *skb,
++		    u16 *default_vid, u16 *ports)
++{
++	struct edma_adapter *adapter = netdev_priv(dev);
++	struct edma_switch_table *table;
++	u16 vid;
++	bool allowed = false;
++	int index = dev == edma_netdev[0] ? 0 : 1;
++
++	if (READ_ONCE(edma_switch_paused))
++		return false;
++	rcu_read_lock();
++	table = rcu_dereference(edma_switch_current);
++	*default_vid = table ? table->config.default_vid[index] : READ_ONCE(adapter->default_vlan_tag);
++	vid = *default_vid;
++	if (skb_vlan_tag_present(skb)) {
++		if (skb->vlan_proto != htons(ETH_P_8021Q) ||
++		    skb->protocol == htons(ETH_P_8021Q) ||
++		    skb->protocol == htons(ETH_P_8021AD))
++			goto out;
++		vid = skb_vlan_tag_get_id(skb);
++	} else if (skb->protocol == htons(ETH_P_8021Q)) {
++		struct vlan_ethhdr header, *vh;
++
++		vh = skb_header_pointer(skb, 0, sizeof(header), &header);
++		if (!vh || vh->h_vlan_encapsulated_proto == htons(ETH_P_8021Q) ||
++		    vh->h_vlan_encapsulated_proto == htons(ETH_P_8021AD))
++			goto out;
++		vid = ntohs(vh->h_vlan_TCI) & VLAN_VID_MASK;
++		*default_vid = 0; /* already tagged: do not insert a second tag */
++	} else if (skb->protocol == htons(ETH_P_8021AD)) {
++		goto out;
++	}
++	*ports = table ? table->config.members[vid] & 0x3e : READ_ONCE(adapter->dp_bitmap);
++	allowed = *ports && (!table || (table->config.tagged[vid] & 1));
++out:
++	rcu_read_unlock();
++	return allowed;
++}

@@ -1,0 +1,1548 @@
+Subject: [PATCH] realtek: update PCS and phylink provider interfaces
+
+Bring the PCS provider and internal phylink handling in line with the
+local OpenWrt reference required by the updated Realtek drivers. Keep
+the adaptation in the Realtek 6.18 stack.
+
+Based on OpenWrt commit 5799d2da76998be50432b0a3325b42713b4b619b,
+including the PCS provider backports by Christian Marangi.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/net/phy/phylink.c
++++ b/drivers/net/phy/phylink.c
+@@ -29,6 +29,7 @@
+ 	PHYLINK_DISABLE_STOPPED,
+ 	PHYLINK_DISABLE_LINK,
+ 	PHYLINK_DISABLE_MAC_WOL,
++	PHYLINK_DISABLE_REPLAY,
+ 
+ 	PCS_STATE_DOWN = 0,
+ 	PCS_STATE_STARTING,
+@@ -44,6 +45,7 @@
+ 	const struct phylink_mac_ops *mac_ops;
+ 	struct phylink_config *config;
+ 	struct phylink_pcs *pcs;
++	struct fwnode_handle *fwnode;
+ 	struct device *dev;
+ 	unsigned int old_link_state:1;
+ 
+@@ -87,8 +89,8 @@
+ 
+ 	bool link_failed;
+ 	bool suspend_link_up;
++	bool force_major_config;
+ 	bool major_config_failed;
+-	bool reconfig_interface;
+ 	bool mac_supports_eee_ops;
+ 	bool mac_supports_eee;
+ 	bool phy_enable_tx_lpi;
+@@ -155,8 +157,6 @@
+ 
+ static DECLARE_PHY_INTERFACE_MASK(phylink_sfp_interfaces);
+ 
+-static void phylink_run_resolve(struct phylink *pl);
+-
+ /**
+  * phylink_set_port_modes() - set the port type modes in the ethtool mask
+  * @mask: ethtool link mode mask
+@@ -545,25 +545,24 @@
+ 	bool pcs_found = false;
+ 	int ret;
+ 
++	mutex_lock(&pl->state_mutex);
++
+ 	/* Get the PCS for this interface mode */
+ 	if (pl->mac_ops->mac_select_pcs) {
+-		/* Make sure either PCS internal validation or .mac_select_pcs
+-		 * is used. Return error if both are defined.
+-		 */
+-		if (!list_empty(&pl->pcs_list)) {
+-			phylink_err(pl, "either phylink_pcs_add() or .mac_select_pcs must be used\n");
+-			return -EINVAL;
+-		}
+-
+ 		pcs = pl->mac_ops->mac_select_pcs(pl->config, state->interface);
+-		if (IS_ERR(pcs))
++		if (IS_ERR(pcs)) {
++			mutex_unlock(&pl->state_mutex);
+ 			return PTR_ERR(pcs);
++		}
+ 
+ 		pcs_found = !!pcs;
+-	} else {
+-		/* Check every assigned PCS and search for one that supports
+-		 * the interface.
+-		 */
++	/*
++	 * Find a PCS in available PCS list for the requested interface.
++	 *
++	 * Skip searching if the MAC doesn't require a dedicated PCS for
++	 * the requested interface.
++	 */
++	} else if (test_bit(state->interface, pl->config->pcs_interfaces)) {
+ 		list_for_each_entry(pcs, &pl->pcs_list, list) {
+ 			if (!phylink_validate_pcs_interface(pcs, state->interface)) {
+ 				pcs_found = true;
+@@ -578,6 +577,7 @@
+ 		 * error and backtrace rather than oopsing the kernel.
+ 		 */
+ 		if (!pcs->ops) {
++			mutex_unlock(&pl->state_mutex);
+ 			phylink_err(pl, "interface %s: uninitialised PCS\n",
+ 				    phy_modes(state->interface));
+ 			dump_stack();
+@@ -587,6 +587,7 @@
+ 		/* Recheck PCS to handle legacy way for .mac_select_pcs */
+ 		ret = phylink_validate_pcs_interface(pcs, state->interface);
+ 		if (ret) {
++			mutex_unlock(&pl->state_mutex);
+ 			phylink_err(pl, "selected PCS does not support %s\n",
+ 				    phy_modes(state->interface));
+ 			return -EINVAL;
+@@ -595,8 +596,10 @@
+ 		/* Validate the link parameters with the PCS */
+ 		if (pcs->ops->pcs_validate) {
+ 			ret = pcs->ops->pcs_validate(pcs, supported, state);
+-			if (ret < 0 || phylink_is_empty_linkmode(supported))
++			if (ret < 0 || phylink_is_empty_linkmode(supported)) {
++				mutex_unlock(&pl->state_mutex);
+ 				return -EINVAL;
++			}
+ 
+ 			/* Ensure the advertising mask is a subset of the
+ 			 * supported mask.
+@@ -606,6 +609,8 @@
+ 		}
+ 	}
+ 
++	mutex_unlock(&pl->state_mutex);
++
+ 	/* Then validate the link parameters with the MAC */
+ 	if (pl->mac_ops->mac_get_caps)
+ 		capabilities = pl->mac_ops->mac_get_caps(pl->config,
+@@ -920,55 +925,6 @@
+ 	}
+ }
+ 
+-/**
+- * phylink_release_pcs - Removes a PCS from the phylink PCS available list
+- * @pcs: a pointer to the phylink_pcs struct to be released
+- *
+- * This function release a PCS from the phylink PCS available list if
+- * actually in use. It also refreshes the supported interfaces of the
+- * phylink instance by copying the supported interfaces from the phylink
+- * conf and merging the supported interfaces of the remaining available PCS
+- * in the list and trigger a resolve.
+- */
+-void phylink_release_pcs(struct phylink_pcs *pcs)
+-{
+-	struct phylink *pl;
+-
+-	ASSERT_RTNL();
+-
+-	pl = pcs->phylink;
+-	if (!pl)
+-		return;
+-
+-	list_del(&pcs->list);
+-	pcs->phylink = NULL;
+-
+-	/* Check if we are removing the PCS currently
+-	 * in use by phylink. If this is the case,
+-	 * force phylink resolve to reconfigure the interface
+-	 * mode and set the phylink PCS to NULL.
+-	 */
+-	if (pl->pcs == pcs) {
+-		mutex_lock(&pl->state_mutex);
+-
+-		pl->reconfig_interface = true;
+-		pl->pcs = NULL;
+-
+-		mutex_unlock(&pl->state_mutex);
+-	}
+-
+-	/* Refresh supported interfaces */
+-	phy_interface_copy(pl->supported_interfaces,
+-			   pl->config->supported_interfaces);
+-	list_for_each_entry(pcs, &pl->pcs_list, list)
+-		phy_interface_or(pl->supported_interfaces,
+-				 pl->supported_interfaces,
+-				 pcs->supported_interfaces);
+-
+-	phylink_run_resolve(pl);
+-}
+-EXPORT_SYMBOL_GPL(phylink_release_pcs);
+-
+ static unsigned int phylink_pcs_inband_caps(struct phylink_pcs *pcs,
+ 				    phy_interface_t interface)
+ {
+@@ -1057,12 +1013,15 @@
+ {
+ 	struct phylink_pcs *pcs;
+ 	bool pcs_found = false;
++	int ret = 0;
++
++	mutex_lock(&pl->state_mutex);
+ 
+ 	if (pl->mac_ops->mac_select_pcs) {
+ 		pcs = pl->mac_ops->mac_select_pcs(pl->config,
+ 						  interface);
+-		pcs_found = !IS_ERR_OR_NULL(pcs);
+-	} else {
++		pcs_found = !!pcs;
++	} else if (test_bit(interface, pl->config->pcs_interfaces)) {
+ 		list_for_each_entry(pcs, &pl->pcs_list, list) {
+ 			if (!phylink_validate_pcs_interface(pcs, interface)) {
+ 				pcs_found = true;
+@@ -1070,11 +1029,15 @@
+ 			}
+ 		}
+ 	}
+-
+ 	if (!pcs_found)
+-		return 0;
++		goto exit;
++
++	ret = phylink_pcs_inband_caps(pcs, interface);
+ 
+-	return phylink_pcs_inband_caps(pcs, interface);
++exit:
++	mutex_unlock(&pl->state_mutex);
++
++	return ret;
+ }
+ 
+ static void phylink_pcs_poll_stop(struct phylink *pl)
+@@ -1146,6 +1109,7 @@
+ {
+ 	switch (interface) {
+ 	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 	case PHY_INTERFACE_MODE_QUSGMII:
+ 	case PHY_INTERFACE_MODE_USXGMII:
+@@ -1370,7 +1334,7 @@
+ 	 * This doesn't overwrite the previous .mac_select_pcs as either
+ 	 * .mac_select_pcs or PCS list implementation are permitted.
+ 	 *
+-	 * Skip searching if the MAC doesn't require a dedicaed PCS for
++	 * Skip searching if the MAC doesn't require a dedicated PCS for
+ 	 * the requested interface.
+ 	 */
+ 	} else if (test_bit(state->interface, pl->config->pcs_interfaces)) {
+@@ -1430,7 +1394,7 @@
+ 				pcs->phylink = pl;
+ 		}
+ 
+-		pl->pcs = pcs;
++		WRITE_ONCE(pl->pcs, pcs);
+ 	}
+ 
+ 	if (pl->pcs)
+@@ -1607,7 +1571,9 @@
+ 	phylink_apply_manual_flow(pl, &link_state);
+ 	if (phy)
+ 		mutex_lock(&phy->lock);
++	mutex_lock(&pl->state_mutex);
+ 	phylink_major_config(pl, force_restart, &link_state);
++	mutex_unlock(&pl->state_mutex);
+ 	if (phy)
+ 		mutex_unlock(&phy->lock);
+ }
+@@ -1729,10 +1695,11 @@
+ 
+ 	phylink_deactivate_lpi(pl);
+ 
+-	phylink_pcs_link_down(pl->pcs);
+-
+ 	pl->mac_ops->mac_link_down(pl->config, pl->act_link_an_mode,
+ 				   pl->cur_interface);
++
++	phylink_pcs_link_down(pl->pcs);
++
+ 	phylink_info(pl, "Link is Down\n");
+ }
+ 
+@@ -1790,10 +1757,6 @@
+ 		if (phy)
+ 			link_state.link &= pl->phy_state.link;
+ 
+-		/* Force mac_config if we need to reconfig the interface */
+-		if (pl->reconfig_interface)
+-			mac_config = true;
+-
+ 		/* Only update if the PHY link is up */
+ 		if (phy && pl->phy_state.link) {
+ 			/* If the interface has changed, force a link down
+@@ -1828,9 +1791,9 @@
+ 		phylink_apply_manual_flow(pl, &link_state);
+ 
+ 	if ((mac_config && link_state.interface != pl->link_config.interface) ||
+-	    pl->reconfig_interface) {
+-		/* The interface has changed, so force the link down and then
+-		 * reconfigure.
++	    pl->force_major_config) {
++		/* The interface has changed or a forced major configuration
++		 * was requested, so force the link down and then reconfigure.
+ 		 */
+ 		if (cur_link_state) {
+ 			phylink_link_down(pl);
+@@ -1838,7 +1801,7 @@
+ 		}
+ 		phylink_major_config(pl, false, &link_state);
+ 		pl->link_config.interface = link_state.interface;
+-		pl->reconfig_interface = false;
++		pl->force_major_config = false;
+ 	}
+ 
+ 	/* If configuration of the interface failed, force the link down
+@@ -1962,67 +1925,158 @@
+ }
+ EXPORT_SYMBOL_GPL(phylink_set_fixed_link);
+ 
++static void phylink_add_pcs(struct phylink *pl, struct phylink_pcs *pcs)
++{
++	struct phylink_pcs *tmp;
++
++	/*
++	 * Make sure state mutex is locked to protect concurrent
++	 * access to phylink instance PCS list from
++	 * initial fill_available_pcs and late PCS attach
++	 */
++	lockdep_assert_held(&pl->state_mutex);
++
++	list_for_each_entry(tmp, &pl->pcs_list, list)
++		if (tmp == pcs)
++			return;
++
++	list_add_tail(&pcs->list, &pl->pcs_list);
++
++	/* Link PCS to phylink */
++	pcs->phylink = pl;
++}
++
+ static int phylink_fill_available_pcs(struct phylink *pl,
+ 				      struct phylink_config *config)
+ {
+ 	struct phylink_pcs **pcss;
+ 	int i, ret;
+ 
+-	if (!config->num_available_pcs)
++	if (!config->num_possible_pcs)
+ 		return 0;
+ 
+ 	if (!config->fill_available_pcs) {
+ 		dev_err(config->dev,
+-			"phylink: error: num_available_pcs defined but no fill_available_pcs\n");
++			"phylink: error: num_possible_pcs defined but no fill_available_pcs\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	pcss = kcalloc(config->num_available_pcs, sizeof(*pcss), GFP_KERNEL);
++	pcss = kzalloc_objs(*pcss, config->num_possible_pcs);
+ 	if (!pcss)
+ 		return -ENOMEM;
+ 
+-	ret = config->fill_available_pcs(config, pcss, config->num_available_pcs);
+-	if (ret)
++	/* Lock state_mutex while filling to handle PCS notify */
++	mutex_lock(&pl->state_mutex);
++
++	ret = config->fill_available_pcs(config, pcss, config->num_possible_pcs);
++	if (ret < 0)
+ 		goto out;
+ 
+-	for (i = 0; i < config->num_available_pcs; i++) {
++	for (i = 0; i < config->num_possible_pcs; i++) {
+ 		struct phylink_pcs *pcs = pcss[i];
+ 
+ 		if (!pcs)
+ 			continue;
+ 
+-		list_add(&pcs->list, &pl->pcs_list);
++		phylink_add_pcs(pl, pcs);
+ 	}
+ 
+ out:
++	mutex_unlock(&pl->state_mutex);
++
+ 	kfree(pcss);
+ 
+ 	return ret;
+ }
+ 
++static void phylink_del_pcs(struct phylink *pl, struct phylink_pcs *pcs)
++{
++	lockdep_assert_held(&pl->state_mutex);
++
++	list_del(&pcs->list);
++	pcs->phylink = NULL;
++
++	/*
++	 * Check if we are removing the PCS currently
++	 * in use by this phylink instance. If this is the case,
++	 * tear down the link, force phylink resolve to reconfigure the
++	 * interface mode, disable the current PCS and set the
++	 * phylink PCS to NULL.
++	 */
++	if (pl->pcs == pcs) {
++		if (pl->old_link_state) {
++			phylink_link_down(pl);
++			pl->old_link_state = false;
++		}
++		if (pl->cfg_link_an_mode == MLO_AN_INBAND)
++			timer_delete_sync(&pl->link_poll);
++		phylink_pcs_disable(pl->pcs);
++
++		pl->force_major_config = true;
++		WRITE_ONCE(pl->pcs, NULL);
++	}
++}
++
+ static int pcs_provider_notify(struct notifier_block *self,
+ 			       unsigned long val, void *data)
+ {
+ 	struct phylink *pl = container_of(self, struct phylink, fwnode_pcs_nb);
+-	struct fwnode_handle *pcs_fwnode = data;
+-	struct phylink_pcs *pcs;
++	struct fwnode_pcs_provider *pp = data;
++	struct phylink_pcs *pcs, *tmp;
++	bool resolve = false;
++	int count, i;
+ 
+-	/* Check if the just added PCS provider is
+-	 * in the phylink instance phy-handle property
++	/*
++	 * On PCS provider deletion hold rtnl lock as one of
++	 * PCS can be currently in use by the phylink instance
++	 * and ethtool OPs can reference it.
+ 	 */
+-	pcs = fwnode_phylink_pcs_get_from_fwnode(dev_fwnode(pl->config->dev),
+-						 pcs_fwnode);
+-	if (IS_ERR(pcs))
+-		return NOTIFY_DONE;
++	if (val == FWNODE_PCS_PROVIDER_DEL)
++		rtnl_lock();
+ 
+-	/* Add the PCS */
+-	rtnl_lock();
++	mutex_lock(&pl->state_mutex);
+ 
+-	list_add(&pcs->list, &pl->pcs_list);
++	switch (val) {
++	case FWNODE_PCS_PROVIDER_ADD:
++		count = fwnode_phylink_pcs_count(pl->fwnode);
++		for (i = 0; i < count; i++) {
++			pcs = fwnode_pcs_get_from_provider(pp, pl->fwnode, i);
++			if (IS_ERR(pcs))
++				continue;
++
++			phylink_add_pcs(pl, pcs);
++			resolve = true;
++		}
+ 
+-	/* Link phylink if we are started */
+-	if (!pl->phylink_disable_state)
+-		pcs->phylink = pl;
++		/* Force an interface reconfig if major config fail */
++		if (resolve && pl->major_config_failed)
++			pl->force_major_config = true;
++
++		break;
++	case FWNODE_PCS_PROVIDER_DEL:
++		/*
++		 * Loop all the PCS for phylink instance and check if
++		 * this notification is relevant for some of them.
++		 */
++		list_for_each_entry_safe(pcs, tmp, &pl->pcs_list, list) {
++			if (!fwnode_pcs_matches_provider(pp, pl->fwnode, pcs))
++				continue;
++
++			phylink_del_pcs(pl, pcs);
++			resolve = true;
++		}
++		break;
++	}
++
++	/* Exit early if nothing has changed */
++	if (!resolve) {
++		mutex_unlock(&pl->state_mutex);
++
++		if (val == FWNODE_PCS_PROVIDER_DEL)
++			rtnl_unlock();
++
++		return NOTIFY_DONE;
++	}
+ 
+ 	/* Refresh supported interfaces */
+ 	phy_interface_copy(pl->supported_interfaces,
+@@ -2032,13 +2086,10 @@
+ 				 pl->supported_interfaces,
+ 				 pcs->supported_interfaces);
+ 
+-	mutex_lock(&pl->state_mutex);
+-	/* Force an interface reconfig if major config fail */
+-	if (pl->major_config_failed)
+-		pl->reconfig_interface = true;
+ 	mutex_unlock(&pl->state_mutex);
+ 
+-	rtnl_unlock();
++	if (val == FWNODE_PCS_PROVIDER_DEL)
++		rtnl_unlock();
+ 
+ 	phylink_run_resolve(pl);
+ 
+@@ -2066,10 +2117,20 @@
+ 			       phy_interface_t iface,
+ 			       const struct phylink_mac_ops *mac_ops)
+ {
+-	struct phylink_pcs *pcs;
++	struct phylink_pcs *tmp, *pcs;
+ 	struct phylink *pl;
+ 	int ret;
+ 
++	/*
++	 * Make sure either PCS internal validation or .mac_select_pcs
++	 * is used. Return error if both are defined.
++	 */
++	if (config->num_possible_pcs && mac_ops->mac_select_pcs) {
++		dev_err(config->dev,
++			"phylink: error: either phylink_config .num_possible_pcs or .mac_select_pcs must be used\n");
++		return ERR_PTR(-EINVAL);
++	}
++
+ 	/* Validate the supplied configuration */
+ 	if (phy_interface_empty(config->supported_interfaces)) {
+ 		dev_err(config->dev,
+@@ -2086,26 +2147,8 @@
+ 	INIT_WORK(&pl->resolve, phylink_resolve);
+ 	INIT_LIST_HEAD(&pl->pcs_list);
+ 
+-	/* Fill the PCS list with available PCS from phylink config */
+-	ret = phylink_fill_available_pcs(pl, config);
+-	if (ret) {
+-		kfree(pl);
+-		return ERR_PTR(ret);
+-	}
+-
+-	phy_interface_copy(pl->supported_interfaces,
+-			   config->supported_interfaces);
+-	list_for_each_entry(pcs, &pl->pcs_list, list)
+-		phy_interface_or(pl->supported_interfaces,
+-				 pl->supported_interfaces,
+-				 pcs->supported_interfaces);
+-
+-	if (!phy_interface_empty(config->pcs_interfaces)) {
+-		pl->fwnode_pcs_nb.notifier_call = pcs_provider_notify;
+-		register_fwnode_pcs_notifier(&pl->fwnode_pcs_nb);
+-	}
+-
+ 	pl->config = config;
++	pl->fwnode = fwnode_handle_get((struct fwnode_handle *)fwnode);
+ 	if (config->type == PHYLINK_NETDEV) {
+ 		pl->netdev = to_net_dev(config->dev);
+ 		netif_carrier_off(pl->netdev);
+@@ -2141,13 +2184,37 @@
+ 	__set_bit(PHYLINK_DISABLE_STOPPED, &pl->phylink_disable_state);
+ 	timer_setup(&pl->link_poll, phylink_fixed_poll, 0);
+ 
++	/* First register notifier for hotplug PCS events */
++	if (!phy_interface_empty(config->pcs_interfaces)) {
++		pl->fwnode_pcs_nb.notifier_call = pcs_provider_notify;
++		register_fwnode_pcs_notifier(&pl->fwnode_pcs_nb);
++	}
++
++	/* Fill the PCS list with available PCS from phylink config */
++	ret = phylink_fill_available_pcs(pl, config);
++	if (ret < 0)
++		goto unregister_pcs_notify;
++
++	mutex_lock(&pl->state_mutex);
++
++	phy_interface_copy(pl->supported_interfaces,
++			   pl->config->supported_interfaces);
++
++	/* Update supported interfaces */
++	list_for_each_entry(pcs, &pl->pcs_list, list)
++		phy_interface_or(pl->supported_interfaces,
++				 pl->supported_interfaces,
++				 pcs->supported_interfaces);
++
++	mutex_unlock(&pl->state_mutex);
++
+ 	linkmode_fill(pl->supported);
+ 	linkmode_copy(pl->link_config.advertising, pl->supported);
+ 	phylink_validate(pl, pl->supported, &pl->link_config);
+ 
+ 	ret = phylink_parse_mode(pl, fwnode);
+ 	if (ret < 0)
+-		goto free_pl;
++		goto unregister_pcs_notify;
+ 
+ 	if (pl->cfg_link_an_mode == MLO_AN_FIXED) {
+ 		ret = phylink_parse_fixedlink(pl, fwnode);
+@@ -2166,7 +2233,19 @@
+ release_link_gpio:
+ 	if (pl->link_gpio)
+ 		gpiod_put(pl->link_gpio);
++unregister_pcs_notify:
++	if (pl->fwnode_pcs_nb.notifier_call)
++		unregister_fwnode_pcs_notifier(&pl->fwnode_pcs_nb);
++	/* PCS notifier might queue a resolve, cancel it */
++	cancel_work_sync(&pl->resolve);
++	mutex_lock(&pl->state_mutex);
++	list_for_each_entry_safe(pcs, tmp, &pl->pcs_list, list) {
++		list_del(&pcs->list);
++		pcs->phylink = NULL;
++	}
++	mutex_unlock(&pl->state_mutex);
+ free_pl:
++	fwnode_handle_put(pl->fwnode);
+ 	kfree(pl);
+ 	return ERR_PTR(ret);
+ }
+@@ -2189,11 +2268,24 @@
+ 	if (pl->link_gpio)
+ 		gpiod_put(pl->link_gpio);
+ 
++	/* Unregister notifier for late PCS attach */
++	if (pl->fwnode_pcs_nb.notifier_call)
++		unregister_fwnode_pcs_notifier(&pl->fwnode_pcs_nb);
++
++	cancel_work_sync(&pl->resolve);
++
++	mutex_lock(&pl->state_mutex);
++
+ 	/* Remove every PCS from phylink PCS list */
+-	list_for_each_entry_safe(pcs, tmp, &pl->pcs_list, list)
++	list_for_each_entry_safe(pcs, tmp, &pl->pcs_list, list) {
++		pcs->phylink = NULL;
+ 		list_del(&pcs->list);
++	}
++
++	mutex_unlock(&pl->state_mutex);
++
++	fwnode_handle_put(pl->fwnode);
+ 
+-	cancel_work_sync(&pl->resolve);
+ 	kfree(pl);
+ }
+ EXPORT_SYMBOL_GPL(phylink_destroy);
+@@ -2209,9 +2301,7 @@
+  */
+ bool phylink_expects_phy(struct phylink *pl)
+ {
+-	if (pl->cfg_link_an_mode == MLO_AN_FIXED ||
+-	    (pl->cfg_link_an_mode == MLO_AN_INBAND &&
+-	     phy_interface_mode_is_8023z(pl->link_interface)))
++	if (pl->cfg_link_an_mode == MLO_AN_FIXED)
+ 		return false;
+ 	return true;
+ }
+@@ -2464,9 +2554,7 @@
+ {
+ 	u32 flags = 0;
+ 
+-	if (WARN_ON(pl->cfg_link_an_mode == MLO_AN_FIXED ||
+-		    (pl->cfg_link_an_mode == MLO_AN_INBAND &&
+-		     phy_interface_mode_is_8023z(interface) && !pl->sfp_bus)))
++	if (WARN_ON(pl->cfg_link_an_mode == MLO_AN_FIXED))
+ 		return -EINVAL;
+ 
+ 	if (pl->phydev)
+@@ -2684,8 +2772,15 @@
+ {
+ 	struct phylink *pl = pcs->phylink;
+ 
+-	if (pl)
+-		phylink_link_changed(pl, up, "pcs");
++	/*
++	 * Ignore PCS link state change if the PCS is not
++	 * attached to a phylink instance or the phylink
++	 * instance is not currently using this PCS.
++	 */
++	if (!pl || READ_ONCE(pl->pcs) != pcs)
++		return;
++
++	phylink_link_changed(pl, up, "pcs");
+ }
+ EXPORT_SYMBOL_GPL(phylink_pcs_change);
+ 
+@@ -2708,7 +2803,6 @@
+  */
+ void phylink_start(struct phylink *pl)
+ {
+-	struct phylink_pcs *pcs;
+ 	bool poll = false;
+ 
+ 	ASSERT_RTNL();
+@@ -2735,10 +2829,6 @@
+ 
+ 	pl->pcs_state = PCS_STATE_STARTED;
+ 
+-	/* link available PCS to phylink struct */
+-	list_for_each_entry(pcs, &pl->pcs_list, list)
+-		pcs->phylink = pl;
+-
+ 	phylink_enable_and_run_resolve(pl, PHYLINK_DISABLE_STOPPED);
+ 
+ 	if (pl->cfg_link_an_mode == MLO_AN_FIXED && pl->link_gpio) {
+@@ -2783,8 +2873,6 @@
+  */
+ void phylink_stop(struct phylink *pl)
+ {
+-	struct phylink_pcs *pcs;
+-
+ 	ASSERT_RTNL();
+ 
+ 	if (pl->sfp_bus)
+@@ -2802,14 +2890,6 @@
+ 	pl->pcs_state = PCS_STATE_DOWN;
+ 
+ 	phylink_pcs_disable(pl->pcs);
+-
+-	/* Drop link between phylink and PCS */
+-	list_for_each_entry(pcs, &pl->pcs_list, list)
+-		pcs->phylink = NULL;
+-
+-	/* Restore original supported interfaces */
+-	phy_interface_copy(pl->supported_interfaces,
+-			   pl->config->supported_interfaces);
+ }
+ EXPORT_SYMBOL_GPL(phylink_stop);
+ 
+@@ -4395,6 +4475,7 @@
+ 		break;
+ 
+ 	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED)
+ 			phylink_decode_sgmii_word(state, lpa);
+@@ -4475,6 +4556,7 @@
+ 			adv |= ADVERTISE_1000XPSE_ASYM;
+ 		return adv;
+ 	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 		return 0x0001;
+ 	default:
+@@ -4580,6 +4662,57 @@
+ }
+ EXPORT_SYMBOL_GPL(phylink_mii_c45_pcs_get_state);
+ 
++/**
++ * phylink_replay_link_begin() - begin replay of link callbacks for driver
++ *				 which loses state
++ * @pl: a pointer to a &struct phylink returned from phylink_create()
++ *
++ * Helper for MAC drivers which may perform a destructive reset at runtime.
++ * Both the own driver's mac_link_down() method is called, as well as the
++ * pcs_link_down() method of the split PCS (if any).
++ *
++ * This is similar to phylink_stop(), except it does not alter the state of
++ * the phylib PHY (it is assumed that it is not affected by the MAC destructive
++ * reset).
++ */
++void phylink_replay_link_begin(struct phylink *pl)
++{
++	ASSERT_RTNL();
++
++	phylink_run_resolve_and_disable(pl, PHYLINK_DISABLE_REPLAY);
++}
++EXPORT_SYMBOL_GPL(phylink_replay_link_begin);
++
++/**
++ * phylink_replay_link_end() - end replay of link callbacks for driver
++ *			       which lost state
++ * @pl: a pointer to a &struct phylink returned from phylink_create()
++ *
++ * Helper for MAC drivers which may perform a destructive reset at runtime.
++ * Both the own driver's mac_config() and mac_link_up() methods, as well as the
++ * pcs_config() and pcs_link_up() method of the split PCS (if any), are called.
++ *
++ * This is similar to phylink_start(), except it does not alter the state of
++ * the phylib PHY.
++ *
++ * One must call this method only within the same rtnl_lock() critical section
++ * as a previous phylink_replay_link_start().
++ */
++void phylink_replay_link_end(struct phylink *pl)
++{
++	ASSERT_RTNL();
++
++	if (WARN(!test_bit(PHYLINK_DISABLE_REPLAY,
++			   &pl->phylink_disable_state),
++		 "phylink_replay_link_end() called without a prior phylink_replay_link_begin()\n"))
++		return;
++
++	pl->force_major_config = true;
++	phylink_enable_and_run_resolve(pl, PHYLINK_DISABLE_REPLAY);
++	flush_work(&pl->resolve);
++}
++EXPORT_SYMBOL_GPL(phylink_replay_link_end);
++
+ static int __init phylink_init(void)
+ {
+ 	for (int i = 0; i < ARRAY_SIZE(phylink_sfp_interface_preference); ++i)
+--- a/include/linux/phylink.h
++++ b/include/linux/phylink.h
+@@ -159,10 +159,10 @@
+  * @lpi_capabilities: MAC speeds which can support LPI signalling
+  * @lpi_timer_default: Default EEE LPI timer setting.
+  * @eee_enabled_default: If set, EEE will be enabled by phylink at creation time
+- * @num_available_pcs: num of available phylink_pcs PCS
++ * @num_possible_pcs: num of possible phylink_pcs PCS
+  * @fill_available_pcs: callback to fill the available PCS in the passed
+  *			array struct of phylink_pcs PCS available_pcs up to
+- *			num_available_pcs.
++ *			num_possible_pcs.
+  */
+ struct phylink_config {
+ 	struct device *dev;
+@@ -182,10 +182,10 @@
+ 	u32 lpi_timer_default;
+ 	bool eee_enabled_default;
+ 
+-	unsigned int num_available_pcs;
++	unsigned int num_possible_pcs;
+ 	int (*fill_available_pcs)(struct phylink_config *config,
+ 				  struct phylink_pcs **available_pcs,
+-				  unsigned int num_available_pcs);
++				  unsigned int num_possible_pcs);
+ };
+ 
+ void phylink_limit_mac_speed(struct phylink_config *config, u32 max_speed);
+@@ -499,7 +499,7 @@
+  * @pcs_an_restart: restart 802.3z BaseX autonegotiation.
+  * @pcs_link_up: program the PCS for the resolved link configuration
+  *               (where necessary).
+- * @pcs_link_down: torn down link between MAC and PCS.
++ * @pcs_link_down: tear down link between MAC and PCS.
+  * @pcs_disable_eee: optional notification to PCS that EEE has been disabled
+  *		     at the MAC.
+  * @pcs_enable_eee: optional notification to PCS that EEE will be enabled at
+@@ -664,6 +664,16 @@
+ 		 phy_interface_t interface, int speed, int duplex);
+ 
+ /**
++ * pcs_link_down() - tear down link between MAC and PCS
++ * @pcs: a pointer to a &struct phylink_pcs.
++ *
++ * This call will be made just after mac_link_down() to inform the PCS the
++ * link has gone down. PCS should be configured to stop processing packets
++ * for transmission and reception.
++ */
++void pcs_link_down(struct phylink_pcs *pcs);
++
++/**
+  * pcs_disable_eee() - Disable EEE at the PCS
+  * @pcs: a pointer to a &struct phylink_pcs
+  *
+@@ -724,8 +734,6 @@
+ int phylink_set_fixed_link(struct phylink *,
+ 			   const struct phylink_link_state *);
+ 
+-void phylink_release_pcs(struct phylink_pcs *pcs);
+-
+ void phylink_mac_change(struct phylink *, bool up);
+ void phylink_pcs_change(struct phylink_pcs *, bool up);
+ 
+@@ -782,6 +790,7 @@
+ {
+ 	switch (interface) {
+ 	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_PSGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 	case PHY_INTERFACE_MODE_USXGMII:
+ 	case PHY_INTERFACE_MODE_10G_QXGMII:
+@@ -828,4 +837,9 @@
+ 
+ void phylink_decode_usxgmii_word(struct phylink_link_state *state,
+ 				 uint16_t lpa);
++
++void phylink_replay_link_begin(struct phylink *pl);
++
++void phylink_replay_link_end(struct phylink *pl);
++
+ #endif
+--- a/drivers/net/pcs/Kconfig
++++ b/drivers/net/pcs/Kconfig
+@@ -6,11 +6,10 @@
+ menu "PCS device drivers"
+ 
+ config FWNODE_PCS
+-	tristate
+-	depends on (ACPI || OF)
+-	depends on PHYLINK
++	bool "PCS Firmware Node"
++	depends on ACPI || OF || COMPILE_TEST
+ 	help
+-		Firmware node PCS accessors
++	  Firmware node PCS accessors
+ 
+ config PCS_XPCS
+ 	tristate "Synopsys DesignWare Ethernet XPCS"
+--- a/drivers/net/pcs/pcs.c
++++ b/drivers/net/pcs/pcs.c
+@@ -14,8 +14,8 @@
+ 	struct list_head link;
+ 
+ 	struct fwnode_handle *fwnode;
+-	struct phylink_pcs *(*get)(struct fwnode_reference_args *pcsspec,
+-				   void *data);
++	struct phylink_pcs *(*fwnode_xlate)(struct fwnode_reference_args *pcsspec,
++					    void *data);
+ 
+ 	void *data;
+ };
+@@ -30,113 +30,160 @@
+ }
+ EXPORT_SYMBOL_GPL(register_fwnode_pcs_notifier);
+ 
+-struct phylink_pcs *fwnode_pcs_simple_get(struct fwnode_reference_args *pcsspec,
+-					  void *data)
++int unregister_fwnode_pcs_notifier(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_unregister(&fwnode_pcs_notify_list, nb);
++}
++EXPORT_SYMBOL_GPL(unregister_fwnode_pcs_notifier);
++
++struct phylink_pcs *fwnode_pcs_simple_xlate(struct fwnode_reference_args *pcsspec,
++					    void *data)
+ {
+ 	return data;
+ }
+-EXPORT_SYMBOL_GPL(fwnode_pcs_simple_get);
++EXPORT_SYMBOL_GPL(fwnode_pcs_simple_xlate);
+ 
+-int fwnode_pcs_add_provider(struct fwnode_handle *fwnode,
+-			    struct phylink_pcs *(*get)(struct fwnode_reference_args *pcsspec,
+-						       void *data),
+-			    void *data)
++struct fwnode_pcs_provider *
++fwnode_pcs_add_provider(struct fwnode_handle *fwnode,
++			struct phylink_pcs *(*fwnode_xlate)(struct fwnode_reference_args *pcsspec,
++							    void *data),
++			void *data)
+ {
+ 	struct fwnode_pcs_provider *pp;
+ 
+ 	if (!fwnode)
+-		return 0;
++		return ERR_PTR(-EINVAL);
+ 
+-	pp = kzalloc(sizeof(*pp), GFP_KERNEL);
++	pp = kzalloc_obj(*pp);
+ 	if (!pp)
+-		return -ENOMEM;
++		return ERR_PTR(-ENOMEM);
+ 
+ 	pp->fwnode = fwnode_handle_get(fwnode);
+ 	pp->data = data;
+-	pp->get = get;
++	pp->fwnode_xlate = fwnode_xlate;
+ 
+ 	mutex_lock(&fwnode_pcs_mutex);
+-	list_add(&pp->link, &fwnode_pcs_providers);
+-	mutex_unlock(&fwnode_pcs_mutex);
+-	pr_debug("Added pcs provider from %pfwf\n", fwnode);
+ 
++	list_add(&pp->link, &fwnode_pcs_providers);
+ 	fwnode_dev_initialized(fwnode, true);
+ 
++	mutex_unlock(&fwnode_pcs_mutex);
++
+ 	blocking_notifier_call_chain(&fwnode_pcs_notify_list,
+ 				     FWNODE_PCS_PROVIDER_ADD,
+-				     fwnode);
++				     pp);
+ 
+-	return 0;
++	pr_debug("Added pcs provider from %pfwf\n", fwnode);
++
++	return pp;
+ }
+ EXPORT_SYMBOL_GPL(fwnode_pcs_add_provider);
+ 
+-void fwnode_pcs_del_provider(struct fwnode_handle *fwnode)
++void fwnode_pcs_del_provider(struct fwnode_pcs_provider *pp)
+ {
+-	struct fwnode_pcs_provider *pp;
+-
+-	if (!fwnode)
++	if (IS_ERR_OR_NULL(pp))
+ 		return;
+ 
+ 	mutex_lock(&fwnode_pcs_mutex);
+-	list_for_each_entry(pp, &fwnode_pcs_providers, link) {
+-		if (pp->fwnode == fwnode) {
+-			list_del(&pp->link);
+-			fwnode_dev_initialized(pp->fwnode, false);
+-			fwnode_handle_put(pp->fwnode);
+-			kfree(pp);
+-			break;
+-		}
+-	}
++
++	list_del(&pp->link);
++	fwnode_dev_initialized(pp->fwnode, false);
++
+ 	mutex_unlock(&fwnode_pcs_mutex);
++
++	/* Signal phylink to release any PCS from this provider */
++	blocking_notifier_call_chain(&fwnode_pcs_notify_list,
++				     FWNODE_PCS_PROVIDER_DEL,
++				     pp);
++
++	fwnode_handle_put(pp->fwnode);
++	kfree(pp);
+ }
+ EXPORT_SYMBOL_GPL(fwnode_pcs_del_provider);
+ 
+-static int fwnode_parse_pcsspec(const struct fwnode_handle *fwnode, int index,
+-				const char *name,
+-				struct fwnode_reference_args *out_args)
++static void devm_fwnode_pcs_del(struct device *dev, void *res)
++{
++	struct fwnode_pcs_provider *pp = *(struct fwnode_pcs_provider **)res;
++
++	fwnode_pcs_del_provider(pp);
++}
++
++struct fwnode_pcs_provider *
++devm_fwnode_pcs_add_provider(struct device *dev, struct fwnode_handle *fwnode,
++			     struct phylink_pcs *(*fwnode_xlate)(struct fwnode_reference_args *pcsspec,
++								 void *data),
++			     void *data)
+ {
+-	int ret = -ENOENT;
++	struct fwnode_pcs_provider **ptr, *pp;
+ 
++	ptr = devres_alloc(devm_fwnode_pcs_del, sizeof(*ptr), GFP_KERNEL);
++	if (!ptr)
++		return ERR_PTR(-ENOMEM);
++
++	pp = fwnode_pcs_add_provider(fwnode, fwnode_xlate, data);
++
++	if (!IS_ERR(pp)) {
++		*ptr = pp;
++		devres_add(dev, ptr);
++	} else {
++		devres_free(ptr);
++	}
++
++	return pp;
++}
++EXPORT_SYMBOL_GPL(devm_fwnode_pcs_add_provider);
++
++static int fwnode_parse_pcsspec(const struct fwnode_handle *fwnode,
++				int index, const char *name,
++				struct fwnode_reference_args *out_args)
++{
+ 	if (!fwnode)
+-		return -ENOENT;
++		return -EINVAL;
+ 
+-	if (name)
++	if (name) {
+ 		index = fwnode_property_match_string(fwnode, "pcs-names",
+ 						     name);
++		if (index < 0)
++			return index;
++	}
+ 
+-	ret = fwnode_property_get_reference_args(fwnode, "pcs-handle",
+-						 "#pcs-cells",
+-						 -1, index, out_args);
+-	if (ret || (name && index < 0))
+-		return ret;
++	return fwnode_property_get_reference_args(fwnode, "pcs-handle",
++						  "#pcs-cells", 0, index,
++						  out_args);
++}
++
++static struct phylink_pcs *
++__fwnode_pcs_get_from_pcsspec_provider(struct fwnode_reference_args *pcsspec,
++				       struct fwnode_pcs_provider *provider)
++{
++	if (provider->fwnode != pcsspec->fwnode)
++		return ERR_PTR(-EINVAL);
+ 
+-	return 0;
++	return provider->fwnode_xlate(pcsspec, provider->data);
+ }
+ 
+ static struct phylink_pcs *
+ fwnode_pcs_get_from_pcsspec(struct fwnode_reference_args *pcsspec)
+ {
+ 	struct fwnode_pcs_provider *provider;
+-	struct phylink_pcs *pcs = ERR_PTR(-EPROBE_DEFER);
++	struct phylink_pcs *pcs = NULL;
+ 
+ 	if (!pcsspec)
+ 		return ERR_PTR(-EINVAL);
+ 
+ 	mutex_lock(&fwnode_pcs_mutex);
+ 	list_for_each_entry(provider, &fwnode_pcs_providers, link) {
+-		if (provider->fwnode == pcsspec->fwnode) {
+-			pcs = provider->get(pcsspec, provider->data);
+-			if (!IS_ERR(pcs))
+-				break;
+-		}
++		pcs = __fwnode_pcs_get_from_pcsspec_provider(pcsspec, provider);
++		if (!IS_ERR(pcs))
++			break;
+ 	}
+ 	mutex_unlock(&fwnode_pcs_mutex);
+ 
+-	return pcs;
++	return !IS_ERR_OR_NULL(pcs) ? pcs : ERR_PTR(-ENODEV);
+ }
+ 
+-static struct phylink_pcs *__fwnode_pcs_get(struct fwnode_handle *fwnode,
+-					    int index, const char *con_id)
++static struct phylink_pcs *__fwnode_pcs_get(const struct fwnode_handle *fwnode,
++					    unsigned int index, const char *con_id)
+ {
+ 	struct fwnode_reference_args pcsspec;
+ 	struct phylink_pcs *pcs;
+@@ -152,37 +199,60 @@
+ 	return pcs;
+ }
+ 
+-struct phylink_pcs *fwnode_pcs_get(struct fwnode_handle *fwnode, int index)
++struct phylink_pcs *fwnode_pcs_get(const struct fwnode_handle *fwnode, unsigned int index)
+ {
+ 	return __fwnode_pcs_get(fwnode, index, NULL);
+ }
+ EXPORT_SYMBOL_GPL(fwnode_pcs_get);
+ 
+-struct phylink_pcs *
+-fwnode_phylink_pcs_get_from_fwnode(struct fwnode_handle *fwnode,
+-				   struct fwnode_handle *pcs_fwnode)
++struct phylink_pcs *fwnode_pcs_get_from_provider(struct fwnode_pcs_provider *provider,
++						 const struct fwnode_handle *fwnode,
++						 int index)
+ {
+ 	struct fwnode_reference_args pcsspec;
+-	int i = 0;
++	struct phylink_pcs *pcs;
++	int ret;
++
++	ret = fwnode_parse_pcsspec(fwnode, index, NULL, &pcsspec);
++	if (ret)
++		return ERR_PTR(ret);
++
++	pcs = __fwnode_pcs_get_from_pcsspec_provider(&pcsspec, provider);
++	fwnode_handle_put(pcsspec.fwnode);
++	return pcs;
++}
++EXPORT_SYMBOL_GPL(fwnode_pcs_get_from_provider);
++
++bool fwnode_pcs_matches_provider(struct fwnode_pcs_provider *provider,
++				 const struct fwnode_handle *fwnode,
++				 struct phylink_pcs *pl_pcs)
++{
++	struct fwnode_reference_args pcsspec;
++	int index = 0;
+ 	int ret;
+ 
+ 	while (true) {
+-		ret = fwnode_parse_pcsspec(fwnode, i, NULL, &pcsspec);
++		struct phylink_pcs *pcs;
++
++		ret = fwnode_parse_pcsspec(fwnode, index, NULL, &pcsspec);
+ 		if (ret)
+-			break;
++			return false;
+ 
+-		if (pcsspec.fwnode == pcs_fwnode)
+-			break;
++		pcs = __fwnode_pcs_get_from_pcsspec_provider(&pcsspec, provider);
++		if (!IS_ERR(pcs) && pcs == pl_pcs) {
++			fwnode_handle_put(pcsspec.fwnode);
++			return true;
++		}
+ 
+-		i++;
++		fwnode_handle_put(pcsspec.fwnode);
++		index++;
+ 	}
+ 
+-	return fwnode_pcs_get(fwnode, i);
++	return false;
+ }
+-EXPORT_SYMBOL_GPL(fwnode_phylink_pcs_get_from_fwnode);
++EXPORT_SYMBOL_GPL(fwnode_pcs_matches_provider);
+ 
+-static int fwnode_phylink_pcs_count(struct fwnode_handle *fwnode,
+-				    unsigned int *num_pcs)
++unsigned int fwnode_phylink_pcs_count(struct fwnode_handle *fwnode)
+ {
+ 	struct fwnode_reference_args out_args;
+ 	int index = 0;
+@@ -190,8 +260,8 @@
+ 
+ 	while (true) {
+ 		ret = fwnode_property_get_reference_args(fwnode, "pcs-handle",
+-							 "#pcs-cells",
+-							 -1, index, &out_args);
++							 "#pcs-cells", 0, index,
++							 &out_args);
+ 		/* We expect to reach an -ENOENT error while counting */
+ 		if (ret)
+ 			break;
+@@ -200,36 +270,45 @@
+ 		index++;
+ 	}
+ 
+-	/* Update num_pcs with parsed PCS */
+-	*num_pcs = index;
+-
+-	/* Return error if we didn't found any PCS */
+-	return index > 0 ? 0 : -ENOENT;
++	return index;
+ }
++EXPORT_SYMBOL_GPL(fwnode_phylink_pcs_count);
+ 
+ int fwnode_phylink_pcs_parse(struct fwnode_handle *fwnode,
+ 			     struct phylink_pcs **available_pcs,
+-			     unsigned int *num_pcs)
++			     unsigned int num_pcs)
+ {
+-	int i;
++	unsigned int i, found = 0;
++
++	if (!available_pcs)
++		return -EINVAL;
+ 
+ 	if (!fwnode_property_present(fwnode, "pcs-handle"))
+ 		return -ENODEV;
+ 
+-	/* With available_pcs NULL, only count the PCS */
+-	if (!available_pcs)
+-		return fwnode_phylink_pcs_count(fwnode, num_pcs);
+-
+-	for (i = 0; i < *num_pcs; i++) {
++	for (i = 0; i < num_pcs; i++) {
+ 		struct phylink_pcs *pcs;
+ 
+ 		pcs = fwnode_pcs_get(fwnode, i);
+-		if (IS_ERR(pcs))
++		if (IS_ERR(pcs)) {
++			/* Exit early if no PCS remain.*/
++			if (PTR_ERR(pcs) == -ENOENT)
++				break;
++
++			/*
++			 * Ignore -ENODEV error for PCS that still
++			 * needs to probe.
++			 */
++			if (PTR_ERR(pcs) == -ENODEV)
++				continue;
++
+ 			return PTR_ERR(pcs);
++		}
+ 
+-		available_pcs[i] = pcs;
++		available_pcs[found] = pcs;
++		found++;
+ 	}
+ 
+-	return 0;
++	return found;
+ }
+ EXPORT_SYMBOL_GPL(fwnode_phylink_pcs_parse);
+--- a/include/linux/pcs/pcs.h
++++ b/include/linux/pcs/pcs.h
+@@ -6,8 +6,11 @@
+ 
+ enum fwnode_pcs_notify_event {
+ 	FWNODE_PCS_PROVIDER_ADD,
++	FWNODE_PCS_PROVIDER_DEL,
+ };
+ 
++struct fwnode_pcs_provider;
++
+ #if IS_ENABLED(CONFIG_FWNODE_PCS)
+ /**
+  * register_fwnode_pcs_notifier - Register a notifier block for fwnode
+@@ -18,84 +21,151 @@
+  * notifier chain. This allows phylink instance to subscribe for
+  * PCS provider events.
+  *
+- * Returns 0 or a negative error.
++ * Returns: 0 or a negative error.
+  */
+ int register_fwnode_pcs_notifier(struct notifier_block *nb);
+ 
+ /**
++ * unregister_fwnode_pcs_notifier - Unregister a notifier block for fwnode
++ *				    PCS events
++ * @nb: pointer to the notifier block
++ *
++ * Unregisters a notifier block to the fwnode_pcs_notify_list blocking
++ * notifier chain.
++ *
++ * Returns: 0 or a negative error.
++ */
++int unregister_fwnode_pcs_notifier(struct notifier_block *nb);
++
++/**
+  * fwnode_pcs_get - Retrieves a PCS from a firmware node
+  * @fwnode: firmware node
+  * @index: index fwnode PCS handle in firmware node
+  *
+  * Get a PCS from the firmware node at index.
+  *
+- * Returns a pointer to the phylink_pcs or a negative
+- * error pointer. Can return -EPROBE_DEFER if the PCS is not
+- * present in global providers list (either due to driver
+- * still needs to be probed or it failed to probe/removed)
+- */
+-struct phylink_pcs *fwnode_pcs_get(struct fwnode_handle *fwnode,
+-				   int index);
++ * Returns: a pointer to the phylink_pcs or a negative error pointer. Can
++ * return -ENODEV if the PCS is not present in global providers list (either
++ * due to driver still needs to be probed or it failed to probe/removed).
++ */
++struct phylink_pcs *fwnode_pcs_get(const struct fwnode_handle *fwnode,
++				   unsigned int index);
++
++/**
++ * fwnode_pcs_get_from_provider() - Retrieve a PCS from a specific provider
++ * @provider: PCS provider to use
++ * @fwnode: firmware node
++ * @index: index fwnode PCS handle in firmware node
++ *
++ * Get a PCS from the firmware node at index specifically provided by
++ * passed PCS provider.
++ *
++ * Unlike fwnode_pcs_get(), this function does not search the global list of
++ * PCS providers. The caller must provide the provider responsible for the
++ * referenced PCS.
++ *
++ * Returns: a pointer to the phylink_pcs or a negative error pointer. Can
++ * return -ENODEV if the PCS is not present in global providers list (either
++ * due to driver still needs to be probed or it failed to probe/removed) or
++ * can return -EINVAL if the PCS provider doesn't expose any PCS for the fwnode.
++ */
++struct phylink_pcs *fwnode_pcs_get_from_provider(struct fwnode_pcs_provider *provider,
++						 const struct fwnode_handle *fwnode,
++						 int index);
++
++/**
++ * fwnode_pcs_matches_provider() - Check whether a PCS belongs to a provider
++ * @provider: PCS provider to check
++ * @fwnode: firmware node containing the PCS references
++ * @pl_pcs: PCS to check
++ *
++ * Parse the PCS references from the "pcs-handle" property of a firmware node
++ * and use provider to determine whether pl_pcs is one of the PCS provided by
++ * provider.
++ *
++ * This function is intended to be used when handling provider removal
++ * notifications, where the provider is already known and its PCS need to be
++ * identified among the PCS associated with a phylink instance.
++ *
++ * Returns: true if pl_pcs is provided by provider and referenced by fwnode,
++ * false otherwise.
++ */
++bool fwnode_pcs_matches_provider(struct fwnode_pcs_provider *provider,
++				 const struct fwnode_handle *fwnode,
++				 struct phylink_pcs *pl_pcs);
+ 
+ /**
+- * fwnode_phylink_pcs_get_from_fwnode - Retrieves the PCS provided
+- *					by the firmware node from a
+- *					firmware node
++ * fwnode_phylink_pcs_count - Count PCS entries described in firmware node
+  * @fwnode: firmware node
+- * @pcs_fwnode: PCS firmware node
+  *
+- * Parse 'pcs-handle' in 'fwnode' and get the PCS that match
+- * 'pcs_fwnode' firmware node.
++ * Helper function to count the number of PCS entries referenced by the
++ * "pcs-handle" property in a firmware node.
+  *
+- * Returns a pointer to the phylink_pcs or a negative
+- * error pointer. Can return -EPROBE_DEFER if the PCS is not
+- * present in global providers list (either due to driver
+- * still needs to be probed or it failed to probe/removed)
++ * Note that this function counts all PCS references in the firmware node,
++ * regardless of whether the corresponding PCS devices are already probed.
++ *
++ * Returns: number of PCS entries described in the firmware node.
+  */
+-struct phylink_pcs *
+-fwnode_phylink_pcs_get_from_fwnode(struct fwnode_handle *fwnode,
+-				   struct fwnode_handle *pcs_fwnode);
++unsigned int fwnode_phylink_pcs_count(struct fwnode_handle *fwnode);
+ 
+ /**
+- * fwnode_phylink_pcs_parse - generic PCS parse for fwnode PCS provider
++ * fwnode_phylink_pcs_parse - Parse available PCS from firmware node
+  * @fwnode: firmware node
+  * @available_pcs: pointer to preallocated array of PCS
+- * @num_pcs: where to store count of parsed PCS
++ * @num_pcs: maximum number of PCS entries to scan
+  *
+- * Generic helper function to fill available_pcs array with PCS parsed
+- * from a "pcs-handle" fwnode property defined in firmware node up to
+- * passed num_pcs.
++ * Helper function that parses PCS references from the "pcs-handle"
++ * property of a firmware node and fills @available_pcs with PCS that are
++ * currently available up to @num_pcs.
+  *
+- * If available_pcs is NULL, num_pcs is updated with the count of the
+- * parsed PCS.
++ * Only PCS that are currently available are stored in @available_pcs.
++ * PCS that returns -ENODEV are skipped.
+  *
+- * Returns 0 or a negative error.
++ * Returns: number of PCS stored in @available_pcs, or negative error code.
+  */
+ int fwnode_phylink_pcs_parse(struct fwnode_handle *fwnode,
+ 			     struct phylink_pcs **available_pcs,
+-			     unsigned int *num_pcs);
++			     unsigned int num_pcs);
+ #else
+ static inline int register_fwnode_pcs_notifier(struct notifier_block *nb)
+ {
+ 	return -EOPNOTSUPP;
+ }
+ 
+-static inline struct phylink_pcs *fwnode_pcs_get(struct fwnode_handle *fwnode,
+-						 int index)
++static inline int unregister_fwnode_pcs_notifier(struct notifier_block *nb)
++{
++	return -EOPNOTSUPP;
++}
++
++static inline struct phylink_pcs *fwnode_pcs_get(const struct fwnode_handle *fwnode,
++						 unsigned int index)
+ {
+ 	return ERR_PTR(-ENOENT);
+ }
+ 
+ static inline struct phylink_pcs *
+-fwnode_phylink_pcs_get_from_fwnode(struct fwnode_handle *fwnode,
+-				   struct fwnode_handle *pcs_fwnode)
++fwnode_pcs_get_from_provider(struct fwnode_pcs_provider *provider,
++			     const struct fwnode_handle *fwnode,
++			     int index)
+ {
+ 	return ERR_PTR(-ENOENT);
+ }
+ 
++static inline bool fwnode_pcs_matches_provider(struct fwnode_pcs_provider *provider,
++					       const struct fwnode_handle *fwnode,
++					       struct phylink_pcs *pl_pcs)
++{
++	return false;
++}
++
++static inline unsigned int fwnode_phylink_pcs_count(struct fwnode_handle *fwnode)
++{
++	return 0;
++}
++
+ static inline int fwnode_phylink_pcs_parse(struct fwnode_handle *fwnode,
+ 					   struct phylink_pcs **available_pcs,
+-					   unsigned int *num_pcs)
++					   unsigned int num_pcs)
+ {
+ 	return -EOPNOTSUPP;
+ }
+--- a/include/linux/pcs/pcs-provider.h
++++ b/include/linux/pcs/pcs-provider.h
+@@ -2,40 +2,69 @@
+ #ifndef __LINUX_PCS_PROVIDER_H
+ #define __LINUX_PCS_PROVIDER_H
+ 
++struct fwnode_pcs_provider;
++
+ /**
+- * fwnode_pcs_simple_get - Simple xlate function to retrieve PCS
++ * fwnode_pcs_simple_xlate - Simple xlate function to retrieve PCS
+  * @pcsspec: reference arguments
+  * @data: Context data (assumed assigned to the single PCS)
+  *
+- * Returns the PCS. (pointed by data)
++ * Returns: the PCS pointed by data.
+  */
+-struct phylink_pcs *fwnode_pcs_simple_get(struct fwnode_reference_args *pcsspec,
+-					  void *data);
++struct phylink_pcs *fwnode_pcs_simple_xlate(struct fwnode_reference_args *pcsspec,
++					    void *data);
+ 
+ /**
+  * fwnode_pcs_add_provider - Registers a new PCS provider
+- * @np: Firmware node
+- * @get: xlate function to retrieve the PCS
++ * @fwnode: Firmware node
++ * @fwnode_xlate: xlate function to retrieve the PCS
+  * @data: Context data
+  *
+- * Register and add a new PCS to the global providers list
+- * for the firmware node. A function to get the PCS from
+- * firmware node with the use fwnode reference arguments.
+- * To the get function is also passed the interface type
+- * requested for the PHY. PCS driver will use the passed
+- * interface to understand if the PCS can support it or not.
++ * Register and add a new PCS provider to the global providers list
++ * for the firmware node. The relevant PCS from the PCS provider
++ * is retrieved from the passed fwnode_xlate function.
++ *
++ * The xlate function MUST return a pointer to an existing, already-allocated
++ * struct phylink_pcs and MUST NOT dynamically allocate a new PCS.
++ * The same PCS object must be returned for a given firmware reference and args,
++ * as PCS pointer identity is used to associate PCS objects with their provider.
+  *
+- * Returns 0 on success or -ENOMEM on allocation failure.
++ * Returns: A pointer to the registered PCS provider on success, or
++ * an ERR_PTR() encoded error code on failure.
+  */
+-int fwnode_pcs_add_provider(struct fwnode_handle *fwnode,
+-			    struct phylink_pcs *(*get)(struct fwnode_reference_args *pcsspec,
+-						       void *data),
+-			    void *data);
++struct fwnode_pcs_provider *
++fwnode_pcs_add_provider(struct fwnode_handle *fwnode,
++			struct phylink_pcs *(*fwnode_xlate)(struct fwnode_reference_args *pcsspec,
++							    void *data),
++			void *data);
+ 
+ /**
+  * fwnode_pcs_del_provider - Removes a PCS provider
++ * @pp: PCS provider returned by fwnode_pcs_add_provider()
++ */
++void fwnode_pcs_del_provider(struct fwnode_pcs_provider *pp);
++
++/**
++ * devm_fwnode_pcs_add_provider - Registers a new PCS provider
++ * @dev: Device of the PCS provider
+  * @fwnode: Firmware node
++ * @fwnode_xlate: xlate function to retrieve the PCS
++ * @data: Context data
++ *
++ * Register and add a new PCS provider to the global providers list
++ * for the firmware node. The relevant PCS from the PCS provider
++ * is retrieved from the passed fwnode_xlate function. While at that, it
++ * also associates the device with the PCS provider using devres.
++ * On driver detach, release function is invoked on the devres data,
++ * then, devres data is freed.
++ *
++ * Returns: A pointer to the registered PCS provider on success, or
++ * an ERR_PTR() encoded error code on failure.
+  */
+-void fwnode_pcs_del_provider(struct fwnode_handle *fwnode);
++struct fwnode_pcs_provider *
++devm_fwnode_pcs_add_provider(struct device *dev, struct fwnode_handle *fwnode,
++			     struct phylink_pcs *(*fwnode_xlate)(struct fwnode_reference_args *pcsspec,
++								 void *data),
++			     void *data);
+ 
+ #endif /* __LINUX_PCS_PROVIDER_H */

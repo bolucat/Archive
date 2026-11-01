@@ -1,0 +1,53 @@
+Subject: [PATCH] edma: reject replacement rings until ESS has been reset
+
+Live reload tests produce unwritten RRDs and memory corruption when EDMA
+is reloaded without the shared ESS reset. Queue disable and pointer loads
+do not make this safe. Reject stale ring bases before enabling DMA; a
+complete SSDK/EDMA reload resets ESS and remains supported. Preserve EBUSY.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma.c
++++ b/edma.c
+@@ -2241,6 +2241,8 @@
+ int edma_reset(struct edma_common_info *edma_cinfo)
+ {
+ 	struct edma_hw *hw = &edma_cinfo->hw;
++	u32 base;
++	int i, queue = 0;
+ 
+ 	edma_irq_disable(edma_cinfo);
+ 
+@@ -2248,6 +2250,18 @@
+ 
+ 	edma_stop_rx_tx(hw);
+ 
++	/* Queue disable does not invalidate prefetched RX buffer addresses.
++	 * Replacing a live hardware ring after module removal can DMA into
++	 * freed memory. Only the shared ESS reset establishes a clean ring.
++	 */
++	for (i = 0; i < edma_cinfo->num_rx_queues; i++) {
++		edma_read_reg(EDMA_REG_RFD_BASE_ADDR_Q(queue), &base);
++		if (base)
++			return dev_err_probe(&edma_cinfo->pdev->dev, -EBUSY,
++				"RX ring needs ESS reset; reload SSDK and EDMA together\n");
++		queue += edma_cinfo->num_rx_queues == 4 ? 2 : 1;
++	}
++
+ 	return 0;
+ }
+ 
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -1796,10 +1796,8 @@
+ 	edma_irq_disable(edma_cinfo);
+ 
+ 	err = edma_reset(edma_cinfo);
+-	if (err) {
+-		err = -EIO;
++	if (err)
+ 		goto err_reset;
+-	}
+ 
+ 	/* populate per_core_info, do a napi_Add, request 16 TX irqs,
+ 	 * 8 RX irqs, do a napi enable

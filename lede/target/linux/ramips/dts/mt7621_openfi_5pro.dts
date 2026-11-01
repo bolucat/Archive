@@ -15,6 +15,7 @@
 		led-failsafe = &led_system_blue;
 		led-running = &led_system_blue;
 		led-upgrade = &led_system_blue;
+		label-mac-device = &gmac0;
 	};
 
 	chosen {
@@ -41,22 +42,20 @@
 		compatible = "gpio-leds";
 
 		led_system_blue: led-0 {
-			label = "blue:system";
 			color = <LED_COLOR_ID_BLUE>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
 		};
 
-		led_internet_blue: led-1 {
-			label = "blue:internet";
+		led-1 {
 			color = <LED_COLOR_ID_BLUE>;
-			function = LED_FUNCTION_STATUS;
+			function = LED_FUNCTION_WAN_ONLINE;
 			gpios = <&gpio 17 GPIO_ACTIVE_LOW>;
 		};
 
-		led_wifi_blue: led-2 {
-			label = "blue:wifi";
+		led-2 {
 			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_WLAN;
 			linux,default-trigger = "phy0tpt";
 			gpios = <&gpio 16 GPIO_ACTIVE_LOW>;
 		};
@@ -69,7 +68,7 @@
 	flash@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
-		spi-max-frequency = <45000000>;
+		spi-max-frequency = <40000000>;
 		broken-flash-reset;
 
 		partitions {
@@ -78,7 +77,7 @@
 			#size-cells = <1>;
 
 			partition@0 {
-				label = "bootloader";
+				label = "u-boot";
 				reg = <0x0 0x30000>;
 				read-only;
 			};
@@ -89,16 +88,38 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_factory_0: eeprom@0 {
+						reg = <0x0 0x400>;
+					};
+
+					eeprom_factory_8000: eeprom@8000 {
+						reg = <0x8000 0x4da8>;
+					};
+
+					macaddr_factory_e000: macaddr@e000 {
+						reg = <0xe000 0x6>;
+					};
+
+					macaddr_factory_e006: macaddr@e006 {
+						reg = <0xe006 0x6>;
+					};
+				};
 			};
 
 			partition@50000 {
 				compatible = "denx,uimage";
 				label = "firmware";
-				reg = <0x50000 0x3f00000>;
+				reg = <0x50000 0x3fb0000>;
 			};
 		};
 	};
@@ -109,45 +130,60 @@
 };
 
 &pcie0 {
-	mt76@0,0 {
+	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x0>;
 		ieee80211-freq-limit = <2400000 2500000>;
+		nvmem-cells = <&eeprom_factory_0>;
+		nvmem-cell-names = "eeprom";
 	};
 };
 
 &pcie1 {
-	mt76@0,0 {
+	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x8000>;
 		ieee80211-freq-limit = <5000000 6000000>;
+		nvmem-cells = <&eeprom_factory_8000>;
+		nvmem-cell-names = "eeprom";
 	};
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0xe000>;
+	nvmem-cells = <&macaddr_factory_e000>;
+	nvmem-cell-names = "mac-address";
 };
 
-&switch0 {
-	ports {
-		port@0 {
-			status = "okay";
-			label = "wan";
-			mtd-mac-address = <&factory 0xe006>;
-		};
+&gmac1 {
+	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy0>;
+
+	nvmem-cells = <&macaddr_factory_e006>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy0 {
+	/delete-property/ interrupts;
+};
+
+&gsw {
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan";
 		};
-	};
+
+};
+
+&sdhci {
+	status = "okay";
 };
 
 &state_default {
 	gpio {
-		groups = "wdt", "jtag";
+		groups = "jtag", "wdt";
 		function = "gpio";
 	};
 };

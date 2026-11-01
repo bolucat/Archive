@@ -1,0 +1,33 @@
+Subject: [PATCH] edma: release sysctls on failed probe and each GMAC IRQ map
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -1788,6 +1788,7 @@
+ 							     edma_table);
+ 	if (!edma_cinfo->edma_ctl_table_hdr) {
+ 		dev_err(&pdev->dev, "edma sysctl table hdr not registered\n");
++		err = -ENOMEM;
+ 		goto err_unregister_sysctl_tbl;
+ 	}
+ 
+@@ -2014,6 +2015,7 @@
+ 	for (i = 0; i < CONFIG_NR_CPUS; i++)
+ 		napi_disable(&edma_cinfo->edma_percpu_info[i].napi);
+ err_reset:
++	unregister_net_sysctl_table(edma_cinfo->edma_ctl_table_hdr);
+ err_unregister_sysctl_tbl:
+ err_rmap_alloc_fail:
+ err_register:
+@@ -2075,8 +2077,8 @@
+ 	edma_write_reg(EDMA_REG_TX_ISR, 0xffff);
+ #ifdef CONFIG_RFS_ACCEL
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++) {
+-		free_irq_cpu_rmap(edma_netdev[0]->rx_cpu_rmap);
+-		edma_netdev[0]->rx_cpu_rmap = NULL;
++		free_irq_cpu_rmap(edma_netdev[i]->rx_cpu_rmap);
++		edma_netdev[i]->rx_cpu_rmap = NULL;
+ 	}
+ #endif
+ 

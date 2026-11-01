@@ -1,0 +1,10 @@
+flashinit mmc || exit 1
+flupdate set mmc || exit 1
+
+imxtract $imgaddr hlos && flash 0:HLOS || exit 1
+
+imxtract $imgaddr rootfs && flash rootfs || exit 1
+
+flupdate clear || exit 1
+
+exit 0

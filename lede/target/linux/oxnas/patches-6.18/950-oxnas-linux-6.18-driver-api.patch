@@ -1,0 +1,726 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] ARM: oxnas: adapt restored drivers to Linux 6.18 APIs
+
+Update the retained OXNAS drivers for current kernel interfaces.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/ata/sata_oxnas.c
++++ b/drivers/ata/sata_oxnas.c
+@@ -20,6 +20,7 @@
+ #include <linux/ata.h>
+ #include <linux/libata.h>
+ #include <linux/of_platform.h>
++#include <linux/platform_device.h>
+ #include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+@@ -486,7 +487,7 @@
+ 	u32 patience;
+ 	unsigned long flags;
+ 
+-	DPRINTK("P%d [0x%02x]->0x%08x\n", ap->port_no, link_reg, val);
++	pr_debug("P%d [0x%02x]->0x%08x\n", ap->port_no, link_reg, val);
+ 
+ 	spin_lock_irqsave(&hd->phy_lock, flags);
+ 	iowrite32(val, port_base + LINK_DATA);
+@@ -536,7 +537,7 @@
+ 			break;
+ 	}
+ 	if (patience == 0)
+-		DPRINTK("link read timed out for port %d\n", ap->port_no);
++		pr_debug("link read timed out for port %d\n", ap->port_no);
+ 
+ 	result = ioread32(port_base + LINK_DATA);
+ 	spin_unlock_irqrestore(&hd->phy_lock, flags);
+@@ -596,12 +597,12 @@
+ 	if (ioread32(port_base + SATA_COMMAND) & CMD_CORE_BUSY) {
+ 		int count = 0;
+ 
+-		DPRINTK("core busy for a command on port %d\n",
++		pr_debug("core busy for a command on port %d\n",
+ 			qc->ap->port_no);
+ 		do {
+ 			mdelay(1);
+ 			if (++count > 100) {
+-				DPRINTK("core busy for a command on port %d\n",
++				pr_debug("core busy for a command on port %d\n",
+ 					qc->ap->port_no);
+ 				/* CrazyDumpDebug(); */
+ 				sata_oxnas_cleanup(qc->ap->host);
+@@ -655,7 +656,7 @@
+  */
+ void sata_oxnas_checkforhotplug(struct ata_port *ap)
+ {
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 
+ 	ata_ehi_hotplugged(&ap->link.eh_info);
+ 	ata_port_freeze(ap);
+@@ -697,7 +698,7 @@
+ 
+ 	spin_lock_irqsave(&hd->core_lock, flags);
+ 
+-	DPRINTK("Entered uid %p, port %d, h/w count %d, d count %d, "
++	pr_debug("Entered uid %p, port %d, h/w count %d, d count %d, "
+ 		    "callback %p, hw_access %d, core_locked %d, "
+ 		    "reentrant_port_no %d, isr_callback %p\n",
+ 		uid, port_no, hd->hw_lock_count, hd->direct_lock_count,
+@@ -715,7 +716,7 @@
+ 				BUG_ON(!hd->hw_lock_count);
+ 				++(hd->hw_lock_count);
+ 
+-				DPRINTK("Allow SCSI/SATA re-entrant access to "
++				pr_debug("Allow SCSI/SATA re-entrant access to "
+ 					"uid %p port %d\n", uid, port_no);
+ 				acquired = 1;
+ 				break;
+@@ -808,7 +809,7 @@
+ 
+ wait_for_lock:
+ 		if (!may_sleep) {
+-			DPRINTK("Denying for uid %p locker_type %d, "
++			pr_debug("Denying for uid %p locker_type %d, "
+ 			"hw_access %d, port %d, current_locker_type %d as "
+ 			"cannot sleep\n", uid, locker_type, hw_access, port_no,
+ 			hd->current_locker_type);
+@@ -880,7 +881,7 @@
+ 			wake_up(&hd->scsi_wait_queue);
+ 	}
+ 
+-	DPRINTK("Leaving uid %p with acquired = %d, port %d, callback %p\n",
++	pr_debug("Leaving uid %p with acquired = %d, port %d, callback %p\n",
+ 		uid, acquired, port_no, callback);
+ 
+ 	spin_unlock_irqrestore(&hd->core_lock, flags);
+@@ -944,7 +945,7 @@
+ 
+ 	spin_lock_irqsave(&hd->core_lock, flags);
+ 
+-	DPRINTK("Entered port_no = %d, h/w count %d, d count %d, "
++	pr_debug("Entered port_no = %d, h/w count %d, d count %d, "
+ 		"core locked = %d, reentrant_port_no = %d, isr_callback %p\n",
+ 		ap->port_no, hd->hw_lock_count, hd->direct_lock_count,
+ 		hd->core_locked, hd->reentrant_port_no, hd->isr_callback);
+@@ -973,9 +974,9 @@
+ 			hd->core_locked, hd->isr_callback);
+ 
+ 		if (--(hd->hw_lock_count)) {
+-			DPRINTK("Still nested port_no %d\n", ap->port_no);
++			pr_debug("Still nested port_no %d\n", ap->port_no);
+ 		} else {
+-			DPRINTK("Release port_no %d\n", ap->port_no);
++			pr_debug("Release port_no %d\n", ap->port_no);
+ 			hd->reentrant_port_no = -1;
+ 			hd->isr_callback = NULL;
+ 			hd->current_locker_type = SATA_UNLOCKED;
+@@ -988,7 +989,7 @@
+ 		}
+ 	}
+ 
+-	DPRINTK("Leaving, port_no %d, count %d\n", ap->port_no,
++	pr_debug("Leaving, port_no %d, count %d\n", ap->port_no,
+ 		hd->hw_lock_count);
+ 
+ 	spin_unlock_irqrestore(&hd->core_lock, flags);
+@@ -1034,7 +1035,7 @@
+ 	struct sata_oxnas_host_priv *host_priv = ah->private_data;
+ 	int n;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	clk_prepare_enable(host_priv->clk);
+ 
+ 	reset_control_assert(host_priv->rst_sata);
+@@ -1076,7 +1077,7 @@
+ 	void __iomem *port_base = pd->port_base;
+ 	u32 reg;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	/* Set the bits to put the port into 28 or 48-bit node */
+ 	reg = ioread32(port_base + DRIVE_CONTROL);
+ 	reg &= ~3;
+@@ -1293,7 +1294,7 @@
+ 		0x02400000, ~0
+ 	};
+ 
+-	DPRINTK("ENTER: mode:%d, force:%d\n", mode, force);
++	pr_debug("ENTER: mode:%d, force:%d\n", mode, force);
+ 
+ 	if (force)
+ 		previous_mode = UNKNOWN_MODE;
+@@ -1354,11 +1355,11 @@
+ 		switch (mode) {
+ 		case OXNASSATA_RAID1:
+ 		case OXNASSATA_RAID0:
+-			VPRINTK("Loading RAID micro-code\n");
++			pr_debug("Loading RAID micro-code\n");
+ 			src = (unsigned int *)&raid[1];
+ 			break;
+ 		case OXNASSATA_NOTRAID:
+-			VPRINTK("Loading JBOD micro-code\n");
++			pr_debug("Loading JBOD micro-code\n");
+ 			src = (unsigned int *)&jbod[1];
+ 			break;
+ 		default:
+@@ -1499,15 +1500,15 @@
+ 
+ 	reg = ioread32(base + INT_STATUS);
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	if (reg & INT_REG_ACCESS_ERR) {
+-		DPRINTK("clearing register access error on port %d\n",
++		pr_debug("clearing register access error on port %d\n",
+ 			ap->port_no);
+ 		iowrite32(INT_REG_ACCESS_ERR, base + INT_STATUS);
+ 	}
+ 	reg = ioread32(base + INT_STATUS);
+ 	if (reg & INT_REG_ACCESS_ERR)
+-		DPRINTK("register access error didn't clear\n");
++		pr_debug("register access error didn't clear\n");
+ }
+ 
+ static inline void sata_oxnas_clear_sctl_error(struct ata_port *ap)
+@@ -1563,7 +1564,7 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ap->host->private_data;
+ 
+-	DPRINTK("port %d\n", ap->port_no);
++	pr_debug("port %d\n", ap->port_no);
+ 	smp_rmb();
+ 	if (hd->port_frozen || hd->port_in_eh)
+ 		return 1;
+@@ -1576,7 +1577,7 @@
+  */
+ static void sata_oxnas_qc_free(struct ata_queued_cmd *qc)
+ {
+-	DPRINTK("\n");
++	pr_debug("\n");
+ 	sata_oxnas_release_hw(qc->ap);
+ }
+ 
+@@ -1584,7 +1585,7 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ap->host->private_data;
+ 
+-	DPRINTK("\n");
++	pr_debug("\n");
+ 	hd->port_frozen |= BIT(ap->port_no);
+ 	smp_wmb();
+ }
+@@ -1593,7 +1594,7 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ap->host->private_data;
+ 
+-	DPRINTK("\n");
++	pr_debug("\n");
+ 	hd->port_frozen &= ~BIT(ap->port_no);
+ 	smp_wmb();
+ }
+@@ -1602,7 +1603,7 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ap->host->private_data;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	hd->port_in_eh |= BIT(ap->port_no);
+ 	smp_wmb();
+ }
+@@ -1611,16 +1612,16 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ap->host->private_data;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	hd->port_in_eh &= ~BIT(ap->port_no);
+ 	smp_wmb();
+ }
+ 
+ static void sata_oxnas_post_internal_cmd(struct ata_queued_cmd *qc)
+ {
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	/* If the core is busy here, make it idle */
+-	if (qc->flags & ATA_QCFLAG_FAILED)
++	if (qc->flags & ATA_QCFLAG_EH)
+ 		sata_oxnas_cleanup(qc->ap->host);
+ }
+ 
+@@ -1675,7 +1676,7 @@
+ 
+ 	unsigned int dev;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	ata_std_postreset(link, classes);
+ 
+ 	/* turn on phy error detection by removing the masks */
+@@ -1685,7 +1686,7 @@
+ 
+ 	/* bail out if no device is present */
+ 	if (classes[0] == ATA_DEV_NONE && classes[1] == ATA_DEV_NONE) {
+-		DPRINTK("EXIT, no device\n");
++		pr_debug("EXIT, no device\n");
+ 		return;
+ 	}
+ 
+@@ -1695,7 +1696,7 @@
+ 			sata_oxnas_dev_config(&(ap->link.device[dev]));
+ 	}
+ 
+-	DPRINTK("EXIT\n");
++	pr_debug("EXIT\n");
+ }
+ 
+ /**
+@@ -1741,12 +1742,11 @@
+ /**
+  * Read a result task-file from the sata core registers.
+  */
+-static bool sata_oxnas_qc_fill_rtf(struct ata_queued_cmd *qc)
++static void sata_oxnas_qc_fill_rtf(struct ata_queued_cmd *qc)
+ {
+ 	/* Read the most recently received FIS from the SATA core ORB registers
+ 	 and convert to an ATA taskfile */
+ 	sata_oxnas_tf_read(qc->ap, &qc->result_tf);
+-	return true;
+ }
+ 
+ /**
+@@ -1781,7 +1781,7 @@
+ {
+ 	struct sata_oxnas_host_priv *hd = ah->private_data;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	if (no_microcode) {
+ 		u32 reg;
+ 
+@@ -1860,7 +1860,7 @@
+ 	void *mem;
+ 	dma_addr_t mem_dma;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 
+ 	pp = kzalloc(sizeof(*pp), GFP_KERNEL);
+ 	if (!pp)
+@@ -1876,7 +1876,7 @@
+ 
+ 	/* preallocated */
+ 	if (host_priv->dma_size >= SATA_OXNAS_DMA_SIZE * host_priv->n_ports) {
+-		DPRINTK("using preallocated DMA\n");
++		pr_debug("using preallocated DMA\n");
+ 		mem_dma = host_priv->dma_base +
+ 				(ap->port_no ? SATA_OXNAS_DMA_SIZE : 0);
+ 		mem = ioremap(mem_dma, SATA_OXNAS_DMA_SIZE);
+@@ -1911,7 +1911,7 @@
+ 	struct sata_oxnas_port_priv *pp = ap->private_data;
+ 	struct sata_oxnas_host_priv *host_priv = ap->host->private_data;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 	ap->private_data = NULL;
+ 	if (host_priv->dma_size) {
+ 		iounmap(pp->sgdma_request);
+@@ -1952,7 +1952,7 @@
+ 
+ 	/* clean up any remaining errors */
+ 	sata_oxnas_scr_write_port(ap, SCR_ERROR, ~0);
+-	VPRINTK("done\n");
++	pr_debug("done\n");
+ }
+ 
+ /**
+@@ -1963,14 +1963,14 @@
+  */
+ static void sata_oxnas_host_stop(struct ata_host *host_set)
+ {
+-	DPRINTK("\n");
++	pr_debug("\n");
+ }
+ 
+ 
+ #define ERROR_HW_ACQUIRE_TIMEOUT_JIFFIES (10 * HZ)
+ static void sata_oxnas_error_handler(struct ata_port *ap)
+ {
+-	DPRINTK("Enter port_no %d\n", ap->port_no);
++	pr_debug("Enter port_no %d\n", ap->port_no);
+ 	sata_oxnas_freeze_host(ap);
+ 
+ 	/* If the core is busy here, make it idle */
+@@ -1992,12 +1992,12 @@
+ 	struct ata_taskfile tf;
+ 	u32 Command_Reg;
+ 
+-	DPRINTK("ENTER\n");
++	pr_debug("ENTER\n");
+ 
+ 	port_base = pd->port_base;
+ 
+ 	if (ata_link_offline(link)) {
+-		DPRINTK("PHY reports no device\n");
++		pr_debug("PHY reports no device\n");
+ 		*class = ATA_DEV_NONE;
+ 		goto out;
+ 	}
+@@ -2050,7 +2050,7 @@
+ 		*class = ATA_DEV_NONE;
+ 
+ out:
+-	DPRINTK("EXIT, class=%u\n", *class);
++	pr_debug("EXIT, class=%u\n", *class);
+ 	return 0;
+ }
+ 
+@@ -2122,12 +2122,12 @@
+ 	u32 int_status;
+ 	unsigned long flags = 0;
+ 
+-	DPRINTK("ENTER port %d irqstatus %x\n", ap->port_no,
++	pr_debug("ENTER port %d irqstatus %x\n", ap->port_no,
+ 		ioread32(port_base + INT_STATUS));
+ 
+ 	if (ap->qc_active & (1ULL << ATA_TAG_INTERNAL)) {
+ 			qc = ata_qc_from_tag(ap, ATA_TAG_INTERNAL);
+-			DPRINTK("completing non-ncq cmd\n");
++			pr_debug("completing non-ncq cmd\n");
+ 
+ 			if (qc)
+ 				ata_qc_complete(qc);
+@@ -2150,7 +2150,7 @@
+ 		if (force_error) {
+ 			/* Pretend there has been a link error */
+ 			qc->err_mask |= AC_ERR_ATA_BUS;
+-			DPRINTK(" ####force error####\n");
++			pr_debug(" ####force error####\n");
+ 		}
+ 		/* tell libata we're done */
+ 		local_irq_save(flags);
+@@ -2158,8 +2158,8 @@
+ 		local_irq_restore(flags);
+ 		ata_qc_complete(qc);
+ 	} else {
+-		VPRINTK("Ignoring interrupt, can't find the command tag="
+-			"%d %08x\n", ap->link.active_tag, ap->qc_active);
++		pr_debug("Ignoring interrupt, can't find the command tag="
++			"%d %016llx\n", ap->link.active_tag, ap->qc_active);
+ 	}
+ 
+ 	/* maybe a hotplug event */
+@@ -2231,7 +2231,6 @@
+ 	.can_queue = SATA_OXNAS_QUEUE_DEPTH,
+ 	.sg_tablesize = SATA_OXNAS_MAX_PRD,
+ 	.dma_boundary = ATA_DMA_BOUNDARY,
+-	.unchecked_isa_dma  = 0,
+ };
+ 
+ 
+@@ -2248,9 +2247,9 @@
+ 
+ 	.freeze = sata_oxnas_freeze,
+ 	.thaw = sata_oxnas_thaw,
+-	.softreset = sata_oxnas_softreset,
++	.reset.softreset = sata_oxnas_softreset,
+ 	/* .hardreset = sata_oxnas_hardreset, */
+-	.postreset = sata_oxnas_postreset,
++	.reset.postreset = sata_oxnas_postreset,
+ 	.error_handler = sata_oxnas_error_handler,
+ 	.post_internal_cmd = sata_oxnas_post_internal_cmd,
+ 
+@@ -2427,7 +2426,7 @@
+ }
+ 
+ 
+-static int sata_oxnas_remove(struct platform_device *ofdev)
++static void sata_oxnas_remove(struct platform_device *ofdev)
+ {
+ 	struct ata_host *host = dev_get_drvdata(&ofdev->dev);
+ 	struct sata_oxnas_host_priv *host_priv = host->private_data;
+@@ -2448,7 +2447,6 @@
+ 	clk_disable_unprepare(host_priv->clk);
+ 	clk_put(host_priv->clk);
+ 
+-	return 0;
+ }
+ 
+ #ifdef CONFIG_PM
+@@ -2456,7 +2454,8 @@
+ {
+ 	struct ata_host *host = dev_get_drvdata(&op->dev);
+ 
+-	return ata_host_suspend(host, state);
++	ata_host_suspend(host, state);
++	return 0;
+ }
+ 
+ static int sata_oxnas_resume(struct platform_device *op)
+--- a/drivers/mtd/nand/raw/oxnas_nand.c
++++ b/drivers/mtd/nand/raw/oxnas_nand.c
+@@ -173,7 +173,7 @@
+ 	return err;
+ }
+ 
+-static int oxnas_nand_remove(struct platform_device *pdev)
++static void oxnas_nand_remove(struct platform_device *pdev)
+ {
+ 	struct oxnas_nand_ctrl *oxnas = platform_get_drvdata(pdev);
+ 	struct nand_chip *chip;
+@@ -187,7 +187,6 @@
+ 
+ 	clk_disable_unprepare(oxnas->clk);
+ 
+-	return 0;
+ }
+ 
+ static const struct of_device_id oxnas_nand_match[] = {
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-oxnas.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-oxnas.c
+@@ -118,15 +118,13 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	plat_dat = stmmac_probe_config_dt(pdev, &stmmac_res.mac);
++	plat_dat = devm_stmmac_probe_config_dt(pdev, stmmac_res.mac);
+ 	if (IS_ERR(plat_dat))
+ 		return PTR_ERR(plat_dat);
+ 
+ 	dwmac = devm_kzalloc(&pdev->dev, sizeof(*dwmac), GFP_KERNEL);
+-	if (!dwmac) {
+-		ret = -ENOMEM;
+-		goto err_remove_config_dt;
+-	}
++	if (!dwmac)
++		return -ENOMEM;
+ 
+ 	dwmac->dev = &pdev->dev;
+ 	plat_dat->bsp_priv = dwmac;
+@@ -134,36 +132,16 @@
+ 	plat_dat->exit = oxnas_dwmac_exit;
+ 
+ 	dwmac->regmap = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+-							"oxsemi,sys-ctrl");
+-	if (IS_ERR(dwmac->regmap)) {
+-		dev_err(&pdev->dev, "failed to have sysctrl regmap\n");
+-		ret = PTR_ERR(dwmac->regmap);
+-		goto err_remove_config_dt;
+-	}
++						     "oxsemi,sys-ctrl");
++	if (IS_ERR(dwmac->regmap))
++		return dev_err_probe(&pdev->dev, PTR_ERR(dwmac->regmap),
++				     "failed to get sysctrl regmap\n");
+ 
+ 	dwmac->clk = devm_clk_get(&pdev->dev, "gmac");
+-	if (IS_ERR(dwmac->clk)) {
+-		ret = PTR_ERR(dwmac->clk);
+-		goto err_remove_config_dt;
+-	}
++	if (IS_ERR(dwmac->clk))
++		return PTR_ERR(dwmac->clk);
+ 
+-	ret = oxnas_dwmac_init(pdev, plat_dat->bsp_priv);
+-	if (ret)
+-		goto err_remove_config_dt;
+-
+-	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
+-	if (ret)
+-		goto err_dwmac_exit;
+-
+-
+-	return 0;
+-
+-err_dwmac_exit:
+-	oxnas_dwmac_exit(pdev, plat_dat->bsp_priv);
+-err_remove_config_dt:
+-	stmmac_remove_config_dt(pdev, plat_dat);
+-
+-	return ret;
++	return devm_stmmac_pltfr_probe(pdev, plat_dat, &stmmac_res);
+ }
+ 
+ static const struct of_device_id oxnas_dwmac_match[] = {
+@@ -174,7 +152,6 @@
+ 
+ static struct platform_driver oxnas_dwmac_driver = {
+ 	.probe  = oxnas_dwmac_probe,
+-	.remove = stmmac_pltfr_remove,
+ 	.driver = {
+ 		.name           = "oxnas-dwmac",
+ 		.pm		= &stmmac_pltfr_pm_ops,
+--- a/drivers/pci/controller/pcie-oxnas.c
++++ b/drivers/pci/controller/pcie-oxnas.c
+@@ -18,11 +18,10 @@
+ #include <linux/platform_device.h>
+ #include <linux/of_address.h>
+ #include <linux/of_device.h>
+-#include <linux/of_gpio.h>
+ #include <linux/of_irq.h>
+ #include <linux/of_pci.h>
+ #include <linux/of_platform.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/delay.h>
+ #include <linux/clk.h>
+ #include <linux/phy.h>
+@@ -138,7 +137,7 @@
+ 	struct resource pre_mem;	/* prefetchable */
+ 	struct resource non_mem;	/* non-prefetchable */
+ 	struct resource busn;		/* max available bus numbers */
+-	int card_reset;			/* gpio pin, optional */
++	struct gpio_desc *card_reset;	/* Optional PCIe card reset */
+ 	unsigned hcsl_en;		/* hcsl pci enable bit */
+ 	struct clk *clk;
+ 	struct clk *busclk;		/* for pcie bus, actually the PLLB */
+@@ -478,6 +477,7 @@
+ {
+ 	struct of_pci_range range;
+ 	struct of_pci_range_parser parser;
++	u32 bus_range[2];
+ 	int ret;
+ 
+ 	if (of_pci_range_parser_init(&parser, np))
+@@ -506,7 +506,7 @@
+ 	}
+ 
+ 	/* Get the bus range */
+-	ret = of_pci_parse_bus_range(np, &pcie->busn);
++	ret = of_property_read_u32_array(np, "bus-range", bus_range, 2);
+ 
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "failed to parse bus-range property: %d\n",
+@@ -514,9 +514,17 @@
+ 		return ret;
+ 	}
+ 
+-	pcie->card_reset = of_get_gpio(np, 0);
+-	if (pcie->card_reset < 0)
+-		dev_info(&pdev->dev, "card reset gpio pin not exists\n");
++	if (bus_range[0] > bus_range[1] || bus_range[1] > 255)
++		return -EINVAL;
++	pcie->busn.start = bus_range[0];
++	pcie->busn.end = bus_range[1];
++	pcie->busn.flags = IORESOURCE_BUS;
++	pcie->busn.name = np->name;
++
++	pcie->card_reset = devm_gpiod_get_optional(&pdev->dev, NULL, GPIOD_IN);
++	if (IS_ERR(pcie->card_reset))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->card_reset),
++				     "cannot get PCIe card reset GPIO\n");
+ 
+ 	if (of_property_read_u32(np, "plxtech,pcie-hcsl-bit", &pcie->hcsl_en))
+ 		return -EINVAL;
+@@ -544,12 +552,12 @@
+ 	clk_prepare_enable(pcie->busclk);
+ 
+ 	/* reset PCIe cards use hard-wired gpio pin */
+-	if (pcie->card_reset >= 0 &&
+-	    !gpio_direction_output(pcie->card_reset, 0)) {
++	if (pcie->card_reset &&
++	    !gpiod_direction_output_raw(pcie->card_reset, 0)) {
+ 		wmb();
+ 		mdelay(10);
+ 		/* must tri-state the pin to pull it up */
+-		gpio_direction_input(pcie->card_reset);
++		gpiod_direction_input(pcie->card_reset);
+ 		wmb();
+ 		mdelay(100);
+ 	}
+@@ -614,25 +622,16 @@
+ 	ret = oxnas_pcie_init_res(pdev, pcie, np);
+ 	if (ret)
+ 		return ret;
+-	if (pcie->card_reset >= 0) {
+-		ret = gpio_request_one(pcie->card_reset, GPIOF_DIR_IN,
+-				       dev_name(&pdev->dev));
+-		if (ret) {
+-			dev_err(&pdev->dev, "cannot request gpio pin %d\n",
+-				pcie->card_reset);
+-			return ret;
+-		}
+-	}
+ 
+ 	ret = oxnas_pcie_map_registers(pdev, np, pcie);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "cannot map registers\n");
+-		goto err_free_gpio;
++		goto err_out;
+ 	}
+ 
+ 	ret = oxnas_pcie_shared_init(pdev, pcie);
+ 	if (ret)
+-		goto err_free_gpio;
++		goto err_out;
+ 
+ 	/* if hw not found, haslink cleared */
+ 	oxnas_pcie_init_hw(pdev, pcie);
+@@ -650,10 +649,7 @@
+ 
+ 	return 0;
+ 
+-err_free_gpio:
+-	if (pcie->card_reset)
+-		gpio_free(pcie->card_reset);
+-
++err_out:
+ 	return ret;
+ }
+ 
+--- a/drivers/pinctrl/pinctrl-oxnas.c
++++ b/drivers/pinctrl/pinctrl-oxnas.c
+@@ -781,7 +781,7 @@
+ 	return (readl_relaxed(bank->reg_base + INPUT_VALUE) & mask) != 0;
+ }
+ 
+-static void oxnas_gpio_set(struct gpio_chip *chip, unsigned int offset,
++static int oxnas_gpio_set(struct gpio_chip *chip, unsigned int offset,
+ 			       int value)
+ {
+ 	struct oxnas_gpio_bank *bank = gpiochip_get_data(chip);
+@@ -791,6 +791,8 @@
+ 		writel_relaxed(mask, bank->reg_base + OUTPUT_SET);
+ 	else
+ 		writel_relaxed(mask, bank->reg_base + OUTPUT_CLEAR);
++
++	return 0;
+ }
+ 
+ static int oxnas_gpio_direction_output(struct gpio_chip *chip,
+@@ -1055,7 +1057,7 @@
+ 	stat = readl(bank->reg_base + IRQ_PENDING);
+ 
+ 	for_each_set_bit(pin, &stat, BITS_PER_LONG)
+-		generic_handle_irq(irq_linear_revmap(gc->irq.domain, pin));
++		generic_handle_domain_irq(gc->irq.domain, pin);
+ 
+ 	chained_irq_exit(chip, desc);
+ }
+@@ -1232,7 +1234,7 @@
+ 
+ 	bank->id = id;
+ 	bank->gpio_chip.parent = &pdev->dev;
+-	bank->gpio_chip.of_node = np;
++	bank->gpio_chip.fwnode = of_fwnode_handle(np);
+ 	bank->gpio_chip.ngpio = ngpios;
+ 	girq = &bank->gpio_chip.irq;
+ 	girq->chip = &bank->irq_chip;
+--- a/drivers/usb/host/ehci-oxnas.c
++++ b/drivers/usb/host/ehci-oxnas.c
+@@ -309,7 +309,7 @@
+ 	return err;
+ }
+ 
+-static int ehci_oxnas_drv_remove(struct platform_device *pdev)
++static void ehci_oxnas_drv_remove(struct platform_device *pdev)
+ {
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 	struct oxnas_hcd *oxnas = (struct oxnas_hcd *)hcd_to_ehci(hcd)->priv;
+@@ -324,7 +324,6 @@
+ 	clk_disable_unprepare(oxnas->clk);
+ 	usb_put_hcd(hcd);
+ 
+-	return 0;
+ }
+ 
+ static const struct of_device_id oxnas_ehci_dt_ids[] = {

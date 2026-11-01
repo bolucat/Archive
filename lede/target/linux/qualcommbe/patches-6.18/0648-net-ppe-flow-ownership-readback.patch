@@ -1,0 +1,572 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 09:40:00 +0800
+Subject: [PATCH] net: ethernet: qualcomm: enforce and inspect flow table ownership
+
+Consolidate consecutive changes within this functional responsibility.
+Retain the final implementation and its error handling directly.
+
+Merged from:
+  0648-net-ethernet-qualcomm-ppe-add-indexed-flow-readback.patch
+  0649-net-ethernet-qualcomm-ppe-enforce-flow-index-ownership.patch
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
+@@ -18,6 +18,7 @@
+ #include <linux/etherdevice.h>
+ #include <linux/errno.h>
+ #include <linux/regmap.h>
++#include <linux/string.h>
+ 
+ #include "ppe.h"
+ #include "ppe_config.h"
+@@ -66,6 +67,43 @@ static int ppe_flow_op_issue(struct ppe_
+ 	return FIELD_GET(PPE_FLOW_OP_RSLT_ENTRY_INDEX, val);
+ }
+ 
++/* The read engine is separate from the add/delete result queue. */
++static int ppe_flow_read_op_issue(struct ppe_device *ppe_dev, int index)
++{
++	u32 val, cmd_id;
++	int ret;
++
++	cmd_id = ppe_dev->flow_cmd_id;
++	ppe_dev->flow_cmd_id = (cmd_id + 1) % 16;
++	val = FIELD_PREP(PPE_FLOW_OP_CMD_ID, cmd_id) |
++	      FIELD_PREP(PPE_FLOW_OP_TYPE, PPE_FDB_OP_TYPE_GET) |
++	      FIELD_PREP(PPE_FLOW_OP_HASH_BLOCK_BITMAP, 0x3) |
++	      PPE_FLOW_OP_MODE |
++	      FIELD_PREP(PPE_FLOW_OP_ENTRY_INDEX, index);
++
++	ret = regmap_write(ppe_dev->regmap, PPE_FLOW_TBL_RD_OP_ADDR, val);
++	if (ret)
++		return ret;
++
++	ret = regmap_read_poll_timeout(ppe_dev->regmap,
++				       PPE_FLOW_TBL_RD_OP_RSLT_ADDR, val,
++		FIELD_GET(PPE_FLOW_OP_RSLT_CMD_ID, val) == cmd_id &&
++		FIELD_GET(PPE_FLOW_OP_RSLT_VALID_CNT, val), 0, 50);
++	if (ret == -ETIMEDOUT)
++		ret = regmap_read_poll_timeout(ppe_dev->regmap,
++					       PPE_FLOW_TBL_RD_OP_RSLT_ADDR, val,
++			FIELD_GET(PPE_FLOW_OP_RSLT_CMD_ID, val) == cmd_id &&
++			FIELD_GET(PPE_FLOW_OP_RSLT_VALID_CNT, val), 10, 10000);
++	if (ret)
++		return ret;
++	if (val & PPE_FLOW_OP_RSLT_FAIL)
++		return -ENOENT;
++	if (FIELD_GET(PPE_FLOW_OP_RSLT_ENTRY_INDEX, val) != index)
++		return -EIO;
++
++	return 0;
++}
++
+ static int ppe_host_op_issue(struct ppe_device *ppe_dev, u32 op_type,
+ 			     bool by_index, int index)
+ {
+@@ -283,6 +321,72 @@ int ppe_flow_entry_enable(struct ppe_dev
+ 	return ret;
+ }
+ 
++/**
++ * ppe_flow_entry_read - Read an encoded flow through the operation engine
++ * @ppe_dev: PPE device
++ * @index: Hardware flow table index
++ * @words: Returned encoded words
++ * @nwords: Number of words to read
++ *
++ * IPv6 entries span two flat table slots. The indexed read engine returns
++ * the original packed layout for both address families.
++ *
++ * Return: 0 on success, negative error code on failure.
++ */
++int ppe_flow_entry_read(struct ppe_device *ppe_dev, int index, u32 *words,
++			int nwords)
++{
++	int ret;
++
++	if (index < 0 || index >= ppe_dev->variant->num_flow_entries ||
++	    nwords <= 0 || nwords > PPE_FLOW_TBL_RD_RSLT_DATA_WORDS)
++		return -EINVAL;
++
++	mutex_lock(&ppe_dev->flow_lock);
++	ret = ppe_flow_read_op_issue(ppe_dev, index);
++	if (!ret)
++		ret = regmap_bulk_read(ppe_dev->regmap,
++				       PPE_FLOW_TBL_RD_RSLT_DATA_ADDR,
++				       words, nwords);
++	mutex_unlock(&ppe_dev->flow_lock);
++
++	return ret;
++}
++
++/**
++ * ppe_flow_entry_matches - Verify that a hardware slot still owns a flow
++ * @ppe_dev: PPE device
++ * @index: Hardware flow table index
++ * @flow: Software flow image to compare
++ *
++ * AGE is the only mutable field in the encoded row. Every other word is part
++ * of the slot identity or action and must still match before counters are
++ * attributed or a delete-by-index is issued.
++ *
++ * Return: 0 for a match, -ESTALE for a different flow, or another error.
++ */
++int ppe_flow_entry_matches(struct ppe_device *ppe_dev, int index,
++			   const struct ppe_flow_entry *flow)
++{
++	u32 expected[PPE_FLOW_TBL_OP_DATA_WORDS] = {};
++	u32 actual[PPE_FLOW_TBL_OP_DATA_WORDS] = {};
++	int nwords = flow->is_ipv6 ? 9 : PPE_FLOW_TBL_WORDS;
++	int ret;
++
++	ppe_flow_entry_pack(flow, expected);
++	expected[0] |= PPE_FLOW_W0_VALID;
++
++	ret = ppe_flow_entry_read(ppe_dev, index, actual, nwords);
++	if (ret)
++		return ret;
++
++	expected[0] &= ~PPE_FLOW_W0_AGE;
++	actual[0] &= ~PPE_FLOW_W0_AGE;
++
++	return memcmp(actual, expected, nwords * sizeof(*actual)) ?
++		-ESTALE : 0;
++}
++
+ int ppe_flow_entry_del(struct ppe_device *ppe_dev, int index)
+ {
+ 	u32 qos[PPE_QOS_MAPPING_TBL_WORDS] = {};
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
+@@ -95,6 +95,10 @@ int ppe_host_entry_del(struct ppe_device
+ int ppe_flow_entry_add(struct ppe_device *ppe_dev,
+ 		       const struct ppe_flow_entry *flow);
+ int ppe_flow_entry_enable(struct ppe_device *ppe_dev, int index, bool enable);
++int ppe_flow_entry_read(struct ppe_device *ppe_dev, int index, u32 *words,
++			int nwords);
++int ppe_flow_entry_matches(struct ppe_device *ppe_dev, int index,
++			   const struct ppe_flow_entry *flow);
+ int ppe_flow_entry_del(struct ppe_device *ppe_dev, int index);
+ int ppe_flow_stats_get(struct ppe_device *ppe_dev, int index, u32 *packets,
+ 		       u64 *bytes);
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -289,6 +289,7 @@ struct ppe_ft_host {
+  * @ppe_dev: Back pointer to the PPE device.
+  * @lock: Serializes rule installation, removal and the allocators.
+  * @flows: Offloaded flows, keyed by flow cookie.
++ * @flow_owners: Software owner of each hardware-selected flow index.
+  * @nexthops: Refcounted next-hop entries shared by identical flows.
+  * @my_macs: Refcounted router MAC slots.
+  * @pub_ips: Refcounted public IP slots.
+@@ -304,6 +305,7 @@ struct ppe_flowtable {
+ 	struct mutex lock;
+ 	struct rhashtable flows;
+ 	struct list_head zombies;
++	struct ppe_ft_flow **flow_owners;
+ 	struct dentry *debugfs;
+ 	struct dentry *debugfs_active;
+ 	struct dentry *debugfs_reasons;
+@@ -314,6 +316,11 @@ struct ppe_flowtable {
+ 	atomic_long_t replace_unsupported;
+ 	atomic_long_t replace_failed;
+ 	atomic_long_t destroy_calls;
++	atomic_long_t flow_index_conflicts;
++	atomic_long_t flow_readback_failures;
++	atomic_long_t flow_stale_replaces;
++	atomic_long_t flow_stale_stats;
++	atomic_long_t flow_stale_destroys;
+ 	atomic_long_t rejects[PPE_FT_REJECT_MAX];
+ 	DECLARE_HASHTABLE(hosts, PPE_FT_HOST_HASH_BITS);
+ 	struct ppe_ft_nexthop *nexthops;
+@@ -1903,14 +1910,86 @@ static void ppe_ft_host_put(struct ppe_f
+ 		}
+ }
+ 
+-/* Delete a flow by the index returned by its add operation. */
++/* Flow-index ownership is protected by the flowtable lock. */
++static void ppe_ft_flow_owner_clear(struct ppe_flowtable *ft,
++				    struct ppe_ft_flow *flow)
++{
++	if (flow->index >= 0 &&
++	    flow->index < ft->ppe_dev->variant->num_flow_entries &&
++	    ft->flow_owners[flow->index] == flow)
++		ft->flow_owners[flow->index] = NULL;
++}
++
++static void ppe_ft_flow_deps_put(struct ppe_flowtable *ft,
++				 struct ppe_ft_flow *flow)
++{
++	ppe_ft_host_put(ft, &flow->entry);
++	ppe_ft_nexthop_put(ft, flow->nexthop);
++	ppe_ft_my_mac_put(ft, flow->my_mac);
++	ppe_ft_my_mac_put(ft, flow->ingress_my_mac);
++	ppe_ft_pppoe_put(ft, flow->pppoe);
++	ppe_ft_vlan_put(ft, flow->vlan);
++	ppe_ft_pub_ip_put(ft, flow->pub_ip);
++	ppe_ft_tunnel_put(ft, flow->tunnel);
++	ppe_vp_put(ft->ppe_dev, flow->vp);
++	ppe_vp_put(ft->ppe_dev, flow->ivp);
++	if (flow->egress_dev) {
++		dev_put(flow->egress_dev);
++		flow->egress_dev = NULL;
++	}
++}
++
++/* Forget an object whose hardware row is known to be empty or owned by a
++ * different flow. Do not issue a delete-by-index here: that is precisely the
++ * operation which could remove the replacement row.
++ */
++static void ppe_ft_flow_forget(struct ppe_flowtable *ft,
++			       struct ppe_ft_flow *flow)
++{
++	if (list_empty(&flow->zombie_node)) {
++		rhashtable_remove_fast(&ft->flows, &flow->node, ppe_ft_params);
++		ppe_ft_flow_count_dec(ft, flow);
++		ppe_vp_flow_del(ft->ppe_dev, flow->ivp, &flow->vp_flow);
++	} else {
++		list_del_init(&flow->zombie_node);
++	}
++
++	ppe_ft_flow_owner_clear(ft, flow);
++	ppe_ft_flow_deps_put(ft, flow);
++	kfree_rcu(flow, rcu);
++}
++
++/* Delete only while the hardware row still matches this software owner. */
+ static bool ppe_ft_flow_hw_del(struct ppe_flowtable *ft,
+ 			       struct ppe_ft_flow *flow)
+ {
+-	int ret = ppe_flow_entry_del(ft->ppe_dev, flow->index);
++	int ret;
++
++	if (flow->index < 0 ||
++	    flow->index >= ft->ppe_dev->variant->num_flow_entries ||
++	    ft->flow_owners[flow->index] != flow) {
++		atomic_long_inc(&ft->flow_stale_destroys);
++		return true;
++	}
+ 
+-	if (!ret || ret == -ENOENT)
++	ret = ppe_flow_entry_matches(ft->ppe_dev, flow->index, &flow->entry);
++	if (ret == -ENOENT || ret == -ESTALE) {
++		atomic_long_inc(&ft->flow_stale_destroys);
++		ppe_ft_flow_owner_clear(ft, flow);
+ 		return true;
++	}
++	if (ret) {
++		atomic_long_inc(&ft->flow_readback_failures);
++		WARN_ONCE(1, "leaking a PPE flow after readback failure\n");
++		return false;
++	}
++
++	ret = ppe_flow_entry_del(ft->ppe_dev, flow->index);
++	if (!ret || ret == -ENOENT) {
++		ppe_ft_flow_owner_clear(ft, flow);
++		return true;
++	}
++
+ 	WARN_ONCE(1, "leaking the resources of an undeletable PPE flow\n");
+ 	return false;
+ }
+@@ -1925,8 +2004,10 @@ static void ppe_ft_flow_quarantine(struc
+ {
+ 	int ret;
+ 
+-	ret = ppe_flow_entry_enable(ft->ppe_dev, flow->index, false);
+-	if (ret)
++	ret = ppe_flow_entry_matches(ft->ppe_dev, flow->index, &flow->entry);
++	if (!ret)
++		ret = ppe_flow_entry_enable(ft->ppe_dev, flow->index, false);
++	if (ret && ret != -ENOENT && ret != -ESTALE)
+ 		dev_err(ft->ppe_dev->dev,
+ 			"failed to disable quarantined flow %d: %d\n",
+ 			flow->index, ret);
+@@ -1997,26 +2078,39 @@ static int ppe_ft_flow_replace(struct pp
+ 	struct ip6_tnl_flow_offload_info tnl_info;
+ 	struct ppe_flow_nexthop nh = {};
+ 	struct ppe_ft_data data = {};
+-	struct ppe_ft_flow *flow;
++	struct ppe_ft_flow *flow, *old;
+ 	enum ppe_ft_reject_reason reject_reason = PPE_FT_REJECT_PARSE;
+ 	int vlan_pops = 0;
+ 	struct in6_addr lwt_local = {}, lwt_remote = {};
+ 	u8 lwt_hop_limit = 0;
+ 	bool ingress_vp_vlan = false;
+ 	bool tunnel_flow, tunnel_encap = false, lwt_tunnel = false;
+-	int i, nexthop, ret, redirects = 0, vlan_pushes = 0;
++	int i, nexthop, ret, cleanup_ret, redirects = 0, vlan_pushes = 0;
+ 	int pppoe_pushes = 0, csums = 0;
+ 	int iport = -1, imtu = 0;
+ 
+-	/* nf_flow_offload_refresh() re-sends FLOW_CLS_REPLACE for as long
+-	 * as the flow's packets traverse the software path, and the core
+-	 * runs at most one offload work per flow. An entry for this cookie
+-	 * therefore means the rule is already installed: report success
+-	 * instead of programming a duplicate row and leaking a second set
+-	 * of resources.
++	/* A refresh of an intact cookie is a no-op. If the hardware has lost
++	 * or recycled its slot, retire the stale object now so the same rule
++	 * can be installed again instead of remaining in software forever.
+ 	 */
+-	if (rhashtable_lookup_fast(&ft->flows, &f->cookie, ppe_ft_params))
+-		return 0;
++	mutex_lock(&ft->lock);
++	old = rhashtable_lookup_fast(&ft->flows, &f->cookie, ppe_ft_params);
++	if (old) {
++		ret = ppe_flow_entry_matches(ft->ppe_dev, old->index,
++					     &old->entry);
++		if (!ret) {
++			mutex_unlock(&ft->lock);
++			return 0;
++		}
++		if (ret != -ENOENT && ret != -ESTALE) {
++			atomic_long_inc(&ft->flow_readback_failures);
++			mutex_unlock(&ft->lock);
++			return 0;
++		}
++		atomic_long_inc(&ft->flow_stale_replaces);
++		ppe_ft_flow_forget(ft, old);
++	}
++	mutex_unlock(&ft->lock);
+ 
+ 	if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_BASIC) ||
+ 	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_PORTS))
+@@ -2054,6 +2148,8 @@ static int ppe_ft_flow_replace(struct pp
+ 
+ 	flow->cookie = f->cookie;
+ 	flow->block = block;
++	INIT_LIST_HEAD(&flow->zombie_node);
++	flow->index = -1;
+ 	flow->ingress_my_mac = -1;
+ 	flow->my_mac = -1;
+ 	flow->pub_ip = -1;
+@@ -2805,7 +2901,32 @@ put_idev:
+ 
+ 	ret = ppe_flow_entry_enable(ft->ppe_dev, flow->index, true);
+ 	if (ret)
+-		goto err_hw_flow;
++		goto err_added_flow;
++
++	ret = ppe_flow_entry_matches(ft->ppe_dev, flow->index, &flow->entry);
++	if (ret) {
++		atomic_long_inc(&ft->flow_readback_failures);
++		/* An unknown read failure cannot prove whether the previous or new
++		 * row is active. Retain the new dependencies even when this index
++		 * already has a software owner; releasing either set could leave a
++		 * hardware row pointing at a reused side-table entry.
++		 */
++		if (ret != -ENOENT && ret != -ESTALE) {
++			if (!ft->flow_owners[flow->index])
++				ft->flow_owners[flow->index] = flow;
++			ppe_ft_flow_quarantine(ft, flow);
++			flow = NULL;
++			goto err_unlock;
++		}
++		goto err_host;
++	}
++
++	old = ft->flow_owners[flow->index];
++	if (old && old != flow) {
++		atomic_long_inc(&ft->flow_index_conflicts);
++		ppe_ft_flow_forget(ft, old);
++	}
++	ft->flow_owners[flow->index] = flow;
+ 
+ 	ret = rhashtable_lookup_insert_fast(&ft->flows, &flow->node,
+ 					    ppe_ft_params);
+@@ -2830,6 +2951,20 @@ put_idev:
+ 
+ 	return 0;
+ 
++err_added_flow:
++	/* The row is not a published owner until enable and readback both
++	 * succeed. Remove the add result directly. If that fails, preserve the
++	 * new dependencies whether or not the index has a previous owner.
++	 */
++	cleanup_ret = ppe_flow_entry_del(ft->ppe_dev, flow->index);
++	if (cleanup_ret && cleanup_ret != -ENOENT) {
++		if (!ft->flow_owners[flow->index])
++			ft->flow_owners[flow->index] = flow;
++		ppe_ft_flow_quarantine(ft, flow);
++		flow = NULL;
++		goto err_unlock;
++	}
++	goto err_host;
+ err_hw_flow:
+ 	if (!ppe_ft_flow_hw_del(ft, flow)) {
+ 		/* The quarantined flow retains its next-hop reference so the
+@@ -2902,18 +3037,7 @@ static int ppe_ft_flow_destroy(struct pp
+ 	ppe_vp_flow_del(ft->ppe_dev, flow->ivp, &flow->vp_flow);
+ 
+ 	if (ppe_ft_flow_hw_del(ft, flow)) {
+-		ppe_ft_host_put(ft, &flow->entry);
+-		ppe_ft_nexthop_put(ft, flow->nexthop);
+-		ppe_ft_my_mac_put(ft, flow->my_mac);
+-		ppe_ft_my_mac_put(ft, flow->ingress_my_mac);
+-		ppe_ft_pppoe_put(ft, flow->pppoe);
+-		ppe_ft_vlan_put(ft, flow->vlan);
+-		ppe_ft_pub_ip_put(ft, flow->pub_ip);
+-		ppe_ft_tunnel_put(ft, flow->tunnel);
+-		ppe_vp_put(ft->ppe_dev, flow->vp);
+-		ppe_vp_put(ft->ppe_dev, flow->ivp);
+-		if (flow->egress_dev)
+-			dev_put(flow->egress_dev);
++		ppe_ft_flow_deps_put(ft, flow);
+ 	} else {
+ 		ppe_ft_flow_quarantine(ft, flow);
+ 		flow = NULL;
+@@ -3014,17 +3138,14 @@ static int ppe_ft_flow_stats(struct ppe_
+ 	u64 bytes;
+ 	int ret;
+ 
+-	/* No flowtable lock: the flow table core issues at most one
+-	 * operation per flow at a time, so the counter snapshot below is
+-	 * unraced, and the RCU read side keeps the flow alive across a
+-	 * concurrent destroy of another flow. The regmap is MMIO with
+-	 * fast_io, so the read does not sleep.
++	/* Serialize the identity read with replacement and deletion. A counter
++	 * at an index is meaningful only while the complete row still matches.
+ 	 */
+-	rcu_read_lock();
++	mutex_lock(&ft->lock);
+ 
+ 	flow = rhashtable_lookup_fast(&ft->flows, &f->cookie, ppe_ft_params);
+ 	if (!flow) {
+-		rcu_read_unlock();
++		mutex_unlock(&ft->lock);
+ 		return -ENOENT;
+ 	}
+ 
+@@ -3036,7 +3157,7 @@ static int ppe_ft_flow_stats(struct ppe_
+ 	     (dsa_mode == PPE_FT_DSA_TAG_8021Q &&
+ 	      dsa_vid != flow->egress_vid) ||
+ 	     (dsa_mode == PPE_FT_DSA_QCA4B && flow->egress_vid >= 0))) {
+-		rcu_read_unlock();
++		mutex_unlock(&ft->lock);
+ 		return 0;
+ 	}
+ 
+@@ -3049,9 +3170,27 @@ static int ppe_ft_flow_stats(struct ppe_
+ 	 * and re-offload it.
+ 	 */
+ 	if (!test_bit(flow->eport, ft->ppe_dev->carrier_ok)) {
+-		rcu_read_unlock();
++		mutex_unlock(&ft->lock);
++		return 0;
++	}
++
++	if (ft->flow_owners[flow->index] != flow) {
++		atomic_long_inc(&ft->flow_stale_stats);
++		mutex_unlock(&ft->lock);
++		return 0;
++	}
++
++	ret = ppe_flow_entry_matches(ft->ppe_dev, flow->index, &flow->entry);
++	if (ret == -ENOENT || ret == -ESTALE) {
++		atomic_long_inc(&ft->flow_stale_stats);
++		mutex_unlock(&ft->lock);
+ 		return 0;
+ 	}
++	if (ret) {
++		atomic_long_inc(&ft->flow_readback_failures);
++		mutex_unlock(&ft->lock);
++		return ret;
++	}
+ 
+ 	ret = ppe_flow_stats_get(ft->ppe_dev, flow->index, &packets, &bytes);
+ 	if (!ret && (packets != flow->packets || bytes != flow->bytes)) {
+@@ -3064,7 +3203,7 @@ static int ppe_ft_flow_stats(struct ppe_
+ 		flow->bytes = bytes;
+ 	}
+ 
+-	rcu_read_unlock();
++	mutex_unlock(&ft->lock);
+ 
+ 	return ret;
+ }
+@@ -3170,12 +3309,17 @@ static int ppe_ft_flows_show(struct seq_
+ 	mutex_unlock(&ft->lock);
+ 
+ 	seq_printf(seq,
+-		   "bound:%d replace:%ld unsupported:%ld failed:%ld destroy:%ld zombies:%d\n",
++		   "bound:%d replace:%ld unsupported:%ld failed:%ld destroy:%ld zombies:%d index_conflict:%ld readback_fail:%ld stale_replace:%ld stale_stats:%ld stale_destroy:%ld\n",
+ 		   !list_empty(&ft->block_cb_list),
+ 		   atomic_long_read(&ft->replace_calls),
+ 		   atomic_long_read(&ft->replace_unsupported),
+ 		   atomic_long_read(&ft->replace_failed),
+-		   atomic_long_read(&ft->destroy_calls), zombies);
++		   atomic_long_read(&ft->destroy_calls), zombies,
++		   atomic_long_read(&ft->flow_index_conflicts),
++		   atomic_long_read(&ft->flow_readback_failures),
++		   atomic_long_read(&ft->flow_stale_replaces),
++		   atomic_long_read(&ft->flow_stale_stats),
++		   atomic_long_read(&ft->flow_stale_destroys));
+ 	seq_puts(seq, "reject");
+ 	for (i = 0; i < PPE_FT_REJECT_MAX; i++)
+ 		seq_printf(seq, " %s:%ld", ppe_ft_reject_names[i],
+@@ -3493,6 +3637,13 @@ int ppe_flowtable_setup(struct ppe_devic
+ 		kfree(ft);
+ 		return -ENOMEM;
+ 	}
++	ft->flow_owners = kcalloc(ppe_dev->variant->num_flow_entries,
++				  sizeof(*ft->flow_owners), GFP_KERNEL);
++	if (!ft->flow_owners) {
++		kfree(ft->nexthops);
++		kfree(ft);
++		return -ENOMEM;
++	}
+ 
+ 	/* The reserved L3 interface regions have compile-time sizes on
+ 	 * a runtime base (the port count); refuse a layout that would
+@@ -3500,6 +3651,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 	 */
+ 	if (WARN_ON(ppe_ft_vp_l3_if(ft, PPE_VP_PORT_BASE + PPE_VP_SLOTS) >
+ 			    PPE_IN_L3_IF_TBL_ENTRIES)) {
++		kfree(ft->flow_owners);
+ 		kfree(ft->nexthops);
+ 		kfree(ft);
+ 		return -ERANGE;
+@@ -3513,6 +3665,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 
+ 	ret = rhashtable_init(&ft->flows, &ppe_ft_params);
+ 	if (ret) {
++		kfree(ft->flow_owners);
+ 		kfree(ft->nexthops);
+ 		kfree(ft);
+ 		return ret;
+@@ -3526,6 +3679,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 	if (ret) {
+ 		ppe_dev->flowtable = NULL;
+ 		rhashtable_destroy(&ft->flows);
++		kfree(ft->flow_owners);
+ 		kfree(ft->nexthops);
+ 		kfree(ft);
+ 		return ret;
+@@ -3604,6 +3758,7 @@ void ppe_flowtable_destroy(struct ppe_de
+ 		if (ft->tunnels[i].dev)
+ 			dev_put(ft->tunnels[i].dev);
+ 
++	kfree(ft->flow_owners);
+ 	kfree(ft->nexthops);
+ 	kfree(ft);
+ }
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
+@@ -641,6 +641,14 @@
+ #define PPE_FLOW_OP_RSLT_ENTRY_INDEX		GENMASK(16, 5)
+ #define PPE_FLOW_OP_RSLT_VALID_CNT		GENMASK(20, 17)
+ 
++/* The IPQ95xx/IPQ53xx read engine has the same command and result
++ * bit layout as the flow write engine, but independent registers.
++ */
++#define PPE_FLOW_TBL_RD_OP_ADDR			0x2005ec
++#define PPE_FLOW_TBL_RD_OP_RSLT_ADDR		0x200688
++#define PPE_FLOW_TBL_RD_RSLT_DATA_ADDR		0x2006b0
++#define PPE_FLOW_TBL_RD_RSLT_DATA_WORDS	11
++
+ #define PPE_HOST_TBL_OP_ADDR			0x200724
+ #define PPE_HOST_OP_CMD_ID			GENMASK(3, 0)
+ #define PPE_HOST_OP_TYPE			GENMASK(7, 5)

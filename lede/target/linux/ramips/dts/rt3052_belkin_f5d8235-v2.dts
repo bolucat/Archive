@@ -25,10 +25,24 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			uboot: partition@0 {
+			partition@0 {
 				label = "uboot";
 				reg = <0x0 0x50000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_uboot_40000: eeprom@40000 {
+						reg = <0x40000 0x200>;
+					};
+
+					macaddr_uboot_40004: macaddr@40004 {
+						reg = <0x40004 0x6>;
+					};
+				};
 			};
 
 			partition@50000 {
@@ -42,7 +56,7 @@
 				reg = <0x7e0000 0x10000>;
 			};
 
-			factory: partition@7f0000 {
+			partition@7f0000 {
 				label = "factory";
 				reg = <0x7f0000 0x10000>;
 			};
@@ -51,8 +65,8 @@
 
 	rtl8366rb {
 		compatible = "realtek,rtl8366rb";
-		gpio-sda = <&gpio0 1 GPIO_ACTIVE_HIGH>;
-		gpio-sck = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+		sda-gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+		sck-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
 	};
 
 	leds {
@@ -115,7 +129,8 @@
 };
 
 &ethernet {
-	mtd-mac-address = <&uboot 0x40004>;
+	nvmem-cells = <&macaddr_uboot_40004>;
+	nvmem-cell-names = "mac-address";
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmii_pins>;
 };
@@ -134,7 +149,8 @@
 };
 
 &wmac {
-	ralink,mtd-eeprom = <&uboot 0x40000>;
+	nvmem-cells = <&eeprom_uboot_40000>;
+	nvmem-cell-names = "eeprom";
 };
 
 &otg {

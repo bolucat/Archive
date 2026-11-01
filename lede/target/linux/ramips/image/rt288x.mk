@@ -1,3 +1,4 @@
+# Minimum supported flash capacity: 8 MiB. Keep 4 MiB definitions for reference.
 #
 # RT288X Profiles
 #
@@ -12,7 +13,6 @@ define Build/gemtek-header
 endef
 
 define Device/airlink101_ar670w
-  BLOCKSIZE := 64k
   DEVICE_VENDOR := Airlink
   DEVICE_MODEL := AR670W
   IMAGE_SIZE := 3840k
@@ -21,9 +21,8 @@ define Device/airlink101_ar670w
   IMAGE/factory.bin := $$(sysupgrade_bin) | check-size | \
 	wrg-header wrgn16a_airlink_ar670w
   SUPPORTED_DEVICES += ar670w
-  DEFAULT := n
 endef
-TARGET_DEVICES += airlink101_ar670w
+# TARGET_DEVICES += airlink101_ar670w # 4 MiB flash is unsupported
 
 define Device/airlink101_ar725w
   IMAGE_SIZE := 3776k
@@ -33,20 +32,17 @@ define Device/airlink101_ar725w
   IMAGE/factory.bin := $$(sysupgrade_bin) | check-size 3328k | \
 	gemtek-header ar725w
   SUPPORTED_DEVICES += ar725w
-  DEFAULT := n
 endef
-TARGET_DEVICES += airlink101_ar725w
+# TARGET_DEVICES += airlink101_ar725w # 4 MiB flash is unsupported
 
 define Device/asus_rt-n15
-  BLOCKSIZE := 64k
   IMAGE_SIZE := 3776k
-  DEVICE_VENDOR := Asus
+  DEVICE_VENDOR := ASUS
   DEVICE_MODEL := RT-N15
   DEVICE_PACKAGES := kmod-switch-rtl8366s
   SUPPORTED_DEVICES += rt-n15
-  DEFAULT := n
 endef
-TARGET_DEVICES += asus_rt-n15
+# TARGET_DEVICES += asus_rt-n15 # 4 MiB flash is unsupported
 
 define Device/belkin_f5d8235-v1
   IMAGE_SIZE := 7872k
@@ -60,29 +56,24 @@ endef
 TARGET_DEVICES += belkin_f5d8235-v1
 
 define Device/buffalo_wli-tx4-ag300n
-  BLOCKSIZE := 64k
   IMAGE_SIZE := 3776k
   DEVICE_VENDOR := Buffalo
   DEVICE_MODEL := WLI-TX4-AG300N
   DEVICE_PACKAGES := kmod-switch-ip17xx
   SUPPORTED_DEVICES += wli-tx4-ag300n
-  DEFAULT := n
 endef
-TARGET_DEVICES += buffalo_wli-tx4-ag300n
+# TARGET_DEVICES += buffalo_wli-tx4-ag300n # 4 MiB flash is unsupported
 
 define Device/buffalo_wzr-agl300nh
-  BLOCKSIZE := 64k
   IMAGE_SIZE := 3776k
   DEVICE_VENDOR := Buffalo
   DEVICE_MODEL := WZR-AGL300NH
   DEVICE_PACKAGES := kmod-switch-rtl8366s
   SUPPORTED_DEVICES += wzr-agl300nh
-  DEFAULT := n
 endef
-TARGET_DEVICES += buffalo_wzr-agl300nh
+# TARGET_DEVICES += buffalo_wzr-agl300nh # 4 MiB flash is unsupported
 
 define Device/dlink_dap-1522-a1
-  BLOCKSIZE := 64k
   IMAGE_SIZE := 3712k
   DEVICE_VENDOR := D-Link
   DEVICE_MODEL := DAP-1522
@@ -93,16 +84,13 @@ define Device/dlink_dap-1522-a1
   IMAGE/factory.bin := append-kernel | pad-offset $$$$(BLOCKSIZE) 96 | \
 	append-rootfs | pad-rootfs -x 96 | wrg-header wapnd01_dlink_dap1522 | \
 	check-size
-  DEFAULT := n
 endef
-TARGET_DEVICES += dlink_dap-1522-a1
+# TARGET_DEVICES += dlink_dap-1522-a1 # 4 MiB flash is unsupported
 
 define Device/ralink_v11st-fe
-  BLOCKSIZE := 64k
   IMAGE_SIZE := 3776k
   DEVICE_VENDOR := Ralink
   DEVICE_MODEL := V11ST-FE
   SUPPORTED_DEVICES += v11st-fe
-  DEFAULT := n
 endef
-TARGET_DEVICES += ralink_v11st-fe
+# TARGET_DEVICES += ralink_v11st-fe # 4 MiB flash is unsupported

@@ -1,0 +1,64 @@
+From: Mantas Pucka <mantas@8devices.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: correct wideband radio channel and regulatory ranges
+
+Currently ath12k_mac_setup_ht_vht_cap() incorrectly assumes that QCN9274
+radios with 6GHz band can't support 5GHz as well. This prevents the
+addition of HT and VHT capabilities for the 5GHz band. Since QCN9274 is
+capable of operating in multiple bands, remove the 6GHz support check and
+exception for single_pdev_only (i.e. WCN7850).
+
+ath12k_regd_update() assumes that a radio advertising 6 GHz cannot also
+operate on 5 GHz. This is not true for wideband QCN9274 radios. As a
+result, a regulatory update drops 5 GHz from ar->freq_range even though the
+5 GHz band remains registered with cfg80211.
+
+Merged from:
+  103-wifi-ath12k-fix-5GHz-operation-on-wideband-QCN.patch
+  104-wifi-ath12k-fix-regulatory-range-for-wideband-radios.patch
+
+Based on work by:
+  Mantas Pucka <mantas@8devices.com>
+  Robert Marko <robert.marko@sartura.hr>
+
+Original-commit: 0000000000000000000000000000000000000000
+
+Signed-off-by: Mantas Pucka <mantas@8devices.com>
+Signed-off-by: Robert Marko <robert.marko@sartura.hr>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -8600,9 +8600,7 @@ static void ath12k_mac_setup_ht_vht_cap(
+ 						    rate_cap_rx_chainmask);
+ 	}
+ 
+-	if (cap->supported_bands & WMI_HOST_WLAN_5GHZ_CAP &&
+-	    (ar->ab->hw_params->single_pdev_only ||
+-	     !ar->supports_6ghz)) {
++	if (cap->supported_bands & WMI_HOST_WLAN_5GHZ_CAP) {
+ 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
+ 		ht_cap = cap->band[NL80211_BAND_5GHZ].ht_cap_info;
+ 		if (ht_cap_info)
+--- a/drivers/net/wireless/ath/ath12k/reg.c
++++ b/drivers/net/wireless/ath/ath12k/reg.c
+@@ -310,7 +310,8 @@ int ath12k_regd_update(struct ath12k *ar
+ 		ath12k_mac_update_freq_range(ar, freq_low, freq_high);
+ 	}
+ 
+-	if (supported_bands & WMI_HOST_WLAN_5GHZ_CAP && !ar->supports_6ghz) {
++	if (supported_bands & WMI_HOST_WLAN_5GHZ_CAP &&
++	    reg_cap->low_5ghz_chan < ATH12K_MIN_6GHZ_FREQ) {
+ 		if (ab->hw_params->single_pdev_only) {
+ 			phy_id = ar->pdev->cap.band[WMI_HOST_WLAN_5GHZ_CAP].phy_id;
+ 			reg_cap = &ab->hal_reg_cap[phy_id];
+@@ -322,7 +323,8 @@ int ath12k_regd_update(struct ath12k *ar
+ 		ath12k_mac_update_freq_range(ar, freq_low, freq_high);
+ 	}
+ 
+-	if (supported_bands & WMI_HOST_WLAN_5GHZ_CAP && ar->supports_6ghz) {
++	if (supported_bands & WMI_HOST_WLAN_5GHZ_CAP &&
++	    reg_cap->high_5ghz_chan >= ATH12K_MIN_6GHZ_FREQ) {
+ 		freq_low = max(reg_cap->low_5ghz_chan, ab->reg_freq_6ghz.start_freq);
+ 		freq_high = min(reg_cap->high_5ghz_chan, ab->reg_freq_6ghz.end_freq);
+ 

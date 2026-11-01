@@ -1,8 +1,9 @@
 //! The desktop execution mechanism: supervised child processes with PID-file
 //! death confirmation, fronted by the [`RuntimeBackend`] boundary.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
+use nyanpasu_utils::process::AtomicStopStrategy;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -32,6 +33,7 @@ pub(crate) struct ProcessRuntimeBackend {
     cancel_token: CancellationToken,
     native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
     windows_shutdown_helper: Option<std::path::PathBuf>,
+    stop_strategy: Option<Arc<AtomicStopStrategy>>,
 }
 
 impl ProcessRuntimeBackend {
@@ -40,12 +42,14 @@ impl ProcessRuntimeBackend {
         cancel_token: CancellationToken,
         native_store: Option<std::sync::Arc<dyn crate::native_store::NativeStore>>,
         windows_shutdown_helper: Option<std::path::PathBuf>,
+        stop_strategy: Option<Arc<AtomicStopStrategy>>,
     ) -> Self {
         Self {
             probes,
             cancel_token,
             native_store,
             windows_shutdown_helper,
+            stop_strategy,
         }
     }
 }
@@ -99,6 +103,9 @@ impl RuntimeBackend for ProcessRuntimeBackend {
                     .map(|store| store.data_dir().to_owned()),
             );
             builder = builder.windows_shutdown_helper(self.windows_shutdown_helper.clone());
+            if let Some(strategy) = &self.stop_strategy {
+                builder = builder.stop_strategy(Arc::clone(strategy));
+            }
             if let Some(access) = &self.probes.controller_access {
                 let readiness = match self.probes.readiness.clone() {
                     Some(probe) => probe,

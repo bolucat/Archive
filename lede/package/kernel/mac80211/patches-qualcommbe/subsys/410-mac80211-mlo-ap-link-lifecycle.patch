@@ -1,0 +1,225 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Fri, 30 Oct 2026 22:23:00 +0800
+Subject: [PATCH] wifi: mac80211: preserve active AP links and MBSSID lifetime
+
+Since stop_ap works per link, ___cfg80211_stop_ap() stops one link of an AP
+MLD, but clears state that belongs to the interface: the connection owner,
+the SSID and the QoS map. The other links keep beaconing with an empty SSID
+in NL80211_CMD_GET_INTERFACE and no DSCP to user priority map, until the
+next START_AP on some link sets them again.
+
+Since stop_ap works per link, ieee80211_stop_ap() stops one link of an AP
+MLD, but turns off the carrier of every AP_VLAN of the interface and clears
+interface state: the SSID, the S1G flag and the beacon rate flag. A
+4-address station on another link loses the carrier of its AP_VLAN, and
+with it its bridge port, whenever any link stops.
+
+ieee80211_stop_ap() stops one link, but calls ieee80211_stop_mbssid(),
+which walks every active link of the interface. The stop of one link of an
+AP MLD thus takes apart the MBSSID set of each other link and stops the
+interfaces of those sets, on radios that keep running.
+
+Merged from:
+  410-wifi-cfg80211-keep-the-interface-state-while-another-AP-link-beacons.patch
+  411-wifi-mac80211-keep-the-carrier-while-another-AP-link-beacons.patch
+  412-wifi-mac80211-stop-only-the-MBSSID-set-of-the-stopped-AP-link.patch
+
+Based on work by:
+  Felix Fietkau <nbd@nbd.name>
+
+Original-commit: ce8ef1122015eea58c300485a330320985a27a19
+Original-commit: 73a2d8189877717fc31ce69167a38cc02197a1d0
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/net/mac80211/cfg.c
++++ b/net/mac80211/cfg.c
+@@ -2032,6 +2032,7 @@ static int ieee80211_stop_ap(struct wiph
+ 	struct ieee80211_bss_conf *link_conf = link->conf;
+ 	u64 changes = BSS_CHANGED_BEACON_ENABLED;
+ 	LIST_HEAD(keys);
++	bool last;
+ 
+ 	lockdep_assert_wiphy(local->hw.wiphy);
+ 
+@@ -2055,11 +2056,11 @@ static int ieee80211_stop_ap(struct wiph
+ 
+ 	ieee80211_free_next_beacon(link);
+ 
+-	/* turn off carrier for this interface and dependent VLANs */
+-	list_for_each_entry(vlan, &sdata->u.ap.vlans, u.vlan.list)
+-		netif_carrier_off(vlan->dev);
++	last = ieee80211_num_beaconing_links(sdata) <= 1;
++	if (last) {
++		list_for_each_entry(vlan, &sdata->u.ap.vlans, u.vlan.list)
++			netif_carrier_off(vlan->dev);
+ 
+-	if (ieee80211_num_beaconing_links(sdata) <= 1) {
+ 		netif_carrier_off(dev);
+ 		sdata->u.ap.active = false;
+ 	}
+@@ -2098,13 +2099,15 @@ static int ieee80211_stop_ap(struct wiph
+ 
+ 	__sta_info_flush(sdata, true, link_id, NULL);
+ 
+-	ieee80211_stop_mbssid(sdata);
++	ieee80211_stop_mbssid_link(sdata, link_conf);
+ 	RCU_INIT_POINTER(link_conf->tx_bss_conf, NULL);
+ 
+ 	link_conf->enable_beacon = false;
+-	sdata->beacon_rate_set = false;
+-	sdata->vif.cfg.ssid_len = 0;
+-	sdata->vif.cfg.s1g = false;
++	if (last) {
++		sdata->beacon_rate_set = false;
++		sdata->vif.cfg.ssid_len = 0;
++		sdata->vif.cfg.s1g = false;
++	}
+ 	clear_bit(SDATA_STATE_OFFCHANNEL_BEACON_STOPPED, &sdata->state);
+ 	ieee80211_link_info_change_notify(sdata, link, changes);
+ 
+--- a/net/mac80211/ieee80211_i.h
++++ b/net/mac80211/ieee80211_i.h
+@@ -2987,6 +2987,8 @@ int ieee80211_mgd_assoc_ml_reconf(struct
+ 				  struct cfg80211_ml_reconf_req *req);
+ 
+ void ieee80211_stop_mbssid(struct ieee80211_sub_if_data *sdata);
++void ieee80211_stop_mbssid_link(struct ieee80211_sub_if_data *sdata,
++				struct ieee80211_bss_conf *link_conf);
+ 
+ void
+ ieee80211_uhr_cap_ie_to_sta_uhr_cap(struct ieee80211_sub_if_data *sdata,
+--- a/net/mac80211/iface.c
++++ b/net/mac80211/iface.c
+@@ -786,60 +786,68 @@ static void ieee80211_do_stop(struct iee
+ 		ieee80211_add_virtual_monitor(local, NULL);
+ }
+ 
+-void ieee80211_stop_mbssid(struct ieee80211_sub_if_data *sdata)
++void ieee80211_stop_mbssid_link(struct ieee80211_sub_if_data *sdata,
++				struct ieee80211_bss_conf *link_conf)
+ {
+ 	struct ieee80211_sub_if_data *tx_sdata;
+-	struct ieee80211_bss_conf *link_conf, *tx_bss_conf;
++	struct ieee80211_bss_conf *tx_bss_conf;
+ 	struct ieee80211_link_data *tx_link, *link;
+-	unsigned int link_id;
+ 
+ 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
+ 
+-	/* Check if any of the links of current sdata is an MBSSID. */
+-	for_each_vif_active_link(&sdata->vif, link_conf, link_id) {
+-		tx_bss_conf = sdata_dereference(link_conf->tx_bss_conf, sdata);
+-		if (!tx_bss_conf)
++	tx_bss_conf = sdata_dereference(link_conf->tx_bss_conf, sdata);
++	if (!tx_bss_conf)
++		return;
++
++	tx_sdata = vif_to_sdata(tx_bss_conf->vif);
++	RCU_INIT_POINTER(link_conf->tx_bss_conf, NULL);
++
++	/* If we are not tx sdata reset tx sdata's tx_bss_conf to avoid recusrion
++	 * while closing tx sdata at the end below.
++	 */
++	if (sdata != tx_sdata) {
++		tx_link = sdata_dereference(tx_sdata->link[tx_bss_conf->link_id],
++					    tx_sdata);
++		if (!tx_link)
++			return;
++
++		RCU_INIT_POINTER(tx_link->conf->tx_bss_conf, NULL);
++	}
++
++	/* loop through sdatas to find if any of their links
++	 * belong to same MBSSID set as the one getting deleted.
++	 */
++	for_each_sdata_link(tx_sdata->local, link) {
++		struct ieee80211_sub_if_data *link_sdata = link->sdata;
++
++		if (link_sdata == sdata || link_sdata == tx_sdata ||
++		    rcu_access_pointer(link->conf->tx_bss_conf) != tx_bss_conf)
+ 			continue;
+ 
+-		tx_sdata = vif_to_sdata(tx_bss_conf->vif);
+-		RCU_INIT_POINTER(link_conf->tx_bss_conf, NULL);
++		RCU_INIT_POINTER(link->conf->tx_bss_conf, NULL);
+ 
+-		/* If we are not tx sdata reset tx sdata's tx_bss_conf to avoid recusrion
+-		 * while closing tx sdata at the end of outer loop below.
++		/* Remove all links of matching MLD until dynamic link
++		 * removal can be supported.
+ 		 */
+-		if (sdata != tx_sdata) {
+-			tx_link = sdata_dereference(tx_sdata->link[tx_bss_conf->link_id],
+-						    tx_sdata);
+-			if (!tx_link)
+-				continue;
++		cfg80211_stop_iface(link_sdata->wdev.wiphy, &link_sdata->wdev,
++				    GFP_KERNEL);
++	}
+ 
+-			RCU_INIT_POINTER(tx_link->conf->tx_bss_conf, NULL);
+-		}
++	/* If we are not tx sdata, remove links of tx sdata */
++	if (sdata != tx_sdata && ieee80211_sdata_running(tx_sdata))
++		cfg80211_stop_iface(tx_sdata->wdev.wiphy,
++				    &tx_sdata->wdev, GFP_KERNEL);
++}
+ 
+-		/* loop through sdatas to find if any of their links
+-		 * belong to same MBSSID set as the one getting deleted.
+-		 */
+-		for_each_sdata_link(tx_sdata->local, link) {
+-			struct ieee80211_sub_if_data *link_sdata = link->sdata;
++void ieee80211_stop_mbssid(struct ieee80211_sub_if_data *sdata)
++{
++	struct ieee80211_bss_conf *link_conf;
++	unsigned int link_id;
+ 
+-			if (link_sdata == sdata || link_sdata == tx_sdata ||
+-			    rcu_access_pointer(link->conf->tx_bss_conf) != tx_bss_conf)
+-				continue;
+-
+-			RCU_INIT_POINTER(link->conf->tx_bss_conf, NULL);
+-
+-			/* Remove all links of matching MLD until dynamic link
+-			 * removal can be supported.
+-			 */
+-			cfg80211_stop_iface(link_sdata->wdev.wiphy, &link_sdata->wdev,
+-					    GFP_KERNEL);
+-		}
+-
+-		/* If we are not tx sdata, remove links of tx sdata and proceed */
+-		if (sdata != tx_sdata && ieee80211_sdata_running(tx_sdata))
+-			cfg80211_stop_iface(tx_sdata->wdev.wiphy,
+-					    &tx_sdata->wdev, GFP_KERNEL);
+-	}
++	lockdep_assert_wiphy(sdata->local->hw.wiphy);
++
++	for_each_vif_active_link(&sdata->vif, link_conf, link_id)
++		ieee80211_stop_mbssid_link(sdata, link_conf);
+ }
+ 
+ static int ieee80211_stop(struct net_device *dev)
+--- a/net/wireless/ap.c
++++ b/net/wireless/ap.c
+@@ -35,12 +35,15 @@ static int ___cfg80211_stop_ap(struct cf
+ 
+ 	err = rdev_stop_ap(rdev, dev, link_id);
+ 	if (!err) {
+-		wdev->conn_owner_nlportid = 0;
+ 		wdev->links[link_id].ap.beacon_interval = 0;
+ 		memset(&wdev->links[link_id].ap.chandef, 0,
+ 		       sizeof(wdev->links[link_id].ap.chandef));
+-		wdev->u.ap.ssid_len = 0;
+-		rdev_set_qos_map(rdev, dev, NULL);
++
++		if (!cfg80211_beaconing_iface_active(wdev)) {
++			wdev->conn_owner_nlportid = 0;
++			wdev->u.ap.ssid_len = 0;
++			rdev_set_qos_map(rdev, dev, NULL);
++		}
+ 		if (notify)
+ 			nl80211_send_ap_stopped(wdev, link_id);
+ 

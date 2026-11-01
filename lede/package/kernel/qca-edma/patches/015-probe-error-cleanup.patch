@@ -1,0 +1,74 @@
+Subject: [PATCH] edma: preserve managed mappings and report failed probe stages
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -1838,8 +1838,10 @@
+ #endif
+ 					  &edma_tx_irq[j][0],
+ 					  &edma_cinfo->edma_percpu_info[i]);
+-			if (err)
++			if (err) {
++				dev_err(&pdev->dev, "IRQ registration failed for queue %d: %d\n", j, err);
+ 				goto err_reset;
++			}
+ 		}
+ 
+ 		for (j = edma_cinfo->edma_percpu_info[i].rx_start;
+@@ -1856,8 +1858,10 @@
+ #endif
+ 					  &edma_rx_irq[j][0],
+ 					  &edma_cinfo->edma_percpu_info[i]);
+-			if (err)
++			if (err) {
++				dev_err(&pdev->dev, "IRQ registration failed for queue %d: %d\n", j, err);
+ 				goto err_reset;
++			}
+ 		}
+ 
+ #ifdef CONFIG_RFS_ACCEL
+@@ -1865,8 +1869,10 @@
+ 		     j < rx_start + 2; j += 2) {
+ 			err = irq_cpu_rmap_add(edma_netdev[0]->rx_cpu_rmap,
+ 					       edma_cinfo->rx_irq[j]);
+-			if (err)
++			if (err) {
++				dev_err(&pdev->dev, "IRQ CPU map failed for queue %d: %d\n", j, err);
+ 				goto err_rmap_add_fail;
++			}
+ 		}
+ #endif
+ 	}
+@@ -1939,16 +1945,20 @@
+ 
+ 	spin_lock_init(&edma_cinfo->stats_lock);
+ 	err = edma_switch_register();
+-	if (err)
++	if (err) {
++		dev_err(&pdev->dev, "switch notifier registration failed: %d\n", err);
+ 		goto edma_phy_attach_fail;
++	}
+ 
+ 	/* Publishing a netdev lets netifd call ndo_open immediately. Finish
+ 	 * DMA, IRQ, PHY and switch setup before exposing either GMAC.
+ 	 */
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++) {
+ 		err = register_netdev(edma_netdev[i]);
+-		if (err)
++		if (err) {
++			dev_err(&pdev->dev, "GMAC %d registration failed: %d\n", i, err);
+ 			goto edma_phy_attach_fail;
++		}
+ 		registered++;
+ 	}
+ 
+@@ -2015,7 +2025,7 @@
+ 	edma_free_queues(edma_cinfo);
+ err_rx_qinit:
+ err_tx_qinit:
+-	iounmap(edma_cinfo->hw.hw_addr);
++	/* devm_ioremap_resource() releases the mapping on probe failure. */
+ err_ioremap:
+ 	for (i = 0; i < edma_cinfo->num_gmac; i++) {
+ 		if (edma_netdev[i])

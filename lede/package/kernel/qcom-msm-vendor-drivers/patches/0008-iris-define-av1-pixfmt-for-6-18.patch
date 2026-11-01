@@ -1,0 +1,17 @@
+diff --git a/drivers/media/platform/qcom/iris/iris_instance.h b/drivers/media/platform/qcom/iris/iris_instance.h
+--- a/drivers/media/platform/qcom/iris/iris_instance.h
++++ b/drivers/media/platform/qcom/iris/iris_instance.h
+@@ -6,8 +6,13 @@
+ #ifndef __IRIS_INSTANCE_H__
+ #define __IRIS_INSTANCE_H__
+ 
++#include <linux/videodev2.h>
+ #include <media/v4l2-ctrls.h>
+ 
++#ifndef V4L2_PIX_FMT_AV1
++#define V4L2_PIX_FMT_AV1 v4l2_fourcc('A', 'V', '0', '1')
++#endif
++
+ #include "iris_buffer.h"
+ #include "iris_core.h"
+ #include "iris_utils.h"

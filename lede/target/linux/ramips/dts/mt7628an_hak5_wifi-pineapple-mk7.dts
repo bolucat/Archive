@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 
 #include "mt7628an.dtsi"
+
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 
@@ -46,7 +47,6 @@
 
 	gpio-export {
 		compatible = "gpio-export";
-		#size-cells = <0>;
 
 		usb-power {
 			gpio-export,name = "usb-power";
@@ -54,16 +54,10 @@
 			gpios = <&gpio 5 GPIO_ACTIVE_LOW>;
 		};
 	};
+};
 
-	sdhci@10130000 {
-		compatible = "ralink,mt7620-sdhci";
-		reg = <0x10130000 4000>;
-
-		interrupt-parent = <&intc>;
-		interrupts = <14>;
-
-		status = "okay";
-	};
+&sdhci {
+	status = "okay";
 };
 
 &state_default {
@@ -80,6 +74,7 @@
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <50000000>;
+		broken-flash-reset;
 
 		partitions {
 			compatible = "fixed-partitions";
@@ -98,10 +93,24 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_factory_0: eeprom@0 {
+						reg = <0x0 0x400>;
+					};
+
+					macaddr_factory_4: macaddr@4 {
+						reg = <0x4 0x6>;
+					};
+				};
 			};
 
 			partition@50000 {
@@ -116,9 +125,13 @@
 &ethernet {
 	status = "okay";
 
-	mtd-mac-address = <&factory 0x4>;
+	nvmem-cells = <&macaddr_factory_4>;
+	nvmem-cell-names = "mac-address";
 };
 
 &wmac {
 	status = "okay";
+
+	nvmem-cells = <&eeprom_factory_0>;
+	nvmem-cell-names = "eeprom";
 };

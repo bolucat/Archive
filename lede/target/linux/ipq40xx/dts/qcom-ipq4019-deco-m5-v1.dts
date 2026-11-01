@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "qcom-ipq4019-deco-m5.dtsi"
+
+/ {
+	model = "TP-Link Deco M5 v1";
+	compatible = "tplink,deco-m5-v1", "qcom,ipq4019";
+
+	aliases {
+		led-boot = &led_driver_blue;
+		led-failsafe = &led_driver_red;
+		led-running = &led_driver_green;
+		led-upgrade = &led_driver_red;
+	};
+};
+
+&led_driver {
+	status = "okay";
+};
+
+&wifi0 {
+	qcom,ath10k-calibration-variant = "TP-Link-Deco-M5-v1";
+};
+
+&wifi1 {
+	qcom,ath10k-calibration-variant = "TP-Link-Deco-M5-v1";
+};
+
+/* QSDK 10: retain this board's physical LAN/WAN port assignment. */
+#define QSDK_LAN_BMP 0x10
+#define QSDK_WAN_BMP 0x20
+#define QSDK_WAN_PHY 4
+#define QSDK_WAN_POLL 1
+#include "qcom-ipq40xx-qsdk-10.dtsi"
+
+&switch {
+	qcom,port_phyinfo {
+		port4 { port_id = <4>; phy_address = <3>; };
+		port5 { port_id = <5>; phy_address = <4>; };
+	};
+};
+
+&qsdk_gmac0 {
+	qcom,mac-source = <&swport5>;
+};

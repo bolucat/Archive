@@ -1,0 +1,62 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] backports: adapt Intel MLD thermal callbacks to older kernels
+
+Fix Intel mld thermal compilation
+
+Do the same changes done also in iwlwifi/mvm/tt.c in the iwlwifi/mld/thermal.c file.
+
+This fixes the compilation.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/intel/iwlwifi/mld/thermal.c
++++ b/drivers/net/wireless/intel/iwlwifi/mld/thermal.c
+@@ -209,9 +209,15 @@ unlock:
+ 	return ret;
+ }
+ 
++#if LINUX_VERSION_IS_GEQ(6,11,0)
+ static int iwl_mld_tzone_set_trip_temp(struct thermal_zone_device *device,
+ 				       const struct thermal_trip *trip,
+ 				       int temp)
++#else
++static int iwl_mld_tzone_set_trip_temp(struct thermal_zone_device *device,
++				       int trip,
++				       int temp)
++#endif
+ {
+ 	struct iwl_mld *mld = thermal_zone_device_priv(device);
+ 	int ret;
+@@ -248,18 +254,29 @@ static void iwl_mld_thermal_zone_registe
+ 		[0 ... IWL_MAX_DTS_TRIPS - 1] = {
+ 			.temperature = THERMAL_TEMP_INVALID,
+ 			.type = THERMAL_TRIP_PASSIVE,
++#if LINUX_VERSION_IS_GEQ(6,9,0)
+ 			.flags = THERMAL_TRIP_FLAG_RW_TEMP,
++#endif
+ 		},
+ 	};
+ 
+ 	BUILD_BUG_ON(ARRAY_SIZE(name) >= THERMAL_NAME_LENGTH);
+ 
+ 	sprintf(name, "iwlwifi_%u", atomic_inc_return(&counter) & 0xFF);
++#if LINUX_VERSION_IS_GEQ(6,9,0)
+ 	mld->tzone =
+ 		thermal_zone_device_register_with_trips(name, trips,
+ 							IWL_MAX_DTS_TRIPS,
+ 							mld, &tzone_ops,
+ 							NULL, 0, 0);
++#else
++	mld->tzone =
++		thermal_zone_device_register_with_trips(name, trips,
++							IWL_MAX_DTS_TRIPS, 0,
++							mld, &tzone_ops,
++							NULL, 0, 0);
++#endif
++
+ 	if (IS_ERR(mld->tzone)) {
+ 		IWL_DEBUG_TEMP(mld,
+ 			       "Failed to register to thermal zone (err = %ld)\n",

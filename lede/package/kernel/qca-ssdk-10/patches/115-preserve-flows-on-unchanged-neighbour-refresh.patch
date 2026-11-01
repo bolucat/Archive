@@ -1,0 +1,88 @@
+Subject: [PATCH] ssdk: preserve flows across unchanged ARP refreshes
+
+Track bounded IPv4 neighbour observations without holding neighbour references.
+Keep invalidation for new keys, MAC changes, failed neighbours and redirects,
+but avoid clearing hardware NAPT on valid NUD transitions with the same MAC.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -1,5 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/module.h>
++#include <linux/etherdevice.h>
++#include <linux/spinlock.h>
+ #include <linux/debugfs.h>
+ #include <linux/seq_file.h>
+ #include <linux/inetdevice.h>
+@@ -163,6 +165,59 @@
+ 	if (info->family == AF_INET) invalidate();
+ 	return NOTIFY_DONE;
+ }
++/* Notifications also report ordinary NUD state transitions. Remember only
++ * address/MAC observations, never neighbour pointers, so REACHABLE/STALE/PROBE
++ * changes do not repeatedly evict otherwise unchanged IPv4 forwarding paths.
++ * An unknown or evicted key is conservative: its first notification flushes.
++ */
++#define NEIGH_OBSERVATIONS 32
++static DEFINE_SPINLOCK(neighbour_lock);
++static struct {
++	bool used, valid;
++	int ifindex;
++	__be32 address;
++	u8 mac[ETH_ALEN];
++} neighbour_seen[NEIGH_OBSERVATIONS];
++static unsigned int neighbour_victim;
++static bool neighbour_changed(struct neighbour *neighbour)
++{
++	unsigned long flags;
++	unsigned int i, index = NEIGH_OBSERVATIONS;
++	int ifindex = neighbour->dev->ifindex;
++	__be32 address;
++	u8 mac[ETH_ALEN];
++	bool valid, changed;
++
++	read_lock_bh(&neighbour->lock);
++	memcpy(&address, neighbour->primary_key, sizeof(address));
++	ether_addr_copy(mac, neighbour->ha);
++	valid = !neighbour->dead && (neighbour->nud_state & NUD_VALID) &&
++		is_valid_ether_addr(mac);
++	read_unlock_bh(&neighbour->lock);
++	spin_lock_irqsave(&neighbour_lock, flags);
++	for (i = 0; i < NEIGH_OBSERVATIONS; i++) {
++		if (!neighbour_seen[i].used) {
++			if (index == NEIGH_OBSERVATIONS) index = i;
++			continue;
++		}
++		if (neighbour_seen[i].ifindex == ifindex &&
++		    neighbour_seen[i].address == address) { index = i; break; }
++	}
++	if (index == NEIGH_OBSERVATIONS)
++		index = neighbour_victim++ % NEIGH_OBSERVATIONS;
++	changed = !neighbour_seen[index].used ||
++		neighbour_seen[index].ifindex != ifindex ||
++		neighbour_seen[index].address != address ||
++		!valid || !neighbour_seen[index].valid ||
++		!ether_addr_equal(neighbour_seen[index].mac, mac);
++	neighbour_seen[index].used = true;
++	neighbour_seen[index].valid = valid;
++	neighbour_seen[index].ifindex = ifindex;
++	neighbour_seen[index].address = address;
++	ether_addr_copy(neighbour_seen[index].mac, mac);
++	spin_unlock_irqrestore(&neighbour_lock, flags);
++	return changed;
++}
+ static int neighbour_event(struct notifier_block *nb, unsigned long event, void *ptr)
+ {
+ 	struct neighbour *neighbour;
+@@ -172,7 +227,8 @@
+ 	else return NOTIFY_DONE;
+ 	/* IPv6 NUD changes must not tear down unrelated IPv4 NAPT flows. */
+ 	if (neighbour && neighbour->tbl == &arp_tbl &&
+-	    net_eq(dev_net(neighbour->dev), &init_net)) invalidate();
++	    net_eq(dev_net(neighbour->dev), &init_net) &&
++	    (event == NETEVENT_REDIRECT || neighbour_changed(neighbour))) invalidate();
+ 	return NOTIFY_DONE;
+ }
+ static int bridge_event(struct notifier_block *nb, unsigned long event, void *ptr)

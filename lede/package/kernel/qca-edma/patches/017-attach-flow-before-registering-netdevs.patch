@@ -1,0 +1,72 @@
+Subject: [PATCH] edma: prepare flow offload before netdev registration
+
+Existing nft flowtables rebind on NETDEV_REGISTER. Attaching the backend
+after that event rejects registration when EDMA is reloaded under fw4.
+Enable HW_TC and attach before publication; detach on probe failure.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_axi.c
++++ b/edma_axi.c
+@@ -1951,34 +1951,36 @@
+ 		goto edma_phy_attach_fail;
+ 	}
+ 
+-	/* Publishing a netdev lets netifd call ndo_open immediately. Finish
+-	 * DMA, IRQ, PHY and switch setup before exposing either GMAC.
++	/* Existing nft flowtables bind during NETDEV_REGISTER on reload.
++	 * Attach the shared backend and advertise HW_TC before that event.
+ 	 */
+-	for (i = 0; i < edma_cinfo->num_gmac; i++) {
+-		err = register_netdev(edma_netdev[i]);
+-		if (err) {
+-			dev_err(&pdev->dev, "GMAC %d registration failed: %d\n", i, err);
+-			goto edma_phy_attach_fail;
+-		}
+-		registered++;
+-	}
+-
+ 	if (edma_cinfo->num_gmac == 2) {
+ 		err = ssdk_flow_attach(edma_netdev[0], edma_netdev[1]);
+ 		if (!err) {
+ 			edma_flow_attached = true;
+-			rtnl_lock();
+ 			for (i = 0; i < 2; i++) {
+ 				edma_netdev[i]->hw_features |= NETIF_F_HW_TC;
+ 				edma_netdev[i]->wanted_features |= NETIF_F_HW_TC;
+-				netdev_update_features(edma_netdev[i]);
++				edma_netdev[i]->features |= NETIF_F_HW_TC;
+ 			}
+-			rtnl_unlock();
+ 		} else {
+ 			dev_warn(&pdev->dev, "native flow offload unavailable: %d\n", err);
+ 		}
+ 	}
+ 
++	/* Publishing a netdev lets netifd call ndo_open immediately. Finish
++	 * DMA, IRQ, PHY and switch setup before exposing either GMAC.
++	 */
++	for (i = 0; i < edma_cinfo->num_gmac; i++) {
++		err = register_netdev(edma_netdev[i]);
++		if (err) {
++			dev_err(&pdev->dev, "GMAC %d registration failed: %d\n", i, err);
++			goto edma_phy_attach_fail;
++		}
++		registered++;
++	}
++
++
+ 	edma_stats_cinfo = edma_cinfo;
+ 	timer_setup(&edma_stats_timer, edma_statistics_timer, 0);
+ 	mod_timer(&edma_stats_timer, jiffies + HZ);
+@@ -1994,6 +1996,10 @@
+ 	return 0;
+ 
+ edma_phy_attach_fail:
++	if (edma_flow_attached) {
++		ssdk_flow_detach();
++		edma_flow_attached = false;
++	}
+ 	while (registered)
+ 		unregister_netdev(edma_netdev[--registered]);
+ 	edma_switch_unregister();

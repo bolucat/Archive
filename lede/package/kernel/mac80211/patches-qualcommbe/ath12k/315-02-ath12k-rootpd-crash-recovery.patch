@@ -1,0 +1,183 @@
+From: Akshay Kakatkar <me@kakatkarakshay.dev>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: report rootPD crashes and recover the WSI group
+
+The AHB driver currently uses the Qualcomm SSR notifier only to wait for
+rootPD startup. Handle crash shutdown notifications as well so the actual
+failure is visible instead of only its later effects.
+
+The rootPD crash notifier currently releases the AHB userPD so remoteproc
+can collect the complete q6wcss dump, but no ath12k recovery is started.
+Remoteproc restarts only the rootPD. The AHB userPD remains down and PCIe
+partners which did not independently report RDDM remain attached to the
+stale WSI group, so wireless service does not return without a reboot.
+
+Merged from:
+  315-02-ath12k-report-rootpd-crashes.patch
+  316-ath12k-recover-rootpd-crashes.patch
+
+Based on work by:
+  Akshay Kakatkar <me@kakatkarakshay.dev>
+  Avula Sri Charan <quic_asrichar@quicinc.com>
+  Sowmiya Sree Elavalagan <quic_ssreeela@quicinc.com>
+
+Link: https://github.com/Telecominfraproject/wlan-ap/blob/4dda11dcf7455828e03a753079c520701f2f7a7c/feeds/qca-wifi-7/mac80211/patches-qca/ath12k/0111-0017-QSDK-PLATFORM-wifi-ath12k-Register-and-handle-rootPD-crash.patch
+
+Signed-off-by: Akshay Kakatkar <me@kakatkarakshay.dev>
+Signed-off-by: Sowmiya Sree Elavalagan <quic_ssreeela@quicinc.com>
+Signed-off-by: Avula Sri Charan <quic_asrichar@quicinc.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/ahb.c
++++ b/drivers/net/wireless/ath/ath12k/ahb.c
+@@ -357,6 +357,7 @@ static int ath12k_ahb_power_up(struct at
+ 	struct ath12k_ahb *ab_ahb = ath12k_ab_to_ahb(ab);
+ 	char fw_name[ATH12K_USERPD_FW_NAME_LEN];
+ 	char fw2_name[ATH12K_USERPD_FW_NAME_LEN];
++	bool spawn_requested = false;
+ 	struct device *dev = ab->dev;
+ 	const struct firmware *fw, *fw2;
+ 	struct reserved_mem *rmem = NULL;
+@@ -453,6 +454,9 @@ static int ath12k_ahb_power_up(struct at
+ 		}
+ 	}
+ 
++	reinit_completion(&ab_ahb->userpd_spawned);
++	reinit_completion(&ab_ahb->userpd_ready);
++
+ 	/* Instruct Q6 to spawn userPD thread */
+ 	ret = qcom_smem_state_update_bits(ab_ahb->spawn_state, BIT(ab_ahb->spawn_bit),
+ 					  BIT(ab_ahb->spawn_bit));
+@@ -460,6 +464,7 @@ static int ath12k_ahb_power_up(struct at
+ 		ath12k_err(ab, "Failed to update spawn state %d\n", ret);
+ 		goto err_fw2;
+ 	}
++	spawn_requested = true;
+ 
+ 	time_left = wait_for_completion_timeout(&ab_ahb->userpd_spawned,
+ 						ATH12K_USERPD_SPAWN_TIMEOUT);
+@@ -477,11 +482,13 @@ static int ath12k_ahb_power_up(struct at
+ 		goto err_fw2;
+ 	}
+ 
+-	qcom_smem_state_update_bits(ab_ahb->spawn_state, BIT(ab_ahb->spawn_bit), 0);
+-
++	ab_ahb->rootpd_crashed = false;
+ 	ath12k_dbg(ab, ATH12K_DBG_AHB, "UserPD%d is now UP\n", ab_ahb->userpd_id);
+ 
+ err_fw2:
++	if (spawn_requested)
++		qcom_smem_state_update_bits(ab_ahb->spawn_state,
++					    BIT(ab_ahb->spawn_bit), 0);
+ 	release_firmware(fw2);
+ err_fw:
+ 	release_firmware(fw);
+@@ -495,6 +502,10 @@ static void ath12k_ahb_power_down(struct
+ 	u32 pasid;
+ 	int ret;
+ 
++	if (ab_ahb->rootpd_crashed)
++		return;
++
++	reinit_completion(&ab_ahb->userpd_stopped);
+ 	qcom_smem_state_update_bits(ab_ahb->stop_state, BIT(ab_ahb->stop_bit),
+ 				    BIT(ab_ahb->stop_bit));
+ 
+@@ -809,18 +820,85 @@ static int ath12k_ahb_config_rproc_irq(s
+ 	return 0;
+ }
+ 
++static void ath12k_ahb_release_crashed_userpd(struct ath12k_base *ab)
++{
++	struct ath12k_ahb *ab_ahb = ath12k_ab_to_ahb(ab);
++	u32 pasid;
++	int ret;
++
++	if (!ab_ahb->scm_auth_enabled)
++		return;
++
++	pasid = u32_encode_bits(ab_ahb->userpd_id, ATH12K_USERPD_ID_MASK) |
++		ATH12K_AHB_UPD_SWID;
++	ret = qcom_scm_pas_shutdown(pasid);
++	if (ret)
++		ath12k_warn(ab, "failed to release userPD%u after rootPD crash: %d\n",
++			    ab_ahb->userpd_id, ret);
++}
++
++static void ath12k_ahb_queue_group_recovery(struct ath12k_base *ab)
++{
++	struct ath12k_hw_group *ag = ab->ag;
++	struct ath12k_base *partner_ab;
++	int i;
++
++	if (!ag)
++		return;
++
++	mutex_lock(&ag->mutex);
++	for (i = 0; i < ag->num_devices; i++) {
++		partner_ab = ag->ab[i];
++		if (!partner_ab ||
++		    !test_bit(ATH12K_FLAG_REGISTERED, &partner_ab->dev_flags) ||
++		    test_bit(ATH12K_FLAG_UNREGISTERING, &partner_ab->dev_flags))
++			continue;
++
++		set_bit(ATH12K_FLAG_CRASH_FLUSH, &partner_ab->dev_flags);
++		set_bit(ATH12K_FLAG_RECOVERY, &partner_ab->dev_flags);
++
++		if (READ_ONCE(partner_ab->is_reset) ||
++		    work_busy(&partner_ab->reset_work))
++			continue;
++
++		queue_work(partner_ab->workqueue_aux, &partner_ab->reset_work);
++	}
++	mutex_unlock(&ag->mutex);
++}
++
+ static int ath12k_ahb_root_pd_state_notifier(struct notifier_block *nb,
+ 					     const unsigned long event, void *data)
+ {
+ 	struct ath12k_ahb *ab_ahb = container_of(nb, struct ath12k_ahb, root_pd_nb);
+ 	struct ath12k_base *ab = ab_ahb->ab;
++	struct qcom_ssr_notify_data *notify_data = data;
+ 
+-	if (event == ATH12K_RPROC_AFTER_POWERUP) {
++	switch (event) {
++	case QCOM_SSR_AFTER_POWERUP:
+ 		ath12k_dbg(ab, ATH12K_DBG_AHB, "Root PD is UP\n");
+ 		complete(&ab_ahb->rootpd_ready);
++		if (ab_ahb->rootpd_crashed)
++			ath12k_ahb_queue_group_recovery(ab);
++		return NOTIFY_OK;
++	case QCOM_SSR_BEFORE_SHUTDOWN:
++		if (!notify_data || !notify_data->crashed)
++			return NOTIFY_DONE;
++
++		reinit_completion(&ab_ahb->rootpd_ready);
++		ab_ahb->rootpd_crashed = true;
++
++		if (test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags) &&
++		    !test_bit(ATH12K_FLAG_UNREGISTERING, &ab->dev_flags)) {
++			set_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags);
++			set_bit(ATH12K_FLAG_RECOVERY, &ab->dev_flags);
++		}
++
++		ath12k_warn(ab, "rootPD crashed; releasing userPD for coredump\n");
++		ath12k_ahb_release_crashed_userpd(ab);
++		return NOTIFY_OK;
+ 	}
+ 
+-	return 0;
++	return NOTIFY_DONE;
+ }
+ 
+ static int ath12k_ahb_register_rproc_notifier(struct ath12k_base *ab)
+--- a/drivers/net/wireless/ath/ath12k/ahb.h
++++ b/drivers/net/wireless/ath/ath12k/ahb.h
+@@ -69,6 +69,7 @@ struct ath12k_ahb {
+ 	const struct ath12k_ahb_ops *ahb_ops;
+ 	const struct ath12k_ahb_device_family_ops *device_family_ops;
+ 	bool scm_auth_enabled;
++	bool rootpd_crashed;
+ };
+ 
+ struct ath12k_ahb_driver {

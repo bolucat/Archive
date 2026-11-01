@@ -1,0 +1,21 @@
+Subject: [PATCH] arc: build the device trees for enabled development boards
+
+Build board DTBs alongside the built-in nSIM tree for external-DTB
+U-Boot images. OF_ALL_DTBS depends on COMPILE_TEST and cannot be used
+for the normal target configuration.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/arch/arc/boot/dts/Makefile
++++ b/arch/arc/boot/dts/Makefile
+@@ -2,6 +2,10 @@
+ 
+ dtb-y	:= $(addsuffix .dtb, $(CONFIG_BUILTIN_DTB_NAME))
+ 
++dtb-$(CONFIG_AXS101) += axs101.dtb
++dtb-$(CONFIG_AXS103) += axs103_idu.dtb
++dtb-$(CONFIG_ARC_SOC_HSDK) += hsdk.dtb
++
+ # for CONFIG_OF_ALL_DTBS test
+ dtb-	:= $(patsubst $(src)/%.dts,%.dtb, $(wildcard $(src)/*.dts))
+ 

@@ -1,0 +1,20 @@
+Subject: [PATCH] QSDK 10: 009-fix-max-vlan
+
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/include/init/ssdk_plat.h
++++ b/include/init/ssdk_plat.h
+@@ -161,7 +161,11 @@
+ #define AR8327_NUM_PHYS		5
+ #define AR8327_PORT_CPU     0
+ #define AR8327_NUM_PORTS	7
+-#define AR8327_MAX_VLANS  128
++#ifdef CONFIG_ARCH_IPQ40XX
++#define AR8327_MAX_VLANS  4095
++#else
++#define AR8327_MAX_VLANS  128 
++#endif
+ 
+ #define MII_PHYADDR_C45	(1<<30)
+ 

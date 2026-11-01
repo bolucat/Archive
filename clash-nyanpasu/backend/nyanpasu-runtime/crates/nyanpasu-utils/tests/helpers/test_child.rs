@@ -6,6 +6,13 @@ use std::{io::Write, time::Duration};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     #[cfg(windows)]
+    if std::env::current_exe().unwrap().file_stem().unwrap() == "nyanpasu-marked-shutdown-helper"
+        && std::env::args().nth(1).as_deref() == Some("--nyanpasu-process-shutdown")
+    {
+        let marker = std::env::current_exe().unwrap().with_extension("started");
+        std::fs::write(marker, "started").expect("shutdown helper marker");
+    }
+    #[cfg(windows)]
     if std::env::current_exe().unwrap().file_stem().unwrap() == "nyanpasu-hung-shutdown-helper" {
         let pid_file = std::env::current_exe().unwrap().with_extension("pid");
         std::fs::write(pid_file, std::process::id().to_string()).unwrap();

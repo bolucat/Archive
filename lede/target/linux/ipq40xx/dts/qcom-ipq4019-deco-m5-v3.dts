@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "qcom-ipq4019-deco-m5.dtsi"
+
+/ {
+	model = "TP-Link Deco M5 v3";
+	compatible = "tplink,deco-m5-v3", "qcom,ipq4019";
+
+	aliases {
+		led-boot = &led_gpios_blue;
+		led-failsafe = &led_gpios_red;
+		led-running = &led_gpios_green;
+		led-upgrade = &led_gpios_red;
+	};
+
+	led_gpios {
+		status = "okay";
+		compatible = "gpio-leds";
+
+		led_gpios_red: led@0 {
+			gpios = <&tlmm 28 GPIO_ACTIVE_LOW>;
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_FAULT;
+		};
+		led_gpios_green: led@1 {
+			gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+		};
+		led_gpios_blue: led@2 {
+			gpios = <&tlmm 35 GPIO_ACTIVE_LOW>;
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_BOOT;
+		};
+	};
+};
+
+&wifi0 {
+	qcom,ath10k-calibration-variant = "TP-Link-Deco-M5-v3";
+};
+
+&wifi1 {
+	qcom,ath10k-calibration-variant = "TP-Link-Deco-M5-v3";
+};
+
+/* QSDK 10: retain this board's physical LAN/WAN port assignment. */
+#define QSDK_LAN_BMP 0x10
+#define QSDK_WAN_BMP 0x20
+#define QSDK_WAN_PHY 4
+#define QSDK_WAN_POLL 1
+#include "qcom-ipq40xx-qsdk-10.dtsi"
+
+&switch {
+	qcom,port_phyinfo {
+		port4 { port_id = <4>; phy_address = <3>; };
+		port5 { port_id = <5>; phy_address = <4>; };
+	};
+};
+
+&qsdk_gmac0 {
+	qcom,mac-source = <&swport5>;
+};

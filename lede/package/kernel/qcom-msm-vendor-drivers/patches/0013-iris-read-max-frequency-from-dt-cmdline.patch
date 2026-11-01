@@ -1,0 +1,152 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] media: qcom: iris: read max frequency from DT cmdline
+
+Keep the max_freq module parameter and also read qcom_iris.max_freq or
+qcom-iris.max_freq from /chosen bootargs properties when no explicit module
+parameter was supplied. This supports modular Iris builds where the kernel
+does not pass built-in command line parameters to modprobe.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+---
+--- a/drivers/media/platform/qcom/iris/iris_probe.c
++++ b/drivers/media/platform/qcom/iris/iris_probe.c
+@@ -14,6 +14,7 @@
+ 
+ #include "iris_core.h"
+ #include "iris_ctrls.h"
++#include "iris_resources.h"
+ #include "iris_vidc.h"
+ 
+ static int iris_init_icc(struct iris_core *core)
+@@ -230,6 +231,7 @@
+ 	if (!core)
+ 		return -ENOMEM;
+ 	core->dev = dev;
++	iris_parse_max_freq(dev);
+ 
+ 	core->state = IRIS_CORE_DEINIT;
+ 	mutex_init(&core->lock);
+--- a/drivers/media/platform/qcom/iris/iris_resources.c
++++ b/drivers/media/platform/qcom/iris/iris_resources.c
+@@ -4,9 +4,11 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/ctype.h>
+ #include <linux/devfreq.h>
+ #include <linux/interconnect.h>
+ #include <linux/moduleparam.h>
++#include <linux/of.h>
+ #include <linux/pm_domain.h>
+ #include <linux/pm_opp.h>
+ #include <linux/pm_runtime.h>
+@@ -18,10 +20,98 @@
+ #define BW_THRESHOLD 50000
+ 
+ static unsigned long iris_max_freq;
+-module_param_named(max_freq, iris_max_freq, ulong, 0644);
++static bool iris_max_freq_from_module;
++
++static int iris_set_max_freq(const char *val, const struct kernel_param *kp)
++{
++	int ret;
++
++	ret = param_set_ulong(val, kp);
++	if (!ret)
++		iris_max_freq_from_module = true;
++
++	return ret;
++}
++
++static const struct kernel_param_ops iris_max_freq_ops = {
++	.set = iris_set_max_freq,
++	.get = param_get_ulong,
++};
++
++module_param_cb(max_freq, &iris_max_freq_ops, &iris_max_freq, 0644);
+ MODULE_PARM_DESC(max_freq,
+ 		 "Clamp Iris OPP requests to this frequency in Hz (0=unlimited)");
+ 
++static int iris_parse_cmdline_value(const char *args, unsigned long *freq)
++{
++	static const char * const keys[] = {
++		"qcom_iris.max_freq=",
++		"qcom-iris.max_freq=",
++	};
++	char value[24];
++	const char *p;
++	size_t len;
++	int i;
++
++	if (!args)
++		return -ENOENT;
++
++	for (i = 0; i < ARRAY_SIZE(keys); i++) {
++		p = args;
++		while ((p = strstr(p, keys[i]))) {
++			if (p == args || isspace(p[-1])) {
++				p += strlen(keys[i]);
++				len = strcspn(p, " \t");
++				if (!len || len >= sizeof(value))
++					return -EINVAL;
++				memcpy(value, p, len);
++				value[len] = '\0';
++				return kstrtoul(value, 10, freq);
++			}
++			p += strlen(keys[i]);
++		}
++	}
++
++	return -ENOENT;
++}
++
++void iris_parse_max_freq(struct device *dev)
++{
++	static const char * const properties[] = {
++		"bootargs",
++		"bootargs-append",
++	};
++	struct device_node *chosen;
++	const char *args;
++	unsigned long freq;
++	int ret = -ENOENT;
++	int i;
++
++	if (iris_max_freq_from_module) {
++		dev_info(dev, "max frequency %lu Hz from module parameter\n",
++			 iris_max_freq);
++		return;
++	}
++
++	chosen = of_find_node_by_path("/chosen");
++	if (!chosen)
++		return;
++
++	for (i = 0; i < ARRAY_SIZE(properties); i++) {
++		ret = of_property_read_string(chosen, properties[i], &args);
++		if (!ret)
++			ret = iris_parse_cmdline_value(args, &freq);
++		if (!ret) {
++			iris_max_freq = freq;
++			dev_info(dev, "max frequency %lu Hz from /chosen/%s\n",
++				 iris_max_freq, properties[i]);
++			break;
++		}
++	}
++
++	of_node_put(chosen);
++}
++
+ int iris_set_icc_bw(struct iris_core *core, unsigned long icc_bw)
+ {
+ 	unsigned long bw_kbps = 0, bw_prev = 0;
+--- a/drivers/media/platform/qcom/iris/iris_resources.h
++++ b/drivers/media/platform/qcom/iris/iris_resources.h
+@@ -8,6 +8,7 @@
+ 
+ struct iris_core;
+ 
++void iris_parse_max_freq(struct device *dev);
+ int iris_opp_set_rate(struct device *dev, unsigned long freq);
+ int iris_enable_power_domains(struct iris_core *core, struct device *pd_dev);
+ int iris_disable_power_domains(struct iris_core *core, struct device *pd_dev);

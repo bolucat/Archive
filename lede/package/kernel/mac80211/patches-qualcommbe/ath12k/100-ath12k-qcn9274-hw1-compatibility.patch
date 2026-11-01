@@ -1,0 +1,552 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 09:40:00 +0800
+Subject: [PATCH] wifi: ath12k: support QCN9274 HW1 startup RX and diagnostics
+
+Consolidate consecutive changes within this functional responsibility.
+Retain the final implementation and its error handling directly.
+
+Merged from:
+  100-01-ath12k-prevent-ltssm-startup-crash.patch
+  100-02-wifi-ath12k-restore-qcn9274-hw10-rx-support.patch
+  100-03-ath12k-qcn9274-mhi-diagnostics.patch
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/mhi.c
++++ b/drivers/net/wireless/ath/ath12k/mhi.c
+@@ -188,7 +188,7 @@ int ath12k_mhi_register(struct ath12k_pc
+ {
+ 	struct ath12k_base *ab = ab_pci->ab;
+ 	struct mhi_controller *mhi_ctrl;
+-	unsigned int board_id;
++	unsigned int board_id = ATH12K_BOARD_ID_DEFAULT;
+ 	int ret;
+ 	bool dualmac = false;
+ 
+@@ -242,6 +242,14 @@ int ath12k_mhi_register(struct ath12k_pc
+ 		}
+ 	}
+ 
++	if (ab->hw_rev == ATH12K_HW_QCN9274_HW10 ||
++	    ab->hw_rev == ATH12K_HW_QCN9274_HW20)
++		ath12k_info(ab,
++			    "QCN9274 MHI selection: hw_rev=%u board_id=0x%x dualmac=%u source=%s size=%zu\n",
++			    ab->hw_rev, board_id, dualmac,
++			    mhi_ctrl->fw_image ? mhi_ctrl->fw_image : "firmware-N.bin",
++			    mhi_ctrl->fw_sz);
++
+ 	ret = ath12k_mhi_get_msi(ab_pci);
+ 	if (ret) {
+ 		ath12k_err(ab, "failed to get msi for mhi\n");
+--- a/drivers/net/wireless/ath/ath12k/pci.c
++++ b/drivers/net/wireless/ath/ath12k/pci.c
+@@ -249,6 +249,9 @@ static void ath12k_pci_enable_ltssm(stru
+ 	u32 val;
+ 	int i;
+ 
++	/* Prevent startup crash on BPI-Rx */
++	return;
++
+ 	val = ath12k_pci_read32(ab, PCIE_PCIE_PARF_LTSSM);
+ 
+ 	/* PCIE link seems very unstable after the Hot Reset*/
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -2122,15 +2122,23 @@ int ath12k_dp_rxdma_ring_sel_config_qcn9
+ 	tlv_filter.offset_valid = true;
+ 	tlv_filter.rx_packet_offset = hal_rx_desc_sz;
+ 
+-	tlv_filter.rx_mpdu_start_offset =
+-		ath12k_hal_rx_desc_get_mpdu_start_offset_qcn9274();
+-	tlv_filter.rx_msdu_end_offset =
+-		ath12k_hal_rx_desc_get_msdu_end_offset_qcn9274();
++	if (ab->hw_rev == ATH12K_HW_QCN9274_HW10) {
++		/* WBE.1.0 does not support the compact TLV word masks. */
++		tlv_filter.rx_mpdu_start_offset =
++			offsetof(struct hal_rx_desc_qcn9274, mpdu_start);
++		tlv_filter.rx_msdu_end_offset =
++			offsetof(struct hal_rx_desc_qcn9274, msdu_end);
++	} else {
++		tlv_filter.rx_mpdu_start_offset =
++			ath12k_hal_rx_desc_get_mpdu_start_offset_qcn9274();
++		tlv_filter.rx_msdu_end_offset =
++			ath12k_hal_rx_desc_get_msdu_end_offset_qcn9274();
+ 
+-	tlv_filter.rx_mpdu_start_wmask = ath12k_hal_rx_mpdu_start_wmask_get_qcn9274();
+-	tlv_filter.rx_msdu_end_wmask = ath12k_hal_rx_msdu_end_wmask_get_qcn9274();
++		tlv_filter.rx_mpdu_start_wmask = ath12k_hal_rx_mpdu_start_wmask_get_qcn9274();
++		tlv_filter.rx_msdu_end_wmask = ath12k_hal_rx_msdu_end_wmask_get_qcn9274();
++	}
+ 	ath12k_dbg(ab, ATH12K_DBG_DATA,
+-		   "Configuring compact tlv masks rx_mpdu_start_wmask 0x%x rx_msdu_end_wmask 0x%x\n",
++		   "Configuring RX tlv masks rx_mpdu_start_wmask 0x%x rx_msdu_end_wmask 0x%x\n",
+ 		   tlv_filter.rx_mpdu_start_wmask, tlv_filter.rx_msdu_end_wmask);
+ 
+ 	ret = ath12k_dp_tx_htt_rx_filter_setup(ab, ring_id, 0,
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal.c
+@@ -16,8 +16,8 @@
+ 
+ static const struct ath12k_hw_version_map ath12k_wifi7_hw_ver_map[] = {
+ 	[ATH12K_HW_QCN9274_HW10] = {
+-		.hal_ops = &hal_qcn9274_ops,
+-		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9274_compact),
++		.hal_ops = &hal_qcn9274_hw10_ops,
++		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9274),
+ 		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_qcn9274,
+ 		.hal_params = &ath12k_hw_hal_params_qcn9274,
+ 		.hw_regs = &qcn9274_v1_regs,
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+@@ -1098,6 +1098,378 @@ ath12k_hal_tcl_to_wbm_rbm_map_qcn9274[DP
+ 	},
+ };
+ 
++/* Full RX TLV accessors for the WBE.1.0 firmware used by hw1.0. */
++static bool ath12k_hal_rx_desc_get_first_msdu_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			       RX_MSDU_END_INFO5_FIRST_MSDU);
++}
++
++static bool ath12k_hal_rx_desc_get_last_msdu_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			       RX_MSDU_END_INFO5_LAST_MSDU);
++}
++
++static u8 ath12k_hal_rx_desc_get_l3_pad_bytes_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			     RX_MSDU_END_INFO5_L3_HDR_PADDING);
++}
++
++static bool ath12k_hal_rx_desc_encrypt_valid_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.mpdu_start.info4,
++			       RX_MPDU_START_INFO4_ENCRYPT_INFO_VALID);
++}
++
++static u32 ath12k_hal_rx_desc_get_encrypt_type_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	if (!ath12k_hal_rx_desc_encrypt_valid_qcn9274_hw10(desc))
++		return HAL_ENCRYPT_TYPE_OPEN;
++
++	return le32_get_bits(desc->u.qcn9274.mpdu_start.info2,
++			     RX_MPDU_START_INFO2_ENC_TYPE);
++}
++
++static u8 ath12k_hal_rx_desc_get_decap_type_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info11,
++			     RX_MSDU_END_INFO11_DECAP_FORMAT);
++}
++
++static u8 ath12k_hal_rx_desc_get_mesh_ctl_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info11,
++			     RX_MSDU_END_INFO11_MESH_CTRL_PRESENT);
++}
++
++static bool ath12k_hal_rx_desc_get_mpdu_seq_ctl_vld_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.mpdu_start.info4,
++			       RX_MPDU_START_INFO4_MPDU_SEQ_CTRL_VALID);
++}
++
++static bool ath12k_hal_rx_desc_get_mpdu_fc_valid_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.mpdu_start.info4,
++			       RX_MPDU_START_INFO4_MPDU_FCTRL_VALID);
++}
++
++static u16 ath12k_hal_rx_desc_get_mpdu_start_seq_no_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.mpdu_start.info4,
++			     RX_MPDU_START_INFO4_MPDU_SEQ_NUM);
++}
++
++static u16 ath12k_hal_rx_desc_get_msdu_len_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info10,
++			     RX_MSDU_END_INFO10_MSDU_LENGTH);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_sgi_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info12,
++			     RX_MSDU_END_INFO12_SGI);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_rate_mcs_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info12,
++			     RX_MSDU_END_INFO12_RATE_MCS);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_rx_bw_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info12,
++			     RX_MSDU_END_INFO12_RECV_BW);
++}
++
++static u32 ath12k_hal_rx_desc_get_msdu_freq_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return __le32_to_cpu(desc->u.qcn9274.msdu_end.phy_meta_data);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_pkt_type_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info12,
++			     RX_MSDU_END_INFO12_PKT_TYPE);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_nss_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le32_get_bits(desc->u.qcn9274.msdu_end.info12,
++			     RX_MSDU_END_INFO12_MIMO_SS_BITMAP);
++}
++
++static u8 ath12k_hal_rx_desc_get_mpdu_tid_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			     RX_MSDU_END_INFO5_TID);
++}
++
++static u8 ath12k_wifi7_hal_rx_h_from_ds_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			     RX_MSDU_END_INFO5_FROM_DS);
++}
++
++static u8 ath12k_wifi7_hal_rx_h_to_ds_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return le16_get_bits(desc->u.qcn9274.msdu_end.info5,
++			     RX_MSDU_END_INFO5_TO_DS);
++}
++
++static u16 ath12k_hal_rx_desc_get_mpdu_peer_id_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return __le16_to_cpu(desc->u.qcn9274.mpdu_start.sw_peer_id);
++}
++
++static void ath12k_hal_rx_desc_copy_end_tlv_qcn9274_hw10(struct hal_rx_desc *fdesc,
++							 struct hal_rx_desc *ldesc)
++{
++	fdesc->u.qcn9274.msdu_end = ldesc->u.qcn9274.msdu_end;
++}
++
++static u32 ath12k_hal_rx_desc_get_mpdu_ppdu_id_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return __le16_to_cpu(desc->u.qcn9274.mpdu_start.phy_ppdu_id);
++}
++
++static void ath12k_hal_rx_desc_set_msdu_len_qcn9274_hw10(struct hal_rx_desc *desc, u16 len)
++{
++	u32 info = __le32_to_cpu(desc->u.qcn9274.msdu_end.info10);
++
++	info = u32_replace_bits(info, len, RX_MSDU_END_INFO10_MSDU_LENGTH);
++	desc->u.qcn9274.msdu_end.info10 = __cpu_to_le32(info);
++}
++
++static u8 *ath12k_hal_rx_desc_get_msdu_payload_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return &desc->u.qcn9274.msdu_payload[0];
++}
++
++static bool ath12k_hal_rx_desc_mac_addr2_valid_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return __le32_to_cpu(desc->u.qcn9274.mpdu_start.info4) &
++			     RX_MPDU_START_INFO4_MAC_ADDR2_VALID;
++}
++
++static u8 *ath12k_hal_rx_desc_mpdu_start_addr2_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return desc->u.qcn9274.mpdu_start.addr2;
++}
++
++static bool ath12k_hal_rx_desc_is_da_mcbc_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return __le16_to_cpu(desc->u.qcn9274.msdu_end.info5) &
++	       RX_MSDU_END_INFO5_DA_IS_MCBC;
++}
++
++static bool ath12k_hal_rx_h_msdu_done_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.msdu_end.info14,
++			       RX_MSDU_END_INFO14_MSDU_DONE);
++}
++
++static bool ath12k_hal_rx_h_l4_cksum_fail_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.msdu_end.info13,
++			       RX_MSDU_END_INFO13_TCP_UDP_CKSUM_FAIL);
++}
++
++static bool ath12k_hal_rx_h_ip_cksum_fail_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return !!le32_get_bits(desc->u.qcn9274.msdu_end.info13,
++			       RX_MSDU_END_INFO13_IP_CKSUM_FAIL);
++}
++
++static bool ath12k_hal_rx_h_is_decrypted_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	return (le32_get_bits(desc->u.qcn9274.msdu_end.info14,
++			      RX_MSDU_END_INFO14_DECRYPT_STATUS_CODE) ==
++			RX_DESC_DECRYPT_STATUS_CODE_OK);
++}
++
++static u8 ath12k_hal_rx_desc_get_msdu_src_link_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	/* Legacy firmware exposes one link and has no source-link TLV. */
++	return 0;
++}
++
++static u32 ath12k_hal_rx_h_mpdu_err_qcn9274_hw10(struct hal_rx_desc *desc)
++{
++	u32 info = __le32_to_cpu(desc->u.qcn9274.msdu_end.info13);
++	u32 errmap = 0;
++
++	if (info & RX_MSDU_END_INFO13_FCS_ERR)
++		errmap |= HAL_RX_MPDU_ERR_FCS;
++
++	if (info & RX_MSDU_END_INFO13_DECRYPT_ERR)
++		errmap |= HAL_RX_MPDU_ERR_DECRYPT;
++
++	if (info & RX_MSDU_END_INFO13_TKIP_MIC_ERR)
++		errmap |= HAL_RX_MPDU_ERR_TKIP_MIC;
++
++	if (info & RX_MSDU_END_INFO13_A_MSDU_ERROR)
++		errmap |= HAL_RX_MPDU_ERR_AMSDU_ERR;
++
++	if (info & RX_MSDU_END_INFO13_OVERFLOW_ERR)
++		errmap |= HAL_RX_MPDU_ERR_OVERFLOW;
++
++	if (info & RX_MSDU_END_INFO13_MSDU_LEN_ERR)
++		errmap |= HAL_RX_MPDU_ERR_MSDU_LEN;
++
++	if (info & RX_MSDU_END_INFO13_MPDU_LEN_ERR)
++		errmap |= HAL_RX_MPDU_ERR_MPDU_LEN;
++
++	return errmap;
++}
++
++static void ath12k_hal_rx_desc_get_crypto_hdr_qcn9274_hw10(struct hal_rx_desc *desc,
++							   u8 *crypto_hdr,
++							   enum hal_encrypt_type enctype)
++{
++	unsigned int key_id;
++
++	switch (enctype) {
++	case HAL_ENCRYPT_TYPE_OPEN:
++		return;
++	case HAL_ENCRYPT_TYPE_TKIP_NO_MIC:
++	case HAL_ENCRYPT_TYPE_TKIP_MIC:
++		crypto_hdr[0] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE2(desc->u.qcn9274.mpdu_start.pn[0]);
++		crypto_hdr[1] = 0;
++		crypto_hdr[2] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE1(desc->u.qcn9274.mpdu_start.pn[0]);
++		break;
++	case HAL_ENCRYPT_TYPE_CCMP_128:
++	case HAL_ENCRYPT_TYPE_CCMP_256:
++	case HAL_ENCRYPT_TYPE_GCMP_128:
++	case HAL_ENCRYPT_TYPE_AES_GCMP_256:
++		crypto_hdr[0] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE1(desc->u.qcn9274.mpdu_start.pn[0]);
++		crypto_hdr[1] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE2(desc->u.qcn9274.mpdu_start.pn[0]);
++		crypto_hdr[2] = 0;
++		break;
++	case HAL_ENCRYPT_TYPE_WEP_40:
++	case HAL_ENCRYPT_TYPE_WEP_104:
++	case HAL_ENCRYPT_TYPE_WEP_128:
++	case HAL_ENCRYPT_TYPE_WAPI_GCM_SM4:
++	case HAL_ENCRYPT_TYPE_WAPI:
++		return;
++	}
++	key_id = le32_get_bits(desc->u.qcn9274.mpdu_start.info5,
++			       RX_MPDU_START_INFO5_KEY_ID);
++	crypto_hdr[3] = 0x20 | (key_id << 6);
++	crypto_hdr[4] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE3(desc->u.qcn9274.mpdu_start.pn[0]);
++	crypto_hdr[5] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE4(desc->u.qcn9274.mpdu_start.pn[0]);
++	crypto_hdr[6] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE1(desc->u.qcn9274.mpdu_start.pn[1]);
++	crypto_hdr[7] =
++		HAL_RX_MPDU_INFO_PN_GET_BYTE2(desc->u.qcn9274.mpdu_start.pn[1]);
++}
++
++static void ath12k_hal_rx_desc_get_dot11_hdr_qcn9274_hw10(struct hal_rx_desc *desc,
++							  struct ieee80211_hdr *hdr)
++{
++	hdr->frame_control = desc->u.qcn9274.mpdu_start.frame_ctrl;
++	hdr->duration_id = desc->u.qcn9274.mpdu_start.duration;
++	ether_addr_copy(hdr->addr1, desc->u.qcn9274.mpdu_start.addr1);
++	ether_addr_copy(hdr->addr2, desc->u.qcn9274.mpdu_start.addr2);
++	ether_addr_copy(hdr->addr3, desc->u.qcn9274.mpdu_start.addr3);
++	if (__le32_to_cpu(desc->u.qcn9274.mpdu_start.info4) &
++			RX_MPDU_START_INFO4_MAC_ADDR4_VALID) {
++		ether_addr_copy(hdr->addr4, desc->u.qcn9274.mpdu_start.addr4);
++	}
++	hdr->seq_ctrl = desc->u.qcn9274.mpdu_start.seq_ctrl;
++}
++
++static void ath12k_hal_extract_rx_desc_data_qcn9274_hw10(struct hal_rx_desc_data *rx_desc_data,
++							 struct hal_rx_desc *rx_desc,
++							 struct hal_rx_desc *ldesc)
++{
++	rx_desc_data->is_first_msdu = ath12k_hal_rx_desc_get_first_msdu_qcn9274_hw10(ldesc);
++	rx_desc_data->is_last_msdu = ath12k_hal_rx_desc_get_last_msdu_qcn9274_hw10(ldesc);
++	rx_desc_data->l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcn9274_hw10(ldesc);
++	rx_desc_data->enctype = ath12k_hal_rx_desc_get_encrypt_type_qcn9274_hw10(rx_desc);
++	rx_desc_data->decap_type = ath12k_hal_rx_desc_get_decap_type_qcn9274_hw10(rx_desc);
++	rx_desc_data->mesh_ctrl_present =
++		ath12k_hal_rx_desc_get_mesh_ctl_qcn9274_hw10(rx_desc);
++	rx_desc_data->seq_ctl_valid =
++		ath12k_hal_rx_desc_get_mpdu_seq_ctl_vld_qcn9274_hw10(rx_desc);
++	rx_desc_data->fc_valid = ath12k_hal_rx_desc_get_mpdu_fc_valid_qcn9274_hw10(rx_desc);
++	rx_desc_data->is_from_ds = ath12k_wifi7_hal_rx_h_from_ds_qcn9274_hw10(rx_desc);
++	rx_desc_data->is_to_ds = ath12k_wifi7_hal_rx_h_to_ds_qcn9274_hw10(rx_desc);
++	rx_desc_data->seq_no = ath12k_hal_rx_desc_get_mpdu_start_seq_no_qcn9274_hw10(rx_desc);
++	rx_desc_data->msdu_len = ath12k_hal_rx_desc_get_msdu_len_qcn9274_hw10(ldesc);
++	rx_desc_data->sgi = ath12k_hal_rx_desc_get_msdu_sgi_qcn9274_hw10(rx_desc);
++	rx_desc_data->rate_mcs = ath12k_hal_rx_desc_get_msdu_rate_mcs_qcn9274_hw10(rx_desc);
++	rx_desc_data->bw = ath12k_hal_rx_desc_get_msdu_rx_bw_qcn9274_hw10(rx_desc);
++	rx_desc_data->phy_meta_data = ath12k_hal_rx_desc_get_msdu_freq_qcn9274_hw10(rx_desc);
++	rx_desc_data->pkt_type = ath12k_hal_rx_desc_get_msdu_pkt_type_qcn9274_hw10(rx_desc);
++	rx_desc_data->nss = hweight8(ath12k_hal_rx_desc_get_msdu_nss_qcn9274_hw10(rx_desc));
++	rx_desc_data->tid = ath12k_hal_rx_desc_get_mpdu_tid_qcn9274_hw10(rx_desc);
++	rx_desc_data->peer_id = ath12k_hal_rx_desc_get_mpdu_peer_id_qcn9274_hw10(rx_desc);
++	rx_desc_data->addr2_present = ath12k_hal_rx_desc_mac_addr2_valid_qcn9274_hw10(rx_desc);
++	rx_desc_data->addr2 = ath12k_hal_rx_desc_mpdu_start_addr2_qcn9274_hw10(rx_desc);
++	rx_desc_data->is_mcbc = ath12k_hal_rx_desc_is_da_mcbc_qcn9274_hw10(rx_desc);
++	rx_desc_data->msdu_done = ath12k_hal_rx_h_msdu_done_qcn9274_hw10(ldesc);
++	rx_desc_data->l4_csum_fail = ath12k_hal_rx_h_l4_cksum_fail_qcn9274_hw10(rx_desc);
++	rx_desc_data->ip_csum_fail = ath12k_hal_rx_h_ip_cksum_fail_qcn9274_hw10(rx_desc);
++	rx_desc_data->is_decrypted = ath12k_hal_rx_h_is_decrypted_qcn9274_hw10(rx_desc);
++	rx_desc_data->err_bitmap = ath12k_hal_rx_h_mpdu_err_qcn9274_hw10(rx_desc);
++}
++
++const struct hal_ops hal_qcn9274_hw10_ops = {
++	.create_srng_config = ath12k_hal_srng_create_config_qcn9274,
++	.rx_desc_set_msdu_len = ath12k_hal_rx_desc_set_msdu_len_qcn9274_hw10,
++	.rx_desc_get_dot11_hdr = ath12k_hal_rx_desc_get_dot11_hdr_qcn9274_hw10,
++	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_qcn9274_hw10,
++	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_qcn9274_hw10,
++	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_qcn9274_hw10,
++	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcn9274_hw10,
++	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcn9274_hw10,
++	.rx_desc_get_mpdu_ppdu_id = ath12k_hal_rx_desc_get_mpdu_ppdu_id_qcn9274_hw10,
++	.rx_desc_get_msdu_payload = ath12k_hal_rx_desc_get_msdu_payload_qcn9274_hw10,
++	.ce_dst_setup = ath12k_wifi7_hal_ce_dst_setup,
++	.srng_src_hw_init = ath12k_wifi7_hal_srng_src_hw_init,
++	.srng_dst_hw_init = ath12k_wifi7_hal_srng_dst_hw_init,
++	.set_umac_srng_ptr_addr = ath12k_wifi7_hal_set_umac_srng_ptr_addr,
++	.srng_update_shadow_config = ath12k_wifi7_hal_srng_update_shadow_config,
++	.srng_get_ring_id = ath12k_wifi7_hal_srng_get_ring_id,
++	.ce_get_desc_size = ath12k_wifi7_hal_ce_get_desc_size,
++	.ce_src_set_desc = ath12k_wifi7_hal_ce_src_set_desc,
++	.ce_dst_set_desc = ath12k_wifi7_hal_ce_dst_set_desc,
++	.ce_dst_status_get_length = ath12k_wifi7_hal_ce_dst_status_get_length,
++	.set_link_desc_addr = ath12k_wifi7_hal_set_link_desc_addr,
++	.tx_set_dscp_tid_map = ath12k_wifi7_hal_tx_set_dscp_tid_map,
++	.tx_configure_bank_register =
++				ath12k_wifi7_hal_tx_configure_bank_register,
++	.reoq_lut_addr_read_enable = ath12k_wifi7_hal_reoq_lut_addr_read_enable,
++	.reoq_lut_set_max_peerid = ath12k_wifi7_hal_reoq_lut_set_max_peerid,
++	.write_reoq_lut_addr = ath12k_wifi7_hal_write_reoq_lut_addr,
++	.write_ml_reoq_lut_addr = ath12k_wifi7_hal_write_ml_reoq_lut_addr,
++	.setup_link_idle_list = ath12k_wifi7_hal_setup_link_idle_list,
++	.reo_init_cmd_ring = ath12k_wifi7_hal_reo_init_cmd_ring_tlv64,
++	.reo_hw_setup = ath12k_wifi7_hal_reo_hw_setup,
++	.reo_shared_qaddr_cache_clear = ath12k_wifi7_hal_reo_shared_qaddr_cache_clear,
++	.rx_buf_addr_info_set = ath12k_wifi7_hal_rx_buf_addr_info_set,
++	.rx_buf_addr_info_get = ath12k_wifi7_hal_rx_buf_addr_info_get,
++	.cc_config = ath12k_wifi7_hal_cc_config,
++	.get_idle_link_rbm = ath12k_wifi7_hal_get_idle_link_rbm,
++	.rx_msdu_list_get = ath12k_wifi7_hal_rx_msdu_list_get,
++	.rx_reo_ent_buf_paddr_get = ath12k_wifi7_hal_rx_reo_ent_buf_paddr_get,
++	.reo_cmd_enc_tlv_hdr = ath12k_hal_encode_tlv64_hdr,
++	.reo_status_dec_tlv_hdr = ath12k_hal_reo_status_dec_tlv_hdr_qcn9274,
++	.mon_rx_status_dec_tlv_hdr = ath12k_hal_decode_tlv64_hdr,
++	.get_tlv_hdr_align = ath12k_hal_get_tlv64_hdr_align,
++};
++
+ const struct hal_ops hal_qcn9274_ops = {
+ 	.create_srng_config = ath12k_hal_srng_create_config_qcn9274,
+ 	.rx_desc_set_msdu_len = ath12k_hal_rx_desc_set_msdu_len_qcn9274,
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h
+@@ -14,6 +14,7 @@
+ #include "hal.h"
+ 
+ extern const struct hal_ops hal_qcn9274_ops;
++extern const struct hal_ops hal_qcn9274_hw10_ops;
+ extern const struct ath12k_hw_regs qcn9274_v1_regs;
+ extern const struct ath12k_hw_regs qcn9274_v2_regs;
+ extern const struct ath12k_hw_regs ipq5332_regs;
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_rx_desc.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_rx_desc.h
+@@ -1454,6 +1454,13 @@ struct rx_msdu_end_qcn9274_compact {
+  *
+  */
+ 
++/* QCN9274 hw1.0 firmware uses uncompressed RX TLVs. */
++struct hal_rx_desc_qcn9274 {
++	struct rx_msdu_end_qcn9274 msdu_end;
++	struct rx_mpdu_start_qcn9274 mpdu_start;
++	u8 msdu_payload[];
++} __packed;
++
+ struct hal_rx_desc_qcn9274_compact {
+ 	struct rx_msdu_end_qcn9274_compact msdu_end;
+ 	struct rx_mpdu_start_qcn9274_compact mpdu_start;
+@@ -1499,6 +1506,7 @@ struct hal_rx_desc_qcc2072 {
+ 
+ struct hal_rx_desc {
+ 	union {
++		struct hal_rx_desc_qcn9274 qcn9274;
+ 		struct hal_rx_desc_qcn9274_compact qcn9274_compact;
+ 		struct hal_rx_desc_wcn7850 wcn7850;
+ 		struct hal_rx_desc_qcc2072 qcc2072;
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hw.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hw.c
+@@ -382,7 +382,7 @@ static const struct ath12k_hw_params ath
+ 			ath12k_wifi7_target_service_to_ce_map_wlan_qcn9274,
+ 		.svc_to_ce_map_len = 18,
+ 
+-		.rxdma1_enable = false,
++		.rxdma1_enable = true,
+ 		.num_rxdma_per_pdev = 1,
+ 		.num_rxdma_dst_ring = 0,
+ 		.rx_mac_buf_ring = false,
+@@ -398,7 +398,7 @@ static const struct ath12k_hw_params ath
+ 		.download_calib = true,
+ 		.supports_suspend = false,
+ 		.tcl_ring_retry = true,
+-		.reoq_lut_support = true,
++		.reoq_lut_support = false,
+ 		.supports_shadow_regs = false,
+ 
+ 		.num_tcl_banks = 48,
+--- a/drivers/net/wireless/ath/ath12k/wifi7/pci.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/pci.c
+@@ -9,6 +9,7 @@
+ #include "../pci.h"
+ #include "pci.h"
+ #include "../core.h"
++#include "../debug.h"
+ #include "../hif.h"
+ #include "../mhi.h"
+ #include "hw.h"
+@@ -86,6 +87,8 @@ void ath12k_wifi7_pci_read_hw_version(st
+ 	soc_hw_version = ath12k_pci_read32(ab, TCSR_SOC_HW_VERSION);
+ 	*major = u32_get_bits(soc_hw_version, TCSR_SOC_HW_VERSION_MAJOR_MASK);
+ 	*minor = u32_get_bits(soc_hw_version, TCSR_SOC_HW_VERSION_MINOR_MASK);
++	ath12k_info(ab, "QCN9274 TCSR hardware version: raw=0x%08x major=%u minor=%u\n",
++		    soc_hw_version, *major, *minor);
+ }
+ 
+ static int ath12k_wifi7_pci_probe(struct pci_dev *pdev,

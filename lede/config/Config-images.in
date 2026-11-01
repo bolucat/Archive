@@ -17,6 +17,7 @@ menu "Target Images"
 			default TARGET_INITRAMFS_COMPRESSION_LZMA if TARGET_lantiq
 			default TARGET_INITRAMFS_COMPRESSION_LZMA if TARGET_mpc85xx
 			default TARGET_INITRAMFS_COMPRESSION_LZMA if TARGET_ramips
+			default TARGET_INITRAMFS_COMPRESSION_XZ if TARGET_qualcommax_ipq807x_DEVICE_asus_rt-ax89x
 			default TARGET_INITRAMFS_COMPRESSION_ZSTD if TARGET_qualcommax
 			default TARGET_INITRAMFS_COMPRESSION_XZ if USES_SEPARATE_INITRAMFS
 			default TARGET_INITRAMFS_COMPRESSION_NONE
@@ -224,14 +225,13 @@ menu "Target Images"
 
 	config GRUB_EFI_IMAGES
 		bool "Build GRUB EFI images"
-		depends on TARGET_x86 || TARGET_armsr || TARGET_loongarch64 || TARGET_phytium || TARGET_qcom
+		depends on TARGET_x86 || TARGET_armsr || TARGET_loongarch64 || TARGET_phytium || TARGET_silicon
 		depends on TARGET_ROOTFS_EROFS || TARGET_ROOTFS_EXT4FS || TARGET_ROOTFS_JFFS2 || TARGET_ROOTFS_SQUASHFS
 		select PACKAGE_grub2 if TARGET_x86
 		select PACKAGE_grub2-efi if TARGET_x86
 		select PACKAGE_grub2-bios-setup if TARGET_x86
-		select PACKAGE_grub2-efi-arm if TARGET_armsr
+		select PACKAGE_grub2-efi-arm if TARGET_armsr || TARGET_silicon
 		select PACKAGE_grub2-efi-arm if TARGET_phytium_armv8
-		select PACKAGE_grub2-efi-arm if TARGET_qcom
 		select PACKAGE_grub2-efi-loongarch64 if TARGET_loongarch64
 		select PACKAGE_kmod-fs-vfat
 		default y
@@ -261,6 +261,7 @@ menu "Target Images"
 	config GRUB_TIMEOUT
 		string "Seconds to wait before booting the default entry"
 		depends on GRUB_IMAGES || GRUB_EFI_IMAGES
+		default "5" if TARGET_armsr_armv8 && LINUX_6_18
 		default "0"
 		help
 		  If you don't know, 5 seconds is a reasonable default.
@@ -304,13 +305,14 @@ menu "Target Images"
 
 	config TARGET_SERIAL
 		string "Serial port device"
-		depends on TARGET_x86 || TARGET_armsr || TARGET_loongarch64 || TARGET_phytium || TARGET_qcom
-		default "ttyMSM0" if TARGET_qcom
+		depends on TARGET_x86 || TARGET_armsr || TARGET_loongarch64 || TARGET_phytium || TARGET_silicon
+		default "" if TARGET_silicon
+		default "ttyAMA0" if TARGET_armsr_armv8 && LINUX_6_18
 		default "ttyS0"
 
 	config TARGET_IMAGES_GZIP
 		bool "GZip images"
-		depends on TARGET_ROOTFS_EXT4FS || TARGET_x86 || TARGET_armsr || TARGET_malta || TARGET_loongarch64 || TARGET_qcom
+		depends on TARGET_ROOTFS_EXT4FS || TARGET_x86 || TARGET_armsr || TARGET_malta || TARGET_loongarch64
 		default y
 
 	comment "Image Options"
@@ -322,7 +324,7 @@ menu "Target Images"
 		int "Kernel partition size (in MiB)"
 		depends on USES_BOOT_PART
 		default 8 if TARGET_apm821xx_sata
-		default 128 if TARGET_armsr
+		default 128 if TARGET_armsr || TARGET_silicon
 		default 64 if TARGET_bcm27xx || TARGET_x86 || TARGET_loongarch64
 		default 32 if TARGET_rockchip
 		default 16
@@ -330,7 +332,7 @@ menu "Target Images"
 	config TARGET_ROOTFS_PARTSIZE
 		int "Root filesystem partition size (in MiB)"
 		depends on USES_ROOTFS_PART || TARGET_ROOTFS_EXT4FS
-		default 448 if TARGET_mediatek || TARGET_x86 || TARGET_loongarch64
+		default 448 if TARGET_mediatek || TARGET_x86 || TARGET_loongarch64 || (TARGET_armsr_armv8 && LINUX_6_18)
 		default 160
 		help
 		  Select the root filesystem partition size.

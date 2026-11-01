@@ -1,0 +1,57 @@
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 11 Dec 2014 00:00:00 +0100
+Subject: [PATCH] cfg80211: add support for changing the device mac address via
+ sysfs
+
+Reject invalid unicast MAC addresses and serialize writes with the wiphy lock.
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/net/wireless/sysfs.c
++++ b/net/wireless/sysfs.c
+@@ -24,18 +24,41 @@ static inline struct cfg80211_registered
+ 	return container_of(dev, struct cfg80211_registered_device, wiphy.dev);
+ }
+ 
+-#define SHOW_FMT(name, fmt, member)					\
++#define SHOW_FMT(name, fmt, member, mode)				\
+ static ssize_t name ## _show(struct device *dev,			\
+ 			      struct device_attribute *attr,		\
+ 			      char *buf)				\
+ {									\
+ 	return sprintf(buf, fmt "\n", dev_to_rdev(dev)->member);	\
+ }									\
+-static DEVICE_ATTR_RO(name)
++static DEVICE_ATTR_##mode(name)
+ 
+-SHOW_FMT(index, "%d", wiphy_idx);
+-SHOW_FMT(macaddress, "%pM", wiphy.perm_addr);
+-SHOW_FMT(address_mask, "%pM", wiphy.addr_mask);
++static ssize_t macaddress_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t len)
++{
++	u8 mac[ETH_ALEN];
++
++	if (len != 3 * ETH_ALEN - 1 &&
++	    (len != 3 * ETH_ALEN || buf[len - 1] != '\n'))
++		return -EINVAL;
++
++	if (!mac_pton(buf, mac) || !is_valid_ether_addr(mac))
++		return -EINVAL;
++
++	if (buf[3 * ETH_ALEN - 1] && buf[3 * ETH_ALEN - 1] != '\n')
++		return -EINVAL;
++
++	wiphy_lock(&dev_to_rdev(dev)->wiphy);
++	memcpy(dev_to_rdev(dev)->wiphy.perm_addr, mac, ETH_ALEN);
++	wiphy_unlock(&dev_to_rdev(dev)->wiphy);
++
++	return len;
++}
++
++SHOW_FMT(index, "%d", wiphy_idx, RO);
++SHOW_FMT(macaddress, "%pM", wiphy.perm_addr, RW);
++SHOW_FMT(address_mask, "%pM", wiphy.addr_mask, RO);
+ 
+ static ssize_t name_show(struct device *dev,
+ 			 struct device_attribute *attr,

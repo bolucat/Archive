@@ -1,0 +1,417 @@
+Subject: [PATCH] QSDK 10: 0003-format-print
+
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/app/nathelper/linux/host_helper.c
++++ b/app/nathelper/linux/host_helper.c
+@@ -1946,7 +1946,7 @@
+ 
+             if ((0 == vid)||(0 == sport))
+             {
+-                printk("Error: Null sport or vid!!\n");
++                aos_printk("Error: Null sport or vid!!\n");
+                 return 0;
+             }
+ #else
+@@ -1972,12 +1972,12 @@
+                     sport++;
+                 }
+             } else {
+-                printk("not find the FDB entry\n");
++                aos_printk("not find the FDB entry\n");
+             }
+ #endif
+             if ((0 == dev_is_lan) && (S17_WAN_PORT != sport))
+             {
+-                printk("Error: WAN port %d\n", sport);
++                aos_printk("Error: WAN port %d\n", sport);
+                 return 0;
+             }
+ 
+@@ -2112,7 +2112,7 @@
+ 		INIT_WORK(&msg[i].work, nat_task_entry);
+ 	}
+ 
+-	aos_printk("bg task init successfull!\n");
++	HNAT_PRINTK("bg task init successfull!\n");
+ 	
+ }
+ 
+@@ -2139,7 +2139,8 @@
+ 	if (((nat_chip_ver & 0xffff)>>8) == NAT_CHIP_VER_8337 ||
+ 		((nat_chip_ver & 0xffff)>>8) == NAT_CHIP_VER_DESS) {
+ 		/* For S17c (ISISC), it is not necessary to make all frame with header */
+-		printk("host_helper_init start\n");
++		//printk("host_helper_init start\n");
++		aos_printk("Host init\n");
+ 		//PORT_TXHDR_MODE_SET(0, 0, FAL_ONLY_MANAGE_FRAME_EN);
+ 		/* Fix tag disappear problem, set TO_CPU_VID_CHG_EN, 0xc00 bit1 */
+ 		CPU_VID_EN_SET(0, A_TRUE);
+--- a/app/nathelper/linux/lib/nat_helper_dt.c
++++ b/app/nathelper/linux/lib/nat_helper_dt.c
+@@ -1288,7 +1288,7 @@
+ #endif
+         
+ 		if (NAPT_CT_TASK_SHOULD_STOP()) {
+-			printk("should stop!\n");
++			HNAT_PRINTK("NAPT_CT task stop\n");
+ 			break;
+ 		}
+ 
+--- a/app/nathelper/linux/napt_procfs.c
++++ b/app/nathelper/linux/napt_procfs.c
+@@ -178,7 +178,7 @@
+ 	if(res < 0)
+ 		return res;
+ 
+-    // printk("[write] prv_data 0x%p -> 0x%08x\n", prv_data, *prv_data);
++    // aos_printk("[write] prv_data 0x%p -> 0x%08x\n", prv_data, *prv_data);
+ 
+     return len;
+ }
+@@ -262,112 +262,112 @@
+     nf_athrs17_hnat_file = create_proc_entry(NF_ATHRS17_HNAT_NAME, 0644, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
+         goto no_athrs17_hnat;
+     }
+     nf_athrs17_hnat_file->data = &nf_athrs17_hnat;
+     nf_athrs17_hnat_file->read_proc  = procfile_read_int;
+     nf_athrs17_hnat_file->write_proc = procfile_write_int;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
+ 
+     nf_athrs17_hnat_wan_type_file = create_proc_entry(NF_ATHRS17_HNAT_WAN_TYPE_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_wan_type_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_TYPE_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_TYPE_NAME);
+         goto no_athrs17_hnat_wan_type;
+     }
+     nf_athrs17_hnat_wan_type_file->data = &nf_athrs17_hnat_wan_type;
+     nf_athrs17_hnat_wan_type_file->read_proc  = procfile_read_int;
+     nf_athrs17_hnat_wan_type_file->write_proc = procfile_write_int;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_TYPE_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_TYPE_NAME);
+ 
+     nf_athrs17_hnat_ppp_id_file = create_proc_entry(NF_ATHRS17_HNAT_PPP_ID_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_ppp_id_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID_NAME);
+         goto no_athrs17_hnat_ppp_id;
+     }
+     nf_athrs17_hnat_ppp_id_file->data = &nf_athrs17_hnat_ppp_id;
+     nf_athrs17_hnat_ppp_id_file->read_proc  = procfile_read_int;
+     nf_athrs17_hnat_ppp_id_file->write_proc = procfile_write_int;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID_NAME);
+ 
+     nf_athrs17_hnat_udp_thresh_file = create_proc_entry(NF_ATHRS17_HNAT_UDP_THRESH_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_udp_thresh_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_UDP_THRESH_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_UDP_THRESH_NAME);
+         goto no_athrs17_hnat_udp_thresh;
+     }
+     nf_athrs17_hnat_udp_thresh_file->data = &nf_athrs17_hnat_udp_thresh;
+     nf_athrs17_hnat_udp_thresh_file->read_proc  = procfile_read_int;
+     nf_athrs17_hnat_udp_thresh_file->write_proc = procfile_write_int;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_UDP_THRESH_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_UDP_THRESH_NAME);
+ 
+     nf_athrs17_hnat_wan_ip_file = create_proc_entry(NF_ATHRS17_HNAT_WAN_IP_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_wan_ip_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_IP_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_IP_NAME);
+         goto no_athrs17_hnat_wan_ip;
+     }
+     nf_athrs17_hnat_wan_ip_file->data = &nf_athrs17_hnat_wan_ip;
+     nf_athrs17_hnat_wan_ip_file->read_proc  = procfile_read_ip;
+     nf_athrs17_hnat_wan_ip_file->write_proc = procfile_write_ip;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_IP_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_IP_NAME);
+ 
+     nf_athrs17_hnat_ppp_peer_ip_file = create_proc_entry(NF_ATHRS17_HNAT_PPP_PEER_IP_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_ppp_peer_ip_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_IP_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_IP_NAME);
+         goto no_athrs17_hnat_ppp_peer_ip;
+     }
+     nf_athrs17_hnat_ppp_peer_ip_file->data = &nf_athrs17_hnat_ppp_peer_ip;
+     nf_athrs17_hnat_ppp_peer_ip_file->read_proc  = procfile_read_ip;
+     nf_athrs17_hnat_ppp_peer_ip_file->write_proc = procfile_write_ip;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_IP_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_IP_NAME);
+ 
+     nf_athrs17_hnat_ppp_peer_mac_file = create_proc_entry(NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_ppp_peer_mac_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
+         goto no_athrs17_hnat_ppp_peer_mac;
+     }
+     nf_athrs17_hnat_ppp_peer_mac_file->data = &nf_athrs17_hnat_ppp_peer_mac;
+     nf_athrs17_hnat_ppp_peer_mac_file->read_proc  = procfile_read_mac;
+     nf_athrs17_hnat_ppp_peer_mac_file->write_proc = procfile_write_mac;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
+ 
+     nf_athrs17_hnat_wan_mac_file = create_proc_entry(NF_ATHRS17_HNAT_WAN_MAC_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_wan_mac_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_MAC_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_MAC_NAME);
+         goto no_athrs17_hnat_wan_mac;
+     }
+     nf_athrs17_hnat_wan_mac_file->data = &nf_athrs17_hnat_wan_mac;
+     nf_athrs17_hnat_wan_mac_file->read_proc  = procfile_read_mac;
+     nf_athrs17_hnat_wan_mac_file->write_proc = procfile_write_mac;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_MAC_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_WAN_MAC_NAME);
+ 
+     nf_athrs17_hnat_ppp_id2_file = create_proc_entry(NF_ATHRS17_HNAT_PPP_ID2_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_ppp_id2_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID2_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID2_NAME);
+         goto no_athrs17_hnat_ppp_id;
+     }
+     nf_athrs17_hnat_ppp_id2_file->data = &nf_athrs17_hnat_ppp_id2;
+     nf_athrs17_hnat_ppp_id2_file->read_proc  = procfile_read_int;
+     nf_athrs17_hnat_ppp_id2_file->write_proc = procfile_write_int;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID2_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_ID2_NAME);
+ 
+     nf_athrs17_hnat_ppp_peer_mac2_file = create_proc_entry(NF_ATHRS17_HNAT_PPP_PEER_MAC2_NAME, NF_PROCFS_PERM, qca_switch_dir);
+     if (NULL == nf_athrs17_hnat_ppp_peer_mac2_file)
+     {
+-        printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC2_NAME);
++        aos_printk("Error: Can not create /proc/%s/%s\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC2_NAME);
+         goto no_athrs17_hnat_ppp_peer_mac;
+     }
+     nf_athrs17_hnat_ppp_peer_mac2_file->data = &nf_athrs17_hnat_ppp_peer_mac2;
+     nf_athrs17_hnat_ppp_peer_mac2_file->read_proc  = procfile_read_mac;
+     nf_athrs17_hnat_ppp_peer_mac2_file->write_proc = procfile_write_mac;
+-    printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
++    aos_printk("/proc/%s/%s is created\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_PPP_PEER_MAC_NAME);
+ 
+     return 0;
+ 
+@@ -404,7 +404,7 @@
+     remove_proc_entry(NF_ATHRS17_HNAT_PPP_ID2_NAME, qca_switch_dir);
+     remove_proc_entry(NF_ATHRS17_HNAT_PPP_PEER_MAC2_NAME, qca_switch_dir);
+     remove_proc_entry(NF_PROCFS_DIR, NULL);
+-    printk(KERN_INFO "/proc/%s/%s removed\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
++    aos_printk(KERN_INFO "/proc/%s/%s removed\n", NF_PROCFS_DIR, NF_ATHRS17_HNAT_NAME);
+ }
+ #else
+ static ssize_t napt_hnat_get(struct device *dev,
+@@ -1058,7 +1058,7 @@
+ 
+ 	napt_sys = kobject_create_and_add("ssdk_napt", NULL);
+ 	if (!napt_sys) {
+-		printk("napt failed to register sysfs\n ");
++		aos_printk("napt failed to register sysfs\n ");
+ 		return ret;
+ 	}
+ 
+@@ -1066,97 +1066,97 @@
+ 
+ 	ret = sysfs_create_file(napt_sys, &napt_hnat_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register hnat SysFS file\n");
++		aos_printk("Failed to register hnat SysFS file\n");
+ 		goto CLEANUP_1;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_wan_type_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register wan type SysFS file\n");
++		aos_printk("Failed to register wan type SysFS file\n");
+ 		goto CLEANUP_2;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_ppp_id_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register ppp id SysFS file\n");
++		aos_printk("Failed to register ppp id SysFS file\n");
+ 		goto CLEANUP_3;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_udp_thresh_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register udp thresh SysFS file\n");
++		aos_printk("Failed to register udp thresh SysFS file\n");
+ 		goto CLEANUP_4;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_wan_ip_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register wan ip SysFS file\n");
++		aos_printk("Failed to register wan ip SysFS file\n");
+ 		goto CLEANUP_5;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_ppp_peer_ip_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register ppp peer ip SysFS file\n");
++		aos_printk("Failed to register ppp peer ip SysFS file\n");
+ 		goto CLEANUP_6;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_ppp_peer_mac_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register ppp peer mac SysFS file\n");
++		aos_printk("Failed to register ppp peer mac SysFS file\n");
+ 		goto CLEANUP_7;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_wan_mac_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register wan mac SysFS file\n");
++		aos_printk("Failed to register wan mac SysFS file\n");
+ 		goto CLEANUP_8;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_ppp_id2_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register ppp id2 SysFS file\n");
++		aos_printk("Failed to register ppp id2 SysFS file\n");
+ 		goto CLEANUP_9;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_ppp_peer_mac2_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register ppp peer mac2 SysFS file\n");
++		aos_printk("Failed to register ppp peer mac2 SysFS file\n");
+ 		goto CLEANUP_10;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_sync_counter_en_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register sync counter en SysFS file\n");
++		aos_printk("Failed to register sync counter en SysFS file\n");
+ 		goto CLEANUP_11;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_log_en_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register log en SysFS file\n");
++		aos_printk("Failed to register log en SysFS file\n");
+ 		goto CLEANUP_12;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_log_show_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register log show SysFS file\n");
++		aos_printk("Failed to register log show SysFS file\n");
+ 		goto CLEANUP_13;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_scan_period_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register scan period SysFS file\n");
++		aos_printk("Failed to register scan period SysFS file\n");
+ 		goto CLEANUP_14;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_scan_enable_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register scan enable SysFS file\n");
++		aos_printk("Failed to register scan enable SysFS file\n");
+ 		goto CLEANUP_15;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_need_clean_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register napt clean SysFS file\n");
++		aos_printk("Failed to register napt clean SysFS file\n");
+ 		goto CLEANUP_16;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_wan_switch_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register napt wan switch SysFS file\n");
++		aos_printk("Failed to register napt wan switch SysFS file\n");
+ 		goto CLEANUP_17;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_wan_port_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register napt wan port SysFS file\n");
++		aos_printk("Failed to register napt wan port SysFS file\n");
+ 		goto CLEANUP_18;
+ 	}
+ 	ret = sysfs_create_file(napt_sys, &napt_thresh_base_attr.attr);
+ 	if (ret) {
+-		printk("Failed to register napt thresh base SysFS file\n");
++		aos_printk("Failed to register napt thresh base SysFS file\n");
+ 		goto CLEANUP_19;
+ 	}
+ 	return 0;
+@@ -1204,7 +1204,7 @@
+ 
+ void napt_procfs_exit(void)
+ {
+-	printk("napt procfs exit\n");
++	//aos_aos_printk("napt procfs exit\n");
+ 
+ 	sysfs_remove_file(napt_sys, &napt_thresh_base_attr.attr);
+ 	sysfs_remove_file(napt_sys, &napt_wan_port_attr.attr);
+--- a/app/nathelper/linux/nat_helper.c
++++ b/app/nathelper/linux/nat_helper.c
+@@ -49,7 +49,7 @@
+ 	napt_helper_init();
+ 	nat_ipt_helper_init();
+ 
+-	aos_printk("Hello, nat helper module for 1.1!\n");
++	aos_printk("QCA SSDK HNAT helper module start!\n");
+ 
+ 	return SW_OK;
+ }
+@@ -62,7 +62,7 @@
+     nat_ipt_helper_exit();
+ 	nat_helper_bg_task_exit();
+ 
+-    aos_printk("Goodbye, nat helper module!\n");
++    aos_printk("QCA SSDK HNAT helper module stop!\n");
+ 
+     return SW_OK;
+ }
+--- a/include/sal/os/linux/aos_types_pvt.h
++++ b/include/sal/os/linux/aos_types_pvt.h
+@@ -60,7 +60,11 @@
+ typedef   s64             __a_int64_t;
+ #endif
+ 
+-#define aos_printk        printk
++//#define aos_printk        printk
++#define aos_printk(fmt, ...)     do { \
++		printk("[SSDK]"); 			\
++		printk(fmt, ##  __VA_ARGS__); 		\
++} while (0)
+ 
+ #define AUTO_UPDATE_PPPOE_INFO 1
+ #if 0
+--- a/src/hsl/dess/dess_nat.c
++++ b/src/hsl/dess/dess_nat.c
+@@ -3083,7 +3083,7 @@
+     sw_error_t rv = SW_OK;
+ 
+     HSL_API_LOCK;
+-    printk("enable:%d\n", enable);
++    aos_printk("DESS HWNAT %s\n", enable?"enabled":"disable");
+     if(enable) {
+         if(dess_nat_global_status == 0) {
+             dess_nat_global_status = 1;
+--- a/src/hsl/isis/isis_nat.c
++++ b/src/hsl/isis/isis_nat.c
+@@ -2380,7 +2380,7 @@
+     sw_error_t rv = SW_OK;
+ 
+     HSL_API_LOCK;
+-    printk("enable:%d\n", enable);
++    aos_printk("ISIS HWNAT %s\n", enable?"enabled":"disable");
+     if(enable) {
+         if(isis_nat_global_status == 0) {
+             isis_nat_global_status = 1;
+--- a/src/hsl/isisc/isisc_nat.c
++++ b/src/hsl/isisc/isisc_nat.c
+@@ -2392,7 +2392,7 @@
+     sw_error_t rv = SW_OK;
+ 
+     HSL_API_LOCK;
+-    printk("enable:%d\n", enable);
++    aos_printk("ISISC HWNAT %s\n", enable?"enabled":"disable");
+     if(enable) {
+         if(isisc_nat_global_status == 0) {
+             isisc_nat_global_status = 1;

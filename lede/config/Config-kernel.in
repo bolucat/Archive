@@ -459,7 +459,9 @@ config KERNEL_DEBUG_INFO_BTF
 	  Required to run BPF CO-RE applications.
 
 config KERNEL_DEBUG_INFO_BTF_MODULES
-	def_bool y
+	bool
+	default n if TARGET_armsr_armv8 && LINUX_6_18
+	default y
 	depends on KERNEL_DEBUG_INFO_BTF
 
 config KERNEL_MODULE_ALLOW_BTF_MISMATCH

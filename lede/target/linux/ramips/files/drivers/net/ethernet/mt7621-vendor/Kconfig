@@ -1,0 +1,30 @@
+config NET_MT7621_VENDOR
+	bool "MT7621 vendor Ethernet"
+	depends on SOC_MT7621
+	select PHYLIB
+	select FIXED_PHY
+	select SWCONFIG
+
+config NET_MEDIATEK_DBG
+	bool
+	default y if NET_MT7621_VENDOR
+
+config NET_MEDIATEK_HNAT
+	tristate "MT7621 vendor hardware NAT"
+	depends on NET_MT7621_VENDOR && NF_CONNTRACK && NF_NAT
+
+config NET_MEDIATEK_HW_QOS
+	bool "MT7621 hardware QoS"
+	depends on NET_MEDIATEK_HNAT
+
+config MT753X_GSW
+	bool
+	default y if NET_MT7621_VENDOR
+
+config MT7621_VENDOR_WIFI
+	bool "MT7621 vendor wireless compatibility"
+	depends on SOC_MT7621 && WLAN
+	select WIRELESS_EXT
+	select WEXT_PRIV
+	help
+	  Enable the wireless extension interfaces used by the vendor drivers.

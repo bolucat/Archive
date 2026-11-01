@@ -1,0 +1,256 @@
+diff --git a/drivers/gpu/drm/msm/msm_drv.c b/drivers/gpu/drm/msm/msm_drv.c
+--- a/drivers/gpu/drm/msm/msm_drv.c
++++ b/drivers/gpu/drm/msm/msm_drv.c
+@@ -139,7 +139,7 @@
+ 
+ 	/* Teach lockdep about lock ordering wrt. shrinker: */
+ 	fs_reclaim_acquire(GFP_KERNEL);
+-	might_lock(&ddev->gem_lru_mutex);
++	might_lock(&priv->lru.lock);
+ 	fs_reclaim_release(GFP_KERNEL);
+ 
+ 	if (priv->kms_init) {
+diff --git a/drivers/gpu/drm/msm/msm_gem.c b/drivers/gpu/drm/msm/msm_gem.c
+--- a/drivers/gpu/drm/msm/msm_gem.c
++++ b/drivers/gpu/drm/msm/msm_gem.c
+@@ -22,6 +22,34 @@
+ #include "msm_gpu.h"
+ #include "msm_kms.h"
+ 
++static int msm_mode_size_dumb_compat(struct drm_device *dev,
++		struct drm_mode_create_dumb *args, unsigned long hw_pitch_align)
++{
++	u64 pitch = 0;
++	u32 fourcc;
++
++	fourcc = drm_driver_color_mode_format(dev, args->bpp);
++	if (fourcc != DRM_FORMAT_INVALID) {
++		const struct drm_format_info *info = drm_format_info(fourcc);
++
++		if (!info)
++			return -EINVAL;
++		pitch = drm_format_info_min_pitch(info, 0, args->width);
++	} else if (args->bpp) {
++		pitch = args->width * DIV_ROUND_UP(args->bpp, SZ_8);
++	}
++
++	if (!pitch || pitch > U32_MAX)
++		return -EINVAL;
++
++	args->pitch = roundup((u32)pitch, hw_pitch_align ?: 1);
++	args->size = PAGE_ALIGN(args->pitch * args->height);
++	if (!args->size)
++		return -EINVAL;
++
++	return 0;
++}
++
+ static void update_device_mem(struct msm_drm_private *priv, ssize_t size)
+ {
+ 	uint64_t total_mem = atomic64_add_return(size, &priv->total_mem);
+@@ -177,11 +205,11 @@
+ 
+ static void update_lru(struct drm_gem_object *obj)
+ {
+-	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = obj->dev->dev_private;
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	update_lru_locked(obj);
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ }
+ 
+ static struct page **get_pages(struct drm_gem_object *obj)
+@@ -292,11 +320,11 @@
+ 
+ static void pin_obj_locked(struct drm_gem_object *obj)
+ {
+-	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = obj->dev->dev_private;
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	msm_gem_pin_obj_locked(obj);
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ }
+ 
+ struct page **msm_gem_pin_pages_locked(struct drm_gem_object *obj)
+@@ -488,15 +516,16 @@
+ void msm_gem_unpin_locked(struct drm_gem_object *obj)
+ {
+ 	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+ 
+ 	msm_gem_assert_locked(obj);
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	msm_obj->pin_count--;
+ 	GEM_WARN_ON(msm_obj->pin_count < 0);
+ 	update_lru_locked(obj);
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ }
+ 
+ /* Special unpin path for use in fence-signaling path, avoiding the need
+@@ -508,9 +537,10 @@
+ void msm_gem_unpin_active(struct drm_gem_object *obj)
+ {
+ 	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+ 
+-	GEM_WARN_ON(!mutex_is_locked(&dev->gem_lru_mutex));
++	GEM_WARN_ON(!mutex_is_locked(&priv->lru.lock));
+ 
+ 	msm_obj->pin_count--;
+ 	GEM_WARN_ON(msm_obj->pin_count < 0);
+@@ -697,7 +727,7 @@
+ 	}
+ 	if (!pitch_align || pitch_align > U32_MAX)
+ 		return -EINVAL;
+-	ret = drm_mode_size_dumb(dev, args, pitch_align, 0);
++	ret = msm_mode_size_dumb_compat(dev, args, pitch_align);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -798,11 +828,12 @@
+ int msm_gem_madvise(struct drm_gem_object *obj, unsigned madv)
+ {
+ 	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+ 
+ 	msm_gem_lock(obj);
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 
+ 	if (msm_obj->madv != __MSM_MADV_PURGED)
+ 		msm_obj->madv = madv;
+@@ -814,7 +845,7 @@
+ 	 */
+ 	update_lru_locked(obj);
+ 
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	msm_gem_unlock(obj);
+ 
+@@ -824,6 +855,7 @@
+ void msm_gem_purge(struct drm_gem_object *obj)
+ {
+ 	struct drm_device *dev = obj->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+ 
+ 	msm_gem_assert_locked(obj);
+@@ -838,10 +870,10 @@
+ 
+ 	put_pages(obj);
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	/* A one-way transition: */
+ 	msm_obj->madv = __MSM_MADV_PURGED;
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	drm_gem_free_mmap_offset(obj);
+ 
+diff --git a/drivers/gpu/drm/msm/msm_gem_submit.c b/drivers/gpu/drm/msm/msm_gem_submit.c
+--- a/drivers/gpu/drm/msm/msm_gem_submit.c
++++ b/drivers/gpu/drm/msm/msm_gem_submit.c
+@@ -351,6 +351,7 @@
+ static int submit_pin_objects(struct msm_gem_submit *submit)
+ {
+ 	struct drm_device *dev = submit->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	int i, ret = 0;
+ 
+ 	for (i = 0; i < submit->nr_bos; i++) {
+@@ -379,11 +380,11 @@
+ 	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
+ 	 * could trigger deadlock with the shrinker).
+ 	 */
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	for (i = 0; i < submit->nr_bos; i++) {
+ 		msm_gem_pin_obj_locked(submit->bos[i].obj);
+ 	}
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	submit->bos_pinned = true;
+ 
+diff --git a/drivers/gpu/drm/msm/msm_gem_vma.c b/drivers/gpu/drm/msm/msm_gem_vma.c
+--- a/drivers/gpu/drm/msm/msm_gem_vma.c
++++ b/drivers/gpu/drm/msm/msm_gem_vma.c
+@@ -745,13 +745,13 @@
+ 	if (ret)
+ 		msm_gem_vm_unusable(job->vm);
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 
+ 	job_foreach_bo (obj, job) {
+ 		msm_gem_unpin_active(obj);
+ 	}
+ 
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	/* VM_BIND ops are synchronous, so no fence to wait on: */
+ 	return NULL;
+@@ -1306,6 +1306,7 @@
+ 	}
+ 
+ 	struct drm_device *dev = job->vm->drm;
++	struct msm_drm_private *priv = dev->dev_private;
+ 
+ 	/*
+ 	 * A second loop while holding the LRU lock (a) avoids acquiring/dropping
+@@ -1314,10 +1315,10 @@
+ 	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
+ 	 * could trigger deadlock with the shrinker).
+ 	 */
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 	job_foreach_bo (obj, job)
+ 		msm_gem_pin_obj_locked(obj);
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	job->bos_pinned = true;
+ 
+diff --git a/drivers/gpu/drm/msm/msm_ringbuffer.c b/drivers/gpu/drm/msm/msm_ringbuffer.c
+--- a/drivers/gpu/drm/msm/msm_ringbuffer.c
++++ b/drivers/gpu/drm/msm/msm_ringbuffer.c
+@@ -17,12 +17,13 @@
+ 	struct msm_fence_context *fctx = submit->ring->fctx;
+ 	struct msm_gpu *gpu = submit->gpu;
+ 	struct drm_device *dev = gpu->dev;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	unsigned nr_cmds = submit->nr_cmds;
+ 	int i;
+ 
+ 	msm_fence_init(submit->hw_fence, fctx);
+ 
+-	mutex_lock(&dev->gem_lru_mutex);
++	mutex_lock(&priv->lru.lock);
+ 
+ 	for (i = 0; i < submit->nr_bos; i++) {
+ 		struct drm_gem_object *obj = submit->bos[i].obj;
+@@ -32,7 +33,7 @@
+ 
+ 	submit->bos_pinned = false;
+ 
+-	mutex_unlock(&dev->gem_lru_mutex);
++	mutex_unlock(&priv->lru.lock);
+ 
+ 	/* TODO move submit path over to using a per-ring lock.. */
+ 	mutex_lock(&gpu->lock);

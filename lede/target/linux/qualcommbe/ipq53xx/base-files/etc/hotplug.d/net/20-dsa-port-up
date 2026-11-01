@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# The rtl837x DSA user ports register after netifd has already configured
+# br-lan on a fresh boot, so they are enslaved but left administratively
+# down and no cable ever links: no ping, no DHCP, no SSH on any LAN port
+# until something else re-runs the bridge setup (see issue #94). Bring
+# each port up as it appears. The proper fix is upstream (netifd bringing
+# up late bridge members); this is the shipping stopgap that ap1/ap2 have
+# run by hand since 2026-08-28.
+#
+# Scoped to gl-be9300 only: gl.inet,gl-be6500 shares this base-files tree
+# and also names its ports lan1-lan4, but has not been tested with this
+# script yet.
+[ "$ACTION" = add ] || exit 0
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+case "$(board_name)" in
+gl.inet,gl-be9300) ;;
+*) exit 0 ;;
+esac
+
+case "$DEVICENAME" in
+lan[1-4])
+	ip link set "$DEVICENAME" up 2>/dev/null
+	;;
+esac
+
+exit 0

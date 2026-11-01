@@ -1,0 +1,351 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] swconfig: support SSDK extended configuration and register access
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/phy/swconfig.c
++++ b/drivers/net/phy/swconfig.c
+@@ -138,6 +138,30 @@
+ }
+ 
+ static int
++swconfig_set_reg(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	if (val->port_vlan < 0)
++		return -EINVAL;
++
++	if (!dev->ops->set_reg_val)
++		return -EOPNOTSUPP;
++
++	return dev->ops->set_reg_val(dev, val->port_vlan, val->value.i);
++}
++
++static int
++swconfig_get_reg(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	if (val->port_vlan < 0)
++		return -EINVAL;
++
++	if (!dev->ops->get_reg_val)
++		return -EOPNOTSUPP;
++
++	return dev->ops->get_reg_val(dev, val->port_vlan, &val->value.i);
++}
++
++static int
+ swconfig_get_link(struct switch_dev *dev, const struct switch_attr *attr,
+ 			struct switch_val *val)
+ {
+@@ -189,6 +213,10 @@
+ 	PORT_LINK,
+ };
+ 
++enum reg_defaults {
++	REG_VAL,
++};
++
+ static struct switch_attr default_global[] = {
+ 	[GLOBAL_APPLY] = {
+ 		.type = SWITCH_TYPE_NOVAL,
+@@ -231,6 +259,16 @@
+ 	},
+ };
+ 
++static struct switch_attr default_reg[] = {
++	[REG_VAL] = {
++		.type = SWITCH_TYPE_INT,
++		.name = "val",
++		.description = "read/write value of switch register(debug use only)",
++		.set = swconfig_set_reg,
++		.get = swconfig_get_reg,
++	}
++};
++
+ static const struct switch_attr *
+ swconfig_find_attr_by_name(const struct switch_attrlist *alist,
+ 				const char *name)
+@@ -251,6 +289,7 @@
+ 	dev->def_global = 0;
+ 	dev->def_vlan = 0;
+ 	dev->def_port = 0;
++	dev->def_reg = 0;
+ 
+ 	if (ops->get_vlan_ports || ops->set_vlan_ports)
+ 		set_bit(VLAN_PORTS, &dev->def_vlan);
+@@ -258,6 +297,9 @@
+ 	if (ops->get_port_pvid || ops->set_port_pvid)
+ 		set_bit(PORT_PVID, &dev->def_port);
+ 
++	if (ops->get_reg_val || ops->set_reg_val)
++		set_bit(REG_VAL, &dev->def_reg);
++
+ 	if (ops->get_port_link &&
+ 	    !swconfig_find_attr_by_name(&ops->attr_port, "link"))
+ 		set_bit(PORT_LINK, &dev->def_port);
+@@ -278,6 +320,7 @@
+ 	[SWITCH_ATTR_OP_VALUE_INT] = { .type = NLA_U32 },
+ 	[SWITCH_ATTR_OP_VALUE_STR] = { .type = NLA_NUL_STRING },
+ 	[SWITCH_ATTR_OP_VALUE_PORTS] = { .type = NLA_NESTED },
++	[SWITCH_ATTR_OP_VALUE_EXT] = { .type = NLA_NESTED },
+ 	[SWITCH_ATTR_TYPE] = { .type = NLA_U32 },
+ };
+ 
+@@ -292,6 +335,11 @@
+ 	[SWITCH_LINK_SPEED] = { .type = NLA_U32 },
+ };
+ 
++static const struct nla_policy ext_policy[SWITCH_EXT_ATTR_MAX+1] = {
++	[SWITCH_EXT_NAME] = { .type = NLA_NUL_STRING },
++	[SWITCH_EXT_VALUE] = { .type = NLA_NUL_STRING },
++};
++
+ static inline void
+ swconfig_lock(void)
+ {
+@@ -451,6 +499,12 @@
+ 		def_active = &dev->def_port;
+ 		n_def = ARRAY_SIZE(default_port);
+ 		break;
++	case SWITCH_CMD_LIST_REG:
++		alist = &dev->ops->attr_reg;
++		def_list = default_reg;
++		def_active = &dev->def_reg;
++		n_def = ARRAY_SIZE(default_reg);
++		break;
+ 	default:
+ 		WARN_ON(1);
+ 		goto out;
+@@ -541,6 +595,18 @@
+ 		if (val->port_vlan >= dev->ports)
+ 			goto done;
+ 		break;
++	case SWITCH_CMD_SET_REG:
++	case SWITCH_CMD_GET_REG:
++		alist = &dev->ops->attr_reg;
++		def_list = default_reg;
++		def_active = &dev->def_reg;
++		n_def = ARRAY_SIZE(default_reg);
++		if (!info->attrs[SWITCH_ATTR_OP_REG])
++			goto done;
++		val->port_vlan = nla_get_u32(info->attrs[SWITCH_ATTR_OP_REG]);
++		if (val->port_vlan < 0)
++			goto done;
++		break;
+ 	default:
+ 		WARN_ON(1);
+ 		goto done;
+@@ -623,11 +689,42 @@
+ }
+ 
+ static int
++swconfig_parse_ext(struct sk_buff *msg, struct nlattr *head,
++		  struct switch_val *val, int max)
++{
++	struct switch_ext **tail = &val->value.ext_val;
++	struct nlattr *nla;
++	int rem;
++
++	val->len = 0;
++	nla_for_each_nested(nla, head, rem) {
++		struct nlattr *tb[SWITCH_EXT_ATTR_MAX + 1];
++		struct switch_ext *entry;
++
++		if (val->len >= 128 ||
++		    nla_parse_nested_deprecated(tb, SWITCH_EXT_ATTR_MAX, nla,
++						ext_policy, NULL) ||
++		    !tb[SWITCH_EXT_NAME] || !tb[SWITCH_EXT_VALUE])
++			return -EINVAL;
++		entry = kzalloc(sizeof(*entry), GFP_KERNEL);
++		if (!entry)
++			return -ENOMEM;
++		entry->option_name = nla_data(tb[SWITCH_EXT_NAME]);
++		entry->option_value = nla_data(tb[SWITCH_EXT_VALUE]);
++		*tail = entry;
++		tail = &entry->next;
++		val->len++;
++	}
++	return 0;
++}
++
++static int
+ swconfig_set_attr(struct sk_buff *skb, struct genl_info *info)
+ {
+ 	const struct switch_attr *attr;
+ 	struct switch_dev *dev;
+ 	struct switch_val val;
++	struct switch_ext *switch_ext_p;
+ 	int err = -EINVAL;
+ 
+ 	if (!capable(CAP_NET_ADMIN))
+@@ -690,12 +787,38 @@
+ 			err = 0;
+ 		}
+ 		break;
++	case SWITCH_TYPE_EXT:
++		if (info->attrs[SWITCH_ATTR_OP_VALUE_EXT]) {
++			err = swconfig_parse_ext(skb,
++				info->attrs[SWITCH_ATTR_OP_VALUE_EXT], &val, dev->ports);
++			if (err < 0)
++				goto error;
++		} else {
++			val.len = 0;
++			err = 0;
++		}
++		break;
++
+ 	default:
+ 		goto error;
+ 	}
+ 
+ 	err = attr->set(dev, attr, &val);
++
+ error:
++	/* free memory if necessary */
++	if(attr) {
++		switch(attr->type) {
++		case SWITCH_TYPE_EXT:
++			switch_ext_p = val.value.ext_val;
++			while(switch_ext_p) {
++				struct switch_ext *ext_value_p = switch_ext_p;
++				switch_ext_p = switch_ext_p->next;
++				kfree(ext_value_p);
++			}
++		}
++	}
++
+ 	swconfig_put_dev(dev);
+ 	return err;
+ }
+@@ -1004,6 +1127,11 @@
+ 		.doit = swconfig_list_attrs,
+ 	},
+ 	{
++		.cmd = SWITCH_CMD_LIST_REG,
++		.doit = swconfig_list_attrs,
++		.policy = switch_policy,
++	},
++	{
+ 		.cmd = SWITCH_CMD_GET_GLOBAL,
+ 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+ 		.doit = swconfig_get_attr,
+@@ -1019,6 +1147,11 @@
+ 		.doit = swconfig_get_attr,
+ 	},
+ 	{
++		.cmd = SWITCH_CMD_GET_REG,
++		.doit = swconfig_get_attr,
++		.policy = switch_policy,
++	},
++	{
+ 		.cmd = SWITCH_CMD_SET_GLOBAL,
+ 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+ 		.flags = GENL_ADMIN_PERM,
+@@ -1037,6 +1170,11 @@
+ 		.doit = swconfig_set_attr,
+ 	},
+ 	{
++		.cmd = SWITCH_CMD_SET_REG,
++		.doit = swconfig_set_attr,
++		.policy = switch_policy,
++	},
++	{
+ 		.cmd = SWITCH_CMD_GET_SWITCH,
+ 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+ 		.dumpit = swconfig_dump_switches,
+--- a/include/linux/switch.h
++++ b/include/linux/switch.h
+@@ -83,6 +83,10 @@
+  */
+ struct switch_dev_ops {
+ 	struct switch_attrlist attr_global, attr_port, attr_vlan;
++	struct switch_attrlist attr_reg;
++
++	int (*get_reg_val)(struct switch_dev *dev, int reg, int *val);
++	int (*set_reg_val)(struct switch_dev *dev, int reg, int val);
+ 
+ 	int (*get_vlan_ports)(struct switch_dev *dev, struct switch_val *val);
+ 	int (*set_vlan_ports)(struct switch_dev *dev, struct switch_val *val);
+@@ -123,6 +127,7 @@
+ 	unsigned int id;
+ 	struct list_head dev_list;
+ 	unsigned long def_global, def_port, def_vlan;
++	unsigned long def_reg;
+ 
+ 	struct mutex sw_mutex;
+ 	struct switch_port *portbuf;
+@@ -146,6 +151,12 @@
+ 	const char *s;
+ };
+ 
++struct switch_ext {
++	const char *option_name;
++	const char *option_value;
++	struct switch_ext *next;
++};
++
+ struct switch_val {
+ 	const struct switch_attr *attr;
+ 	unsigned int port_vlan;
+@@ -155,6 +166,7 @@
+ 		u32 i;
+ 		struct switch_port *ports;
+ 		struct switch_port_link *link;
++		struct switch_ext *ext_val;
+ 	} value;
+ };
+ 
+--- a/include/uapi/linux/switch.h
++++ b/include/uapi/linux/switch.h
+@@ -47,13 +47,17 @@
+ 	SWITCH_ATTR_OP_NAME,
+ 	SWITCH_ATTR_OP_PORT,
+ 	SWITCH_ATTR_OP_VLAN,
++	SWITCH_ATTR_OP_REG,
+ 	SWITCH_ATTR_OP_VALUE_INT,
+ 	SWITCH_ATTR_OP_VALUE_STR,
+ 	SWITCH_ATTR_OP_VALUE_PORTS,
+ 	SWITCH_ATTR_OP_VALUE_LINK,
++	SWITCH_ATTR_OP_VALUE_EXT,
+ 	SWITCH_ATTR_OP_DESCRIPTION,
+ 	/* port lists */
+ 	SWITCH_ATTR_PORT,
++	/* switch_ext attribute */
++	SWITCH_ATTR_EXT,
+ 	SWITCH_ATTR_MAX
+ };
+ 
+@@ -78,7 +82,10 @@
+ 	SWITCH_CMD_SET_PORT,
+ 	SWITCH_CMD_LIST_VLAN,
+ 	SWITCH_CMD_GET_VLAN,
+-	SWITCH_CMD_SET_VLAN
++	SWITCH_CMD_SET_VLAN,
++	SWITCH_CMD_LIST_REG,
++	SWITCH_CMD_GET_REG,
++	SWITCH_CMD_SET_REG,
+ };
+ 
+ /* data types */
+@@ -88,6 +95,7 @@
+ 	SWITCH_TYPE_STRING,
+ 	SWITCH_TYPE_PORTS,
+ 	SWITCH_TYPE_LINK,
++	SWITCH_TYPE_EXT,
+ 	SWITCH_TYPE_NOVAL,
+ };
+ 
+@@ -116,6 +124,14 @@
+ 	SWITCH_LINK_ATTR_MAX,
+ };
+ 
++/* switch_ext nested attributes */
++enum {
++	SWITCH_EXT_UNSPEC,
++	SWITCH_EXT_NAME,
++	SWITCH_EXT_VALUE,
++	SWITCH_EXT_ATTR_MAX
++};
++
+ #define SWITCH_ATTR_DEFAULTS_OFFSET	0x1000
+ 
+ 

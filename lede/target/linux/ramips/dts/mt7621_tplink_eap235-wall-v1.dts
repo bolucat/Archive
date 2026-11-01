@@ -22,7 +22,6 @@
 		compatible = "gpio-leds";
 
 		led_status: status {
-			label = "white:status";
 			color = <LED_COLOR_ID_WHITE>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio 12 GPIO_ACTIVE_LOW>;
@@ -81,10 +80,22 @@
 				read-only;
 			};
 
-			info: partition@90000 {
+			partition@90000 {
 				label = "product-info";
 				reg = <0x90000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_info_8: macaddr@8 {
+						compatible = "mac-base";
+						reg = <0x8 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@a0000 {
@@ -113,10 +124,24 @@
 				read-only;
 			};
 
-			radio: partition@ff0000 {
+			partition@ff0000 {
 				label = "radio";
 				reg = <0xff0000 0x010000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_radio_0: eeprom@0 {
+						reg = <0x0 0x400>;
+					};
+
+					eeprom_radio_8000: eeprom@8000 {
+						reg = <0x8000 0x4da8>;
+					};
+				};
 			};
 		};
 	};
@@ -135,46 +160,65 @@
 
 &pcie0 {
 	wifi@0,0 {
+		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&radio 0x0>;
-		mtd-mac-address = <&info 0x8>;
+		nvmem-cells = <&eeprom_radio_0>, <&macaddr_info_8 0>;
+		nvmem-cell-names = "eeprom", "mac-address";
 	};
 };
 
 &pcie1 {
 	wifi@0,0 {
+		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&radio 0x8000>;
 		ieee80211-freq-limit = <5000000 6000000>;
-		mtd-mac-address = <&info 0x8>;
-		mtd-mac-address-increment = <1>;
+		nvmem-cells = <&eeprom_radio_8000>, <&macaddr_info_8 1>;
+		nvmem-cell-names = "eeprom", "mac-address";
 	};
 };
 
 &gmac0 {
-	mtd-mac-address = <&info 0x8>;
+	nvmem-cells = <&macaddr_info_8 0>;
+	nvmem-cell-names = "mac-address";
 };
 
-&switch0 {
-	ports {
-		port@0 {
-			status = "okay";
-			label = "lan0";
-		};
+&gmac1 {
+	status = "okay";
+	label = "lan0";
+	phy-handle = <&ethphy0>;
+
+	nvmem-cells = <&macaddr_info_8 0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy0 {
+	/delete-property/ interrupts;
+};
+
+&gsw {
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
-	};
+
+};
+
+&hnat {
+	mtketh-lan = "eth1";
+	mtketh-wan = "eth0";
+	mtketh-max-gmac = <2>;
 };

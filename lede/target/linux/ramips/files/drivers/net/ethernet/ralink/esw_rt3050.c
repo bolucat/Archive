@@ -17,10 +17,8 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <asm/mach-ralink/ralink_regs.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
-#include <linux/version.h>
 
 #include <linux/switch.h>
 #include <linux/reset.h>
@@ -81,9 +79,12 @@
 #define RT305X_ESW_LED_100MACT		8
 /* Additional led states not in datasheet: */
 #define RT305X_ESW_LED_BLINK		10
+#define RT305X_ESW_LED_OFF		11
 #define RT305X_ESW_LED_ON		12
 
 #define RT305X_ESW_LINK_S		25
+#define RT305X_ESW_FC_CPU_S		21
+#define RT305X_ESW_FC_S			16
 #define RT305X_ESW_DUPLEX_S		9
 #define RT305X_ESW_SPD_S		0
 
@@ -176,7 +177,7 @@
 #define RT305X_ESW_NUM_LEDS		5
 
 #define RT5350_ESW_REG_PXTPC(_x)	(0x150 + (4 * _x))
-#define RT5350_EWS_REG_LED_POLARITY	0x168
+#define RT5350_EWS_REG_LED_CONTROL	0x168
 
 enum {
 	/* Global attributes. */
@@ -229,6 +230,7 @@ struct rt305x_esw {
 	unsigned int		reg_initval_fct2;
 	unsigned int		reg_initval_fpa2;
 	unsigned int		reg_led_polarity;
+	unsigned int		reg_led_source;
 
 	struct switch_dev	swdev;
 	bool			global_vlan_enable;
@@ -237,7 +239,6 @@ struct rt305x_esw {
 	int			led_frequency;
 	struct esw_vlan vlans[RT305X_ESW_NUM_VLANS];
 	struct esw_port ports[RT305X_ESW_NUM_PORTS];
-	struct reset_control	*rst_esw;
 	struct reset_control	*rst_ephy;
 
 };
@@ -259,18 +260,6 @@ static inline void esw_rmw_raw(struct rt305x_esw *esw, unsigned reg,
 
 	t = __raw_readl(esw->base + reg) & ~mask;
 	__raw_writel(t | val, esw->base + reg);
-}
-
-static void esw_reset(struct rt305x_esw *esw)
-{
-	if (!esw->rst_esw)
-		return;
-
-	reset_control_assert(esw->rst_esw);
-	usleep_range(60, 120);
-	reset_control_deassert(esw->rst_esw);
-	/* the esw takes long to reset otherwise the board hang */
-	msleep(10);
 }
 
 static void esw_reset_ephy(struct rt305x_esw *esw)
@@ -466,8 +455,6 @@ static void esw_hw_init(struct rt305x_esw *esw)
 	u8 port_disable = 0;
 	u8 port_map = RT305X_ESW_PMAP_LLLLLL;
 
-	esw_reset(esw);
-
 	/* vodoo from original driver */
 	esw_w32(esw, 0xC8A07850, RT305X_ESW_REG_FCT0);
 	esw_w32(esw, 0x00000000, RT305X_ESW_REG_SGC2);
@@ -519,11 +506,11 @@ static void esw_hw_init(struct rt305x_esw *esw)
 	esw_w32(esw, 0x00000000, RT305X_ESW_REG_FPA);
 
 	/* Force Link/Activity on ports */
-	esw_w32(esw, 0x00000005, RT305X_ESW_REG_P0LED);
-	esw_w32(esw, 0x00000005, RT305X_ESW_REG_P1LED);
-	esw_w32(esw, 0x00000005, RT305X_ESW_REG_P2LED);
-	esw_w32(esw, 0x00000005, RT305X_ESW_REG_P3LED);
-	esw_w32(esw, 0x00000005, RT305X_ESW_REG_P4LED);
+	esw_w32(esw, RT305X_ESW_LED_LINKACT, RT305X_ESW_REG_P0LED);
+	esw_w32(esw, RT305X_ESW_LED_LINKACT, RT305X_ESW_REG_P1LED);
+	esw_w32(esw, RT305X_ESW_LED_LINKACT, RT305X_ESW_REG_P2LED);
+	esw_w32(esw, RT305X_ESW_LED_LINKACT, RT305X_ESW_REG_P3LED);
+	esw_w32(esw, RT305X_ESW_LED_LINKACT, RT305X_ESW_REG_P4LED);
 
 	/* Copy disabled port configuration from device tree setup */
 	port_disable = esw->port_disable;
@@ -591,7 +578,7 @@ static void esw_hw_init(struct rt305x_esw *esw)
 
 		/* set the led polarity */
 		esw_w32(esw, esw->reg_led_polarity & 0x1F,
-			RT5350_EWS_REG_LED_POLARITY);
+			RT5350_EWS_REG_LED_CONTROL);
 
 		/* local registers */
 		rt305x_mii_write(esw, 0, 31, 0x8000);
@@ -646,9 +633,10 @@ static void esw_hw_init(struct rt305x_esw *esw)
 
 		esw_reset_ephy(esw);
 
-		/* set the led polarity */
-		esw_w32(esw, esw->reg_led_polarity & 0x1F,
-			RT5350_EWS_REG_LED_POLARITY);
+		/* set the led polarity and led source */
+		esw_w32(esw, (esw->reg_led_polarity & 0x1F) |
+				((esw->reg_led_source << 8) & 0x700),
+				RT5350_EWS_REG_LED_CONTROL);
 
 		rt305x_mii_write(esw, 0, 31, 0x2000); /* change G2 page */
 		rt305x_mii_write(esw, 0, 26, 0x0020);
@@ -765,7 +753,6 @@ static irqreturn_t esw_interrupt(int irq, void *_esw)
 {
 	struct rt305x_esw *esw = (struct rt305x_esw *) _esw;
 	u32 status;
-	int i;
 
 	status = esw_r32(esw, RT305X_ESW_REG_ISR);
 	if (status & RT305X_ESW_PORT_ST_CHG) {
@@ -961,15 +948,23 @@ static int esw_get_port_link(struct switch_dev *dev,
 			 struct switch_port_link *link)
 {
 	struct rt305x_esw *esw = container_of(dev, struct rt305x_esw, swdev);
-	u32 speed, poa;
+	u32 speed, poa, poa_r;
 
 	if (port < 0 || port >= RT305X_ESW_NUM_PORTS)
 		return -EINVAL;
 
-	poa = esw_r32(esw, RT305X_ESW_REG_POA) >> port;
+	poa_r = esw_r32(esw, RT305X_ESW_REG_POA);
+	poa = poa_r >> port;
 
 	link->link = (poa >> RT305X_ESW_LINK_S) & 1;
 	link->duplex = (poa >> RT305X_ESW_DUPLEX_S) & 1;
+	if (port < 5) {
+		link->tx_flow = (poa >> RT305X_ESW_FC_S) & 1;
+		link->rx_flow = (poa >> RT305X_ESW_FC_S) & 1;
+	} else {
+		link->tx_flow = (poa_r >> (RT305X_ESW_FC_CPU_S + (port - 5) * 2)) & 0x02 ? 1 : 0;
+		link->rx_flow = (poa_r >> (RT305X_ESW_FC_CPU_S + (port - 5) * 2)) & 0x01 ? 1 : 0;
+	}
 	if (port < RT305X_ESW_NUM_LEDS) {
 		speed = (poa >> RT305X_ESW_SPD_S) & 1;
 	} else {
@@ -1402,7 +1397,6 @@ static const struct switch_dev_ops esw_ops = {
 
 static int esw_probe(struct platform_device *pdev)
 {
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	struct device_node *np = pdev->dev.of_node;
 	const __be32 *port_map, *port_disable, *reg_init;
 	struct rt305x_esw *esw;
@@ -1412,8 +1406,8 @@ static int esw_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	esw->dev = &pdev->dev;
-	esw->irq = irq_of_parse_and_map(np, 0);
-	esw->base = devm_ioremap_resource(&pdev->dev, res);
+	esw->irq = platform_get_irq(pdev, 0);
+	esw->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(esw->base))
 		return PTR_ERR(esw->base);
 
@@ -1437,12 +1431,15 @@ static int esw_probe(struct platform_device *pdev)
 	if (reg_init)
 		esw->reg_led_polarity = be32_to_cpu(*reg_init);
 
-	esw->rst_esw = devm_reset_control_get(&pdev->dev, "esw");
-	if (IS_ERR(esw->rst_esw))
-		esw->rst_esw = NULL;
-	esw->rst_ephy = devm_reset_control_get(&pdev->dev, "ephy");
-	if (IS_ERR(esw->rst_ephy))
+	reg_init = of_get_property(np, "mediatek,led_source", NULL);
+	if (reg_init)
+		esw->reg_led_source = be32_to_cpu(*reg_init);
+
+	esw->rst_ephy = devm_reset_control_get_exclusive(&pdev->dev, "ephy");
+	if (IS_ERR(esw->rst_ephy)) {
+		dev_err(esw->dev, "failed to get EPHY reset: %pe\n", esw->rst_ephy);
 		esw->rst_ephy = NULL;
+	}
 
 	spin_lock_init(&esw->reg_rw_lock);
 	platform_set_drvdata(pdev, esw);
@@ -1450,11 +1447,7 @@ static int esw_probe(struct platform_device *pdev)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 static void esw_remove(struct platform_device *pdev)
-#else
-static int esw_remove(struct platform_device *pdev)
-#endif
 {
 	struct rt305x_esw *esw = platform_get_drvdata(pdev);
 
@@ -1462,10 +1455,6 @@ static int esw_remove(struct platform_device *pdev)
 		esw_w32(esw, ~0, RT305X_ESW_REG_IMR);
 		platform_set_drvdata(pdev, NULL);
 	}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-	return 0;
-#endif
 }
 
 static const struct of_device_id ralink_esw_match[] = {
@@ -1478,21 +1467,24 @@ MODULE_DEVICE_TABLE(of, ralink_esw_match);
 int rt3050_esw_init(struct fe_priv *priv)
 {
 	struct device_node *np = priv->switch_np;
-	struct platform_device *pdev = of_find_device_by_node(np);
+	struct platform_device *pdev;
 	struct switch_dev *swdev;
 	struct rt305x_esw *esw;
 	const __be32 *rgmii;
 	int ret;
 
-	if (!pdev)
-		return -ENODEV;
-
 	if (!of_device_is_compatible(np, ralink_esw_match->compatible))
 		return -EINVAL;
 
+	pdev = of_find_device_by_node(np);
+	if (!pdev)
+		return -ENODEV;
+
 	esw = platform_get_drvdata(pdev);
-	if (!esw)
+	if (!esw) {
+		put_device(&pdev->dev);
 		return -EPROBE_DEFER;
+	}
 
 	priv->soc->swpriv = esw;
 	esw->priv = priv;
@@ -1508,6 +1500,7 @@ int rt3050_esw_init(struct fe_priv *priv)
 		dev_err(&pdev->dev, "RGMII mode, not exporting switch device.\n");
 		unregister_switch(&esw->swdev);
 		platform_set_drvdata(pdev, NULL);
+		put_device(&pdev->dev);
 		return -ENODEV;
 	}
 
@@ -1534,7 +1527,7 @@ int rt3050_esw_init(struct fe_priv *priv)
 	}
 
 	dev_info(&pdev->dev, "mediatek esw at 0x%08lx, irq %d initialized\n",
-		   esw->base, esw->irq);
+		 (long unsigned int)esw->base, esw->irq);
 
 	return 0;
 }
@@ -1544,7 +1537,6 @@ static struct platform_driver esw_driver = {
 	.remove = esw_remove,
 	.driver = {
 		.name = "rt3050-esw",
-		.owner = THIS_MODULE,
 		.of_match_table = ralink_esw_match,
 	},
 };

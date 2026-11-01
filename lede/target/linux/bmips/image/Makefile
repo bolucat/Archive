@@ -241,8 +241,8 @@ endef
 ### Device scripts ###
 define Device/Default
   PROFILES = Default $$(DEVICE_NAME)
-  KERNEL_DEPENDS = $$(wildcard ../dts/$$(DEVICE_DTS).dts)
-  DEVICE_DTS_DIR := ../dts
+  KERNEL_DEPENDS = $$(wildcard $$(DEVICE_DTS_DIR)/$$(DEVICE_DTS).dts)
+  DEVICE_DTS_DIR := $(if $(filter 6.18,$(KERNEL_PATCHVER)),../dts-6.18,../dts)
   CHIP_ID :=
   SOC = bcm$$(CHIP_ID)
   DEVICE_DTS = $$(SOC)-$(subst _,-,$(1))

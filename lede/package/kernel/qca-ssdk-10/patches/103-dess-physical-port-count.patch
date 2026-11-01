@@ -1,0 +1,15 @@
+Subject: [PATCH] ssdk: expose only the six physical DESS ports
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -1586,7 +1586,7 @@
+ 
+ 	sw_dev->ops = &qca_ar8327_sw_ops;
+ 	sw_dev->vlans = AR8327_MAX_VLANS;
+-	sw_dev->ports = SSDK_MAX_PORT_NUM;
++	sw_dev->ports = priv->version == QCA_VER_DESS ? 6 : SSDK_MAX_PORT_NUM;
+ 
+ 	ret = register_switch(sw_dev, NULL);
+ 	if (ret != SW_OK) {

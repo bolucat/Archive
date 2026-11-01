@@ -11,8 +11,8 @@ FEATURES:=rtc usb nand squashfs ramdisk
 CPU_TYPE:=xscale
 SUBTARGETS:=generic
 
-KERNEL_PATCHVER:=5.4
-KERNEL_TESTING_PATCHVER:=6.18
+KERNEL_PATCHVER:=6.18
+KERNEL_TESTING_PATCHVER:=5.4
 
 include $(INCLUDE_DIR)/target.mk
 

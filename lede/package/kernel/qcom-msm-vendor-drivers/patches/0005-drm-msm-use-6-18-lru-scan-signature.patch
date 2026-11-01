@@ -1,0 +1,21 @@
+diff --git a/drivers/gpu/drm/msm/msm_gem_shrinker.c b/drivers/gpu/drm/msm/msm_gem_shrinker.c
+--- a/drivers/gpu/drm/msm/msm_gem_shrinker.c
++++ b/drivers/gpu/drm/msm/msm_gem_shrinker.c
+@@ -178,7 +178,7 @@
+ 		 * 'ticket' not needed on trylock paths
+ 		 */
+ 		stages[i].freed =
+-			drm_gem_lru_scan(priv->dev, stages[i].lru, nr,
++			drm_gem_lru_scan(stages[i].lru, nr,
+ 					 &stages[i].remaining,
+ 					 stages[i].shrink,
+ 					 NULL);
+@@ -247,7 +247,7 @@
+ 	unsigned long remaining = 0;
+ 
+ 	for (idx = 0; lrus[idx] && unmapped < vmap_shrink_limit; idx++) {
+-		unmapped += drm_gem_lru_scan(priv->dev, lrus[idx],
++		unmapped += drm_gem_lru_scan(lrus[idx],
+ 					     vmap_shrink_limit - unmapped,
+ 					     &remaining,
+ 					     vmap_shrink,

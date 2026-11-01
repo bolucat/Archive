@@ -211,15 +211,25 @@ static bool rtl8214fc_media_is_fibre(struct phy_device *phydev)
 static void rtl8214fc_power_set(struct phy_device *phydev, int port, bool on)
 {
 	int page = port == PORT_FIBRE ? RTL821X_MEDIA_PAGE_FIBRE : RTL821X_MEDIA_PAGE_COPPER;
-	int oldxpage = __phy_read(phydev, RTL821x_EXT_PAGE_SELECT);
 	int pdown = on ? 0 : BMCR_PDOWN;
+	int oldpage, oldxpage;
 
 	phydev_info(phydev, "power %s %s\n", on ? "on" : "off",
 		    port == PORT_FIBRE ? "fibre" : "copper");
 
-	phy_write(phydev, RTL821x_EXT_PAGE_SELECT, page);
-	phy_modify_paged(phydev, RTL821X_PAGE_POWER, 0x10, BMCR_PDOWN, pdown);
-	phy_write(phydev, RTL821x_EXT_PAGE_SELECT, oldxpage);
+	/* Hold the bus lock for the whole sequence. On the base port, other ports
+	 * change the page registers in between (__rtl8214fc_media_is_fibre()), and
+	 * a stale oldxpage would leave the port stuck on the internal page.
+	 */
+	phy_lock_mdio_bus(phydev);
+	oldxpage = __phy_read(phydev, RTL821x_EXT_PAGE_SELECT);
+	oldpage = __phy_read(phydev, RTL821x_PAGE_SELECT);
+	__phy_write(phydev, RTL821x_EXT_PAGE_SELECT, page);
+	__phy_write(phydev, RTL821x_PAGE_SELECT, RTL821X_PAGE_POWER);
+	__phy_modify(phydev, 0x10, BMCR_PDOWN, pdown);
+	__phy_write(phydev, RTL821x_PAGE_SELECT, oldpage);
+	__phy_write(phydev, RTL821x_EXT_PAGE_SELECT, oldxpage);
+	phy_unlock_mdio_bus(phydev);
 }
 
 static int rtl8214fc_suspend(struct phy_device *phydev)
@@ -243,15 +253,23 @@ static int rtl8214fc_resume(struct phy_device *phydev)
 static void rtl8214fc_media_set(struct phy_device *phydev, bool set_fibre)
 {
 	struct phy_device *basephy = get_base_phy(phydev);
-	int oldxpage = phy_read(basephy, RTL821x_EXT_PAGE_SELECT);
 	int copper = set_fibre ? 0 : RTL8214FC_MEDIA_COPPER;
 	static int regs[] = {16, 19, 20, 21};
 	int reg = regs[phydev->mdio.addr & 3];
+	int oldpage, oldxpage;
 
 	phydev_info(phydev, "switch to %s\n", set_fibre ? "fibre" : "copper");
-	phy_write(basephy, RTL821x_EXT_PAGE_SELECT, RTL821X_MEDIA_PAGE_INTERNAL);
-	phy_modify_paged(basephy, RTL821X_PAGE_PORT, reg, RTL8214FC_MEDIA_COPPER, copper);
-	phy_write(basephy, RTL821x_EXT_PAGE_SELECT, oldxpage);
+
+	/* Hold the bus lock for the same reason as in rtl8214fc_power_set() */
+	phy_lock_mdio_bus(phydev);
+	oldxpage = __phy_read(basephy, RTL821x_EXT_PAGE_SELECT);
+	oldpage = __phy_read(basephy, RTL821x_PAGE_SELECT);
+	__phy_write(basephy, RTL821x_EXT_PAGE_SELECT, RTL821X_MEDIA_PAGE_INTERNAL);
+	__phy_write(basephy, RTL821x_PAGE_SELECT, RTL821X_PAGE_PORT);
+	__phy_modify(basephy, reg, RTL8214FC_MEDIA_COPPER, copper);
+	__phy_write(basephy, RTL821x_PAGE_SELECT, oldpage);
+	__phy_write(basephy, RTL821x_EXT_PAGE_SELECT, oldxpage);
+	phy_unlock_mdio_bus(phydev);
 
 	if (!phydev->suspended) {
 		rtl8214fc_power_set(phydev, PORT_MII, !set_fibre);
@@ -445,6 +463,49 @@ static int rtl821x_config_init(struct phy_device *phydev)
 	/* Disable PHY-mode EEE so LPI is passed to the MAC */
 	phy_modify_paged(phydev, RTL821X_PAGE_MAC, RTL821X_PHYCR2,
 			 RTL821X_PHYCR2_PHY_EEE_ENABLE, 0);
+
+	return 0;
+}
+
+static int rtl8218e_config_init(struct phy_device *phydev)
+{
+	int oldpage, oldxpage;
+	bool is_xsgmii;
+
+	rtl821x_config_init(phydev);
+
+	if (phydev->mdio.addr % 8)
+		return 0;
+
+	oldpage = phy_read(phydev, RTL821x_PAGE_SELECT);
+	oldxpage = phy_read(phydev, RTL821x_EXT_PAGE_SELECT);
+
+	phy_write(phydev, RTL821x_EXT_PAGE_SELECT, 0x8);
+	is_xsgmii = (phy_read_paged(phydev, 0x260, 0x12) & 0xf0) == 0xb0;
+
+	/* QSGMII configuration is not currently supported. */
+	if (!is_xsgmii)
+		goto restore;
+
+	/* Apply the minimal vendor XSGMII configuration, undocumented magic. */
+	phy_write_paged(phydev, 0x4b8, 0x10, 0x8714);
+	phy_write_paged(phydev, 0x4b8, 0x12, 0x7230);
+	phy_write_paged(phydev, 0x4be, 0x16, 0x1000);
+	phy_write_paged(phydev, 0x4bf, 0x11, 0x7000);
+	phy_write_paged(phydev, 0x4bf, 0x16, 0x0042);
+	phy_write_paged(phydev, 0x4ba, 0x14, 0x9d04);
+
+	/* Reset SerDes 0. */
+	phy_write_paged(phydev, 0x400, 0x10, 0x1700);
+	phy_write_paged(phydev, 0x400, 0x10, 0x1703);
+
+	/* Disable XSGMII autonegotiation on both MAC-side channel groups. */
+	phy_modify_paged(phydev, 0x400, 0x12, GENMASK(9, 8), BIT(8));
+	phy_modify_paged(phydev, 0x500, 0x12, GENMASK(9, 8), BIT(8));
+
+restore:
+	phy_write(phydev, RTL821x_EXT_PAGE_SELECT, oldxpage);
+	phy_write(phydev, RTL821x_PAGE_SELECT, oldpage);
 
 	return 0;
 }
@@ -681,7 +742,7 @@ static struct phy_driver rtl83xx_phy_driver[] = {
 	{
 		PHY_ID_MATCH_EXACT(PHY_ID_RTL8218E),
 		.name		= "REALTEK RTL8218E",
-		.config_init	= rtl821x_config_init,
+		.config_init	= rtl8218e_config_init,
 		.features	= PHY_GBIT_FEATURES,
 		.probe		= rtl8218x_phy_probe,
 		.read_mmd	= rtl821x_read_mmd,

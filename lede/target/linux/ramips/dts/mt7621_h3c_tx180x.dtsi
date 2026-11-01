@@ -8,6 +8,7 @@
 
 / {
 	aliases {
+		label-mac-device = &gmac1;
 		led-boot = &led_status_amber;
 		led-failsafe = &led_status_green;
 		led-running = &led_status_green;
@@ -39,14 +40,12 @@
 		compatible = "gpio-leds";
 
 		led_status_amber: led-0 {
-			label = "amber:status";
 			color = <LED_COLOR_ID_AMBER>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
 		};
 
 		led_status_green: led-1 {
-			label = "green:status";
 			color = <LED_COLOR_ID_GREEN>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&gpio 16 GPIO_ACTIVE_LOW>;
@@ -54,8 +53,22 @@
 	};
 };
 
+&gmac0 {
+	nvmem-cells = <&macaddr_uboot_ethaddr 1>;
+	nvmem-cell-names = "mac-address";
+};
+
 &gmac1 {
 	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy4>;
+
+	nvmem-cells = <&macaddr_uboot_ethaddr 0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
 };
 
 &nand {
@@ -80,6 +93,15 @@
 		partition@80000 {
 			label = "u-boot-env";
 			reg = <0x0080000 0x0080000>;
+
+			nvmem-layout {
+				compatible = "u-boot,env";
+				env-size = <0x20000>;
+
+				macaddr_uboot_ethaddr: ethaddr {
+					#nvmem-cell-cells = <1>;
+				};
+			};
 		};
 
 		partition@100000 {
@@ -88,10 +110,20 @@
 			read-only;
 		};
 
-		factory: partition@180000 {
+		partition@180000 {
 			label = "factory";
 			reg = <0x0180000 0x0080000>;
 			read-only;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				eeprom_factory_0: eeprom@0 {
+					reg = <0x0 0xe00>;
+				};
+			};
 		};
 
 		partition@200000 {
@@ -125,13 +157,10 @@
 	wifi@0,0 {
 		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x0>;
+		nvmem-cells = <&eeprom_factory_0>;
+		nvmem-cell-names = "eeprom";
 		mediatek,disable-radar-background;
 	};
-};
-
-&pcie2 {
-	status = "disabled";
 };
 
 &state_default {
@@ -141,28 +170,30 @@
 	};
 };
 
-&switch0 {
-	ports {
+&gsw {
+
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
-		port@4 {
-			status = "okay";
-			label = "wan";
-		};
-	};
+};
+
+&usb_phy {
+	status = "disabled";
 };
 
 &xhci {

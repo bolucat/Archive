@@ -1,0 +1,76 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 09:40:00 +0800
+Subject: [PATCH] thermal: qcom: confirm IPQ5332 RF critical samples
+
+Normalize the series position without changing the implementation.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/thermal/qcom/tsens-v2.c
++++ b/drivers/thermal/qcom/tsens-v2.c
+@@ -6,7 +6,9 @@
+ 
+ #include <linux/bitfield.h>
+ #include <linux/bitops.h>
++#include <linux/delay.h>
+ #include <linux/nvmem-consumer.h>
++#include <linux/of.h>
+ #include <linux/regmap.h>
+ #include "tsens.h"
+ 
+@@ -266,6 +268,38 @@ static const struct tsens_ops ops_generi
+ 	.resume		= tsens_resume_common,
+ };
+ 
++#define IPQ5332_RF_CRITICAL_CONFIRM_TEMP	120000
++#define IPQ5332_RF_CRITICAL_SAMPLES	41
++
++static int get_temp_ipq5332(const struct tsens_sensor *sensor, int *temp)
++{
++	int sample, lowest, ret, i;
++
++	ret = get_temp_tsens_valid(sensor, &lowest);
++	if (ret)
++		return ret;
++	if (sensor->hw_id < 11 || sensor->hw_id > 12 ||
++	    lowest < IPQ5332_RF_CRITICAL_CONFIRM_TEMP ||
++	    !of_machine_is_compatible("jdcloud,re-cs-06")) {
++		*temp = lowest;
++		return 0;
++	}
++
++	/* RF activity can corrupt several consecutive conversions. Take the
++	 * lower envelope across 400 ms; a sustained critical reading still
++	 * reaches the original thermal trip after this confirmation window.
++	 */
++	for (i = 1; i < IPQ5332_RF_CRITICAL_SAMPLES; i++) {
++		usleep_range(10000, 11000);
++		ret = get_temp_tsens_valid(sensor, &sample);
++		if (ret)
++			return ret;
++		lowest = min(lowest, sample);
++	}
++	*temp = lowest;
++	return 0;
++}
++
+ struct tsens_plat_data data_tsens_v2 = {
+ 	.ops		= &ops_generic_v2,
+ 	.feat		= &tsens_v2_feat,
+@@ -284,9 +318,15 @@ static const struct tsens_ops ops_ipq533
+ 	.calibrate	= tsens_v2_calibration,
+ };
+ 
++static const struct tsens_ops ops_ipq5332_rf = {
++	.init		= init_tsens_v2_no_rpm,
++	.get_temp	= get_temp_ipq5332,
++	.calibrate	= tsens_v2_calibration,
++};
++
+ const struct tsens_plat_data data_ipq5332 = {
+ 	.num_sensors	= 5,
+-	.ops		= &ops_ipq5332,
++	.ops		= &ops_ipq5332_rf,
+ 	.hw_ids		= (unsigned int []){11, 12, 13, 14, 15},
+ 	.feat		= &ipq5332_feat,
+ 	.fields		= tsens_v2_regfields,

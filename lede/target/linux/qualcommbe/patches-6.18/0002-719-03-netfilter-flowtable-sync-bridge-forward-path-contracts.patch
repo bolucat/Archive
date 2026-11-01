@@ -1,0 +1,51 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 23:38:33 +0800
+Subject: [PATCH] netfilter: flowtable: sync bridge forward-path contracts
+
+The local bridge-family initializer constructs direct tuples independently
+of the routed initializer. Consume the common IEEE80211 discovery flag,
+propagate path errors, and preserve the FDB and upper-device metadata added
+by the shared flowtable helpers. Keep the upstream helpers unchanged.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/net/netfilter/nf_flow_table_path.c
++++ b/net/netfilter/nf_flow_table_path.c
+@@ -348,7 +348,7 @@ static int nft_dev_fill_bridge_path(stru
+ 				    unsigned char *dst_ha)
+ {
+ 	struct flow_offload_tuple_rhash *th = flow->tuplehash;
+-	struct net_device_path_ctx ctx = {};
++	struct net_device_path_ctx ctx = { .ieee80211 = true };
+ 	struct net_device_path_stack stack;
+ 	struct nft_forward_info info = {};
+ 	int i, j = 0;
+@@ -379,7 +379,8 @@ static int nft_dev_fill_bridge_path(stru
+ 	if (dev_fill_bridge_path(&ctx, &stack) < 0)
+ 		return -1;
+ 
+-	nft_dev_path_info(&stack, &info, dst_ha, &ft->data);
++	if (nft_dev_path_info(&stack, &info, dst_ha, &ft->data) < 0)
++		return -1;
+ 
+ 	if (!info.indev || info.indev != dst_dev)
+ 		return -1;
+@@ -393,12 +394,18 @@ static int nft_dev_fill_bridge_path(stru
+ 		j++;
+ 	}
+ 	th[!dir].tuple.encap_num = info.num_encaps;
++	memcpy(th[!dir].tuple.upper_ifidx, info.upper_ifidx,
++	       sizeof(info.upper_ifidx));
++	th[!dir].tuple.num_uppers = info.num_uppers;
+ 
+ 	th[dir].tuple.mtu = dst_dev->mtu;
+ 	ether_addr_copy(th[dir].tuple.out.h_source, src_ha);
+ 	ether_addr_copy(th[dir].tuple.out.h_dest, dst_ha);
+ 	th[dir].tuple.out.ifidx = info.outdev->ifindex;
+ 	th[dir].tuple.out.hw_ifidx = info.hw_outdev->ifindex;
++	th[dir].tuple.bridge_path = info.bridge_path;
++	th[dir].tuple.bridge_vlan = info.bridge_vlan;
++	th[dir].tuple.port_vlans = info.port_vlans;
+ 	th[dir].tuple.xmit_type = FLOW_OFFLOAD_XMIT_DIRECT;
+ 
+ 	return 0;

@@ -4,6 +4,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
 
 / {
 	compatible = "xzwifi,creativebox-v1", "mediatek,mt7621-soc";
@@ -24,7 +25,8 @@
 		compatible = "gpio-leds";
 
 		power {
-			label = "blue:power";
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_BLUE>;
 			gpios = <&gpio 31 GPIO_ACTIVE_LOW>;
 			default-state = "on";
 		};
@@ -64,19 +66,6 @@
 
 	gpio_export {
 		compatible = "gpio-export";
-		#size-cells = <0>;
-
-		power_usb2 {
-			gpio-export,name = "power_usb2";
-			gpio-export,output = <1>;
-			gpios = <&gpio 22 GPIO_ACTIVE_HIGH>;
-		};
-
-		power_usb3 {
-			gpio-export,name = "power_usb3";
-			gpio-export,output = <1>;
-			gpios = <&gpio 25 GPIO_ACTIVE_HIGH>;
-		};
 
 		power_sata {
 			gpio-export,name = "power_sata";
@@ -112,10 +101,30 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eeprom_factory_0: eeprom@0 {
+						reg = <0x0 0x400>;
+					};
+
+					eeprom_factory_8000: eeprom@8000 {
+						reg = <0x8000 0x200>;
+					};
+
+					macaddr_factory_e000: macaddr@e000 {
+						compatible = "mac-base";
+						reg = <0xe000 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@50000 {
@@ -137,17 +146,19 @@
 
 &pcie0 {
 	wifi@0,0 {
-		compatible = "pci1400,7603";
+		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x0000>;
+		nvmem-cells = <&eeprom_factory_0>;
+		nvmem-cell-names = "eeprom";
 	};
 };
 
 &pcie1 {
 	wifi@0,0 {
-		compatible = "pci14c3,7662";
+		compatible = "mediatek,mt76";
 		reg = <0x0000 0 0 0 0>;
-		mediatek,mtd-eeprom = <&factory 0x8000>;
+		nvmem-cells = <&eeprom_factory_8000>;
+		nvmem-cell-names = "eeprom";
 		ieee80211-freq-limit = <5000000 6000000>;
 	};
 };
@@ -157,38 +168,56 @@
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0xe000>;
+	nvmem-cells = <&macaddr_factory_e000 0>;
+	nvmem-cell-names = "mac-address";
 };
 
-&switch0 {
-	ports {
+&reg_vbus {
+	/delete-property/ regulator-always-on;
+	gpios = <&gpio 25 GPIO_ACTIVE_HIGH>;
+	enable-active-high;
+};
+
+&reg_vusb33 {
+	/delete-property/ regulator-always-on;
+	gpios = <&gpio 22 GPIO_ACTIVE_HIGH>;
+	enable-active-high;
+};
+
+&gsw {
+
 		port@0 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan4";
 		};
 
 		port@4 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "wan";
-			mtd-mac-address = <&factory 0xe000>;
-			mtd-mac-address-increment = <1>;
+			nvmem-cells = <&macaddr_factory_e000 1>;
+			nvmem-cell-names = "mac-address";
 		};
-	};
+
 };
 
 &state_default {
@@ -196,4 +225,10 @@
 		groups = "wdt", "rgmii2";
 		function = "gpio";
 	};
+};
+
+&hnat {
+	mtketh-lan = "eth0.1";
+	mtketh-wan = "eth0.2";
+	mtketh-max-gmac = <1>;
 };

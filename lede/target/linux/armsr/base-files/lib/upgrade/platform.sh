@@ -163,3 +163,10 @@ platform_do_upgrade() {
 	# (despite the sync/umount it appears NVMe etc. do it in the background)
 	sleep 5
 }
+
+# Qualcomm boards also support images for 4096-byte UFS sectors.
+case "$(board_name)" in
+	radxa,dragon-q6a|radxa,dragon-q8b)
+		. /lib/upgrade/qcom.sh
+		;;
+esac

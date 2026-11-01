@@ -1,0 +1,268 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Tue, 27 Oct 2026 09:40:00 +0800
+Subject: [PATCH] net: ethernet: qualcomm: quiesce and resume Direct Switch producers
+
+Refresh the producer lifecycle follow-up after the bounded DS poll transport.
+Keep teardown, quarantine, callback isolation and bounded producer checks intact.
+
+Merged from:
+  0673-net-ethernet-qualcomm-ppe-detach-quarantined-DS-clients.patch
+  0674-net-ethernet-qualcomm-ppe-continue-bounded-DS-producers.patch
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe.c
+@@ -315,6 +315,7 @@ static void qcom_ppe_remove(struct platf
+ 
+ 	ppe_dev = platform_get_drvdata(pdev);
+ 
++	ppe_ds_prepare_remove(ppe_dev);
+ 	/* Stop wireless injection before its borrowed carrier netdevs and TX
+ 	 * rings can be unregistered. Full VP teardown follows flow flushing.
+ 	 */
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_ds.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_ds.c
+@@ -70,6 +70,7 @@ struct ppe_ds_provider {
+ 	struct ppe_device *ppe_dev;
+ 	struct qcom_ppe_ds *nodes[PPE_DS_NODES];
+ 	int irqs[PPE_DS_NODES][PPE_DS_IRQ_COUNT];
++	bool removing;
+ };
+ 
+ struct qcom_ppe_ds {
+@@ -95,6 +96,7 @@ struct qcom_ppe_ds {
+ 	u8 allocated_vps;
+ 	bool running, faulted, ever_started, stopped, napi_enabled;
+ 	bool refill_short;
++	bool detached;
+ 	atomic64_t down_desc, up_desc, refilled, released;
+ 	atomic64_t index_updates, refill_failures;
+ 	atomic64_t poll_retries, refill_wakes, tx_deferred;
+@@ -115,7 +117,7 @@ bool qcom_ppe_ds_available(void)
+ 	bool available;
+ 
+ 	mutex_lock(&ppe_ds_lock);
+-	available = ppe_ds_provider != NULL;
++	available = ppe_ds_provider && !ppe_ds_provider->removing;
+ 	mutex_unlock(&ppe_ds_lock);
+ 	return available;
+ }
+@@ -371,11 +373,14 @@ static int ppe_ds_poll(struct napi_struc
+ 	if (done < 0 || filled < 0 || READ_ONCE(ds->faulted)) {
+ 		ppe_ds_mask(ds);
+ 		napi_complete_done(napi, 0);
+-		if (ds->cfg.ops->fault)
++		spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++		if (ds->cfg.ops && ds->cfg.ops->fault)
+ 			ds->cfg.ops->fault(ds->cfg.priv);
++		spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
+ 		return 0;
+ 	}
+-	if (done == budget || (filled == budget && !ds->refill_short))
++	if (done == budget || (filled == budget && !ds->refill_short) ||
++	    (ds->cfg.ops->more_reo && ds->cfg.ops->more_reo(ds->cfg.priv)))
+ 		return budget;
+ 
+ 	if (napi_complete_done(napi, done)) {
+@@ -621,7 +626,7 @@ struct qcom_ppe_ds *qcom_ppe_ds_register
+ 		return ERR_PTR(-EINVAL);
+ 	mutex_lock(&ppe_ds_lock);
+ 	provider = ppe_ds_provider;
+-	if (!provider)
++	if (!provider || provider->removing)
+ 		goto unlock;
+ 	dev = provider->ppe_dev->dev;
+ 	if (!ppe_ds_identity_dma(dev) || !ppe_ds_identity_dma(cfg->wlan_dev)) {
+@@ -760,14 +765,62 @@ unlock:
+ }
+ EXPORT_SYMBOL_GPL(qcom_ppe_ds_start);
+ 
++/* Permanent software isolation. DMA storage and VP leases remain held
++ * when quiescence was not proven. No callback into the departing WLAN or
++ * later MMIO access through a removed supplier may survive this point.
++ */
++static void ppe_ds_detach(struct qcom_ppe_ds *ds)
++{
++	unsigned long flags;
++	int i;
++
++	if (ds->detached)
++		return;
++	spin_lock_irqsave(&ds->index_lock, flags);
++	WRITE_ONCE(ds->running, false);
++	WRITE_ONCE(ds->faulted, true);
++	ppe_ds_mask(ds);
++	ppe_ds_update(ds, EDMA_REG_RXDESC_CTRL(ds->ring), EDMA_RXDESC_RX_EN, 0);
++	ppe_ds_update(ds, EDMA_REG_RXFILL_RING_EN(ds->ring), EDMA_RXFILL_RING_EN, 0);
++	ppe_ds_update(ds, EDMA_REG_TXDESC_CTRL(ds->ring), EDMA_TXDESC_TX_ENABLE, 0);
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++	for (i = 0; i < ds->requested_irqs; i++)
++		free_irq(ds->provider->irqs[ds->ring - 1][i], ds);
++	ds->requested_irqs = 0;
++	hrtimer_cancel(&ds->poll_timer);
++	if (ds->napi_enabled) {
++		napi_disable(&ds->napi);
++		ds->napi_enabled = false;
++	}
++	/* The fault IRQ is the last other reader of the client callbacks. */
++	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++	ds->cfg.ops = NULL;
++	ds->cfg.priv = NULL;
++	ds->detached = true;
++	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++}
++
++void qcom_ppe_ds_detach(struct qcom_ppe_ds *ds)
++{
++	mutex_lock(&ds->lock);
++	ppe_ds_detach(ds);
++	mutex_unlock(&ds->lock);
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_detach);
++
+ int qcom_ppe_ds_stop(struct qcom_ppe_ds *ds)
+ {
+-	struct regmap *map = ds->provider->ppe_dev->regmap;
++	struct regmap *map;
+ 	unsigned long flags;
+ 	u32 val;
+ 	int i, ret = 0, done;
+ 
+ 	mutex_lock(&ds->lock);
++	if (ds->detached) {
++		ret = -ESHUTDOWN;
++		goto unlock;
++	}
++	map = ds->provider->ppe_dev->regmap;
+ 	if (ds->stopped || !ds->ever_started)
+ 		goto unlock;
+ 	/* Keep installed flows functional through the CPU while quiescing DS. */
+@@ -900,7 +953,7 @@ int qcom_ppe_ds_vp_alloc(struct qcom_ppe
+ 	int vp;
+ 
+ 	mutex_lock(&ds->lock);
+-	if (ds->stopped || ds->faulted) {
++	if (ds->detached || ds->stopped || ds->faulted) {
+ 		vp = -ESHUTDOWN;
+ 		goto unlock;
+ 	}
+@@ -929,7 +982,9 @@ int qcom_ppe_ds_vp_route(struct qcom_ppe
+ 	if (i < 0 || i >= PPE_VP_SLOTS)
+ 		return -EINVAL;
+ 	mutex_lock(&ds->lock);
+-	if (!(ds->allocated_vps & BIT(i)))
++	if (ds->detached)
++		ret = -ESHUTDOWN;
++	else if (!(ds->allocated_vps & BIT(i)))
+ 		ret = -ENOENT;
+ 	else if (direct && (!ds->running || ds->faulted))
+ 		ret = -ESHUTDOWN;
+@@ -948,6 +1003,10 @@ int qcom_ppe_ds_vp_free(struct qcom_ppe_
+ 	if (i < 0 || i >= PPE_VP_SLOTS)
+ 		return -EINVAL;
+ 	mutex_lock(&ds->lock);
++	if (ds->detached) {
++		ret = -ESHUTDOWN;
++		goto unlock;
++	}
+ 	if (!(ds->allocated_vps & BIT(i))) {
+ 		ret = -ENOENT;
+ 		goto unlock;
+@@ -1068,29 +1127,54 @@ free_provider:
+ 	return ret;
+ }
+ 
++void ppe_ds_prepare_remove(struct ppe_device *ppe_dev)
++{
++	struct ppe_ds_provider *provider;
++	int i;
++
++	mutex_lock(&ppe_ds_lock);
++	provider = ppe_ds_provider;
++	if (provider && provider->ppe_dev == ppe_dev) {
++		provider->removing = true;
++		/* Managed consumers are gone; disarm any orphan before VP and
++		 * port teardown. Debugfs still owns the provider until destroy.
++		 */
++		for (i = 0; i < PPE_DS_NODES; i++)
++			if (provider->nodes[i])
++				ppe_ds_detach(provider->nodes[i]);
++	}
++	mutex_unlock(&ppe_ds_lock);
++}
++
+ void ppe_ds_destroy(struct ppe_device *ppe_dev)
+ {
+ 	struct ppe_ds_provider *provider;
+ 	unsigned long flags;
++	bool retained = false;
+ 	int i;
+ 
+ 	mutex_lock(&ppe_ds_lock);
+ 	provider = ppe_ds_provider;
+ 	if (!provider || provider->ppe_dev != ppe_dev)
+ 		goto unlock;
+-	/* Managed device links unbind consumers first. A nonempty slot means
+-	 * a client failed to quiesce DMA: do not free its callback context.
+-	 */
+-	for (i = 0; i < PPE_DS_NODES; i++) {
+-		if (provider->nodes[i]) {
+-			dev_err(ppe_dev->dev, "PPE DS consumer still owns DMA rings\n");
+-			goto unlock;
+-		}
+-	}
+ 	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
+ 	ppe_ds_provider = NULL;
+ 	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
+-	kfree(provider);
++	/* Managed links have already unbound every consumer. Leftover handles
++	 * own unproven DMA, not a live WLAN control path. Detach them while
++	 * supplier MMIO is still valid, before devres can release it.
++	 */
++	for (i = 0; i < PPE_DS_NODES; i++) {
++		if (!provider->nodes[i])
++			continue;
++		ppe_ds_detach(provider->nodes[i]);
++		retained = true;
++	}
++	provider->ppe_dev = NULL;
++	if (retained)
++		dev_err(ppe_dev->dev, "PPE DS DMA quarantined until hardware reset\n");
++	else
++		kfree(provider);
+ unlock:
+ 	mutex_unlock(&ppe_ds_lock);
+ }
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_ds.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_ds.h
+@@ -5,6 +5,7 @@
+ struct ppe_device;
+ 
+ int ppe_ds_setup(struct ppe_device *ppe_dev);
++void ppe_ds_prepare_remove(struct ppe_device *ppe_dev);
+ void ppe_ds_destroy(struct ppe_device *ppe_dev);
+ void ppe_ds_dma_error(struct ppe_device *ppe_dev);
+ 
+--- a/include/linux/soc/qcom/ppe-ds.h
++++ b/include/linux/soc/qcom/ppe-ds.h
+@@ -25,6 +25,8 @@ struct qcom_ppe_ds_ops {
+ 	u16 (*get_tcl_cons)(void *priv);
+ 	void (*set_tcl_prod)(void *priv, u16 index);
+ 	u16 (*get_reo_prod)(void *priv);
++	/* Request another bounded NAPI pass for unpublished WLAN entries. */
++	bool (*more_reo)(void *priv);
+ 	void (*set_reo_cons)(void *priv, u16 index);
+ 	unsigned int (*refill)(void *priv, struct qcom_ppe_ds_buffer *buffers,
+ 			       unsigned int count, unsigned int size);
+@@ -57,6 +59,10 @@ bool qcom_ppe_ds_available(void);
+ int qcom_ppe_ds_start(struct qcom_ppe_ds *ds);
+ int qcom_ppe_ds_stop(struct qcom_ppe_ds *ds);
+ int qcom_ppe_ds_unregister(struct qcom_ppe_ds *ds);
++/* Process-context, permanent callback/MMIO isolation after a failed stop.
++ * The caller must retain every DMA allocation; detach does not prove idle.
++ */
++void qcom_ppe_ds_detach(struct qcom_ppe_ds *ds);
+ void qcom_ppe_ds_sync(struct qcom_ppe_ds *ds);
+ /* Notify after publishing returned WLAN TX buffers, outside client locks
+  * and transport callbacks. Only a stalled refill is scheduled; DMA and

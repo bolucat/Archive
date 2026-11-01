@@ -1,0 +1,35 @@
+Subject: [PATCH] ssdk: decode IPv4 address notifications correctly
+
+The inetaddr notifier supplies in_ifaddr, unlike the FIB notifier.
+Invalidate cached paths on local IPv4 address changes in init_net.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -170,6 +170,16 @@
+ 	if (info->family == AF_INET) invalidate();
+ 	return NOTIFY_DONE;
+ }
++static int address_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	struct in_ifaddr *ifa = ptr;
++
++	/* inetaddr passes in_ifaddr, not fib_notifier_info. Reading its first
++	 * bytes as an address family can silently miss local prefix changes. */
++	if (ifa && ifa->ifa_dev && net_eq(dev_net(ifa->ifa_dev->dev), &init_net))
++		invalidate();
++	return NOTIFY_DONE;
++}
+ /* Notifications also report ordinary NUD state transitions. Remember only
+  * address/MAC observations, never neighbour pointers, so REACHABLE/STALE/PROBE
+  * changes do not repeatedly evict otherwise unchanged IPv4 forwarding paths.
+@@ -266,7 +276,7 @@
+ }
+ static struct notifier_block netdevice_nb = { .notifier_call = netdevice_event };
+ static struct notifier_block route_nb = { .notifier_call = route_event };
+-static struct notifier_block address_nb = { .notifier_call = route_event };
++static struct notifier_block address_nb = { .notifier_call = address_event };
+ static struct notifier_block neighbour_nb = { .notifier_call = neighbour_event };
+ static struct notifier_block bridge_nb = { .notifier_call = bridge_event };
+ static struct notifier_block vlan_nb = { .notifier_call = vlan_event, .priority = 10 };

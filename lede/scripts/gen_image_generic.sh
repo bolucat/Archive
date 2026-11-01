@@ -28,11 +28,11 @@ KERNELPART="${KERNELSIZE}m"
 
 # create partition table
 if [ -n "$GUID" ] && [ -n "$PURE_GPT" ]; then
-    set $(ptgen -o "$OUTPUT" -h $head -s $sect -g -D -p "$KERNELPART" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} -G "$GUID")
+    set $(ptgen -o "$OUTPUT" -h $head -s $sect -g -D -t "${KERNELPARTTYPE:-83}" -p "$KERNELPART" -t "${ROOTFSPARTTYPE:-83}" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} -G "$GUID")
     GPT_DISK_SIZE=$((($3 + $4 + 1023) / 1024 + ${GPT_PADDING_KB:-1024}))
-    set $(ptgen -o "$OUTPUT" -h $head -s $sect -g -D -d "$GPT_DISK_SIZE" -p "$KERNELPART" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} -G "$GUID")
+    set $(ptgen -o "$OUTPUT" -h $head -s $sect -g -D -d "$GPT_DISK_SIZE" -t "${KERNELPARTTYPE:-83}" -p "$KERNELPART" -t "${ROOTFSPARTTYPE:-83}" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} -G "$GUID")
 else
-    set $(ptgen -o "$OUTPUT" -h $head -s $sect ${GUID:+-g} -p "$KERNELPART" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} ${SIGNATURE:+-S 0x$SIGNATURE} ${GUID:+-G $GUID})
+    set $(ptgen -o "$OUTPUT" -h $head -s $sect ${GUID:+-g} -t "${KERNELPARTTYPE:-83}" -p "$KERNELPART" -t "${ROOTFSPARTTYPE:-83}" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} ${SIGNATURE:+-S 0x$SIGNATURE} ${GUID:+-G $GUID})
 fi
 
 KERNELOFFSET="$(($1 / 512))"
@@ -58,7 +58,7 @@ if [ -n "$KERNEL_IMAGE" ]; then
     dd if="$KERNEL_IMAGE" of="$OUTPUT" bs=512 seek="$KERNELOFFSET" conv=notrunc
 elif [ -n "$GUID" ]; then
     [ -n "$PADDING" ] && dd if=/dev/zero of="$OUTPUT" bs=512 seek="$((ROOTFSOFFSET + ROOTFSSIZE))" conv=notrunc count="$sect"
-    mkfs.fat -n kernel -C "$OUTPUT.kernel" -S 512 "$((KERNELSIZE / 1024))"
+    mkfs.fat ${FAT_TYPE:+-F "$FAT_TYPE"} -n kernel -C "$OUTPUT.kernel" -S 512 "$((KERNELSIZE / 1024))"
     mcopy -s -i "$OUTPUT.kernel" "$KERNELDIR"/* ::/
 else
     make_ext4fs -J -L kernel -l "$KERNELSIZE" "$OUTPUT.kernel" "$KERNELDIR"

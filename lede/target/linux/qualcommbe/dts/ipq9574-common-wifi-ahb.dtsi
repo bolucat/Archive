@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+
+/* IPQ9574 AHB radio resources for boards with additional PCIe radios. */
+/ {
+	reserved-memory {
+		m3_dump: m3-dump@4dc00000 {
+			no-map;
+			reg = <0x0 0x4dc00000 0x0 0x100000>;
+		};
+
+		q6_etr_dump: q6-etr-dump@4dd00000 {
+			no-map;
+			reg = <0x0 0x4dd00000 0x0 0x100000>;
+		};
+
+		q6_caldb_region: q6-caldb@4de00000 {
+			no-map;
+			reg = <0x0 0x4de00000 0x0 0x500000>;
+		};
+
+		mlo_mem: mlo-global-mem@4e300000 {
+			reg = <0x0 0x4e300000 0x0 0x01200000>;
+			no-map;
+		};
+	};
+};
+
+&q6v5_wcss {
+	firmware-name = "ath11k/IPQ9574/hw1.0/q6_fw.mdt",
+			"ath11k/IPQ9574/hw1.0/m3_fw.mdt";
+};
+
+&wifi0 {
+	qcom,ath11k-fw-memory-mode = <0>;
+	/* BDF is a bounded view inside Q6, without a second reservation. */
+	qcom,bdf-offset = <0x00c00000>;
+	memory-region = <&q6_region>, <&q6_region>, <&m3_dump>, <&q6_caldb_region>;
+	memory-region-names = "host-ddr-mem", "bdf", "m3-dump", "q6-caldb";
+	clocks = <&xo_board_clk>;
+	clock-names = "xo";
+	status = "okay";
+};

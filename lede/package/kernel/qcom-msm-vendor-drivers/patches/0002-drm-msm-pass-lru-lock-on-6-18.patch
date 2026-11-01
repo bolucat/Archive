@@ -1,0 +1,36 @@
+diff --git a/drivers/gpu/drm/msm/msm_drv.c b/drivers/gpu/drm/msm/msm_drv.c
+--- a/drivers/gpu/drm/msm/msm_drv.c
++++ b/drivers/gpu/drm/msm/msm_drv.c
+@@ -128,10 +128,11 @@
+ 	/*
+ 	 * Initialize the LRUs:
+ 	 */
+-	drm_gem_lru_init(&priv->lru.unbacked);
+-	drm_gem_lru_init(&priv->lru.pinned);
+-	drm_gem_lru_init(&priv->lru.willneed);
+-	drm_gem_lru_init(&priv->lru.dontneed);
++	mutex_init(&priv->lru.lock);
++	drm_gem_lru_init(&priv->lru.unbacked, &priv->lru.lock);
++	drm_gem_lru_init(&priv->lru.pinned,   &priv->lru.lock);
++	drm_gem_lru_init(&priv->lru.willneed, &priv->lru.lock);
++	drm_gem_lru_init(&priv->lru.dontneed, &priv->lru.lock);
+ 
+ 	/* Initialize stall-on-fault */
+ 	spin_lock_init(&priv->fault_stall_lock);
+diff --git a/drivers/gpu/drm/msm/msm_drv.h b/drivers/gpu/drm/msm/msm_drv.h
+--- a/drivers/gpu/drm/msm/msm_drv.h
++++ b/drivers/gpu/drm/msm/msm_drv.h
+@@ -150,6 +150,13 @@
+ 		 * DONTNEED state (ie. can be purged)
+ 		 */
+ 		struct drm_gem_lru dontneed;
++
++	/**
++	 * lock:
++	 *
++	 * Protects manipulation of all of the LRUs.
++	 */
++	struct mutex lock;
+ 	} lru;
+ 
+ 	struct notifier_block vmap_notifier;

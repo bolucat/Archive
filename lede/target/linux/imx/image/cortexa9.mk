@@ -100,6 +100,7 @@ define Device/Default
   KERNEL_INSTALL := 1
   KERNEL_SUFFIX := -uImage
   KERNEL_NAME := zImage
+  DTS_DIR := $(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/nxp/imx)
   KERNEL := kernel-bin | uImage none
   KERNEL_LOADADDR := 0x10008000
   IMAGES :=

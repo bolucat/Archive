@@ -1,0 +1,32 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] net: retain SSDK EDMA receive flow steering callbacks
+
+Port the QWRT QSDK callback contract for the IPQ40xx target.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -1410,6 +1410,12 @@
+  *			   struct netlink_ext_ack *extack);
+  *	Change the hardware timestamping parameters for NIC device.
+  */
++#ifdef CONFIG_RFS_ACCEL
++typedef int (*set_rfs_filter_callback_t)(struct net_device *dev,
++		__be32 src, __be32 dst, __be16 sport, __be16 dport,
++		u8 proto, u16 rxq_index, u32 action);
++#endif
++
+ struct net_device_ops {
+ 	int			(*ndo_init)(struct net_device *dev);
+ 	void			(*ndo_uninit)(struct net_device *dev);
+@@ -1534,6 +1540,9 @@
+ 						     const struct sk_buff *skb,
+ 						     u16 rxq_index,
+ 						     u32 flow_id);
++	int (*ndo_register_rfs_filter)(struct net_device *dev,
++				       set_rfs_filter_callback_t set_filter);
++	int (*ndo_get_default_vlan_tag)(struct net_device *dev);
+ #endif
+ 	int			(*ndo_add_slave)(struct net_device *dev,
+ 						 struct net_device *slave_dev,

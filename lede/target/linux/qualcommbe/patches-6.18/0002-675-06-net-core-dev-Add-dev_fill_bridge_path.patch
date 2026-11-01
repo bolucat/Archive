@@ -1,0 +1,94 @@
+From: Eric Woudstra <ericwouds@gmail.com>
+Date: Wed, 1 Jul 2026 03:19:07 +0300
+Subject: [PATCH] net: core: add dev_fill_bridge_path without warning on
+ rejected paths
+
+Introduce bridge path discovery with ordinary same-port rejection. Fold
+only the later WARN_ON removal into the helper that introduced it;
+retain the other bridge, netfilter and selftest features as independent
+patches.
+
+Original-author: Bohdan Chubuk <chbgdn@gmail.com>
+Source-patch: 675-06-net-core-dev-Add-dev_fill_bridge_path.patch (4dd6894292d8660909db43b37d66f74efc5316ec)
+Source-patch: 675-14-net-core-dev-Remove-WARN_ON-from-dev_fill_bridge_pat.patch (a39c553e6901358d6bf049892b516f57a7dcf2dc)
+
+[viking.yfy@qq.com: fold only the direct correction into its feature]
+Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
+Signed-off-by: Bohdan Chubuk <chbgdn@gmail.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -3364,6 +3364,8 @@ void dev_remove_offload(struct packet_of
+ 
+ int dev_get_iflink(const struct net_device *dev);
+ int dev_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb);
++int dev_fill_bridge_path(struct net_device_path_ctx *ctx,
++			 struct net_device_path_stack *stack);
+ int dev_fill_forward_path(struct net_device_path_ctx *ctx,
+ 			  struct net_device_path_stack *stack);
+ struct net_device *dev_get_by_name(struct net *net, const char *name);
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -744,14 +744,13 @@ static struct net_device_path *dev_fwd_p
+ 	return &stack->path[k];
+ }
+ 
+-int dev_fill_forward_path(struct net_device_path_ctx *ctx,
++static int dev_fill_forward_path_common(struct net_device_path_ctx *ctx,
+ 			  struct net_device_path_stack *stack)
+ {
+ 	const struct net_device *last_dev;
+ 	struct net_device_path *path;
+ 	int ret = 0;
+ 
+-	stack->num_paths = 0;
+ 	while (ctx->dev && ctx->dev->netdev_ops->ndo_fill_forward_path) {
+ 		last_dev = ctx->dev;
+ 		path = dev_fwd_path(stack);
+@@ -778,6 +777,45 @@ int dev_fill_forward_path(struct net_dev
+ 
+ 	return ret;
+ }
++
++int dev_fill_bridge_path(struct net_device_path_ctx *ctx,
++			 struct net_device_path_stack *stack)
++{
++	const struct net_device *last_dev, *br_dev;
++	struct net_device_path *path;
++
++	stack->num_paths = 0;
++
++	if (!ctx->dev || !netif_is_bridge_port(ctx->dev))
++		return -1;
++
++	br_dev = netdev_master_upper_dev_get_rcu((struct net_device *)ctx->dev);
++	if (!br_dev || !br_dev->netdev_ops->ndo_fill_forward_path)
++		return -1;
++
++	last_dev = ctx->dev;
++	path = dev_fwd_path(stack);
++	if (!path)
++		return -1;
++
++	memset(path, 0, sizeof(struct net_device_path));
++	if (br_dev->netdev_ops->ndo_fill_forward_path(ctx, path) < 0)
++		return -1;
++
++	if (!ctx->dev || last_dev == ctx->dev)
++		return -1;
++
++	return dev_fill_forward_path_common(ctx, stack);
++}
++EXPORT_SYMBOL_GPL(dev_fill_bridge_path);
++
++int dev_fill_forward_path(struct net_device_path_ctx *ctx,
++			  struct net_device_path_stack *stack)
++{
++	stack->num_paths = 0;
++
++	return dev_fill_forward_path_common(ctx, stack);
++}
+ EXPORT_SYMBOL_GPL(dev_fill_forward_path);
+ 
+ /* must be called under rcu_read_lock(), as we dont take a reference */

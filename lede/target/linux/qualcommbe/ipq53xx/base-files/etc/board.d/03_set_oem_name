@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /lib/functions/system.sh
+
+case "$(board_name)" in
+gl.inet,gl-be9300)
+	echo "gl-be9300" > /tmp/sysinfo/oem_name
+	;;
+esac
+
+exit 0

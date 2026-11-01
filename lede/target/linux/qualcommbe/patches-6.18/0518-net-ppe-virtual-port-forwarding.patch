@@ -1,0 +1,336 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: ethernet: qualcomm: offload and deliver virtual port flows
+
+Offload the wired-to-wireless direction of a routed or NAT'd flow whose
+egress net device is not a PPE port, by forwarding it to a virtual port.
+The egress source MAC rewrite is programmed on an L3 interface reserved for
+the virtual port, past the physical, PPPoE and VLAN-uplink ones, and the
+next hop carries the virtual port as the egress port. The packet is
+delivered to the host already rewritten, for transmit out the device by the
+receive path that follows.
+
+A flow forwarded to a virtual port arrives on an EDMA receive ring with the
+virtual port in the descriptor's destination info. Recognize it, resolve
+the bound net device and transmit the already-rewritten frame out of it
+instead of receiving it up the stack. The frame is complete and NAT'd, so
+it only needs handing to the device's transmit path.
+
+Merged from:
+  0518-01-net-ethernet-qualcomm-ppe-offload-flows-to-virtual-ports.patch
+  0518-02-net-ethernet-qualcomm-ppe-deliver-virtual-port-flows-on-rx.patch
+
+Based on work by:
+  Kenneth Kasilag <kenneth@kasilag.me>
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/ethernet/qualcomm/ppe/edma.c
++++ b/drivers/net/ethernet/qualcomm/ppe/edma.c
+@@ -907,6 +907,7 @@ int edma_setup(struct ppe_device *ppe_de
+ 		edma_ctx->hw_info = &ipq9574_hw_info;
+ 
+ 	edma_ctx->ppe_dev = ppe_dev;
++	edma_ctx->has_vports = ppe_dev->variant->has_vports;
+ 	edma_ctx->rx_buf_size = rx_buff_size;
+ 
+ 	edma_ctx->tx_requeue_stop = false;
+--- a/drivers/net/ethernet/qualcomm/ppe/edma.h
++++ b/drivers/net/ethernet/qualcomm/ppe/edma.h
+@@ -126,6 +126,7 @@ struct edma_intr_info {
+  * @rx_page_mode: Page mode enabled or disabled
+  * @rx_buf_size: Rx buffer size for Jumbo MRU
+  * @tx_requeue_stop: Tx requeue stop enabled or disabled
++ * @has_vports: Virtual ports exist, cached from the PPE variant
+  */
+ struct edma_context {
+ 	struct net_device **netdev_arr;
+@@ -142,6 +143,7 @@ struct edma_context {
+ 	u32 rx_page_mode;
+ 	u32 rx_buf_size;
+ 	bool tx_requeue_stop;
++	bool has_vports;
+ };
+ 
+ /* Global EDMA context. */
+--- a/drivers/net/ethernet/qualcomm/ppe/edma_rx.c
++++ b/drivers/net/ethernet/qualcomm/ppe/edma_rx.c
+@@ -20,6 +20,13 @@
+ #include "edma_port.h"
+ #include "ppe.h"
+ #include "ppe_regs.h"
++#include "ppe_vp.h"
++
++/* Both the single- and multi-buffer receive paths deliver virtual-port
++ * frames; forward-declared as the multi-buffer path precedes the body.
++ */
++static bool edma_rx_deliver_vp(struct edma_rxdesc_pri *rxdesc_pri,
++			       struct sk_buff *skb);
+ 
+ static int edma_rx_alloc_buffer_list(struct edma_rxfill_ring *rxfill_ring, int alloc_count)
+ {
+@@ -215,6 +222,16 @@ static void edma_rx_process_last_segment
+ 	pr_debug("edma_context:%pK skb:%pK Jumbo pkt_length:%u\n",
+ 		 edma_ctx, skb_head, skb_head->len);
+ 
++	/* A packet forwarded to a virtual port is transmitted out its
++	 * bound device instead of being received up the stack.
++	 */
++	if (edma_rx_deliver_vp(rxdesc_ring->pdesc_head, skb_head)) {
++		rxdesc_ring->head = NULL;
++		rxdesc_ring->last = NULL;
++		rxdesc_ring->pdesc_head = NULL;
++		return;
++	}
++
+ 	skb_head->protocol = eth_type_trans(skb_head, dev);
+ 
+ 	/* Send packet up the stack. */
+@@ -314,6 +331,65 @@ static void edma_rx_handle_nr_frags(stru
+ 	edma_rx_process_last_segment(rxdesc_ring, rxdesc_pri);
+ }
+ 
++/* A flow forwarded to a virtual port is delivered here to be sent out
++ * its bound net device. The descriptor destination info carries the
++ * VP port id; the packet arrives already NAT'd and rewritten, so the
++ * complete L2 frame is simply handed to the device transmit path. The
++ * reverse direction is driven by source-tagged VP ingress.
++ *
++ * The vendor receive path dispatches a virtual port the same way: it
++ * reads the destination info of the descriptor and takes it when the
++ * type is a port id and the port is in the virtual range.
++ */
++/* Decode the virtual port a descriptor info field selects, or -1 if it
++ * selects none. The source and destination info fields share the same
++ * {type, port} layout, so an uplink punt (source) and a downlink or
++ * wireless-to-wireless delivery (destination) decode through the one
++ * predicate.
++ */
++static int edma_rx_info_vp(u32 info)
++{
++	if ((info & EDMA_RXDESC_SRCINFO_TYPE_MASK) !=
++	    EDMA_RXDESC_SRCINFO_TYPE_PORTID)
++		return -1;
++
++	if (EDMA_RXDESC_PORT_ID_GET(info) < PPE_VP_PORT_BASE)
++		return -1;
++
++	return EDMA_RXDESC_PORT_ID_GET(info);
++}
++
++static bool edma_rx_deliver_vp(struct edma_rxdesc_pri *rxdesc_pri,
++			       struct sk_buff *skb)
++{
++	struct ppe_device *ppe_dev = edma_ctx->ppe_dev;
++	struct net_device *dev;
++	int vp;
++
++	if (!edma_ctx->has_vports)
++		return false;
++
++	vp = edma_rx_info_vp(EDMA_RXDESC_DST_INFO_GET(rxdesc_pri));
++	if (vp < 0)
++		return false;
++
++	rcu_read_lock();
++	dev = ppe_vp_dev(ppe_dev, vp);
++	if (unlikely(!dev)) {
++		rcu_read_unlock();
++		dev_kfree_skb_any(skb);
++		return true;
++	}
++
++	skb->dev = dev;
++	skb_reset_mac_header(skb);
++	skb->protocol = eth_hdr(skb)->h_proto;
++	dev_queue_xmit(skb);
++	rcu_read_unlock();
++
++	return true;
++}
++
+ static bool edma_rx_handle_linear_packets(struct edma_rxdesc_ring *rxdesc_ring,
+ 					  struct edma_rxdesc_pri *rxdesc_pri,
+ 					  struct sk_buff *skb)
+@@ -366,6 +442,12 @@ send_to_stack:
+ 	netdev_dbg(skb->dev, "edma_context:%pK, skb:%pK pkt_length:%u\n",
+ 		   edma_ctx, skb, skb->len);
+ 
++	/* A packet forwarded to a virtual port is transmitted out its
++	 * bound device instead of being received up the stack.
++	 */
++	if (edma_rx_deliver_vp(rxdesc_pri, skb))
++		return true;
++
+ 	skb->protocol = eth_type_trans(skb, skb->dev);
+ 	if (skb->dev->features & NETIF_F_GRO)
+ 		napi_gro_receive(&rxdesc_ring->napi, skb);
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -42,6 +42,7 @@
+ #include "ppe_config.h"
+ #include "ppe_flow.h"
+ #include "ppe_flowtable.h"
++#include "ppe_vp.h"
+ #include "ppe_regs.h"
+ #include "ppe_tunnel.h"
+ 
+@@ -173,6 +174,7 @@ struct ppe_ft_flow {
+ 	int pppoe;
+ 	int vlan;
+ 	int tunnel;
++	int vp;
+ 	u8 eport;
+ 	u32 packets;
+ 	u64 bytes;
+@@ -892,6 +894,15 @@ static int ppe_ft_vlan_xlt(int index)
+ 	return PPE_XLT_RULE_TBL_ENTRIES - PPE_L3_VLAN_UPLINKS + index;
+ }
+ 
++/* The egress L3 interface a virtual port owns; its region starts
++ * where the VLAN-uplink one ends.
++ */
++static int ppe_ft_vp_l3_if(struct ppe_flowtable *ft, int vp)
++{
++	return ppe_ft_vlan_l3_if(ft, PPE_L3_VLAN_UPLINKS) +
++	       (vp - PPE_VP_PORT_BASE);
++}
++
+ /* Get a refcounted VLAN uplink slot of (port, VID), programming its
+  * L3 interface, VSI binding and translation rule on first use. Must
+  * be called with the flowtable lock held.
+@@ -1780,6 +1791,7 @@ static int ppe_ft_flow_replace(struct pp
+ 	flow->pppoe = -1;
+ 	flow->vlan = -1;
+ 	flow->tunnel = -1;
++	flow->vp = -1;
+ 	nh.vid = -1;
+ 	data.pppoe_sid = -1;
+ 	data.ingress_vid = -1;
+@@ -2041,12 +2053,17 @@ static int ppe_ft_flow_replace(struct pp
+ 			dev_hold(tdev);
+ 	}
+ 
+-	if (!odev || (!tunnel_encap && !edma_port_dev_check(odev)) ||
+-	    (vlan_pops && data.ingress_vid < 0) ||
++	if (!odev || (vlan_pops && data.ingress_vid < 0) ||
+ 	    is_zero_ether_addr(data.eth.dst)) {
+ 		ret = -EOPNOTSUPP;
+ 		goto err_tdev;
+ 	}
++	if (!tunnel_encap && !edma_port_dev_check(odev) &&
++	    (!ft->ppe_dev->variant->has_vports ||
++	     odev->type != ARPHRD_ETHER || !odev->ieee80211_ptr)) {
++		ret = -EOPNOTSUPP;
++		goto err_tdev;
++	}
+ 
+ 	/* The PPPoE L3 interface carries the session ID, so it needs
+ 	 * the source MAC rewrite of the rule to be complete.
+@@ -2083,9 +2100,18 @@ static int ppe_ft_flow_replace(struct pp
+ 	}
+ 
+ 	if (!tunnel_encap) {
+-		port_priv = netdev_priv(odev);
+-		nh.port = port_priv->ppe_port->port_id;
+-		nh.l3_if = nh.port;
++		if (edma_port_dev_check(odev)) {
++			port_priv = netdev_priv(odev);
++			nh.port = port_priv->ppe_port->port_id;
++			nh.l3_if = nh.port;
++		} else {
++			ret = ppe_vp_get(ft->ppe_dev, odev);
++			if (ret < 0)
++				goto err_tdev;
++			flow->vp = ret;
++			nh.port = ret;
++			nh.l3_if = ppe_ft_vp_l3_if(ft, ret);
++		}
+ 		flow->eport = nh.port;
+ 		ether_addr_copy(nh.mac, data.eth.dst);
+ 	}
+@@ -2161,7 +2187,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		if (data.sport != flow->entry.sport ||
+ 		    data.dport != flow->entry.dport) {
+ 			ret = -EOPNOTSUPP;
+-			goto err_unlock;
++			goto err_vp;
+ 		}
+ 
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_ROUTE;
+@@ -2170,7 +2196,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		   (data.dip != flow->entry.dip.ip4 ||
+ 		    data.dport != flow->entry.dport)) {
+ 		ret = -EOPNOTSUPP;
+-		goto err_unlock;
++		goto err_vp;
+ 	} else if (data.sip != flow->entry.sip.ip4 ||
+ 		   data.sport != flow->entry.sport) {
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_SNAT;
+@@ -2179,7 +2205,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->pub_ip = ppe_ft_pub_ip_get(ft, data.sip);
+ 		if (flow->pub_ip < 0) {
+ 			ret = flow->pub_ip;
+-			goto err_unlock;
++			goto err_vp;
+ 		}
+ 		nh.pub_ip_index = flow->pub_ip;
+ 	} else if (data.dip != flow->entry.dip.ip4 ||
+@@ -2206,6 +2232,15 @@ static int ppe_ft_flow_replace(struct pp
+ 	 * rule arrives as a plain flow of the inner tuple.
+ 	 */
+ 	if (data.pppoe_sid >= 0) {
++		/* A PPPoE session is matched by an ingress physical-port
++		 * bitmap that cannot represent a virtual port, so a PPPoE
++		 * flow egressing a VAP is not offloadable.
++		 */
++		if (flow->vp >= 0) {
++			ret = -EOPNOTSUPP;
++			goto err_vlan;
++		}
++
+ 		flow->pppoe = ppe_ft_pppoe_get(ft, data.pppoe_sid,
+ 					       data.eth.dst, data.eth.src,
+ 					       nh.port, nh.vid);
+@@ -2240,9 +2275,11 @@ static int ppe_ft_flow_replace(struct pp
+ 
+ 		/* The port binding classifies plain ingress on the
+ 		 * port; PPPoE ingress resolves its L3 interface
+-		 * through the session table instead.
++		 * through the session table instead, and a virtual
++		 * port has no hardware ingress at all (only the
++		 * wired-to-wireless direction is offloaded).
+ 		 */
+-		if (data.pppoe_sid < 0) {
++		if (data.pppoe_sid < 0 && flow->vp < 0) {
+ 			ret = ppe_port_l3_if_set(ft->ppe_dev, nh.port,
+ 						 nh.l3_if);
+ 			if (ret)
+@@ -2317,6 +2354,9 @@ err_vlan:
+ 	ppe_ft_vlan_put(ft, flow->vlan);
+ err_pub_ip:
+ 	ppe_ft_pub_ip_put(ft, flow->pub_ip);
++err_vp:
++	if (flow->vp >= 0)
++		ppe_vp_put(ft->ppe_dev, flow->vp);
+ err_unlock:
+ 	ppe_ft_tunnel_put(ft, flow ? flow->tunnel : -1);
+ 	mutex_unlock(&ft->lock);
+@@ -2352,6 +2392,7 @@ static int ppe_ft_flow_destroy(struct pp
+ 		ppe_ft_vlan_put(ft, flow->vlan);
+ 		ppe_ft_pub_ip_put(ft, flow->pub_ip);
+ 		ppe_ft_tunnel_put(ft, flow->tunnel);
++		ppe_vp_put(ft->ppe_dev, flow->vp);
+ 	} else {
+ 		ppe_ft_flow_quarantine(ft, flow);
+ 		flow = NULL;
+@@ -2739,7 +2780,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 		return -ENOMEM;
+ 
+ 	ft->ppe_dev = ppe_dev;
+-	if (WARN_ON(ppe_ft_vlan_l3_if(ft, PPE_L3_VLAN_UPLINKS) >
++	if (WARN_ON(ppe_ft_vp_l3_if(ft, PPE_VP_PORT_BASE + PPE_VP_SLOTS) >
+ 		    PPE_IN_L3_IF_TBL_ENTRIES)) {
+ 		kfree(ft);
+ 		return -ERANGE;

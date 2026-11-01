@@ -1,0 +1,235 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Fri, 28 Aug 2026 19:38:14 +0800
+Subject: [PATCH] net: dsa: add Qualcomm four-byte header tag
+
+Port the QSDK 6.6 qca_4b transport needed by MPPE Atheros-header
+virtual ports.
+
+Keep it separate from the legacy two-byte and VLAN-based protocols.
+Disable checksum offload while the four-byte header is present.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+Signed-off-by: lean <chenlin@fnnas.com>
+
+---
+
+--- a/Documentation/devicetree/bindings/net/dsa/dsa-port.yaml
++++ b/Documentation/devicetree/bindings/net/dsa/dsa-port.yaml
+@@ -55,6 +55,7 @@
+       - edsa
+       - ocelot
+       - ocelot-8021q
++      - qca_4b
+       - qca_8021q
+       - rtl8_4
+       - rtl8_4t
+--- a/drivers/net/dsa/qca/qca8k-8xxx.c
++++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+@@ -1924,6 +1924,8 @@
+ 		hdr_val = 0;
+ 		rx_mode = QCA8K_PORT_HDR_CTRL_ALL;
+ 		tx_mode = QCA8K_PORT_HDR_CTRL_ALL;
++	} else if (proto == DSA_TAG_PROTO_QCA_4B) {
++		tx_mode = QCA8K_PORT_HDR_CTRL_ALL;
+ 	} else if (proto != DSA_TAG_PROTO_QCA_8021Q) {
+ 		return -EOPNOTSUPP;
+ 	}
+@@ -2098,6 +2100,7 @@
+ 		tagger_data->mib_autocast_handler = qca8k_mib_autocast_handler;
+ 
+ 		break;
++	case DSA_TAG_PROTO_QCA_4B:
+ 	case DSA_TAG_PROTO_QCA_8021Q:
+ 		break;
+ 	default:
+--- a/include/linux/dsa/tag_qca.h
++++ b/include/linux/dsa/tag_qca.h
+@@ -9,7 +9,10 @@
+ struct sk_buff;
+ 
+ #define QCA_HDR_LEN	2
++#define QCA_4B_HDR_LEN	4
+ #define QCA_HDR_VERSION	0x2
++#define QCA_HDR_VERSION3	0x3
++#define QCA_HDR_TYPE_VALUE	0xaaaa
+ 
+ #define QCA_HDR_RECV_VERSION		GENMASK(15, 14)
+ #define QCA_HDR_RECV_PRIORITY		GENMASK(13, 11)
+@@ -27,6 +30,7 @@
+ #define QCA_HDR_XMIT_CONTROL		GENMASK(10, 8)
+ #define QCA_HDR_XMIT_FROM_CPU		BIT(7)
+ #define QCA_HDR_XMIT_DP_BIT		GENMASK(6, 0)
++#define QCA_HDR_XMIT_DP_ID		GENMASK(2, 0)
+ 
+ /* Packet type for xmit */
+ #define QCA_HDR_XMIT_TYPE_NORMAL	0x0
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -58,6 +58,7 @@
+ #define DSA_TAG_PROTO_MXL862_VALUE		30
+ #define DSA_TAG_PROTO_MXL862_8021Q_VALUE	31
+ #define DSA_TAG_PROTO_QCA_8021Q_VALUE		32
++#define DSA_TAG_PROTO_QCA_4B_VALUE		33
+ #define DSA_TAG_PROTO_RTL837X_8021AD_VALUE	34
+ 
+ enum dsa_tag_protocol {
+@@ -94,6 +95,7 @@
+ 	DSA_TAG_PROTO_MXL862		= DSA_TAG_PROTO_MXL862_VALUE,
+ 	DSA_TAG_PROTO_MXL862_8021Q	= DSA_TAG_PROTO_MXL862_8021Q_VALUE,
+ 	DSA_TAG_PROTO_QCA_8021Q		= DSA_TAG_PROTO_QCA_8021Q_VALUE,
++	DSA_TAG_PROTO_QCA_4B		= DSA_TAG_PROTO_QCA_4B_VALUE,
+ 	DSA_TAG_PROTO_RTL837X_8021AD	= DSA_TAG_PROTO_RTL837X_8021AD_VALUE,
+ };
+ 
+--- a/net/dsa/tag_qca.c
++++ b/net/dsa/tag_qca.c
+@@ -11,29 +11,54 @@
+ #include "tag.h"
+ 
+ #define QCA_NAME "qca"
++#define QCA4B_NAME "qca_4b"
+ 
+-static struct sk_buff *qca_tag_xmit(struct sk_buff *skb, struct net_device *dev)
++static struct sk_buff *qca_tag_xmit_common(struct sk_buff *skb,
++					   struct net_device *dev,
++					   unsigned int hdr_len)
+ {
+ 	struct dsa_port *dp = dsa_user_to_port(dev);
+ 	__be16 *phdr;
+ 	u16 hdr;
+ 
+-	skb_push(skb, QCA_HDR_LEN);
++	skb_push(skb, hdr_len);
+ 
+-	dsa_alloc_etype_header(skb, QCA_HDR_LEN);
++	dsa_alloc_etype_header(skb, hdr_len);
+ 	phdr = dsa_etype_header_pos_tx(skb);
+ 
+-	/* Set the version field, and set destination port information */
+-	hdr = FIELD_PREP(QCA_HDR_XMIT_VERSION, QCA_HDR_VERSION);
++	if (hdr_len == QCA_4B_HDR_LEN)
++		*phdr++ = htons(QCA_HDR_TYPE_VALUE);
++
++	/* Version 3 selects one destination port. The legacy two-byte
++	 * header carries a destination port bitmap instead.
++	 */
++	if (hdr_len == QCA_4B_HDR_LEN)
++		hdr = FIELD_PREP(QCA_HDR_XMIT_VERSION, QCA_HDR_VERSION3) |
++		      FIELD_PREP(QCA_HDR_XMIT_DP_ID, dp->index);
++	else
++		hdr = FIELD_PREP(QCA_HDR_XMIT_VERSION, QCA_HDR_VERSION) |
++		      FIELD_PREP(QCA_HDR_XMIT_DP_BIT, BIT(dp->index));
+ 	hdr |= QCA_HDR_XMIT_FROM_CPU;
+-	hdr |= FIELD_PREP(QCA_HDR_XMIT_DP_BIT, BIT(dp->index));
+ 
+ 	*phdr = htons(hdr);
+ 
+ 	return skb;
+ }
+ 
+-static struct sk_buff *qca_tag_rcv(struct sk_buff *skb, struct net_device *dev)
++static struct sk_buff *qca_tag_xmit(struct sk_buff *skb, struct net_device *dev)
++{
++	return qca_tag_xmit_common(skb, dev, QCA_HDR_LEN);
++}
++
++static struct sk_buff *qca_4b_tag_xmit(struct sk_buff *skb,
++				       struct net_device *dev)
++{
++	return qca_tag_xmit_common(skb, dev, QCA_4B_HDR_LEN);
++}
++
++static struct sk_buff *qca_tag_rcv_common(struct sk_buff *skb,
++					  struct net_device *dev,
++					  unsigned int hdr_len)
+ {
+ 	struct qca_tagger_data *tagger_data;
+ 	struct dsa_port *dp = dev->dsa_ptr;
+@@ -43,14 +68,20 @@
+ 	int port;
+ 	u16 hdr;
+ 
+-	BUILD_BUG_ON(sizeof(struct qca_mgmt_ethhdr) != QCA_HDR_MGMT_HEADER_LEN + QCA_HDR_LEN);
++	BUILD_BUG_ON(sizeof(struct qca_mgmt_ethhdr) !=
++		     QCA_HDR_MGMT_HEADER_LEN + QCA_HDR_LEN);
+ 
+ 	tagger_data = ds->tagger_data;
+ 
+-	if (unlikely(!pskb_may_pull(skb, QCA_HDR_LEN)))
++	if (unlikely(!pskb_may_pull(skb, hdr_len)))
+ 		return NULL;
+ 
+ 	phdr = dsa_etype_header_pos_rx(skb);
++	if (hdr_len == QCA_4B_HDR_LEN) {
++		if (unlikely(*phdr != htons(QCA_HDR_TYPE_VALUE)))
++			return NULL;
++		phdr++;
++	}
+ 	hdr = ntohs(*phdr);
+ 
+ 	/* Make sure the version is correct */
+@@ -83,12 +114,23 @@
+ 		return NULL;
+ 
+ 	/* Remove QCA tag and recalculate checksum */
+-	skb_pull_rcsum(skb, QCA_HDR_LEN);
+-	dsa_strip_etype_header(skb, QCA_HDR_LEN);
++	skb_pull_rcsum(skb, hdr_len);
++	dsa_strip_etype_header(skb, hdr_len);
+ 
+ 	return skb;
+ }
+ 
++static struct sk_buff *qca_tag_rcv(struct sk_buff *skb, struct net_device *dev)
++{
++	return qca_tag_rcv_common(skb, dev, QCA_HDR_LEN);
++}
++
++static struct sk_buff *qca_4b_tag_rcv(struct sk_buff *skb,
++				      struct net_device *dev)
++{
++	return qca_tag_rcv_common(skb, dev, QCA_4B_HDR_LEN);
++}
++
+ static int qca_tag_connect(struct dsa_switch *ds)
+ {
+ 	struct qca_tagger_data *tagger_data;
+@@ -123,4 +165,25 @@
+ MODULE_LICENSE("GPL");
+ MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_QCA, QCA_NAME);
+ 
+-module_dsa_tag_driver(qca_netdev_ops);
++DSA_TAG_DRIVER(qca_netdev_ops);
++
++static const struct dsa_device_ops qca_4b_netdev_ops = {
++	.name	= QCA4B_NAME,
++	.proto	= DSA_TAG_PROTO_QCA_4B,
++	.connect = qca_tag_connect,
++	.disconnect = qca_tag_disconnect,
++	.xmit	= qca_4b_tag_xmit,
++	.rcv	= qca_4b_tag_rcv,
++	.needed_headroom = QCA_4B_HDR_LEN,
++	.promisc_on_conduit = true,
++};
++
++MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_QCA_4B, QCA4B_NAME);
++DSA_TAG_DRIVER(qca_4b_netdev_ops);
++
++static struct dsa_tag_driver *qca_tag_drivers[] = {
++	&DSA_TAG_DRIVER_NAME(qca_netdev_ops),
++	&DSA_TAG_DRIVER_NAME(qca_4b_netdev_ops),
++};
++
++module_dsa_tag_drivers(qca_tag_drivers);
+--- a/net/dsa/user.c
++++ b/net/dsa/user.c
+@@ -2721,6 +2721,9 @@
+ 		user->features &= ~(NETIF_F_SG | NETIF_F_FRAGLIST);
+ 	if (ds->needs_standalone_vlan_filtering)
+ 		user->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
++	if (cpu_dp->tag_ops->proto == DSA_TAG_PROTO_QCA_4B)
++		user->features &= ~(NETIF_F_HW_CSUM | NETIF_F_IP_CSUM |
++				    NETIF_F_IPV6_CSUM);
+ 
+ 	user->lltx = true;
+ }

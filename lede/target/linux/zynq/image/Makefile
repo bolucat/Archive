@@ -29,7 +29,7 @@ endef
 
 define Device/Default
 	PROFILES := Default
-	DTS_DIR := $(DTS_DIR)/xilinx
+	DTS_DIR := $(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/xilinx)
 	DEVICE_DTS := $(lastword $(subst _, ,$(1)))
 	KERNEL_DEPENDS = $$(wildcard $(DTS_DIR)/$$(DEVICE_DTS).dts)
 	KERNEL_LOADADDR := 0x8000

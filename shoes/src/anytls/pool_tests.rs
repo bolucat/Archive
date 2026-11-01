@@ -24,6 +24,7 @@ use tokio::{
     sync::mpsc,
 };
 
+mod reference_peer;
 mod xhttp;
 
 #[derive(Debug)]
@@ -83,7 +84,7 @@ fn handler(options: PoolOptions) -> AnyTlsClientHandler {
 
 fn configured_handler(config: serde_json::Value) -> Box<dyn TcpClientHandler> {
     crate::tcp::tcp_client_handler_factory::create_tcp_client_handler(
-        serde_json::from_value(config).unwrap(),
+        crate::config::test_support::from_json(config).unwrap(),
         &NetLocation::from_str("127.0.0.1:443", None).unwrap(),
         Arc::new(crate::resolver::NativeResolver::new()),
     )
@@ -1240,7 +1241,7 @@ async fn chains_reuse_tls_once_per_selected_prefix_for_tcp_and_udp() {
         let resolver: Arc<dyn crate::resolver::Resolver> =
             Arc::new(crate::resolver::NativeResolver::new());
         let proxy = || {
-            let config = serde_json::from_value(serde_json::json!({
+            let config = crate::config::test_support::from_json(serde_json::json!({
                 "address": "localhost:443",
                 "protocol": {
                     "type": "tls",
@@ -1361,7 +1362,7 @@ async fn dropping_chained_idle_pools_closes_every_carrier() {
                 (sockets, None)
             };
             let proxy = || {
-                let config = serde_json::from_value(serde_json::json!({
+                let config = crate::config::test_support::from_json(serde_json::json!({
                     "address": "127.0.0.1:443",
                     "protocol": {
                         "type": "anytls",
@@ -1612,69 +1613,4 @@ impl CarrierDialer for NetworkDialer {
             tokio::net::TcpStream::connect(&self.address).await?,
         ))
     }
-}
-
-#[tokio::test]
-#[ignore = "requires ANYTLS_REFERENCE_PEER pointing to the pinned Go echo peer"]
-async fn reference_peer_tcp_uot_and_concurrent_session_reuse() {
-    use tokio::io::AsyncBufReadExt;
-    let executable = std::env::var("ANYTLS_REFERENCE_PEER").expect("ANYTLS_REFERENCE_PEER");
-    let mut child = tokio::process::Command::new(executable)
-        .stdout(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
-    let mut stdout = tokio::io::BufReader::new(child.stdout.take().unwrap());
-    let mut port = String::new();
-    assert_ne!(
-        tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut port))
-            .await
-            .expect("reference peer did not announce its port")
-            .unwrap(),
-        0
-    );
-    let dialer = Arc::new(NetworkDialer {
-        address: format!("127.0.0.1:{}", port.trim()),
-        calls: AtomicUsize::new(0),
-        key: RouteKey(vec![1]),
-    });
-    let handler = handler(PoolOptions::default());
-    tokio::time::timeout(Duration::from_secs(15), async {
-        for _ in 0..16 {
-            let mut stream = connect(&handler, &dialer).await;
-            stream.write_all(b"reference tcp").await.unwrap();
-            let mut response = [0; 13];
-            stream.read_exact(&mut response).await.unwrap();
-            assert_eq!(&response, b"reference tcp");
-            stream.shutdown().await.unwrap();
-        }
-        let mut udp = handler
-            .connect_client_udp(transport(&dialer), target())
-            .await
-            .unwrap();
-        for _ in 0..4 {
-            let mut bytes = [0; 13];
-            assert_message_echo(&mut *udp, b"reference udp", &mut bytes).await;
-        }
-        assert_eq!(dialer.calls.load(Ordering::Relaxed), 1);
-        // A live UoT association must not be shared with a concurrent TCP request.
-        let mut tcp = connect(&handler, &dialer).await;
-        tcp.write_all(b"parallel").await.unwrap();
-        let mut response = [0; 8];
-        tcp.read_exact(&mut response).await.unwrap();
-        assert_eq!(&response, b"parallel");
-        assert_eq!(dialer.calls.load(Ordering::Relaxed), 2);
-        tcp.shutdown().await.unwrap();
-        drop(udp);
-        let mut tcp = connect(&handler, &dialer).await;
-        tcp.write_all(b"reuse").await.unwrap();
-        let mut response = [0; 5];
-        tcp.read_exact(&mut response).await.unwrap();
-        assert_eq!(&response, b"reuse");
-        assert_eq!(dialer.calls.load(Ordering::Relaxed), 2);
-    })
-    .await
-    .unwrap();
-    child.kill().await.unwrap();
-    child.wait().await.unwrap();
 }

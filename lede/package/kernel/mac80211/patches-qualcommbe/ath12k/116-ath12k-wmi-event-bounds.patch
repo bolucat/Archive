@@ -1,0 +1,161 @@
+From: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: validate WMI capability event and TLV bounds
+
+Currently, in ath12k_wmi_mac_phy_caps_parse(), kzalloc() sizes the
+mac_phy_caps buffer as tot_phy_id * len, where len is clamped to
+min(firmware_len, sizeof(struct ath12k_wmi_mac_phy_caps_params)). The
+subsequent memcpy() destination advances by sizeof(full struct) per slot
+via C pointer arithmetic, not by the clamped len. When firmware sends short
+TLVs, the second and later slots are written past the end of the
+allocation.
+
+Currently, in ath12k_wmi_op_rx(), the firmware buffer is read without first
+verifying that the buffer has enough data to hold a header. This could
+result in a buffer overread.
+
+There is no policy entry for WMI_TAG_PDEV_CSA_SWITCH_COUNT_STATUS_EVENT, so
+the parse infrastructure does not enforce a minimum length for the event
+struct. Additionally, the num_vdevs field is taken directly from firmware
+and used as a loop bound over the vdev_ids array without checking that it
+fits within the TLV payload. Either condition can cause an out-of-bounds
+read.
+
+The outer skb->len guard only confirms the SKB is large enough to hold the
+full fixed_param struct, but the TLV's own WMI_TLV_LEN field is never
+checked. Firmware advertising a TLV length shorter than
+sizeof(*fixed_param) causes reads of pdev_id and event_count beyond the
+declared TLV payload.
+
+Merged from:
+  116-wifi-ath12k-fix-stride-mismatch-in-mac_phy_caps_parse.patch
+  117-wifi-ath12k-avoid-buffer-overread-in-ath12k_wmi_op_rx.patch
+  118-wifi-ath12k-fix-overreads-in-CSA-switch-count-event.patch
+  119-wifi-ath12k-validate-TLV-length-in-process_tpc_stats.patch
+
+Based on work by:
+  Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+
+Original-commit: 4c6eb712a91fa079be6f9f1419c96e0ad2227081
+Link: https://patch.msgid.link/20260728-mac_phy_caps_parse-stride-mismatch-v1-1-27a9c1a3fbd0@oss.qualcomm.com
+Original-commit: 7698656a2f7b045af5a6859766238cefea1b1945
+Link: https://patch.msgid.link/20260716-ath12k_wmi_op_rx-overread-v1-1-327a4b1c2372@oss.qualcomm.com
+Original-commit: 878654eb78c6aa0ff585baf1376567c775ca28ec
+Link: https://patch.msgid.link/20260724-ath12k_wmi_process_csa_switch_count_event-cleanup-v2-1-02a45d7246c0@oss.qualcomm.com
+Original-commit: 8e415b8068480d51a057197ded974e2637e8c42b
+Link: https://patch.msgid.link/20260726-ath12k_wmi_process_tpc_stats-len-check-v1-1-c4ba2f84d9c6@oss.qualcomm.com
+
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -207,6 +207,8 @@ static const struct ath12k_wmi_tlv_polic
+ 		.min_len = sizeof(struct wmi_per_chain_rssi_stat_params) },
+ 	[WMI_TAG_OBSS_COLOR_COLLISION_EVT] = {
+ 		.min_len = sizeof(struct wmi_obss_color_collision_event) },
++	[WMI_TAG_PDEV_CSA_SWITCH_COUNT_STATUS_EVENT] = {
++		.min_len = sizeof(struct ath12k_wmi_pdev_csa_event) },
+ };
+ 
+ __le32 ath12k_wmi_tlv_hdr(u32 cmd, u32 len)
+@@ -374,6 +376,13 @@ ath12k_wmi_tlv_parse(struct ath12k_base
+ 	return tb;
+ }
+ 
++static u32 ath12k_wmi_tlv_data_len(const void *data)
++{
++	const struct wmi_tlv *tlv = (const struct wmi_tlv *)data - 1;
++
++	return le32_get_bits(tlv->header, WMI_TLV_LEN);
++}
++
+ static int ath12k_wmi_cmd_send_nowait(struct ath12k_wmi_pdev *wmi, struct sk_buff *skb,
+ 				      u32 cmd_id)
+ {
+@@ -4754,14 +4763,16 @@ static int ath12k_wmi_mac_phy_caps_parse
+ 	if (svc_rdy_ext->n_mac_phy_caps >= svc_rdy_ext->tot_phy_id)
+ 		return -ENOBUFS;
+ 
+-	len = min_t(u16, len, sizeof(struct ath12k_wmi_mac_phy_caps_params));
+ 	if (!svc_rdy_ext->n_mac_phy_caps) {
+-		svc_rdy_ext->mac_phy_caps = kzalloc((svc_rdy_ext->tot_phy_id) * len,
+-						    GFP_ATOMIC);
++		svc_rdy_ext->mac_phy_caps =
++			kzalloc_objs(*svc_rdy_ext->mac_phy_caps,
++				     svc_rdy_ext->tot_phy_id,
++				     GFP_ATOMIC);
+ 		if (!svc_rdy_ext->mac_phy_caps)
+ 			return -ENOMEM;
+ 	}
+ 
++	len = min_t(u16, len, sizeof(struct ath12k_wmi_mac_phy_caps_params));
+ 	memcpy(svc_rdy_ext->mac_phy_caps + svc_rdy_ext->n_mac_phy_caps, ptr, len);
+ 	svc_rdy_ext->n_mac_phy_caps++;
+ 	return 0;
+@@ -9042,12 +9053,19 @@ ath12k_wmi_process_csa_switch_count_even
+ 					  const u32 *vdev_ids)
+ {
+ 	u32 current_switch_count = le32_to_cpu(ev->current_switch_count);
++	u32 vdev_ids_len = ath12k_wmi_tlv_data_len(vdev_ids);
+ 	u32 num_vdevs = le32_to_cpu(ev->num_vdevs);
+ 	struct ieee80211_bss_conf *conf;
+ 	struct ath12k_link_vif *arvif;
+ 	struct ath12k_vif *ahvif;
+ 	int i;
+ 
++	if (num_vdevs > vdev_ids_len / sizeof(*vdev_ids)) {
++		ath12k_warn(ab, "csa switch count num_vdevs %u exceeds tlv array length %u\n",
++			    num_vdevs, vdev_ids_len);
++		return;
++	}
++
+ 	rcu_read_lock();
+ 	for (i = 0; i < num_vdevs; i++) {
+ 		arvif = ath12k_mac_get_arvif_by_vdev_id(ab, vdev_ids[i]);
+@@ -9937,6 +9955,7 @@ static void ath12k_wmi_process_tpc_stats
+ 	void *ptr = skb->data;
+ 	struct ath12k *ar;
+ 	u16 tlv_tag;
++	u16 tlv_len;
+ 	u32 event_count;
+ 	int ret;
+ 
+@@ -9952,6 +9971,7 @@ static void ath12k_wmi_process_tpc_stats
+ 
+ 	tlv = (struct wmi_tlv *)ptr;
+ 	tlv_tag = le32_get_bits(tlv->header, WMI_TLV_TAG);
++	tlv_len = le32_get_bits(tlv->header, WMI_TLV_LEN);
+ 	ptr += sizeof(*tlv);
+ 
+ 	if (tlv_tag != WMI_TAG_HALPHY_CTRL_PATH_EVENT_FIXED_PARAM) {
+@@ -9959,6 +9979,12 @@ static void ath12k_wmi_process_tpc_stats
+ 		return;
+ 	}
+ 
++	if (tlv_len < sizeof(*fixed_param)) {
++		ath12k_warn(ab, "TPC stats fixed param tlv len %u too short\n",
++			    tlv_len);
++		return;
++	}
++
+ 	fixed_param = (struct ath12k_wmi_pdev_tpc_stats_event_fixed_params *)ptr;
+ 	rcu_read_lock();
+ 	ar = ath12k_mac_get_ar_by_pdev_id(ab, le32_to_cpu(fixed_param->pdev_id) + 1);
+@@ -10265,12 +10291,12 @@ static void ath12k_wmi_op_rx(struct ath1
+ 	struct wmi_cmd_hdr *cmd_hdr;
+ 	enum wmi_tlv_event_id id;
+ 
+-	cmd_hdr = (struct wmi_cmd_hdr *)skb->data;
+-	id = le32_get_bits(cmd_hdr->cmd_id, WMI_CMD_HDR_CMD_ID);
+-
+-	if (!skb_pull(skb, sizeof(struct wmi_cmd_hdr)))
++	cmd_hdr = skb_pull_data(skb, sizeof(*cmd_hdr));
++	if (!cmd_hdr)
+ 		goto out;
+ 
++	id = le32_get_bits(cmd_hdr->cmd_id, WMI_CMD_HDR_CMD_ID);
++
+ 	switch (id) {
+ 		/* Process all the WMI events here */
+ 	case WMI_SERVICE_READY_EVENTID:

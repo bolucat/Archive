@@ -1,0 +1,550 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+
+/dts-v1/;
+
+#include "ipq9574-common.dtsi"
+#include "ipq9574-common-wifi-pci.dtsi"
+#include "ipq9574-common-qca8084.dtsi"
+
+/ {
+	model = "Xiaomi BE10000";
+	compatible = "xiaomi,be10000", "qcom,ipq9574";
+
+	aliases {
+		label-mac-device = &ppe_port5;
+		led-boot = &led_system_amber;
+		led-failsafe = &led_system_amber;
+		led-running = &led_system_white;
+		led-upgrade = &led_system_white;
+	};
+
+	chosen {
+		bootargs-append = " root=/dev/ubiblock0_1";
+	};
+
+	regulator_fixed_3p3: regulator-3p3 {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed_3p3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	regulator_fixed_0p925: regulator-0p925 {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed_0p925";
+		regulator-min-microvolt = <925000>;
+		regulator-max-microvolt = <925000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	regulator_fixed_1p8: regulator-1p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed_1p8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&gpio_keys_default>;
+		pinctrl-names = "default";
+
+		mesh {
+			label = "mesh";
+			linux,code = <BTN_9>;
+			gpios = <&tlmm 44 GPIO_ACTIVE_LOW>;
+			debounce-interval = <60>;
+		};
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&tlmm 45 GPIO_ACTIVE_LOW>;
+			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-0 = <&gpio_leds_default>;
+		pinctrl-names = "default";
+
+		led_system_white: system-white {
+			function = LED_FUNCTION_STATUS;
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&tlmm 40 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		led_system_amber: system-amber {
+			function = LED_FUNCTION_STATUS;
+			color = <LED_COLOR_ID_AMBER>;
+			gpios = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		network-white {
+			function = "network";
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		network-amber {
+			function = "network";
+			color = <LED_COLOR_ID_AMBER>;
+			gpios = <&tlmm 43 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		sfp-green {
+			function = "sfp";
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&tlmm 62 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+	};
+
+	reserved-memory {
+		/delete-node/ tzapp@4d600000;
+
+		/* RC01's TrustZone application precedes the bootloader region. */
+		tzapp_rc01: tzapp@49b00000 {
+			reg = <0x0 0x49b00000 0x0 0x00600000>;
+			no-map;
+		};
+
+		/* Firmware-private host DDR remains separate for each radio. */
+		wifi_2g_mem: wifi@50000000 {
+			reg = <0x0 0x50000000 0x0 0x04000000>;
+			no-map;
+		};
+
+		wifi_5gh_mem: wifi@54000000 {
+			reg = <0x0 0x54000000 0x0 0x04000000>;
+			no-map;
+		};
+
+		wifi_5gl_mem: wifi@58000000 {
+			reg = <0x0 0x58000000 0x0 0x04000000>;
+			no-map;
+		};
+
+		/* All three devices in the WSI group share global MLO memory. */
+		mlo_mem: mlo-global@5c000000 {
+			reg = <0x0 0x5c000000 0x0 0x01200000>;
+			no-map;
+		};
+
+
+
+	};
+
+	sfp: sfp {
+		compatible = "sff,sfp";
+		pinctrl-0 = <&sfp_default>;
+		pinctrl-names = "default";
+		i2c-bus = <&blsp1_i2c4>;
+		los-gpios = <&tlmm 46 GPIO_ACTIVE_HIGH>;
+		tx-disable-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&blsp1_i2c1 {
+	pinctrl-0 = <&i2c1_default>;
+	pinctrl-names = "default";
+	clock-frequency = <400000>;
+	status = "okay";
+
+	nfc@54 {
+		compatible = "miwifi,nfc";
+		reg = <0x54>;
+	};
+};
+
+/* Stock probes several alternative fan controllers on this bus. */
+&blsp1_i2c3 {
+	pinctrl-0 = <&i2c3_default>;
+	pinctrl-names = "default";
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&blsp1_i2c4 {
+	pinctrl-0 = <&i2c4_default>;
+	pinctrl-names = "default";
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&mdio {
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+	reset-gpios = <&tlmm 60 GPIO_ACTIVE_LOW>;
+	clock-frequency = <6250000>;
+	status = "okay";
+
+	aqr113c: ethernet-phy@0 {
+		compatible = "ethernet-phy-ieee802.3-c45";
+		reg = <0>;
+		nvmem-cells = <&aqr_fw>;
+		nvmem-cell-names = "firmware";
+	};
+};
+
+&pcie1 {
+	pinctrl-0 = <&pcie1_default>;
+	pinctrl-names = "default";
+	perst-gpios = <&tlmm 26 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&pcie1_phy {
+	status = "okay";
+};
+
+&pcie2 {
+	pinctrl-0 = <&pcie2_default>;
+	pinctrl-names = "default";
+	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&pcie2_phy {
+	status = "okay";
+};
+
+/* RC01 routes this controller's PERST to GPIO23, rather than GPIO32. */
+&pcie3 {
+	pinctrl-0 = <&pcie3_reset_default>;
+	pinctrl-names = "default";
+	perst-gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&pcie3_phy {
+	status = "okay";
+};
+
+&pcs1 {
+	status = "okay";
+};
+
+&pcs2 {
+	status = "okay";
+};
+
+&ppe_port1 {
+	label = "lan1";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port2 {
+	label = "lan2";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port3 {
+	label = "lan3";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ppe_port4 {
+	label = "lan4";
+	nvmem-cells = <&macaddr_art_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&qcom_ppe {
+	ethernet-ports {
+		ppe_port5: port@5 {
+			reg = <5>;
+			label = "wan";
+			phy-mode = "usxgmii";
+			phy-handle = <&aqr113c>;
+			pcs-handle = <&pcs1_ch0>;
+			managed = "in-band-status";
+			nvmem-cells = <&macaddr_art_0 0>;
+			nvmem-cell-names = "mac-address";
+			clocks = <&nsscc NSS_CC_PORT5_MAC_CLK>,
+				 <&nsscc NSS_CC_PORT5_RX_CLK>,
+				 <&nsscc NSS_CC_PORT5_TX_CLK>;
+			clock-names = "mac", "rx", "tx";
+			resets = <&nsscc PORT5_MAC_ARES>,
+				 <&nsscc PORT5_RX_ARES>,
+				 <&nsscc PORT5_TX_ARES>;
+			reset-names = "mac", "rx", "tx";
+		};
+
+		port@6 {
+			reg = <6>;
+			label = "sfp";
+			phy-mode = "10gbase-r";
+			pcs-handle = <&pcs2_ch0>;
+			managed = "in-band-status";
+			sfp = <&sfp>;
+			nvmem-cells = <&macaddr_art_0 1>;
+			nvmem-cell-names = "mac-address";
+			clocks = <&nsscc NSS_CC_PORT6_MAC_CLK>,
+				 <&nsscc NSS_CC_PORT6_RX_CLK>,
+				 <&nsscc NSS_CC_PORT6_TX_CLK>;
+			clock-names = "mac", "rx", "tx";
+			resets = <&nsscc PORT6_MAC_ARES>,
+				 <&nsscc PORT6_RX_ARES>,
+				 <&nsscc PORT6_TX_ARES>;
+			reset-names = "mac", "rx", "tx";
+		};
+	};
+};
+
+&qca8084_phy1 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@2 {
+			reg = <2>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy2 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy3 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <3>;
+			active-high;
+		};
+	};
+};
+
+&qca8084_phy4 {
+	leds {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <4>;
+			active-high;
+		};
+	};
+};
+
+&qpic_bam {
+	status = "okay";
+};
+
+&qpic_nand {
+	pinctrl-0 = <&qpic_snand_default_state>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	flash@0 {
+		compatible = "spi-nand";
+		reg = <0>;
+		nand-ecc-strength = <8>;
+		nand-ecc-step-size = <512>;
+		nand-ecc-engine = <&qpic_nand>;
+		nand-bus-width = <8>;
+
+		partitions {
+			compatible = "qcom,smem-part";
+
+			partition-0-art {
+				label = "0:art";
+				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_art_0: macaddr@0 {
+						compatible = "mac-base";
+						reg = <0x0 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_art_6: macaddr@6 {
+						compatible = "mac-base";
+						reg = <0x6 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_art_c: macaddr@c {
+						compatible = "mac-base";
+						reg = <0xc 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_art_12: macaddr@12 {
+						compatible = "mac-base";
+						reg = <0x12 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					caldata_art_1000: calibration@1000 {
+						reg = <0x1000 0x20000>;
+					};
+				};
+			};
+
+			partition-0-ethphyfw {
+				label = "0:ethphyfw";
+				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					/* Skip the 40-byte MBN header, retain the AQR CRC. */
+					aqr_fw: firmware@28 {
+						reg = <0x28 0x60002>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&tlmm {
+	gpio_keys_default: gpio-keys-state {
+		pins = "gpio44", "gpio45";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	gpio_leds_default: gpio-leds-state {
+		pins = "gpio40", "gpio41", "gpio42", "gpio43", "gpio62";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+
+	i2c1_default: i2c1-state {
+		pins = "gpio36", "gpio37";
+		function = "blsp1_i2c";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	i2c3_default: i2c3-state {
+		pins = "gpio15", "gpio16";
+		function = "blsp3_i2c";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	i2c4_default: i2c4-state {
+		pins = "gpio50", "gpio51";
+		function = "blsp4_i2c";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	pcie3_reset_default: pcie3-reset-state {
+		pins = "gpio23";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+		output-low;
+	};
+
+	sfp_default: sfp-state {
+		pins = "gpio46", "gpio64";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+};
+
+&usb_0_dwc3 {
+	dr_mode = "host";
+};
+
+&usb_0_qmpphy {
+	vdda-pll-supply = <&regulator_fixed_1p8>;
+	vdda-phy-supply = <&regulator_fixed_0p925>;
+	status = "okay";
+};
+
+&usb_0_qusbphy {
+	vdd-supply = <&regulator_fixed_0p925>;
+	vdda-pll-supply = <&regulator_fixed_1p8>;
+	vdda-phy-dpdm-supply = <&regulator_fixed_3p3>;
+	status = "okay";
+};
+
+&usb3 {
+	status = "okay";
+};
+
+&wifi1 {
+	qcom,board-id = <1>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_6 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_2g_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
+};
+
+&wifi2 {
+	qcom,board-id = <4>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_12 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_5gh_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
+};
+
+&wifi3 {
+	qcom,board-id = <2>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_c 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_5gl_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
+};

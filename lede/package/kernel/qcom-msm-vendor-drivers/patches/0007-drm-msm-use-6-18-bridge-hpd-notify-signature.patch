@@ -1,0 +1,22 @@
+diff --git a/drivers/gpu/drm/msm/dp/dp_display.c b/drivers/gpu/drm/msm/dp/dp_display.c
+--- a/drivers/gpu/drm/msm/dp/dp_display.c
++++ b/drivers/gpu/drm/msm/dp/dp_display.c
+@@ -1726,7 +1726,6 @@
+ }
+ 
+ void msm_dp_bridge_hpd_notify(struct drm_bridge *bridge,
+-			      struct drm_connector *connector,
+ 			      enum drm_connector_status status)
+ {
+ 	struct msm_dp_bridge *msm_dp_bridge = to_dp_bridge(bridge);
+diff --git a/drivers/gpu/drm/msm/dp/dp_drm.h b/drivers/gpu/drm/msm/dp/dp_drm.h
+--- a/drivers/gpu/drm/msm/dp/dp_drm.h
++++ b/drivers/gpu/drm/msm/dp/dp_drm.h
+@@ -42,7 +42,6 @@
+ void msm_dp_bridge_hpd_enable(struct drm_bridge *bridge);
+ void msm_dp_bridge_hpd_disable(struct drm_bridge *bridge);
+ void msm_dp_bridge_hpd_notify(struct drm_bridge *bridge,
+-			      struct drm_connector *connector,
+ 			      enum drm_connector_status status);
+ 
+ #endif /* _DP_DRM_H_ */

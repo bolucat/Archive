@@ -1,0 +1,28 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] wifi: b43: restrict SoC LED GPIO use
+
+Limit LED handling to GPIO 0 and 1 on the affected SoC devices so
+unrelated board GPIOs remain available.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/broadcom/b43/main.c
++++ b/drivers/net/wireless/broadcom/b43/main.c
+@@ -2896,6 +2896,14 @@ static int b43_gpio_init(struct b43_wlde
+ 	} else if (dev->dev->chip_id == 0x5354) {
+ 		/* Don't allow overtaking buttons GPIOs */
+ 		set &= 0x2; /* 0x2 is LED GPIO on BCM5354 */
++	} else if (dev->dev->chip_id == BCMA_CHIP_ID_BCM4716 || 
++		   dev->dev->chip_id == BCMA_CHIP_ID_BCM47162 ||
++		   dev->dev->chip_id == BCMA_CHIP_ID_BCM5356 ||
++		   dev->dev->chip_id == BCMA_CHIP_ID_BCM5357 ||
++		   dev->dev->chip_id == BCMA_CHIP_ID_BCM53572) {
++		/* just use gpio 0 and 1 for 2.4 GHz wifi led */
++		set &= 0x3;
++		mask &= 0x3;
+ 	}
+ 
+ 	if (0 /* FIXME: conditional unknown */ ) {

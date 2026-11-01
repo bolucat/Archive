@@ -1,0 +1,20 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] iommu: bcm2712: adapt attach_dev to the 6.18 stable API
+
+Linux 6.18.60 passes the previous domain to attach_dev. Match the
+callback signature as in the upstream target adaptation.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+---
+--- a/drivers/iommu/bcm2712-iommu.c
++++ b/drivers/iommu/bcm2712-iommu.c
+@@ -234,7 +234,8 @@
+ 	return 0;
+ }
+ 
+-static int bcm2712_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
++static int bcm2712_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
++				    struct iommu_domain *old)
+ {
+ 	struct bcm2712_iommu *mmu = dev ? dev_iommu_priv_get(dev) : 0;
+ 	struct bcm2712_iommu_domain *mydomain =

@@ -1,0 +1,32 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] wifi: libertas: associate the wiphy with its parent device
+
+Set the wiphy parent device so sysfs links and device namespace handling
+follow the physical wireless device.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/marvell/libertas/cfg.c
++++ b/drivers/net/wireless/marvell/libertas/cfg.c
+@@ -2105,6 +2105,8 @@ struct wireless_dev *lbs_cfg_alloc(struc
+ 		goto err_wiphy_new;
+ 	}
+ 
++	set_wiphy_dev(wdev->wiphy, dev);
++
+ 	return wdev;
+ 
+  err_wiphy_new:
+--- a/drivers/net/wireless/marvell/libertas/main.c
++++ b/drivers/net/wireless/marvell/libertas/main.c
+@@ -852,6 +852,7 @@ struct lbs_private *lbs_add_card(void *c
+ 		goto err_adapter;
+ 	}
+ 
++	dev_net_set(dev, wiphy_net(wdev->wiphy));
+ 	dev->ieee80211_ptr = wdev;
+ 	dev->ml_priv = priv;
+ 	SET_NETDEV_DEV(dev, dmdev);

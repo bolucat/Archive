@@ -1,0 +1,200 @@
+From 6e4dea9fc2246d2de698a7c80552685a43a0c76a Mon Sep 17 00:00:00 2001
+From: luo <strugglelg@gmail.com>
+Date: Tue, 13 Feb 2018 10:51:30 +0800
+Subject: [PATCH 1/2] report event
+
+---
+ src/ref/port_netlink.c  | 142 ++++++++++++++++++++++++++++++++++++++++++++++++
+ src/ref/ref_port_ctrl.c |  27 ++++++---
+ 2 files changed, 162 insertions(+), 7 deletions(-)
+ create mode 100644 src/ref/port_netlink.c
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/port_netlink.c
++++ b/src/ref/port_netlink.c
+@@ -0,0 +1,142 @@
++#include <linux/module.h>
++#include <linux/version.h>
++#include <linux/kmod.h>
++
++#include <linux/workqueue.h>
++#include <linux/skbuff.h>
++#include <linux/netlink.h>
++#include <linux/kobject.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/hardirq.h>
++
++#define PORT_SKB_SIZE	2048
++#define WORKQUEUE_DELAY_TIME	1300 // 1.3s
++#define EVENT_PORT_NUMBER		6
++
++struct port_event
++{
++	const char		name[16];
++	char				type[16];
++	unsigned int		port;
++	unsigned int		status;
++	unsigned int		speed;
++	unsigned int		duplex;
++	char				action[8];
++	struct delayed_work	work;
++	struct sk_buff		*skb;
++};
++
++struct port_event event_port[EVENT_PORT_NUMBER]= {{{0}}}; //event_port[0]: Port0; event_port[1]: Port1;
++
++/* -------------------port netlink------------------------------------*/
++static int port_event_add_var(struct port_event *event, int argv,
++                              const char *format, ...)
++{
++	static char buf[128];
++	char *s;
++	va_list args;
++	int len;
++
++	if (argv)
++		return 0;
++
++	va_start(args, format);
++	len = vsnprintf(buf, sizeof(buf), format, args);
++	va_end(args);
++
++	if (len >= sizeof(buf))
++	{
++		printk("buffer size too small\n");
++		WARN_ON(1);
++		return -ENOMEM;
++	}
++
++	s = skb_put(event->skb, len + 1);
++	strcpy(s, buf);
++
++	//printk("[hotplug]added variable '%s'\n", s);
++	return 0;
++}
++
++static void port_link_hotplug(struct delayed_work *work)
++{
++	int ret = 0;
++	struct port_event *event = container_of(work, struct port_event, work);
++
++	if(in_interrupt())
++		printk("%s:%d in_interrupt!!!!",__FUNCTION__,__LINE__);
++
++	event->skb = alloc_skb(PORT_SKB_SIZE, GFP_KERNEL);
++
++	if (!event->skb)
++		return ;
++
++	ret = port_event_add_var(event, 0, "%s@", event->action);
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "HOME=%s", "/");
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "PATH=%s",
++				"/sbin:/bin:/usr/sbin:/usr/bin");
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "SUBSYSTEM=%s", event->type);
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "ACTION=%s", event->action);
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "PORT=%d", event->port);
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "SPEED=%d", event->speed);
++	if (ret)
++		goto out_free_skb;
++
++	ret = port_event_add_var(event, 0, "DUPLEX=%d", event->duplex);
++	if (ret)
++		goto out_free_skb;
++	NETLINK_CB(event->skb).dst_group = 1;
++	broadcast_uevent(event->skb, 0, 1, GFP_KERNEL);
++
++out_free_skb:
++	if (ret)
++	{
++		printk("work error %d\n", ret);
++		kfree_skb(event->skb);
++	}
++}
++
++
++void port_link_hotplug_work(int port_num, int port_status, unsigned int link_speed, unsigned int duplex)
++{
++	struct port_event *event = NULL;
++
++	if(port_num > ARRAY_SIZE(event_port)  ||  port_num < 0)
++	{
++		printk("[Warning] invalid port number\n");
++		return;
++	}
++
++	event = &event_port[port_num];
++	cancel_delayed_work_sync(&event->work);
++
++
++	strcpy(event->type, "switch");
++	event->port = port_num;
++	event->status = port_status;
++	strcpy(event->action, event->status? "UP":"DOWN");
++	event->speed = link_speed;
++	event->duplex = duplex;
++
++	INIT_DELAYED_WORK(&event->work, (void *)(void *)port_link_hotplug);
++	schedule_delayed_work(&event->work, msecs_to_jiffies(WORKQUEUE_DELAY_TIME));
++}
+--- a/src/ref/ref_port_ctrl.c
++++ b/src/ref/ref_port_ctrl.c
+@@ -482,17 +482,33 @@
+ /* Initialize notifier list for QCA SSDK */
+ static BLOCKING_NOTIFIER_HEAD(ssdk_port_link_notifier_list);
+ 
++
++extern void port_link_hotplug_work(int port_num, int port_status, unsigned int link_speed, unsigned int duplex);
+ int ssdk_port_link_notify(unsigned char port_id,
+             unsigned char link, unsigned char speed, unsigned char duplex)
+ {
+-    ssdk_port_status port_status;
++	ssdk_port_status port_status;
++	int link_speed;
+ 
+-    port_status.port_id = port_id;
+-    port_status.port_link = link;
+-    port_status.speed = speed;
+-    port_status.duplex = duplex;
++	port_status.port_id = port_id;
++	port_status.port_link = link;
++	port_status.speed = speed;
++	port_status.duplex = duplex;
++	if(speed > 1)
++		link_speed = 1000;
++	else if(speed > 0)
++		link_speed = 100;
++	else
++		link_speed = 10;
++	if(port_id >= 0)
++		port_id -= 1; /* Ignore CPU Port */
++	port_link_hotplug_work(port_id, link, link_speed, duplex);
++	if(link)
++		printk("ssdk: port %d link %s (%dMbps/%s duplex)\n", port_id, link?"up":"down", link_speed, duplex?"Full":"Half");
++	else
++		printk("ssdk: port %d link %s\n", port_id, link?"up":"down");
+ 
+-    return blocking_notifier_call_chain(&ssdk_port_link_notifier_list,	0, &port_status);
++	return blocking_notifier_call_chain(&ssdk_port_link_notifier_list,	0, &port_status);
+ }
+ 
+ int ssdk_port_link_notify_register(struct notifier_block *nb)

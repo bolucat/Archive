@@ -1,0 +1,87 @@
+Subject: [PATCH] ssdk: release netdevice references when quiescing Flow
+
+Failed hardware cleanup must retain hardware ownership for retries, but
+retaining egress and GMAC references deadlocks netdevice unregister. Once
+callbacks are stopped, close the state to replacements and release device
+references independently of the hardware rollback result. Clear resolver
+pointers and retain the quarantined table state and module reference.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_state.c
++++ b/src/ref/ref_flow_state.c
+@@ -29,7 +29,7 @@
+ };
+ static void drop_entry(struct ssdk_flow_entry *entry)
+ {
+-	dev_put(entry->rule.egress);
++	if (entry->rule.egress) dev_put(entry->rule.egress);
+ 	memset(entry, 0, sizeof(*entry));
+ }
+ static int remove_slot(struct ssdk_flow_state *state, unsigned int index)
+@@ -252,12 +252,30 @@
+ 	mutex_unlock(&state->lock);
+ 	return ret;
+ }
++/* Hardware rollback does not use egress devices. Release software refs
++ * once callbacks are quiesced, even when hardware cleanup needs retries.
++ */
++void ssdk_flow_state_quiesce(struct ssdk_flow_state *state)
++{
++	unsigned int i;
++	if (!state) return;
++	mutex_lock(&state->lock);
++	state->closed = true;
++	for (i = 0; i < FLOW_ENTRIES; i++) {
++		struct ssdk_flow_entry *entry = &state->entries[i];
++		if (entry->used && entry->rule.egress) {
++			dev_put(entry->rule.egress);
++			entry->rule.egress = NULL;
++		}
++	}
++	mutex_unlock(&state->lock);
++}
+ int ssdk_flow_state_destroy(struct ssdk_flow_state *state)
+ {
+ 	int ret;
+ 	if (!state) return 0;
++	ssdk_flow_state_quiesce(state);
+ 	mutex_lock(&state->lock);
+-	state->closed = true;
+ 	ret = flush_locked(state);
+ 	mutex_unlock(&state->lock);
+ 	if (!ret) kfree(state);
+--- a/include/ref/ssdk_flow_state.h
++++ b/include/ref/ssdk_flow_state.h
+@@ -30,6 +30,9 @@
+  * retain their refs for retry. The caller must prevent new replace callbacks
+  * until configuration has been revalidated and the gate acknowledged. */
+ int ssdk_flow_state_flush(struct ssdk_flow_state *state);
++/* Caller must stop callbacks before quiesce. Hardware ownership remains
++ * intact for cleanup retry, but no netdevice reference remains pinned. */
++void ssdk_flow_state_quiesce(struct ssdk_flow_state *state);
+ /* Caller must quiesce callbacks before destruction. Close to new work and
+  * free only after all hardware resources are released.
+  * On error the object remains valid for retry; the caller must retain it. */
+--- a/src/ref/ref_flow_engine.c
++++ b/src/ref/ref_flow_engine.c
+@@ -197,6 +197,8 @@
+ 	if (!engine) return 0;
+ 	/* The outer owner quiesces every callback before entering here. */
+ 	mutex_lock(&engine->lock); engine->active = false;
++	ssdk_flow_state_quiesce(engine->state);
++	engine->resolver.gmac[0] = engine->resolver.gmac[1] = NULL;
+ 	if (engine->gate_owned && ssdk_flow_gate_invalidate(engine->dev) == -EIO) {
+ 		ret = -EIO; goto out;
+ 	}
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -53,7 +53,7 @@
+ static void release_devices(void)
+ {
+ 	unsigned int i;
+-	if (attached || initializing || engine || bound_block) return;
++	if (attached || initializing || bound_block || (engine && !closing)) return;
+ 	for (i = 0; i < 2; i++) if (gmac[i]) { dev_put(gmac[i]); gmac[i] = NULL; }
+ }
+ static int stop_engine(void)

@@ -11,6 +11,7 @@ mod switching;
 use std::sync::Arc;
 
 use enumset::EnumSet;
+use nyanpasu_utils::process::AtomicStopStrategy;
 use serde_yaml_ng::Mapping;
 use tokio::sync::{broadcast, watch};
 
@@ -107,6 +108,7 @@ pub struct CoreManagerBuilder {
     dns: Option<Arc<dyn DnsController>>,
     controller_access: Option<Arc<dyn crate::ControllerAccess>>,
     native_store: Option<Arc<dyn crate::native_store::NativeStore>>,
+    stop_strategy: Option<Arc<AtomicStopStrategy>>,
 }
 
 struct Inner {
@@ -280,6 +282,14 @@ impl CoreManagerBuilder {
         self
     }
 
+    /// Shares the host's stop strategy with every supervisor in the default process backend.
+    /// Updates apply to both running and future instances. Without this setting,
+    /// supervisors use the default graceful stop strategy.
+    pub fn stop_strategy(mut self, strategy: Arc<AtomicStopStrategy>) -> Self {
+        self.stop_strategy = Some(strategy);
+        self
+    }
+
     pub async fn build(self) -> Result<CoreManager, Error> {
         CoreManager::build_configured(self).await
     }
@@ -294,6 +304,7 @@ impl CoreManager {
             dns: None,
             controller_access: None,
             native_store: None,
+            stop_strategy: None,
         }
     }
 
@@ -309,6 +320,7 @@ impl CoreManager {
             dns,
             controller_access,
             native_store,
+            stop_strategy,
         } = builder;
         let runtime_dir = options
             .runtime_dir
@@ -410,6 +422,7 @@ impl CoreManager {
                 options.cancel_token.clone(),
                 native_store.clone(),
                 options.windows_shutdown_helper.clone(),
+                stop_strategy,
             ))
         });
         let manager = Self {

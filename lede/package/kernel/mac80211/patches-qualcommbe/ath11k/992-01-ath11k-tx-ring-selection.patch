@@ -1,0 +1,83 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath11k: select TX rings from queue mappings
+
+WCN6750 selects the TCL ring using skb_get_hash() to distribute flows
+across its 3 TX rings, as introduced in commit 7636c9a6e7d7 ("wifi: ath11k:
+Add multi TX ring support for WCN6750"). The goal was to prevent out-of-
+order packet delivery that could occur with smp_processor_id()-based
+selection, where packets of the same flow could end up on different rings
+depending on CPU scheduling.
+
+Change the get_ring_selector hw_ops callback signature from
+get_ring_selector(struct sk_buff *skb) to get_ring_selector(u8 ac),
+removing the dependency on the skb.
+
+Merged from:
+  992-01-wifi-ath11k-use-queue-mapping-for-WCN6750-ring-selection.patch
+  992-02-wifi-ath11k-remove-skb-parameter-from-get_ring_selector.patch
+
+Based on work by:
+  Jose Ignacio Tornos Martinez <jtornosm@redhat.com>
+
+Link: https://lore.kernel.org/all/20260917064825.12747-1-jtornosm@redhat.com/
+
+Signed-off-by: Jose Ignacio Tornos Martinez <jtornosm@redhat.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
+@@ -108,7 +108,7 @@ int ath11k_dp_tx(struct ath11k *ar, stru
+ 
+ 	pool_id = skb_get_queue_mapping(skb) & (ATH11K_HW_MAX_QUEUES - 1);
+ 
+-	ring_selector = ab->hw_params.hw_ops->get_ring_selector(skb);
++	ring_selector = ab->hw_params.hw_ops->get_ring_selector(skb_get_queue_mapping(skb));
+ 
+ tcl_ring_sel:
+ 	tcl_ring_retry = false;
+--- a/drivers/net/wireless/ath/ath11k/hw.c
++++ b/drivers/net/wireless/ath/ath11k/hw.c
+@@ -887,28 +887,14 @@ static bool ath11k_hw_wcn6855_rx_desc_ge
+ 			 __le32_to_cpu(desc->u.wcn6855.msdu_start.info2));
+ }
+ 
+-static u32 ath11k_hw_ipq8074_get_tcl_ring_selector(struct sk_buff *skb)
++static u32 ath11k_hw_ipq8074_get_tcl_ring_selector(u8 ac)
+ {
+-	/* Let the default ring selection be based on current processor
+-	 * number, where one of the 3 tcl rings are selected based on
+-	 * the smp_processor_id(). In case that ring
+-	 * is full/busy, we resort to other available rings.
+-	 * If all rings are full, we drop the packet.
+-	 *
+-	 * TODO: Add throttling logic when all rings are full
+-	 */
+ 	return smp_processor_id();
+ }
+ 
+-static u32 ath11k_hw_wcn6750_get_tcl_ring_selector(struct sk_buff *skb)
++static u32 ath11k_hw_wcn6750_get_tcl_ring_selector(u8 ac)
+ {
+-	/* Select the TCL ring based on the flow hash of the SKB instead
+-	 * of CPU ID. Since applications pumping the traffic can be scheduled
+-	 * on multiple CPUs, there is a chance that packets of the same flow
+-	 * could end on different TCL rings, this could sometimes results in
+-	 * an out of order arrival of the packets at the receiver.
+-	 */
+-	return skb_get_hash(skb);
++	return ac;
+ }
+ 
+ const struct ath11k_hw_ops ipq9574_ops = {
+--- a/drivers/net/wireless/ath/ath11k/hw.h
++++ b/drivers/net/wireless/ath/ath11k/hw.h
+@@ -278,7 +278,7 @@ struct ath11k_hw_ops {
+ 	u16 (*mpdu_info_get_peerid)(struct hal_rx_mpdu_info *mpdu_info);
+ 	bool (*rx_desc_mac_addr2_valid)(struct hal_rx_desc *desc);
+ 	u8* (*rx_desc_mpdu_start_addr2)(struct hal_rx_desc *desc);
+-	u32 (*get_ring_selector)(struct sk_buff *skb);
++	u32 (*get_ring_selector)(u8 ac);
+ };
+ 
+ extern const struct ath11k_hw_ops ipq9574_ops;

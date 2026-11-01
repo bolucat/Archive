@@ -1,0 +1,90 @@
+Subject: [PATCH] edma: map untagged CPU traps through committed ingress PVIDs
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma_switch.c
++++ b/edma_switch.c
+@@ -167,14 +167,15 @@
+ }
+ 
+ struct net_device *edma_switch_rx(struct edma_common_info *cinfo, u8 port,
+-				 u16 tag, bool tagged, u16 *strip_vid)
++				 u16 tag, bool tagged, u16 *strip_vid, u16 *rx_tag)
+ {
+ 	struct edma_switch_table *table;
+ 	struct net_device *dev = NULL;
+ 	u16 vid = tag & VLAN_VID_MASK;
+ 	int i, selected = -1;
+ 
+-	if (READ_ONCE(edma_switch_paused))
++	*rx_tag = tag;
++	if (!port || port > 5 || READ_ONCE(edma_switch_paused))
+ 		return NULL;
+ 	rcu_read_lock();
+ 	table = rcu_dereference(edma_switch_current);
+@@ -184,9 +185,16 @@
+ 			*strip_vid = ((struct edma_adapter *)netdev_priv(dev))->default_vlan_tag;
+ 		goto out;
+ 	}
+-	if (!tagged || !(table->config.members[vid] & BIT(port)) ||
++	/* CPU traps bypass egress VLAN insertion. Recover untagged ingress
++	 * from the same committed PVID snapshot as the hardware, never from
++	 * a stale GMAC port bitmap or an arbitrary VLAN membership. */
++	if (!tagged)
++		vid = table->config.pvid[port];
++	if (!vid || vid >= 4095 || !(table->config.members[vid] & BIT(port)) ||
+ 	    !(table->config.tagged[vid] & BIT(0)))
+ 		goto out;
++	if (!tagged)
++		*rx_tag = vid;
+ 	/* Respect an explicit Linux VLAN interface on either GMAC. Two copies
+ 	 * of the same VID on the shared CPU port are ambiguous and are dropped. */
+ 	for (i = 0; i < 2; i++) {
+--- a/edma.h
++++ b/edma.h
+@@ -514,7 +514,7 @@
+ int edma_switch_register(void);
+ void edma_switch_unregister(void);
+ struct net_device *edma_switch_rx(struct edma_common_info *cinfo, u8 port,
+-                                  u16 tag, bool tagged, u16 *strip_vid);
++                                  u16 tag, bool tagged, u16 *strip_vid, u16 *rx_tag);
+ bool edma_switch_tx(struct net_device *dev, struct sk_buff *skb,
+                     u16 *default_vid, u16 *ports);
+ void edma_adjust_link(struct net_device *netdev);
+--- a/edma.c
++++ b/edma.c
+@@ -684,8 +684,12 @@
+ 				continue;
+ 			}
+ 
+-			netdev = edma_switch_rx(edma_cinfo, port_id, rd->rrd4,
+-					!!(rd->rrd7 & EDMA_RRD_CVLAN), &strip_vid);
++			/* Do not reinterpret an unsupported service tag as untagged. */
++			if ((rd->rrd1 & EDMA_RRD_SVLAN) && !(rd->rrd7 & EDMA_RRD_CVLAN))
++				netdev = NULL;
++			else
++				netdev = edma_switch_rx(edma_cinfo, port_id, rd->rrd4,
++					!!(rd->rrd7 & EDMA_RRD_CVLAN), &strip_vid, &vlan);
+ 			if (!netdev) {
+ 				/* A disabled group intentionally drops received packets. */
+ 				for (i = 0; i < num_rfds; i++) {
+@@ -794,14 +798,11 @@
+ #endif
+ 			edma_receive_checksum(rd, skb);
+ 
+-			/* Process VLAN HW acceleration indication provided by HW */
+-			if (strip_vid != (rd->rrd4 & VLAN_VID_MASK)) {
+-				vlan = rd->rrd4;
+-				if (likely(rd->rrd7 & EDMA_RRD_CVLAN))
+-					__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan);
+-				else if (rd->rrd1 & EDMA_RRD_SVLAN)
+-					__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021AD), vlan);
+-			}
++			/* Also restore PVID metadata for untagged CPU traps delivered
++			 * to a Linux VLAN device or the LAN trunk. Default GMAC VLANs
++			 * are stripped exactly as for ordinary tagged CPU traffic. */
++			if (strip_vid != (vlan & VLAN_VID_MASK))
++				__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan);
+ 
+ 			/* Update rx statistics */
+ 			adapter->stats.rx_packets++;

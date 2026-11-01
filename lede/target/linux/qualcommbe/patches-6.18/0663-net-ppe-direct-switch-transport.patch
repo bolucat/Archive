@@ -1,0 +1,1397 @@
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: ethernet: qualcomm: implement Direct Switch ring transport
+
+Batch uplink completion interrupts with the bounded index/refill poll timer.
+Restore level-triggered completion interrupts after an empty poll so idle
+transports do not spin and new bursts cannot lose their wakeup. Preserve
+the shared-ring ownership, fault handling and WLAN metadata validation.
+
+Merged from:
+  0663-net-ethernet-qualcomm-ppe-add-direct-switch-ring-transport.patch
+  0664-net-ethernet-qualcomm-ppe-coalesce-DS-index-retries.patch
+  0665-net-ethernet-qualcomm-ppe-wake-stalled-DS-refill.patch
+  0666-net-ethernet-qualcomm-ppe-expose-DS-availability.patch
+
+Based on work by:
+  JiaY-shi <shi05275@163.com>
+
+Link: https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-dp/-/tree/23928147cfb6f55638cc0a27f700831623ed679c
+Link: https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-ppe/-/tree/d53eff24bf257a8bb1b2f68beb3aa06332bfd567
+
+Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/arch/arm64/boot/dts/qcom/ipq5332.dtsi
++++ b/arch/arm64/boot/dts/qcom/ipq5332.dtsi
+@@ -582,7 +582,13 @@
+ 					     <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>,
+ 					     <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>,
+ 					     <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>,
+-					     <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>;
++					     <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 128 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 152 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 129 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 153 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 161 IRQ_TYPE_LEVEL_HIGH>;
+ 				interrupt-names = "txcmpl_4",
+ 						  "txcmpl_5",
+ 						  "txcmpl_6",
+@@ -599,7 +605,13 @@
+ 						  "rxdesc_13",
+ 						  "rxdesc_14",
+ 						  "rxdesc_15",
+-						  "misc";
++						  "misc",
++						  "rxdesc_1",
++						  "rxfill_1",
++						  "txcmpl_1",
++						  "rxdesc_2",
++						  "rxfill_2",
++						  "txcmpl_2";
+ 			};
+ 		};
+ 
+--- a/drivers/net/ethernet/qualcomm/ppe/Makefile
++++ b/drivers/net/ethernet/qualcomm/ppe/Makefile
+@@ -6,6 +6,7 @@
+ obj-$(CONFIG_QCOM_PPE) += qcom-ppe.o
+ qcom-ppe-objs := ppe.o ppe_config.o ppe_debugfs.o ppe_port.o ppe_api.o ppe_bridge.o ppe_flow.o ppe_flowtable.o ppe_vp.o
+ qcom-ppe-objs += ppe_tunnel.o
++qcom-ppe-objs += ppe_ds.o
+ 
+ #EDMA
+ qcom-ppe-objs += edma.o edma_cfg_rx.o edma_cfg_tx.o edma_debugfs.o edma_port.o edma_rx.o edma_tx.o edma_ethtool.o
+--- a/drivers/net/ethernet/qualcomm/ppe/edma.c
++++ b/drivers/net/ethernet/qualcomm/ppe/edma.c
+@@ -17,6 +17,7 @@
+ #include <linux/reset.h>
+ 
+ #include "edma.h"
++#include "ppe_ds.h"
+ #include "edma_port.h"
+ #include "edma_cfg_tx.h"
+ #include "edma_cfg_rx.h"
+@@ -358,6 +359,15 @@ static irqreturn_t edma_misc_handle_irq(
+ 	regmap_read(regmap, reg, &data);
+ 	misc_intr_status = data & edma_ctx->intr_info.intr_mask_misc;
+ 
++	if (misc_intr_status & (EDMA_MISC_AXI_RD_ERR_MASK |
++				EDMA_MISC_AXI_WR_ERR_MASK)) {
++		/* An AXI fault can remain asserted. Keep management and recovery
++		 * alive instead of livelocking the CPU in an unbounded error IRQ.
++		 */
++		regmap_write(regmap, EDMA_BASE_OFFSET + EDMA_REG_MISC_INT_MASK_ADDR, 0);
++		ppe_ds_dma_error(ppe_dev);
++	}
++
+ 	pr_debug("Received misc irq %d, status: %d\n", irq, misc_intr_status);
+ 
+ 	if (FIELD_GET(EDMA_MISC_AXI_RD_ERR_MASK, misc_intr_status)) {
+--- a/drivers/net/ethernet/qualcomm/ppe/edma_cfg_rx.c
++++ b/drivers/net/ethernet/qualcomm/ppe/edma_cfg_rx.c
+@@ -29,9 +29,6 @@
+ /* EDMA Queue ID to Ring ID configuration. */
+ #define EDMA_QID2RID_NUM_PER_REG	4
+ 
+-/* EDMA Queue ID to Ring ID Table. */
+-#define EDMA_QID2RID_TABLE_MEM(q)	(0xb9000 + (0x4 * (q)))
+-
+ int rx_queues[] = {0, 8, 16, 24};
+ 
+ static u32 edma_rx_ring_queue_map[][EDMA_MAX_CORE] = {{ 0, 8, 16, 24 },
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe.c
+@@ -20,6 +20,7 @@
+ #include "ppe_bridge.h"
+ #include "ppe_config.h"
+ #include "ppe_debugfs.h"
++#include "ppe_ds.h"
+ #include "ppe_flow.h"
+ #include "ppe_tunnel.h"
+ #include "ppe_flowtable.h"
+@@ -300,6 +301,9 @@ static int qcom_ppe_probe(struct platfor
+ 	}
+ 
+ 	ppe_debugfs_setup(ppe_dev);
++	ret = ppe_ds_setup(ppe_dev);
++	if (ret)
++		dev_warn(dev, "PPE Direct Switch unavailable: %d\n", ret);
+ 	platform_set_drvdata(pdev, ppe_dev);
+ 
+ 	return 0;
+@@ -325,6 +329,7 @@ static void qcom_ppe_remove(struct platf
+ 	ppe_vp_teardown(ppe_dev);
+ 	ppe_bridge_destroy(ppe_dev);
+ 	ppe_debugfs_teardown(ppe_dev);
++	ppe_ds_destroy(ppe_dev);
+ 	edma_destroy(ppe_dev);
+ }
+ 
+@@ -363,6 +368,8 @@ static struct platform_driver qcom_ppe_d
+ 	.driver = {
+ 		.name = "qcom_ppe",
+ 		.of_match_table = qcom_ppe_of_match,
++		/* Shared DMA consumers pin this supplier until both engines stop. */
++		.suppress_bind_attrs = true,
+ 	},
+ 	.probe	= qcom_ppe_probe,
+ 	.remove = qcom_ppe_remove,
+--- /dev/null
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_ds.c
+@@ -0,0 +1,1096 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Native PPE Direct Switch ring transport.
++ *
++ * The EDMA v2 resource layout and ring aliasing follow the Qualcomm QSDK
++ * nss-dp EDMA v2 PPE-DS implementation. PPE RXDESC aliases WLAN PPE2TCL;
++ * PPE TXDESC aliases WLAN REO2PPE. CPU work is limited to index handoff,
++ * batched buffer refill and completion, never per-packet skb transmission.
++ */
++
++#include <linux/debugfs.h>
++#include <linux/delay.h>
++#include <linux/dma-direct.h>
++#include <linux/hrtimer.h>
++#include <linux/interrupt.h>
++#include <linux/iommu.h>
++#include <linux/module.h>
++#include <linux/netdevice.h>
++#include <linux/of_irq.h>
++#include <linux/regmap.h>
++#include <linux/seq_file.h>
++#include <linux/soc/qcom/ppe-ds.h>
++
++#include "edma.h"
++#include "ppe.h"
++#include "ppe_config.h"
++#include "ppe_ds.h"
++#include "ppe_regs.h"
++#include "ppe_vp.h"
++
++#define PPE_DS_NODES		2
++#define PPE_DS_BATCH		64
++#define PPE_DS_QUEUES		8
++#define PPE_DS_QUEUE_BASE	32
++#define PPE_DS_QUEUE_PROFILE	9
++#define PPE_DS_FC_THRESH		(32 | (64 << 12))
++#define PPE_DS_RXFILL_LOW_IRQ	BIT(0)
++#define PPE_DS_RXFILL_LOW		128
++
++static unsigned int ds_rx_retry_us = 250;
++
++static int ppe_ds_set_rx_retry(const char *val, const struct kernel_param *kp)
++{
++	unsigned int delay;
++	int ret;
++
++	ret = kstrtouint(val, 0, &delay);
++	if (ret)
++		return ret;
++	if (delay < 100 || delay > 1000)
++		return -EINVAL;
++	WRITE_ONCE(*(unsigned int *)kp->arg, delay);
++	return 0;
++}
++
++static const struct kernel_param_ops ppe_ds_rx_retry_ops = {
++	.set = ppe_ds_set_rx_retry,
++	.get = param_get_uint,
++};
++module_param_cb(ds_rx_retry_us, &ppe_ds_rx_retry_ops, &ds_rx_retry_us, 0644);
++MODULE_PARM_DESC(ds_rx_retry_us, "Direct Switch index/refill and completion poll delay (100-1000 us)");
++
++enum ppe_ds_irq {
++	PPE_DS_RX,
++	PPE_DS_FILL,
++	PPE_DS_COMPLETE,
++	PPE_DS_IRQ_COUNT,
++};
++
++struct ppe_ds_provider {
++	struct ppe_device *ppe_dev;
++	struct qcom_ppe_ds *nodes[PPE_DS_NODES];
++	int irqs[PPE_DS_NODES][PPE_DS_IRQ_COUNT];
++};
++
++struct qcom_ppe_ds {
++	struct ppe_ds_provider *provider;
++	struct qcom_ppe_ds_config cfg;
++	struct device_link *link;
++	struct mutex lock; /* Serialize registration, VP changes and stop. */
++	spinlock_t index_lock; /* Serialize cross-engine index publication. */
++	struct net_device *napi_dev;
++	struct napi_struct napi;
++	struct hrtimer poll_timer;
++	struct edma_rxfill_desc *fill;
++	struct edma_txcmpl_desc *complete;
++	void *rx_secondary;
++	void *tx_secondary;
++	dma_addr_t fill_dma, complete_dma;
++	dma_addr_t rx_secondary_dma, tx_secondary_dma;
++	struct qcom_ppe_ds_buffer buffers[PPE_DS_BATCH];
++	u64 cookies[PPE_DS_BATCH];
++	u16 ring, queue, fill_prod, complete_cons;
++	u16 rx_prod, rx_cons, tx_prod, tx_cons;
++	u8 requested_irqs;
++	u8 allocated_vps;
++	bool running, faulted, ever_started, stopped, napi_enabled;
++	bool refill_short;
++	atomic64_t down_desc, up_desc, refilled, released;
++	atomic64_t index_updates, refill_failures;
++	atomic64_t poll_retries, refill_wakes, tx_deferred;
++};
++
++/* Registration and supplier teardown are serialized. A registered WLAN
++ * pins the PPE module and has a managed supplier link for forced unbind.
++ */
++static DEFINE_MUTEX(ppe_ds_lock);
++/* The EDMA error IRQ must not race consumer removal, or acquire any
++ * lock used while invoking WLAN MMIO callbacks.
++ */
++static DEFINE_SPINLOCK(ppe_ds_fault_lock);
++static struct ppe_ds_provider *ppe_ds_provider;
++
++bool qcom_ppe_ds_available(void)
++{
++	bool available;
++
++	mutex_lock(&ppe_ds_lock);
++	available = ppe_ds_provider != NULL;
++	mutex_unlock(&ppe_ds_lock);
++	return available;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_available);
++
++static u32 ppe_ds_read(struct qcom_ppe_ds *ds, u32 reg)
++{
++	u32 value = 0;
++
++	if (regmap_read(ds->provider->ppe_dev->regmap,
++			EDMA_BASE_OFFSET + reg, &value))
++		WRITE_ONCE(ds->faulted, true);
++	return value;
++}
++
++static void ppe_ds_write(struct qcom_ppe_ds *ds, u32 reg, u32 value)
++{
++	if (regmap_write(ds->provider->ppe_dev->regmap,
++			 EDMA_BASE_OFFSET + reg, value))
++		WRITE_ONCE(ds->faulted, true);
++}
++
++static void ppe_ds_update(struct qcom_ppe_ds *ds, u32 reg, u32 mask, u32 value)
++{
++	if (regmap_update_bits(ds->provider->ppe_dev->regmap,
++			       EDMA_BASE_OFFSET + reg, mask, value))
++		WRITE_ONCE(ds->faulted, true);
++}
++
++static void ppe_ds_mask(struct qcom_ppe_ds *ds)
++{
++	ppe_ds_write(ds, EDMA_REG_RXDESC_INT_MASK(ds->ring), 0);
++	ppe_ds_write(ds, EDMA_REG_RXFILL_INT_MASK(ds->ring), 0);
++	ppe_ds_write(ds, EDMA_REG_TX_INT_MASK(ds->ring), 0);
++}
++
++/* Shared rings cannot use independent IOVAs or bounce buffers. The native
++ * transport presently requires identity DMA on both engines. Validate the
++ * DMA topology instead of assuming a WLAN DMA address is a CPU physical
++ * address. Non-identity platforms retain the ordinary data path.
++ */
++static bool ppe_ds_identity_dma(struct device *dev)
++{
++	const struct bus_dma_region *map;
++
++	if (get_dma_ops(dev) || iommu_get_domain_for_dev(dev) ||
++	    dma_get_mask(dev) < DMA_BIT_MASK(32))
++		return false;
++	map = dev->dma_range_map;
++	if (!map)
++		return true;
++	for (; map->size; map++)
++		if (map->cpu_start != map->dma_start)
++			return false;
++	return true;
++}
++
++static bool ppe_ds_ring_valid(dma_addr_t addr, u16 count)
++{
++	return count >= 256 && is_power_of_2(count) && IS_ALIGNED(addr, 8) &&
++	       addr && addr <= U32_MAX - (u32)count * 32 + 1;
++}
++
++/* Called under index_lock. Ordering is between two DMA engines, not just
++ * between the CPU and one device: publish an index only after observing the
++ * producer's writeback; never inspect or translate packet descriptors.
++ */
++static void ppe_ds_sync_locked(struct qcom_ppe_ds *ds)
++{
++	const struct qcom_ppe_ds_ops *ops = ds->cfg.ops;
++	u16 tcl_cons, reo_prod, rx_prod, tx_cons;
++
++	tcl_cons = ops->get_tcl_cons(ds->cfg.priv);
++	reo_prod = ops->get_reo_prod(ds->cfg.priv);
++	rx_prod = ppe_ds_read(ds, EDMA_REG_RXDESC_PROD_IDX(ds->ring));
++	tx_cons = ppe_ds_read(ds, EDMA_REG_TXDESC_CONS_IDX(ds->ring));
++	if (tcl_cons >= ds->cfg.ppe2tcl_count ||
++	    rx_prod >= ds->cfg.ppe2tcl_count ||
++	    reo_prod >= ds->cfg.reo2ppe_count ||
++	    tx_cons >= ds->cfg.reo2ppe_count || READ_ONCE(ds->faulted)) {
++		WRITE_ONCE(ds->faulted, true);
++		ppe_ds_mask(ds);
++		if (ds->cfg.ops->fault)
++			ds->cfg.ops->fault(ds->cfg.priv);
++		return;
++	}
++
++	dma_rmb();
++	if (rx_prod != ds->rx_prod) {
++		atomic64_add((rx_prod - ds->rx_prod) &
++			     (ds->cfg.ppe2tcl_count - 1), &ds->down_desc);
++		ops->set_tcl_prod(ds->cfg.priv, rx_prod);
++		ds->rx_prod = rx_prod;
++	}
++	if (tx_cons != ds->tx_cons) {
++		ops->set_reo_cons(ds->cfg.priv, tx_cons);
++		ds->tx_cons = tx_cons;
++	}
++	dma_wmb();
++	if (tcl_cons != ds->rx_cons) {
++		ppe_ds_write(ds, EDMA_REG_RXDESC_CONS_IDX(ds->ring), tcl_cons);
++		ds->rx_cons = tcl_cons;
++	}
++	if (reo_prod != ds->tx_prod) {
++		atomic64_add((reo_prod - ds->tx_prod) &
++			     (ds->cfg.reo2ppe_count - 1), &ds->up_desc);
++		ppe_ds_write(ds, EDMA_REG_TXDESC_PROD_IDX(ds->ring), reo_prod);
++		ds->tx_prod = reo_prod;
++	}
++	atomic64_inc(&ds->index_updates);
++}
++
++void qcom_ppe_ds_sync(struct qcom_ppe_ds *ds)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&ds->index_lock, flags);
++	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted))
++		ppe_ds_sync_locked(ds);
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_sync);
++
++/* The WLAN pool can recover while RXFILL's level IRQ is masked after a
++ * short refill. Wake only that stalled refill, once per completed WLAN
++ * batch, rather than waiting for the index retry timer. The client must
++ * publish its free buffers and drop its pool/ring locks before calling.
++ */
++void qcom_ppe_ds_refill_ready(struct qcom_ppe_ds *ds)
++{
++	unsigned long flags;
++
++	if (!READ_ONCE(ds->refill_short))
++		return;
++
++	spin_lock_irqsave(&ds->index_lock, flags);
++	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted) &&
++	    READ_ONCE(ds->refill_short) && napi_schedule_prep(&ds->napi)) {
++		ppe_ds_mask(ds);
++		atomic64_inc(&ds->refill_wakes);
++		__napi_schedule(&ds->napi);
++	}
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_refill_ready);
++
++static int ppe_ds_refill(struct qcom_ppe_ds *ds, unsigned int budget)
++{
++	u16 cons = ppe_ds_read(ds, EDMA_REG_RXFILL_CONS_IDX(ds->ring));
++	u16 mask = ds->cfg.ppe2tcl_count - 1;
++	unsigned int needed, count, i;
++	struct edma_rxfill_desc *desc;
++
++	if (cons >= ds->cfg.ppe2tcl_count) {
++		WRITE_ONCE(ds->faulted, true);
++		return -EIO;
++	}
++	needed = (cons - ds->fill_prod - 1) & mask;
++	needed = min3(needed, budget, (unsigned int)PPE_DS_BATCH);
++	if (!needed)
++		return 0;
++	count = ds->cfg.ops->refill(ds->cfg.priv, ds->buffers, needed,
++				  ds->cfg.buffer_size);
++	if (count > needed) {
++		WRITE_ONCE(ds->faulted, true);
++		return -EIO;
++	}
++	for (i = 0; i < count; i++) {
++		/* The client must return DMA-mapped buffers with valid cookies.
++		 * Refuse a truncated DMA address; leave ownership with the
++		 * client on protocol violations instead of publishing it.
++		 */
++		if (!ds->buffers[i].addr ||
++		    ds->buffers[i].addr > U32_MAX - ds->cfg.buffer_size + 1) {
++			WRITE_ONCE(ds->faulted, true);
++			return -ERANGE;
++		}
++	}
++	for (i = 0; i < count; i++) {
++		desc = &ds->fill[ds->fill_prod];
++		desc->word0 = cpu_to_le32(lower_32_bits(ds->buffers[i].addr));
++		desc->word1 = cpu_to_le32((u32)ds->cfg.buffer_size << 16);
++		desc->word2 = lower_32_bits(ds->buffers[i].cookie);
++		desc->word3 = upper_32_bits(ds->buffers[i].cookie);
++		ds->fill_prod = (ds->fill_prod + 1) & mask;
++	}
++	dma_wmb();
++	ppe_ds_write(ds, EDMA_REG_RXFILL_PROD_IDX(ds->ring), ds->fill_prod);
++	atomic64_add(count, &ds->refilled);
++	WRITE_ONCE(ds->refill_short, count < needed);
++	if (count < needed)
++		atomic64_inc(&ds->refill_failures);
++	return count;
++}
++
++static int ppe_ds_complete(struct qcom_ppe_ds *ds, unsigned int budget)
++{
++	u16 prod = ppe_ds_read(ds, EDMA_REG_TXCMPL_PROD_IDX(ds->ring));
++	u16 mask = ds->cfg.reo2ppe_count - 1;
++	unsigned int count, i;
++	struct edma_txcmpl_desc *desc;
++
++	if (prod >= ds->cfg.reo2ppe_count) {
++		WRITE_ONCE(ds->faulted, true);
++		return -EIO;
++	}
++	count = min3((unsigned int)((prod - ds->complete_cons) & mask),
++		     budget, (unsigned int)PPE_DS_BATCH);
++	dma_rmb();
++	for (i = 0; i < count; i++) {
++		desc = &ds->complete[ds->complete_cons];
++		ds->cookies[i] = (u64)desc->word0 | (u64)desc->word1 << 32;
++		ds->complete_cons = (ds->complete_cons + 1) & mask;
++	}
++	if (!count)
++		return 0;
++	ds->cfg.ops->release(ds->cfg.priv, ds->cookies, count);
++	dma_wmb();
++	ppe_ds_write(ds, EDMA_REG_TXCMPL_CONS_IDX(ds->ring), ds->complete_cons);
++	atomic64_add(count, &ds->released);
++	return count;
++}
++
++/* RXDESC is aliased to a WLAN source ring. Its non-empty interrupt stays
++ * asserted until TCL consumes the entries, even after we publish its HP.
++ * Keep that interrupt masked while ownership is with WLAN, as QSDK does.
++ * A bounded retry hands off indices and retries a depleted buffer pool
++ * without an IRQ for each stalled entry or a tight NAPI loop. The same
++ * timer batches TX completions while uplink traffic is active; an empty
++ * completion poll restores the level interrupt for the next burst.
++ * The callback only schedules NAPI and never takes a WLAN window lock.
++ */
++static enum hrtimer_restart ppe_ds_poll_retry(struct hrtimer *timer)
++{
++	struct qcom_ppe_ds *ds = container_of(timer, struct qcom_ppe_ds, poll_timer);
++
++	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted)) {
++		atomic64_inc(&ds->poll_retries);
++		napi_schedule(&ds->napi);
++	}
++	return HRTIMER_NORESTART;
++}
++
++static int ppe_ds_poll(struct napi_struct *napi, int budget)
++{
++	struct qcom_ppe_ds *ds = container_of(napi, struct qcom_ppe_ds, napi);
++	unsigned long flags;
++	int filled, done;
++
++	qcom_ppe_ds_sync(ds);
++	done = ppe_ds_complete(ds, budget);
++	filled = ppe_ds_refill(ds, budget);
++	if (done < 0 || filled < 0 || READ_ONCE(ds->faulted)) {
++		ppe_ds_mask(ds);
++		napi_complete_done(napi, 0);
++		if (ds->cfg.ops->fault)
++			ds->cfg.ops->fault(ds->cfg.priv);
++		return 0;
++	}
++	if (done == budget || (filled == budget && !ds->refill_short))
++		return budget;
++
++	if (napi_complete_done(napi, done)) {
++		bool retry_rx, defer_tx = done > 0;
++
++		spin_lock_irqsave(&ds->index_lock, flags);
++		if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted)) {
++			ppe_ds_read(ds, EDMA_REG_RXDESC_INT_STAT(ds->ring));
++			ppe_ds_read(ds, EDMA_REG_TX_INT_STAT(ds->ring));
++			ppe_ds_read(ds, EDMA_REG_RXFILL_INT_STAT(ds->ring));
++			/* Rearm RX only after the consumer catches the producer.
++			 * Arrivals racing an empty-ring check assert the level IRQ
++			 * when it is unmasked; pending entries instead get a retry.
++			 */
++			retry_rx = ds->rx_prod != ds->rx_cons || ds->refill_short;
++			ppe_ds_write(ds, EDMA_REG_RXDESC_INT_MASK(ds->ring), !retry_rx);
++			/* Repeated short uplink batches otherwise generate an IRQ
++			 * and a full WLAN/EDMA index handoff every few packets.
++			 * Keep TX masked for one bounded poll interval after work.
++			 * If the next poll is empty, unmasking the level IRQ also
++			 * catches completions racing the empty-ring check.
++			 */
++			ppe_ds_write(ds, EDMA_REG_TX_INT_MASK(ds->ring), !defer_tx);
++			if (defer_tx)
++				atomic64_inc(&ds->tx_deferred);
++			if (retry_rx || defer_tx)
++				hrtimer_start(&ds->poll_timer,
++					      ns_to_ktime(READ_ONCE(ds_rx_retry_us) * NSEC_PER_USEC),
++					      HRTIMER_MODE_REL);
++			if (!ds->refill_short)
++				ppe_ds_write(ds, EDMA_REG_RXFILL_INT_MASK(ds->ring),
++					     PPE_DS_RXFILL_LOW_IRQ);
++		}
++		spin_unlock_irqrestore(&ds->index_lock, flags);
++	}
++	return done;
++}
++
++static irqreturn_t ppe_ds_interrupt(int irq, void *priv)
++{
++	struct qcom_ppe_ds *ds = priv;
++
++	/* index_lock can lead into the WLAN PCI window lock. Taking it in
++	 * hard IRQ context would invert a window-lock holder interrupted here.
++	 * Stop masks these IRQs, synchronizes them and then disables NAPI.
++	 */
++	ppe_ds_mask(ds);
++	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted))
++		napi_schedule_irqoff(&ds->napi);
++	return IRQ_HANDLED;
++}
++
++void ppe_ds_dma_error(struct ppe_device *ppe_dev)
++{
++	struct ppe_ds_provider *provider;
++	struct qcom_ppe_ds *ds;
++	unsigned long flags;
++	u16 cons;
++	int i;
++
++	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++	provider = ppe_ds_provider;
++	if (!provider || provider->ppe_dev != ppe_dev)
++		goto unlock;
++	for (i = 0; i < PPE_DS_NODES; i++) {
++		ds = provider->nodes[i];
++		if (!ds || !READ_ONCE(ds->running))
++			continue;
++		WRITE_ONCE(ds->faulted, true);
++		ppe_ds_mask(ds);
++		/* Halt new submissions immediately; retain every mapping until
++		 * process-context teardown confirms that DMA has quiesced.
++		 */
++		ppe_ds_update(ds, EDMA_REG_RXDESC_CTRL(ds->ring), EDMA_RXDESC_RX_EN, 0);
++		ppe_ds_update(ds, EDMA_REG_RXFILL_RING_EN(ds->ring), EDMA_RXFILL_RING_EN, 0);
++		ppe_ds_update(ds, EDMA_REG_TXDESC_CTRL(ds->ring), EDMA_TXDESC_TX_ENABLE, 0);
++		cons = ppe_ds_read(ds, EDMA_REG_RXFILL_CONS_IDX(ds->ring));
++		dev_err(ppe_dev->dev,
++			"DS DMA fault ring %u: RX %pad/%pad FILL %pad TX %pad/%pad CMPL %pad; indices rx %u/%u fill %u/%u tx %u/%u cmpl %u/%u\n",
++			ds->ring, &ds->cfg.ppe2tcl, &ds->rx_secondary_dma,
++			&ds->fill_dma, &ds->cfg.reo2ppe, &ds->tx_secondary_dma,
++			&ds->complete_dma,
++			ppe_ds_read(ds, EDMA_REG_RXDESC_PROD_IDX(ds->ring)),
++			ppe_ds_read(ds, EDMA_REG_RXDESC_CONS_IDX(ds->ring)),
++			ds->fill_prod, cons,
++			ppe_ds_read(ds, EDMA_REG_TXDESC_PROD_IDX(ds->ring)),
++			ppe_ds_read(ds, EDMA_REG_TXDESC_CONS_IDX(ds->ring)),
++			ppe_ds_read(ds, EDMA_REG_TXCMPL_PROD_IDX(ds->ring)),
++			ds->complete_cons);
++		if (cons < ds->cfg.ppe2tcl_count)
++			dev_err(ppe_dev->dev, "DS fill[%u] %08x %08x %08x %08x\n",
++				cons, ds->fill[cons].word0, ds->fill[cons].word1,
++				ds->fill[cons].word2, ds->fill[cons].word3);
++		if (cons < ds->cfg.ppe2tcl_count) {
++			u16 last = (cons - 1) & (ds->cfg.ppe2tcl_count - 1);
++			struct edma_rxfill_desc *fill = &ds->fill[last];
++
++			/* CONS points at the next buffer, not the consumed one. */
++			dev_err(ppe_dev->dev, "DS last fill[%u] %08x %08x %08x %08x\n",
++				last, fill->word0, fill->word1, fill->word2, fill->word3);
++		}
++		dev_err(ppe_dev->dev, "DS RX ctrl %08x secondary[0] %32phN\n",
++			ppe_ds_read(ds, EDMA_REG_RXDESC_CTRL(ds->ring)),
++			ds->rx_secondary);
++		if (ds->cfg.ops->fault)
++			ds->cfg.ops->fault(ds->cfg.priv);
++	}
++unlock:
++	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++}
++
++static int ppe_ds_queue_mapping(struct qcom_ppe_ds *ds, bool active)
++{
++	struct ppe_device *ppe = ds->provider->ppe_dev;
++	u32 bitmap[PPE_RING_TO_QUEUE_BITMAP_WORD_CNT];
++	u32 mask = GENMASK(ds->queue + PPE_DS_QUEUES - 1 - 32,
++			   ds->queue - 32);
++	u32 qmap = active ? ds->ring * 0x01010101 : 0;
++	u32 value, reg;
++	int i, ret;
++
++	/* Each queue belongs to exactly one backpressure ring. Remove the DS
++	 * range from the default CPU-ring bitmap before enabling its own map.
++	 */
++	ret = regmap_bulk_read(ppe->regmap, PPE_RING_Q_MAP_TBL_ADDR,
++			       bitmap, ARRAY_SIZE(bitmap));
++	if (ret)
++		return ret;
++	if (active)
++		bitmap[1] &= ~mask;
++	else
++		bitmap[1] |= mask;
++	ret = ppe_ring_queue_map_set(ppe, 0, bitmap);
++	if (ret)
++		return ret;
++	memset(bitmap, 0, sizeof(bitmap));
++	if (active)
++		bitmap[1] = mask;
++	ret = ppe_ring_queue_map_set(ppe, ds->ring, bitmap);
++	if (ret)
++		return ret;
++	for (i = 0; i < PPE_DS_QUEUES / 4; i++) {
++		reg = EDMA_BASE_OFFSET + EDMA_QID2RID_TABLE_MEM(ds->queue / 4 + i);
++		ret = regmap_write(ppe->regmap, reg, qmap);
++		if (ret)
++			return ret;
++	}
++	reg = EDMA_BASE_OFFSET + EDMA_REG_RXDESC2FILL_MAP_0_ADDR;
++	ret = regmap_update_bits(ppe->regmap, reg, 7 << (ds->ring * 3),
++				 active ? ds->ring << (ds->ring * 3) : 0);
++	if (ret)
++		return ret;
++	reg = EDMA_BASE_OFFSET + EDMA_REG_TXDESC2CMPL_MAP_0_ADDR;
++	value = active ? ds->ring << (ds->ring * 5) : 0;
++	return regmap_update_bits(ppe->regmap, reg, 31 << (ds->ring * 5), value);
++}
++
++static void ppe_ds_configure(struct qcom_ppe_ds *ds)
++{
++	u16 r = ds->ring;
++
++	ppe_ds_mask(ds);
++	/* QSDK and the CPU path only change each enable bit. Preserve all
++	 * other control fields instead of writing the whole register.
++	 */
++	ppe_ds_update(ds, EDMA_REG_RXDESC_CTRL(r), EDMA_RXDESC_RX_EN, 0);
++	ppe_ds_update(ds, EDMA_REG_RXFILL_RING_EN(r), EDMA_RXFILL_RING_EN, 0);
++	ppe_ds_update(ds, EDMA_REG_TXDESC_CTRL(r), EDMA_TXDESC_TX_ENABLE, 0);
++	ppe_ds_write(ds, EDMA_REG_RXDESC_DISABLE(r), 0);
++	ppe_ds_write(ds, EDMA_REG_RXFILL_DISABLE(r), 0);
++	ppe_ds_write(ds, EDMA_REG_RXDESC_BA(r), lower_32_bits(ds->cfg.ppe2tcl));
++	ppe_ds_write(ds, EDMA_REG_RXDESC_PREHEADER_BA(r), lower_32_bits(ds->rx_secondary_dma));
++	ppe_ds_write(ds, EDMA_REG_RXDESC_RING_SIZE(r), ds->cfg.ppe2tcl_count);
++	ds->rx_prod = ppe_ds_read(ds, EDMA_REG_RXDESC_PROD_IDX(r));
++	ds->rx_cons = ds->rx_prod;
++	ppe_ds_write(ds, EDMA_REG_RXDESC_CONS_IDX(r), ds->rx_prod);
++	ppe_ds_write(ds, EDMA_REG_RXDESC_FC_THRE(r), PPE_DS_FC_THRESH);
++	ppe_ds_write(ds, EDMA_REG_RX_MOD_TIMER(r), EDMA_RX_MOD_TIMER_INIT);
++	ppe_ds_write(ds, EDMA_REG_RX_INT_CTRL(r), EDMA_RX_NE_INT_EN);
++	ppe_ds_write(ds, EDMA_REG_RXFILL_BA(r), lower_32_bits(ds->fill_dma));
++	ppe_ds_write(ds, EDMA_REG_RXFILL_RING_SIZE(r), ds->cfg.ppe2tcl_count);
++	ds->fill_prod = ppe_ds_read(ds, EDMA_REG_RXFILL_CONS_IDX(r));
++	ppe_ds_write(ds, EDMA_REG_RXFILL_PROD_IDX(r), ds->fill_prod);
++	ppe_ds_write(ds, EDMA_REG_RXFILL_FC_THRE(r), PPE_DS_FC_THRESH);
++	ppe_ds_write(ds, EDMA_REG_RXFILL_UGT_THRE(r), PPE_DS_RXFILL_LOW);
++	ppe_ds_write(ds, EDMA_REG_TXDESC_BA(r), lower_32_bits(ds->cfg.reo2ppe));
++	ppe_ds_write(ds, EDMA_REG_TXDESC_BA2(r), lower_32_bits(ds->tx_secondary_dma));
++	ppe_ds_write(ds, EDMA_REG_TXDESC_RING_SIZE(r), ds->cfg.reo2ppe_count);
++	ds->tx_cons = ppe_ds_read(ds, EDMA_REG_TXDESC_CONS_IDX(r));
++	ds->tx_prod = ds->tx_cons;
++	ppe_ds_write(ds, EDMA_REG_TXDESC_PROD_IDX(r), ds->tx_prod);
++	ppe_ds_write(ds, EDMA_REG_TXCMPL_BA(r), lower_32_bits(ds->complete_dma));
++	ppe_ds_write(ds, EDMA_REG_TXCMPL_RING_SIZE(r), ds->cfg.reo2ppe_count);
++	ds->complete_cons = ppe_ds_read(ds, EDMA_REG_TXCMPL_PROD_IDX(r));
++	ppe_ds_write(ds, EDMA_REG_TXCMPL_CONS_IDX(r), ds->complete_cons);
++	ppe_ds_write(ds, EDMA_REG_TXCMPL_CTRL(r), EDMA_TXCMPL_RETMODE_OPAQUE);
++	ppe_ds_write(ds, EDMA_REG_TX_MOD_TIMER(r), EDMA_TX_MOD_TIMER);
++	ppe_ds_write(ds, EDMA_REG_TX_INT_CTRL(r), EDMA_TX_NE_INT_EN);
++}
++
++static void ppe_ds_free(struct qcom_ppe_ds *ds)
++{
++	struct device *dev = ds->provider->ppe_dev->dev;
++	unsigned int rx = ds->cfg.ppe2tcl_count, tx = ds->cfg.reo2ppe_count;
++	int i;
++
++	for (i = 0; i < ds->requested_irqs; i++)
++		free_irq(ds->provider->irqs[ds->ring - 1][i], ds);
++	if (ds->napi_dev) {
++		netif_napi_del(&ds->napi);
++		free_netdev(ds->napi_dev);
++	}
++	if (ds->fill)
++		dma_free_coherent(dev, rx * sizeof(*ds->fill), ds->fill, ds->fill_dma);
++	if (ds->complete)
++		dma_free_coherent(dev, tx * sizeof(*ds->complete), ds->complete, ds->complete_dma);
++	if (ds->rx_secondary)
++		dma_free_coherent(dev, rx * 32, ds->rx_secondary, ds->rx_secondary_dma);
++	if (ds->tx_secondary)
++		dma_free_coherent(dev, tx * 32, ds->tx_secondary, ds->tx_secondary_dma);
++	/* AUTOREMOVE_CONSUMER is managed by the driver core. Explicit deletion
++	 * is valid only for stateless links and warns during consumer unbind.
++	 */
++	put_device(ds->cfg.wlan_dev);
++	kfree(ds);
++}
++
++struct qcom_ppe_ds *qcom_ppe_ds_register(const struct qcom_ppe_ds_config *cfg)
++{
++	struct ppe_ds_provider *provider;
++	struct qcom_ppe_ds *ds;
++	struct device *dev;
++	unsigned long flags;
++	int node, i, ret = -ENODEV;
++
++	if (!cfg || !cfg->wlan_dev || !cfg->ops || !cfg->ops->set_start_indices ||
++	    !cfg->ops->get_tcl_cons ||
++	    !cfg->ops->set_tcl_prod || !cfg->ops->get_reo_prod ||
++	    !cfg->ops->set_reo_cons || !cfg->ops->refill || !cfg->ops->release ||
++	    !ppe_ds_ring_valid(cfg->ppe2tcl, cfg->ppe2tcl_count) ||
++	    !ppe_ds_ring_valid(cfg->reo2ppe, cfg->reo2ppe_count) ||
++	    cfg->buffer_size < 1536 || cfg->buffer_size > 16383)
++		return ERR_PTR(-EINVAL);
++	mutex_lock(&ppe_ds_lock);
++	provider = ppe_ds_provider;
++	if (!provider)
++		goto unlock;
++	dev = provider->ppe_dev->dev;
++	if (!ppe_ds_identity_dma(dev) || !ppe_ds_identity_dma(cfg->wlan_dev)) {
++		ret = -EOPNOTSUPP;
++		goto unlock;
++	}
++	for (node = 0; node < PPE_DS_NODES; node++)
++		if (!provider->nodes[node])
++			break;
++	if (node == PPE_DS_NODES) {
++		ret = -ENOSPC;
++		goto unlock;
++	}
++	if (!try_module_get(THIS_MODULE))
++		goto unlock;
++	ds = kzalloc(sizeof(*ds), GFP_KERNEL);
++	if (!ds) {
++		ret = -ENOMEM;
++		goto put_module;
++	}
++	ds->provider = provider;
++	ds->cfg = *cfg;
++	get_device(cfg->wlan_dev);
++	ds->ring = node + 1;
++	ds->queue = PPE_DS_QUEUE_BASE + node * PPE_DS_QUEUES;
++	mutex_init(&ds->lock);
++	spin_lock_init(&ds->index_lock);
++	hrtimer_setup(&ds->poll_timer, ppe_ds_poll_retry, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	ds->napi_dev = alloc_netdev_dummy(0);
++	if (!ds->napi_dev) {
++		ret = -ENOMEM;
++		goto free_ds;
++	}
++	netif_napi_add(ds->napi_dev, &ds->napi, ppe_ds_poll);
++	ds->fill = dma_alloc_coherent(dev, cfg->ppe2tcl_count * sizeof(*ds->fill),
++				      &ds->fill_dma, GFP_KERNEL);
++	ds->complete = dma_alloc_coherent(dev, cfg->reo2ppe_count * sizeof(*ds->complete),
++					  &ds->complete_dma, GFP_KERNEL);
++	ds->rx_secondary = dma_alloc_coherent(dev, cfg->ppe2tcl_count * 32,
++					      &ds->rx_secondary_dma, GFP_KERNEL);
++	ds->tx_secondary = dma_alloc_coherent(dev, cfg->reo2ppe_count * 32,
++					      &ds->tx_secondary_dma, GFP_KERNEL);
++	if (!ds->fill || !ds->complete || !ds->rx_secondary || !ds->tx_secondary) {
++		ret = -ENOMEM;
++		goto free_ds;
++	}
++	if (ds->fill_dma > U32_MAX - cfg->ppe2tcl_count * sizeof(*ds->fill) + 1 ||
++	    ds->complete_dma > U32_MAX - cfg->reo2ppe_count * sizeof(*ds->complete) + 1 ||
++	    ds->rx_secondary_dma > U32_MAX - cfg->ppe2tcl_count * 32 + 1 ||
++	    ds->tx_secondary_dma > U32_MAX - cfg->reo2ppe_count * 32 + 1) {
++		ret = -ERANGE;
++		goto free_ds;
++	}
++	/* Managed link makes the WLAN consumer stop before supplier unbind. */
++	ds->link = device_link_add(cfg->wlan_dev, dev, DL_FLAG_AUTOREMOVE_CONSUMER);
++	if (!ds->link) {
++		ret = -EINVAL;
++		goto free_ds;
++	}
++	ppe_ds_configure(ds);
++	if (ds->faulted || ds->rx_prod >= cfg->ppe2tcl_count ||
++	    ds->fill_prod >= cfg->ppe2tcl_count || ds->tx_cons >= cfg->reo2ppe_count ||
++	    ds->complete_cons >= cfg->reo2ppe_count) {
++		ret = -EIO;
++		goto free_ds;
++	}
++	ret = cfg->ops->set_start_indices(cfg->priv, ds->rx_prod, ds->tx_cons);
++	if (ret)
++		goto free_ds;
++	for (i = 0; i < PPE_DS_IRQ_COUNT; i++) {
++		ret = request_irq(provider->irqs[node][i], ppe_ds_interrupt, 0,
++				  "qcom-ppe-ds", ds);
++		if (ret)
++			goto free_ds;
++		ds->requested_irqs++;
++	}
++	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++	provider->nodes[node] = ds;
++	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++	mutex_unlock(&ppe_ds_lock);
++	return ds;
++
++free_ds:
++	ppe_ds_free(ds);
++put_module:
++	module_put(THIS_MODULE);
++unlock:
++	mutex_unlock(&ppe_ds_lock);
++	return ERR_PTR(ret);
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_register);
++
++int qcom_ppe_ds_start(struct qcom_ppe_ds *ds)
++{
++	unsigned long flags;
++	int ret;
++
++	mutex_lock(&ds->lock);
++	if (ds->ever_started || ds->faulted) {
++		ret = -EINVAL;
++		goto unlock;
++	}
++	do {
++		ret = ppe_ds_refill(ds, PPE_DS_BATCH);
++		if (ret < 0)
++			goto unlock;
++		if (ds->refill_short) {
++			ret = -ENOMEM;
++			goto unlock;
++		}
++	} while (ret);
++	mutex_lock(&ppe_ds_lock);
++	ret = ppe_ds_queue_mapping(ds, true);
++	if (ret)
++		ppe_ds_queue_mapping(ds, false);
++	mutex_unlock(&ppe_ds_lock);
++	if (ret)
++		goto unlock;
++	napi_enable(&ds->napi);
++	ds->napi_enabled = true;
++	ds->ever_started = true;
++	spin_lock_irqsave(&ds->index_lock, flags);
++	WRITE_ONCE(ds->running, true);
++	ppe_ds_update(ds, EDMA_REG_RXFILL_RING_EN(ds->ring),
++		      EDMA_RXFILL_RING_EN, EDMA_RXFILL_RING_EN);
++	ppe_ds_update(ds, EDMA_REG_RXDESC_CTRL(ds->ring),
++		      EDMA_RXDESC_RX_EN, EDMA_RXDESC_RX_EN);
++	ppe_ds_update(ds, EDMA_REG_TXDESC_CTRL(ds->ring),
++		      EDMA_TXDESC_TX_ENABLE, EDMA_TXDESC_TX_ENABLE);
++	napi_schedule(&ds->napi);
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++	ret = READ_ONCE(ds->faulted) ? -EIO : 0;
++unlock:
++	mutex_unlock(&ds->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_start);
++
++int qcom_ppe_ds_stop(struct qcom_ppe_ds *ds)
++{
++	struct regmap *map = ds->provider->ppe_dev->regmap;
++	unsigned long flags;
++	u32 val;
++	int i, ret = 0, done;
++
++	mutex_lock(&ds->lock);
++	if (ds->stopped || !ds->ever_started)
++		goto unlock;
++	/* Keep installed flows functional through the CPU while quiescing DS. */
++	for (i = 0; i < PPE_VP_SLOTS; i++) {
++		if (!(ds->allocated_vps & BIT(i)))
++			continue;
++		ret = ppe_vp_queue_set(ds->provider->ppe_dev,
++				       PPE_VP_PORT_BASE + i, -1, 0);
++		if (ret)
++			goto quarantine;
++	}
++	spin_lock_irqsave(&ds->index_lock, flags);
++	/* A fault has already halted submissions. Do not invoke the fault
++	 * callback again while its consumer is trying to stop this handle.
++	 */
++	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted))
++		ppe_ds_sync_locked(ds);
++	WRITE_ONCE(ds->running, false);
++	ppe_ds_mask(ds);
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++	for (i = 0; i < ds->requested_irqs; i++)
++		synchronize_irq(ds->provider->irqs[ds->ring - 1][i]);
++	hrtimer_cancel(&ds->poll_timer);
++	if (ds->napi_enabled) {
++		napi_disable(&ds->napi);
++		ds->napi_enabled = false;
++	}
++
++	ppe_ds_write(ds, EDMA_REG_RXDESC_DISABLE(ds->ring), 1);
++	ret = regmap_read_poll_timeout(map, EDMA_BASE_OFFSET +
++				      EDMA_REG_RXDESC_DISABLE_DONE(ds->ring),
++				      val, val & 1, 100, 100000);
++	if (ret)
++		goto quarantine;
++	ppe_ds_write(ds, EDMA_REG_RXFILL_DISABLE(ds->ring), 1);
++	ret = regmap_read_poll_timeout(map, EDMA_BASE_OFFSET +
++				      EDMA_REG_RXFILL_DISABLE_DONE(ds->ring),
++				      val, val & 1, 100, 100000);
++	if (ret)
++		goto quarantine;
++	/* WLAN must have stopped publishing REO entries before this call.
++	 * Keep consuming completions while EDMA drains, so it cannot stall
++	 * behind a full completion ring.
++	 */
++	for (i = 0; i < 1000; i++) {
++		done = ppe_ds_complete(ds, PPE_DS_BATCH);
++		if (done < 0) {
++			ret = done;
++			goto quarantine;
++		}
++		val = ppe_ds_read(ds, EDMA_REG_TXDESC_CONS_IDX(ds->ring));
++		if (val == ds->tx_prod && !done)
++			break;
++		usleep_range(100, 200);
++	}
++	if (i == 1000) {
++		ret = -ETIMEDOUT;
++		goto quarantine;
++	}
++	ppe_ds_update(ds, EDMA_REG_TXDESC_CTRL(ds->ring), EDMA_TXDESC_TX_ENABLE, 0);
++	ppe_ds_read(ds, EDMA_REG_TXDESC_CTRL(ds->ring));
++	/* TX has no disable-done register. QSDK waits for the final completion
++	 * writeback after disabling the ring; then drains it before freeing.
++	 */
++	usleep_range(5000, 6000);
++	do {
++		done = ppe_ds_complete(ds, PPE_DS_BATCH);
++	} while (done > 0);
++	if (done < 0 || READ_ONCE(ds->faulted)) {
++		ret = -EIO;
++		goto quarantine;
++	}
++	mutex_lock(&ppe_ds_lock);
++	ret = ppe_ds_queue_mapping(ds, false);
++	mutex_unlock(&ppe_ds_lock);
++	if (ret)
++		goto quarantine;
++	ds->stopped = true;
++	goto unlock;
++quarantine:
++	WRITE_ONCE(ds->faulted, true);
++	spin_lock_irqsave(&ds->index_lock, flags);
++	WRITE_ONCE(ds->running, false);
++	ppe_ds_mask(ds);
++	spin_unlock_irqrestore(&ds->index_lock, flags);
++	for (i = 0; i < ds->requested_irqs; i++)
++		synchronize_irq(ds->provider->irqs[ds->ring - 1][i]);
++	hrtimer_cancel(&ds->poll_timer);
++	if (ds->napi_enabled) {
++		napi_disable(&ds->napi);
++		ds->napi_enabled = false;
++	}
++	dev_err(ds->cfg.wlan_dev, "PPE DS stop failed (%d); retain DMA resources\n", ret);
++unlock:
++	mutex_unlock(&ds->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_stop);
++
++int qcom_ppe_ds_unregister(struct qcom_ppe_ds *ds)
++{
++	unsigned long flags;
++	int ret, i;
++
++	ret = qcom_ppe_ds_stop(ds);
++	if (ret)
++		return ret;
++	for (i = 0; i < PPE_VP_SLOTS; i++)
++		if (ds->allocated_vps & BIT(i))
++			ppe_vp_put(ds->provider->ppe_dev, PPE_VP_PORT_BASE + i);
++	mutex_lock(&ppe_ds_lock);
++	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++	ds->provider->nodes[ds->ring - 1] = NULL;
++	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++	ppe_ds_free(ds);
++	mutex_unlock(&ppe_ds_lock);
++	module_put(THIS_MODULE);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_unregister);
++
++u16 qcom_ppe_ds_queue(struct qcom_ppe_ds *ds)
++{
++	return ds->queue;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_queue);
++
++int qcom_ppe_ds_vp_alloc(struct qcom_ppe_ds *ds, struct net_device *dev)
++{
++	int vp;
++
++	mutex_lock(&ds->lock);
++	if (ds->stopped || ds->faulted) {
++		vp = -ESHUTDOWN;
++		goto unlock;
++	}
++	/* Default fw4 flowtable priority. Other priorities remain in software
++	 * through the existing VP hook's explicit priority validation.
++	 */
++	vp = ppe_vp_get(ds->provider->ppe_dev, dev, 0);
++	if (vp >= 0) {
++		if (ds->allocated_vps & BIT(vp - PPE_VP_PORT_BASE)) {
++			ppe_vp_put(ds->provider->ppe_dev, vp);
++			vp = -EALREADY;
++		} else {
++			ds->allocated_vps |= BIT(vp - PPE_VP_PORT_BASE);
++		}
++	}
++unlock:
++	mutex_unlock(&ds->lock);
++	return vp;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_vp_alloc);
++
++int qcom_ppe_ds_vp_route(struct qcom_ppe_ds *ds, int vp, bool direct)
++{
++	int i = vp - PPE_VP_PORT_BASE, ret;
++
++	if (i < 0 || i >= PPE_VP_SLOTS)
++		return -EINVAL;
++	mutex_lock(&ds->lock);
++	if (!(ds->allocated_vps & BIT(i)))
++		ret = -ENOENT;
++	else if (direct && (!ds->running || ds->faulted))
++		ret = -ESHUTDOWN;
++	else
++		ret = ppe_vp_queue_set(ds->provider->ppe_dev, vp,
++				       direct ? ds->queue : -1, PPE_DS_QUEUE_PROFILE);
++	mutex_unlock(&ds->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_vp_route);
++
++int qcom_ppe_ds_vp_free(struct qcom_ppe_ds *ds, int vp)
++{
++	int i = vp - PPE_VP_PORT_BASE, ret;
++
++	if (i < 0 || i >= PPE_VP_SLOTS)
++		return -EINVAL;
++	mutex_lock(&ds->lock);
++	if (!(ds->allocated_vps & BIT(i))) {
++		ret = -ENOENT;
++		goto unlock;
++	}
++	ret = ppe_vp_queue_set(ds->provider->ppe_dev, vp, -1, 0);
++	if (!ret) {
++		ds->allocated_vps &= ~BIT(i);
++		ppe_vp_put(ds->provider->ppe_dev, vp);
++	}
++unlock:
++	mutex_unlock(&ds->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_ppe_ds_vp_free);
++
++static int ppe_ds_stats_show(struct seq_file *seq, void *unused)
++{
++	struct ppe_ds_provider *provider = seq->private;
++	struct qcom_ppe_ds *ds;
++	int i;
++
++	mutex_lock(&ppe_ds_lock);
++	for (i = 0; i < PPE_DS_NODES; i++) {
++		ds = provider->nodes[i];
++		if (!ds) {
++			seq_printf(seq, "node:%d unregistered\n", i);
++			continue;
++		}
++		seq_printf(seq, "node:%d ring:%u queue:%u running:%u faulted:%u "
++			   "down_desc:%lld up_desc:%lld refill:%lld release:%lld "
++			   "sync:%lld refill_fail:%lld poll_retry:%lld refill_wake:%lld tx_deferred:%lld\n",
++			   i, ds->ring, ds->queue,
++			   READ_ONCE(ds->running), READ_ONCE(ds->faulted),
++			   atomic64_read(&ds->down_desc), atomic64_read(&ds->up_desc),
++			   atomic64_read(&ds->refilled), atomic64_read(&ds->released),
++			   atomic64_read(&ds->index_updates), atomic64_read(&ds->refill_failures),
++			   atomic64_read(&ds->poll_retries), atomic64_read(&ds->refill_wakes),
++			   atomic64_read(&ds->tx_deferred));
++	}
++	mutex_unlock(&ppe_ds_lock);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(ppe_ds_stats);
++
++int ppe_ds_setup(struct ppe_device *ppe_dev)
++{
++	static const char * const irq_names[] = { "rxdesc", "rxfill", "txcmpl" };
++	struct ppe_sc_cfg sc = { .next_service_code = 12 };
++	struct ppe_ds_provider *provider;
++	struct device_node *np;
++	unsigned long flags;
++	char name[24];
++	int node, i, ret = 0;
++
++	if (!of_device_is_compatible(ppe_dev->dev->of_node, "qcom,ipq5332-ppe") &&
++	    !of_device_is_compatible(ppe_dev->dev->of_node, "qcom,ipq9574-ppe"))
++		return 0;
++	provider = kzalloc(sizeof(*provider), GFP_KERNEL);
++	if (!provider)
++		return -ENOMEM;
++	provider->ppe_dev = ppe_dev;
++	/* QSDK's SPF-bypass service retains L3/flow lookup, but prevents
++	 * bridge forwarding of unauthorised/missing wireless flows.
++	 */
++	set_bit(PPE_SC_BYPASS_EGRESS_VLAN_MEMBER_CHECK, sc.bitmaps.egress);
++	set_bit(PPE_SC_BYPASS_EGRESS_SOURCE_FLTR, sc.bitmaps.egress);
++	set_bit(PPE_SC_BYPASS_EGRESS_BRIDGING_FWD, sc.bitmaps.egress);
++	set_bit(PPE_SC_BYPASS_EGRESS_L2_SOURCE_SECURITY, sc.bitmaps.egress);
++	ret = ppe_sc_config_set(ppe_dev, 12, sc);
++	if (ret)
++		goto free_provider;
++	/* Isolate DS queue offsets from the CPU RSS profile. Both priority and
++	 * RSS must stay within this node's eight assigned queues.
++	 */
++	for (i = 0; i < 16; i++) {
++		ret = ppe_queue_ucast_offset_pri_set(ppe_dev, PPE_DS_QUEUE_PROFILE, i, 0);
++		if (ret)
++			goto free_provider;
++	}
++	for (i = 0; i < 256; i++) {
++		ret = ppe_queue_ucast_offset_hash_set(ppe_dev, PPE_DS_QUEUE_PROFILE, i, i & 7);
++		if (ret)
++			goto free_provider;
++	}
++	np = of_get_child_by_name(ppe_dev->dev->of_node, "ethernet-dma");
++	if (!np) {
++		ret = -ENODEV;
++		goto free_provider;
++	}
++	for (node = 0; node < PPE_DS_NODES; node++) {
++		for (i = 0; i < PPE_DS_IRQ_COUNT; i++) {
++			snprintf(name, sizeof(name), "%s_%u", irq_names[i], node + 1);
++			ret = of_irq_get_byname(np, name);
++			if (ret < 0)
++				goto put_node;
++			provider->irqs[node][i] = ret;
++		}
++	}
++	mutex_lock(&ppe_ds_lock);
++	if (ppe_ds_provider) {
++		ret = -EBUSY;
++	} else {
++		spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++		ppe_ds_provider = provider;
++		spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++		ret = 0;
++	}
++	mutex_unlock(&ppe_ds_lock);
++put_node:
++	of_node_put(np);
++	if (ret)
++		goto free_provider;
++	debugfs_create_file("direct_switch", 0400, ppe_dev->debugfs_root,
++			    provider, &ppe_ds_stats_fops);
++	return 0;
++free_provider:
++	kfree(provider);
++	return ret;
++}
++
++void ppe_ds_destroy(struct ppe_device *ppe_dev)
++{
++	struct ppe_ds_provider *provider;
++	unsigned long flags;
++	int i;
++
++	mutex_lock(&ppe_ds_lock);
++	provider = ppe_ds_provider;
++	if (!provider || provider->ppe_dev != ppe_dev)
++		goto unlock;
++	/* Managed device links unbind consumers first. A nonempty slot means
++	 * a client failed to quiesce DMA: do not free its callback context.
++	 */
++	for (i = 0; i < PPE_DS_NODES; i++) {
++		if (provider->nodes[i]) {
++			dev_err(ppe_dev->dev, "PPE DS consumer still owns DMA rings\n");
++			goto unlock;
++		}
++	}
++	spin_lock_irqsave(&ppe_ds_fault_lock, flags);
++	ppe_ds_provider = NULL;
++	spin_unlock_irqrestore(&ppe_ds_fault_lock, flags);
++	kfree(provider);
++unlock:
++	mutex_unlock(&ppe_ds_lock);
++}
+--- /dev/null
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_ds.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _QCOM_PPE_DS_INTERNAL_H
++#define _QCOM_PPE_DS_INTERNAL_H
++
++struct ppe_device;
++
++int ppe_ds_setup(struct ppe_device *ppe_dev);
++void ppe_ds_destroy(struct ppe_device *ppe_dev);
++void ppe_ds_dma_error(struct ppe_device *ppe_dev);
++
++#endif
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
+@@ -1614,6 +1614,7 @@
+ #define EDMA_REG_TX_INT_CTRL(n)		(0x9900c + (0x1000 * (n)))
+ 
+ /* EDMA_QID2RID_TABLE_MEM register (Rx queue to ring ID mapping) field masks */
++#define EDMA_QID2RID_TABLE_MEM(q)	(0xb9000 + (0x4 * (q)))
+ #define EDMA_RX_RING_ID_QUEUE0_MASK	GENMASK(7, 0)
+ #define EDMA_RX_RING_ID_QUEUE1_MASK	GENMASK(15, 8)
+ #define EDMA_RX_RING_ID_QUEUE2_MASK	GENMASK(23, 16)
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_vp.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_vp.c
+@@ -1080,6 +1080,42 @@ void ppe_vp_put(struct ppe_device *ppe_d
+ 	mutex_unlock(&vpt->lock);
+ }
+ 
++/* Change only the destination queue; the port remains valid for installed
++ * routed flows while a Direct Switch client switches to/from CPU delivery.
++ */
++int ppe_vp_queue_set(struct ppe_device *ppe_dev, int port, int queue, int profile)
++{
++	struct ppe_queue_ucast_dest dest = { .dest_port = port };
++	struct ppe_vp *vp = ppe_dev->vp;
++	int i = port - PPE_VP_PORT_BASE, ret;
++
++	if (!vp || i < 0 || i >= PPE_VP_SLOTS)
++		return -EINVAL;
++	mutex_lock(&vp->lock);
++	if (vp->slots[i].poisoned) {
++		ret = -ENODEV;
++		goto unlock;
++	}
++	/* NETDEV_UNREGISTER already disabled an unpoisoned empty port. */
++	if (!rcu_access_pointer(vp->slots[i].dev)) {
++		ret = queue < 0 ? 0 : -ENODEV;
++		goto unlock;
++	}
++	if (queue < 0) {
++		int end;
++
++		ret = ppe_port_resource_get(ppe_dev, PPE_VP_CPU_PORT,
++					    PPE_RES_UCAST, &queue, &end);
++		if (ret)
++			goto unlock;
++		profile = EDMA_CPU_PORT_PROFILE_ID;
++	}
++	ret = ppe_queue_ucast_base_set(ppe_dev, dest, queue, profile);
++unlock:
++	mutex_unlock(&vp->lock);
++	return ret;
++}
++
+ /**
+  * ppe_vp_rx_fallback - Fail a VP uplink open after a hardware flow miss
+  * @ppe_dev: PPE device
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_vp.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_vp.h
+@@ -63,6 +63,7 @@ int ppe_vp_get_qca4b(struct ppe_device *
+ 		     int priority, bool need_hook);
+ int ppe_vp_ref_qca4b(struct ppe_device *ppe_dev, int vp, int physical_port);
+ void ppe_vp_put(struct ppe_device *ppe_dev, int vp);
++int ppe_vp_queue_set(struct ppe_device *ppe_dev, int vp, int queue, int profile);
+ struct net_device *ppe_vp_dev(struct ppe_device *ppe_dev, int vp);
+ bool ppe_vp_is_qca4b(struct ppe_device *ppe_dev, int vp);
+ int ppe_vp_physical_port(struct ppe_device *ppe_dev, int vp);
+--- /dev/null
++++ b/include/linux/soc/qcom/ppe-ds.h
+@@ -0,0 +1,75 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _LINUX_SOC_QCOM_PPE_DS_H
++#define _LINUX_SOC_QCOM_PPE_DS_H
++
++#include <linux/device.h>
++#include <linux/dma-mapping.h>
++#include <linux/types.h>
++
++struct qcom_ppe_ds;
++struct net_device;
++
++/* Buffer addresses must be mapped bidirectionally in the shared DMA domain.
++ * The WLAN owns buffers and cookies until both DMA engines have stopped.
++ */
++struct qcom_ppe_ds_buffer {
++	dma_addr_t addr;
++	u64 cookie;
++};
++
++/* Indices are descriptor indices, not WLAN SRNG word offsets. Callbacks run
++ * in atomic context and must not call back into this API or sleep.
++ */
++struct qcom_ppe_ds_ops {
++	int (*set_start_indices)(void *priv, u16 tcl_index, u16 reo_index);
++	u16 (*get_tcl_cons)(void *priv);
++	void (*set_tcl_prod)(void *priv, u16 index);
++	u16 (*get_reo_prod)(void *priv);
++	void (*set_reo_cons)(void *priv, u16 index);
++	unsigned int (*refill)(void *priv, struct qcom_ppe_ds_buffer *buffers,
++			       unsigned int count, unsigned int size);
++	void (*release)(void *priv, const u64 *cookies, unsigned int count);
++	void (*fault)(void *priv);
++};
++
++struct qcom_ppe_ds_config {
++	struct device *wlan_dev;
++	const struct qcom_ppe_ds_ops *ops;
++	void *priv;
++	dma_addr_t ppe2tcl;
++	dma_addr_t reo2ppe;
++	u16 ppe2tcl_count;
++	u16 reo2ppe_count;
++	u16 buffer_size;
++};
++
++/* Register/stop/unregister run in process context. Shared primary rings
++ * remain WLAN-owned. Registration never starts DMA. WLAN must disable peer
++ * routing before stop, and stop its own DMA before unregister/freeing rings.
++ * On a stop failure retain the handle, callbacks, rings and buffer mappings;
++ * a hardware reset is required before those resources can be reclaimed.
++ */
++struct qcom_ppe_ds *qcom_ppe_ds_register(const struct qcom_ppe_ds_config *cfg);
++/* Probe the supported transport in process context before allocating WLAN
++ * rings. Availability never starts DMA; register validates and pins it.
++ */
++bool qcom_ppe_ds_available(void);
++int qcom_ppe_ds_start(struct qcom_ppe_ds *ds);
++int qcom_ppe_ds_stop(struct qcom_ppe_ds *ds);
++int qcom_ppe_ds_unregister(struct qcom_ppe_ds *ds);
++void qcom_ppe_ds_sync(struct qcom_ppe_ds *ds);
++/* Notify after publishing returned WLAN TX buffers, outside client locks
++ * and transport callbacks. Only a stalled refill is scheduled; DMA and
++ * descriptor ownership remain unchanged. The registered handle stays live.
++ */
++void qcom_ppe_ds_refill_ready(struct qcom_ppe_ds *ds);
++u16 qcom_ppe_ds_queue(struct qcom_ppe_ds *ds);
++/* Hold a VP reference while WLAN has a matching transmit-table entry.
++ * Allocation initially delivers to the CPU. Route to DS only after the
++ * WLAN table is ready; restore CPU delivery before removing that table.
++ */
++int qcom_ppe_ds_vp_alloc(struct qcom_ppe_ds *ds, struct net_device *dev);
++int qcom_ppe_ds_vp_route(struct qcom_ppe_ds *ds, int vp, bool direct);
++int qcom_ppe_ds_vp_free(struct qcom_ppe_ds *ds, int vp);
++
++#endif

@@ -62,7 +62,7 @@ async fn dns_client_chain_resolves_proxy_through_configured_bootstrap() {
     let configs = serde_json::from_value(serde_json::json!([
         {
             "client_group": "out",
-            "client_proxies": [{
+            "client_chains": [{
                 "address": "private-proxy.invalid:80",
                 "protocol": {"type": "http"}
             }]
@@ -106,6 +106,105 @@ async fn dns_client_chain_resolves_proxy_through_configured_bootstrap() {
     }
 }
 
+#[tokio::test]
+async fn dns_whole_path_choices_pin_connections_and_reselect_on_reconnect() {
+    use hickory_resolver::proto::op::{Message, Query};
+    use hickory_resolver::proto::rr::{Name, RData, Record, RecordType, rdata};
+    use serde_json::json;
+    use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio_util::task::AbortOnDropHandle;
+
+    async fn peer(listener: TcpListener, hops: Vec<SocketAddr>, names: &[&str], tag: u8) {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        for hop in hops {
+            let mut greeting = [0; 3];
+            stream.read_exact(&mut greeting).await.unwrap();
+            assert_eq!(greeting, [5, 1, 0]);
+            stream.write_all(&[5, 0]).await.unwrap();
+            let mut connect = [0; 10];
+            stream.read_exact(&mut connect).await.unwrap();
+            let std::net::IpAddr::V4(ip) = hop.ip() else {
+                panic!()
+            };
+            assert_eq!(&connect[..4], &[5, 1, 0, 1]);
+            assert_eq!(&connect[4..8], &ip.octets());
+            assert_eq!(&connect[8..], &hop.port().to_be_bytes());
+            stream
+                .write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 0])
+                .await
+                .unwrap();
+        }
+        for name in names {
+            let size = stream.read_u16().await.unwrap();
+            let mut bytes = vec![0; size as usize];
+            stream.read_exact(&mut bytes).await.unwrap();
+            let mut reply = Message::from_vec(&bytes).unwrap().into_response();
+            assert_eq!(reply.queries[0].name().to_ascii(), *name);
+            assert_eq!(reply.queries[0].query_type, RecordType::A);
+            reply.add_answer(Record::from_rdata(
+                reply.queries[0].name().clone(),
+                0,
+                RData::A(rdata::A::new(203, 0, 113, tag)),
+            ));
+            let bytes = reply.to_vec().unwrap();
+            stream.write_u16(bytes.len() as u16).await.unwrap();
+            stream.write_all(&bytes).await.unwrap();
+        }
+    }
+
+    async fn query(resolver: &Arc<dyn Resolver>, name: &str, tag: u8) {
+        let mut request = Message::query();
+        request.add_query(Query::query(Name::from_ascii(name).unwrap(), RecordType::A));
+        let bytes = resolver.exchange(request.to_vec().unwrap()).await.unwrap();
+        let reply = Message::from_vec(&bytes).unwrap();
+        assert_eq!(reply.answers.len(), 1);
+        assert_eq!(
+            reply.answers[0].data,
+            RData::A(rdata::A::new(203, 0, 113, tag))
+        );
+    }
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let trap = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let short = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let long = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let address = |listener: &TcpListener| SocketAddr::from(([127, 0, 0, 1], listener.local_addr().unwrap().port()));
+        let target = address(&trap);
+        let downstream: SocketAddr = "192.0.2.2:1080".parse().unwrap();
+        let mut validated = crate::config::create_server_configs(serde_json::from_value(json!([
+            {"client_group":"dns-route", "type":"selector", "default":"short", "client_chains":[
+                {"name":"short", "chain":[{"address":address(&short).to_string(), "protocol":{"type":"socks"}}]},
+                {"name":"long", "chain":[
+                    {"address":address(&long).to_string(), "protocol":{"type":"socks"}},
+                    {"address":downstream.to_string(), "protocol":{"type":"socks"}}
+                ]}
+            ]},
+            {"dns_group":"dns", "dns_servers":[{
+                "url":format!("tcp://{target}"), "client_chain":"dns-route", "attempts":1, "timeout_secs":2
+            }]}
+        ])).unwrap()).unwrap();
+        let mut owner = crate::control::selection::SelectionOwner::new(None).unwrap();
+        owner.activate(validated.catalog.take().unwrap().selection).unwrap();
+        let registry = build_dns_registry(validated.dns_groups).await.unwrap();
+        let resolver = registry.get_by_name("dns").unwrap();
+        let short_peer = AbortOnDropHandle::new(tokio::spawn(async move {
+            peer(short, vec![target], &["before.test.", "pinned.test."], 1).await;
+        }));
+        let long_peer = AbortOnDropHandle::new(tokio::spawn(async move {
+            peer(long, vec![downstream, target], &["reconnected.test."], 2).await;
+        }));
+        query(&resolver, "before.test.", 1).await;
+        owner.select("dns-route", "long").unwrap();
+        query(&resolver, "pinned.test.", 1).await;
+        short_peer.await.unwrap();
+        query(&resolver, "reconnected.test.", 2).await;
+        long_peer.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(20), trap.accept()).await.is_err());
+    }).await.unwrap();
+}
+
 fn fake_groups(enabled: bool) -> Vec<ExpandedDnsGroup> {
     vec![ExpandedDnsGroup {
         name: "fake".into(),
@@ -133,7 +232,7 @@ async fn native_cache_policy_distinguishes_implicit_and_explicit_system() {
         let configs =
             crate::config::create_server_configs(serde_yaml::from_str(&yaml).unwrap()).unwrap();
         let mut registry = build_dns_registry(configs.dns_groups).await.unwrap();
-        let crate::config::Config::Server(server) = &configs.configs[0] else {
+        let crate::config::ResolvedConfig::Server(server) = &configs.configs[0] else {
             panic!("expected server")
         };
         let resolver = registry.get_for_server(server.dns.as_ref());
@@ -197,7 +296,7 @@ fn system_bootstrap_dependencies_preserve_named_group_precedence() {
     group.specs[0] = make_spec("udp://127.0.0.1:53");
     assert!(!group_uses_system(group, &known).unwrap());
     group.specs[0].client_chains = vec![
-        serde_json::from_value(serde_json::json!({
+        crate::config::test_support::from_json(serde_json::json!({
             "address": "proxy.invalid:1080", "protocol": {"type": "socks"}
         }))
         .unwrap(),
@@ -218,7 +317,7 @@ async fn explicit_proxy_bootstrap_does_not_require_native_dns_preflight() {
     spec.url = "tcp://127.0.0.1:53".into();
     spec.bootstrap_url = Some("udp://127.0.0.1:54".into());
     spec.client_chains = vec![
-        serde_json::from_value(serde_json::json!({
+        crate::config::test_support::from_json(serde_json::json!({
             "address": "proxy.invalid:1080", "protocol": {"type": "socks"}
         }))
         .unwrap(),
@@ -670,15 +769,11 @@ async fn heterogeneous_group_retries_truncated_udp_over_configured_tcp() {
 #[tokio::test]
 async fn dns_bootstrap_uses_live_quic_admission_before_activation() {
     if std::env::var_os("SHOES_DNS_ADMISSION_TEST_CHILD").is_none() {
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "dns::builder::tests::dns_bootstrap_uses_live_quic_admission_before_activation",
-            ])
-            .env("SHOES_DNS_ADMISSION_TEST_CHILD", "1")
-            .status()
-            .unwrap();
-        assert!(status.success());
+        shoes_test_support::isolated::run_isolated(
+            "dns::builder::tests::dns_bootstrap_uses_live_quic_admission_before_activation",
+            "SHOES_DNS_ADMISSION_TEST_CHILD",
+            "1",
+        );
         return;
     }
     let blackhole = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -726,15 +821,11 @@ async fn dns_bootstrap_uses_live_quic_admission_before_activation() {
 #[tokio::test]
 async fn prepared_dns_chains_use_candidate_quic_windows() {
     if std::env::var_os("SHOES_DNS_CANDIDATE_TEST_CHILD").is_none() {
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "dns::builder::tests::prepared_dns_chains_use_candidate_quic_windows",
-            ])
-            .env("SHOES_DNS_CANDIDATE_TEST_CHILD", "1")
-            .status()
-            .unwrap();
-        assert!(status.success());
+        shoes_test_support::isolated::run_isolated(
+            "dns::builder::tests::prepared_dns_chains_use_candidate_quic_windows",
+            "SHOES_DNS_CANDIDATE_TEST_CHILD",
+            "1",
+        );
         return;
     }
     let blackhole = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -1134,17 +1225,17 @@ async fn selector_identity_prevents_dns_pooling_of_identical_members() {
     let configs = serde_yaml::from_str(
         r#"
 - client_group: east
-  client_proxies: [{name: east-direct, protocol: {type: direct}, bind_interface: east}]
+  client_chains: [{name: east-direct, protocol: {type: direct}, bind_interface: east}]
 - client_group: west
-  client_proxies: [{name: west-direct, protocol: {type: direct}, bind_interface: west}]
+  client_chains: [{name: west-direct, protocol: {type: direct}, bind_interface: west}]
 - client_group: first
   type: selector
   default: east
-  client_proxies: [east, west]
+  client_chains: [{chain: [east]}, {chain: [west]}]
 - client_group: second
   type: selector
   default: west
-  client_proxies: [east, west]
+  client_chains: [{chain: [east]}, {chain: [west]}]
 - dns_group: selected
   dns_servers:
     - {url: 'udp://192.0.2.1', client_chain: first}
@@ -1154,7 +1245,7 @@ async fn selector_identity_prevents_dns_pooling_of_identical_members() {
     .unwrap();
     let validated = crate::config::create_server_configs(configs).unwrap();
     let specs = &validated.dns_groups[0].specs;
-    assert_eq!(
+    assert_ne!(
         serde_yaml::to_string(&specs[0].client_chains).unwrap(),
         serde_yaml::to_string(&specs[1].client_chains).unwrap()
     );
@@ -1177,11 +1268,19 @@ async fn selector_identity_prevents_dns_pooling_of_identical_members() {
     let resolver = build_hickory_resolver_group(&plans).await.unwrap();
     assert!(format!("{resolver:?}").contains("CompositeResolver"));
     assert_eq!(
-        plans[0].chain_group.select_bind_interface().unwrap(),
+        plans[0]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("east")
     );
     assert_eq!(
-        plans[1].chain_group.select_bind_interface().unwrap(),
+        plans[1]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("west")
     );
     let mut owner = crate::control::selection::SelectionOwner::new(None).unwrap();
@@ -1190,20 +1289,36 @@ async fn selector_identity_prevents_dns_pooling_of_identical_members() {
         .unwrap();
     owner.select("first", "west").unwrap();
     assert_eq!(
-        plans[0].chain_group.select_bind_interface().unwrap(),
+        plans[0]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("west")
     );
     assert_eq!(
-        plans[1].chain_group.select_bind_interface().unwrap(),
+        plans[1]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("west")
     );
     owner.select("second", "east").unwrap();
     assert_eq!(
-        plans[0].chain_group.select_bind_interface().unwrap(),
+        plans[0]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("west")
     );
     assert_eq!(
-        plans[1].chain_group.select_bind_interface().unwrap(),
+        plans[1]
+            .chain_group
+            .select_bind_interface()
+            .unwrap()
+            .as_deref(),
         Some("east")
     );
 }

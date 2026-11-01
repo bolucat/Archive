@@ -1,0 +1,214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: lean <lean@fnos.com>
+Date: Thu, 2 Jul 2026 22:30:00 +0800
+Subject: [PATCH] drm/msm: add A6xx max OPP clamp
+
+Add an explicit module parameter to limit A6xx Adreno and GMU frequency
+selection to a maximum nonzero OPP index. The zero entry is an off vote,
+so index 1 selects the lowest real OPP; larger values can be used to step
+through higher levels while testing board power stability.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -76,6 +76,27 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++static u32 a6xx_max_opp_index(struct a6xx_gmu *gmu)
++{
++	u32 nonzero = 0;
++	u32 max_opp = adreno_a6xx_max_opp();
++	u32 i;
++
++	if (!max_opp)
++		return U32_MAX;
++
++	for (i = 0; i < gmu->nr_gpu_freqs; i++) {
++		if (!gmu->gpu_freqs[i])
++			continue;
++
++		nonzero++;
++		if (nonzero >= max_opp)
++			return i;
++	}
++
++	return gmu->nr_gpu_freqs ? gmu->nr_gpu_freqs - 1 : 0;
++}
++
+ bool a6xx_gmu_sptprac_is_on(struct a6xx_gmu *gmu)
+ {
+ 	u32 val;
+@@ -162,17 +183,37 @@
+ 	u32 perf_index;
+ 	u32 bw_index = 0;
+ 	unsigned long gpu_freq;
++	struct dev_pm_opp *max_opp = NULL;
+ 	int ret = 0;
+ 
+ 	gpu_freq = dev_pm_opp_get_freq(opp);
+ 
+-	if (gpu_freq == gmu->freq)
+-		return;
+-
+ 	for (perf_index = 0; perf_index < gmu->nr_gpu_freqs - 1; perf_index++)
+ 		if (gpu_freq == gmu->gpu_freqs[perf_index])
+ 			break;
+ 
++	if (adreno_a6xx_max_opp()) {
++		u32 max_index = a6xx_max_opp_index(gmu);
++
++		if (perf_index > max_index) {
++			gpu_freq = gmu->gpu_freqs[max_index];
++			max_opp = dev_pm_opp_find_freq_exact(&gpu->pdev->dev,
++							      gpu_freq, true);
++			if (!IS_ERR(max_opp)) {
++				opp = max_opp;
++				perf_index = max_index;
++			} else {
++				max_opp = NULL;
++			}
++		}
++	}
++
++	if (gpu_freq == gmu->freq) {
++		if (max_opp)
++			dev_pm_opp_put(max_opp);
++		return;
++	}
++
+ 	/* If enabled, find the corresponding DDR bandwidth index */
+ 	if (info->bcms && gmu->nr_gpu_bws > 1) {
+ 		unsigned int bw = dev_pm_opp_get_bw(opp, true, 0);
+@@ -215,14 +256,19 @@
+ 	 * is updating the frequency so that when we come back online we're at
+ 	 * the right rate.
+ 	 */
+-	if (suspended)
++	if (suspended) {
++		if (max_opp)
++			dev_pm_opp_put(max_opp);
+ 		return;
++	}
+ 
+ 	if (!gmu->legacy) {
+ 		a6xx_hfi_set_freq(gmu, perf_index, bw_index);
+ 		/* With Bandwidth voting, we now vote for all resources, so skip OPP set */
+ 		if (!bw_index)
+ 			dev_pm_opp_set_opp(&gpu->pdev->dev, opp);
++		if (max_opp)
++			dev_pm_opp_put(max_opp);
+ 		return;
+ 	}
+ 
+@@ -246,6 +292,8 @@
+ 		dev_err(gmu->dev, "GMU set GPU frequency error: %d\n", ret);
+ 
+ 	dev_pm_opp_set_opp(&gpu->pdev->dev, opp);
++	if (max_opp)
++		dev_pm_opp_put(max_opp);
+ }
+ 
+ unsigned long a6xx_gmu_get_freq(struct msm_gpu *gpu)
+@@ -1915,7 +1963,11 @@
+ 	gmu->nr_gpu_freqs = a6xx_gmu_build_freq_table(&gpu->pdev->dev,
+ 		gmu->gpu_freqs, ARRAY_SIZE(gmu->gpu_freqs));
+ 
+-	gmu->current_perf_index = gmu->nr_gpu_freqs - 1;
++	if (adreno_a6xx_max_opp()) {
++		gmu->current_perf_index = a6xx_max_opp_index(gmu);
++	} else {
++		gmu->current_perf_index = gmu->nr_gpu_freqs - 1;
++	}
+ 
+ 	/*
+ 	 * The GMU also handles GPU Interconnect Votes so build a list
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_device.c b/drivers/gpu/drm/msm/adreno/adreno_device.c
+--- a/drivers/gpu/drm/msm/adreno/adreno_device.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
+@@ -25,9 +25,19 @@
+ module_param_unsafe(disable_acd, bool, 0400);
+ 
+ static bool skip_gpu;
++static uint a6xx_max_opp;
++
++uint adreno_a6xx_max_opp(void)
++{
++	return a6xx_max_opp;
++}
++
+ MODULE_PARM_DESC(no_gpu, "Disable GPU driver register (0=enable GPU driver register (default), 1=skip GPU driver register");
+ module_param(skip_gpu, bool, 0400);
+ 
++MODULE_PARM_DESC(a6xx_max_opp, "Clamp A6xx Adreno/GMU to max nonzero OPP index (0=unlimited, 1=lowest nonzero OPP)");
++module_param(a6xx_max_opp, uint, 0400);
++
+ extern const struct adreno_gpulist a2xx_gpulist;
+ extern const struct adreno_gpulist a3xx_gpulist;
+ extern const struct adreno_gpulist a4xx_gpulist;
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_gpu.c b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+@@ -1091,6 +1091,33 @@
+ 			ring->id);
+ }
+ 
++static int adreno_a6xx_clamp_opp_freq(struct device *dev, unsigned long *freq)
++{
++	struct dev_pm_opp *opp = NULL;
++	unsigned long opp_freq = 0;
++	uint max_opp = adreno_a6xx_max_opp();
++	uint i;
++
++	if (!max_opp)
++		return 0;
++
++	for (i = 0; i < max_opp; i++) {
++		if (opp)
++			dev_pm_opp_put(opp);
++
++		opp = dev_pm_opp_find_freq_ceil(dev, &opp_freq);
++		if (IS_ERR(opp))
++			return PTR_ERR(opp);
++
++		opp_freq++;
++	}
++
++	*freq = dev_pm_opp_get_freq(opp);
++	dev_pm_opp_put(opp);
++
++	return 0;
++}
++
+ static int adreno_get_pwrlevels(struct device *dev,
+ 		struct msm_gpu *gpu)
+ {
+@@ -1125,9 +1152,14 @@
+ 	if (IS_ERR(opp))
+ 		return PTR_ERR(opp);
+ 
+-	gpu->fast_rate = freq;
+ 	dev_pm_opp_put(opp);
+ 
++	ret = adreno_a6xx_clamp_opp_freq(dev, &freq);
++	if (ret)
++		return ret;
++
++	gpu->fast_rate = freq;
++
+ 	DBG("fast_rate=%u, slow_rate=27000000", gpu->fast_rate);
+ 
+ 	return 0;
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_gpu.h b/drivers/gpu/drm/msm/adreno/adreno_gpu.h
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.h
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.h
+@@ -21,6 +21,8 @@
+ 
+ extern bool snapshot_debugbus;
+ 
++uint adreno_a6xx_max_opp(void);
++
+ enum {
+ 	ADRENO_FW_PM4 = 0,
+ 	ADRENO_FW_SQE = 0, /* a6xx */

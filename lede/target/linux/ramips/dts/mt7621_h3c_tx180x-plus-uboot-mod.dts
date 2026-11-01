@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "mt7621_h3c_tx180x.dtsi"
+
+/ {
+	compatible = "h3c,tx180x-plus-uboot-mod", "mediatek,mt7621-soc";
+	model = "H3C TX180x Plus (U-Boot mod)";
+};
+
+&gmac0 {
+	phy-mode = "trgmii";
+};
+
+&gmac1 {
+	status = "disabled";
+};
+
+&gsw {
+	port@4 {
+		status = "okay";
+		label = "wan";
+	};
+
+	port@6 {
+		phy-mode = "trgmii";
+	};
+};
+
+&hnat {
+	mtketh-ppd = "eth0.1";
+	mtketh-lan = "eth0.1";
+	mtketh-wan = "eth0.2";
+	mtketh-max-gmac = <1>;
+};

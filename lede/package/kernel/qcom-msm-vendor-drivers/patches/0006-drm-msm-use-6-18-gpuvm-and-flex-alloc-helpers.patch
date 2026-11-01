@@ -1,0 +1,36 @@
+diff --git a/drivers/gpu/drm/msm/msm_gem_vma.c b/drivers/gpu/drm/msm/msm_gem_vma.c
+--- a/drivers/gpu/drm/msm/msm_gem_vma.c
++++ b/drivers/gpu/drm/msm/msm_gem_vma.c
+@@ -419,7 +419,7 @@
+ 	if (!obj)
+ 		return &vma->base;
+ 
+-	vm_bo = drm_gpuvm_bo_obtain_locked(&vm->base, obj);
++	vm_bo = drm_gpuvm_bo_obtain(&vm->base, obj);
+ 	if (IS_ERR(vm_bo)) {
+ 		ret = PTR_ERR(vm_bo);
+ 		goto err_va_remove;
+@@ -703,6 +703,7 @@
+ {
+ 	struct msm_vm_bind_job *job = to_msm_vm_bind_job(_job);
+ 	struct drm_device *dev = job->vm->drm;
++	struct msm_drm_private *priv = dev->dev_private;
+ 	struct msm_gem_vm *vm = to_msm_vm(job->vm);
+ 	struct drm_gem_object *obj;
+ 	int ret = vm->unusable ? -EINVAL : 0;
+@@ -959,9 +960,14 @@
+ 		   struct msm_gpu_submitqueue *queue, uint32_t nr_ops)
+ {
+ 	struct msm_vm_bind_job *job;
++	uint64_t sz;
+ 	int ret;
+ 
+-	job = kzalloc_flex(*job, ops, nr_ops, GFP_KERNEL | __GFP_NOWARN);
++	sz = struct_size(job, ops, nr_ops);
++	if (sz > SIZE_MAX)
++		return ERR_PTR(-ENOMEM);
++
++	job = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN);
+ 	if (!job)
+ 		return ERR_PTR(-ENOMEM);
+ 

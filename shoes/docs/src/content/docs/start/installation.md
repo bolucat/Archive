@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install Shoes and check which version your configuration targets.
+description: Install shoes and check which version your configuration targets.
 ---
 
 ## Release binaries
@@ -14,7 +14,7 @@ platforms, checksums, and installation requirements.
 shoes --version
 ```
 
-This site's version banner identifies the documented source revision.
+This site's header identifies the documented source revision.
 Development documentation can describe features absent from the latest release.
 For an older release, use the documentation included at its Git tag rather than
 assuming every field on this site is supported.

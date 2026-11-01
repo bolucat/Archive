@@ -14,11 +14,13 @@ define Build/patch-dtb
 	$(STAGING_DIR_HOST)/bin/patch-dtb $@ $(DTS_DIR)/$(DEVICE_DTS).dtb
 endef
 
+NSIM_HS_DTS := $(if $(filter 6.18,$(KERNEL_PATCHVER)),haps_hs,nsim_hs_idu)
+
 ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
 # Root FS built-in
 define Device/vmlinux
 	KERNEL_SUFFIX := .elf
-	KERNEL := kernel-bin | patch-dtb
+	KERNEL := kernel-bin $(if $(filter 6.18,$(KERNEL_PATCHVER)),,| patch-dtb)
 	KERNEL_INITRAMFS_NAME = vmlinux-initramfs.elf
 endef
 
@@ -27,14 +29,14 @@ define Device/nsim_hs
 	DEVICE_VENDOR := Synopsys
 	DEVICE_MODEL := nSIM HS
 	DEVICE_PROFILE := nsim_hs
-	DEVICE_DTS := nsim_hs_idu
+	DEVICE_DTS := $(NSIM_HS_DTS)
 endef
 TARGET_DEVICES += nsim_hs
 endif
 
 # Root FS on SD-card
 KERNEL_LOADADDR := 0x90000000
-DEVICE_DTS_LIST:= axs103_idu nsim_hs_idu hsdk
+DEVICE_DTS_LIST:= axs103_idu $(NSIM_HS_DTS) hsdk
 FAT32_BLOCK_SIZE=1024
 FAT32_BLOCKS=$(shell echo $$(($(CONFIG_AXS10X_SD_BOOT_PARTSIZE)*1024*1024/$(FAT32_BLOCK_SIZE))))
 

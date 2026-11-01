@@ -33,6 +33,7 @@ define Device/Default
   BOOT_SCRIPT := generic-bootscript
   IMAGES := sdcard.img.gz
   IMAGE/sdcard.img.gz := tegra-sdcard | gzip | append-metadata
+  DTS_DIR := $(DTS_DIR)$(if $(filter 6.18,$(KERNEL_PATCHVER)),/nvidia)
   KERNEL_NAME := zImage
   KERNEL := kernel-bin
   PROFILES := Default

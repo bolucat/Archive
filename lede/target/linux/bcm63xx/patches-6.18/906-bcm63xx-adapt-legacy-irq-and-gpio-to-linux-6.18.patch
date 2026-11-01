@@ -1,0 +1,606 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] bcm63xx: adapt legacy platform drivers to Linux 6.18
+
+Use firmware-node IRQ domains and the generic GPIO chip API while
+preserving legacy platform data and bank-to-pin mappings.
+Update appended DTB discovery, syscon lookup and B53 SPI callbacks.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/arch/mips/bcm63xx/gpio.c
++++ b/arch/mips/bcm63xx/gpio.c
+@@ -14,6 +14,7 @@
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+ #include <linux/gpio/driver.h>
++#include <linux/platform_data/gpio-bcm63xx.h>
+ #include <linux/gpio/machine.h>
+ 
+ #include <bcm63xx_cpu.h>
+@@ -30,7 +31,7 @@
+ static void __init bcm63xx_gpio_init_one(int id, int dir, int data, int ngpio)
+ {
+ 	struct resource res[2];
+-	struct bgpio_pdata pdata;
++	struct bcm63xx_gpio_platform_data pdata;
+ 
+ 	memset(res, 0, sizeof(res));
+ 	memset(&pdata, 0, sizeof(pdata));
+--- a/arch/mips/bcm63xx/prom.c
++++ b/arch/mips/bcm63xx/prom.c
+@@ -11,6 +11,7 @@
+ #include <linux/of_fdt.h>
+ #include <linux/smp.h>
+ #include <asm/bootinfo.h>
++#include <asm/io.h>
+ #include <asm/bmips.h>
+ #include <asm/smp-ops.h>
+ #include <asm/mipsregs.h>
+@@ -23,13 +24,16 @@
+ void __init prom_init(void)
+ {
+ 	u32 reg, mask;
++#if CONFIG_OF
++	void *dtb = get_fdt();
++#endif
+ 
+ 	/* Cache CBR addr before CPU/DMA setup */
+ 	bmips_cbr_addr = BMIPS_GET_CBR();
+ 
+ #if CONFIG_OF
+-	if (fw_passed_dtb)
+-		early_init_dt_verify((void *)fw_passed_dtb);
++	if (dtb)
++		early_init_dt_verify(dtb, virt_to_phys(dtb));
+ #endif
+ 
+ 	bcm63xx_cpu_init();
+--- a/drivers/gpio/gpio-bcm63xx.c
++++ b/drivers/gpio/gpio-bcm63xx.c
+@@ -24,8 +24,9 @@
+ #include <linux/log2.h>
+ #include <linux/ioport.h>
+ #include <linux/io.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/gpio/driver.h>
++#include <linux/platform_data/gpio-bcm63xx.h>
+ #include <linux/slab.h>
+ #include <linux/platform_device.h>
+ #include <linux/mod_devicetable.h>
+@@ -38,7 +39,7 @@
+ 	char irq_name[7]; /* "gpioXX" */
+ 
+ 	sprintf(irq_name, "gpio%d", gpio);
+-	return of_irq_get_byname(chip->of_node, irq_name);
++	return of_irq_get_byname(dev_of_node(chip->parent), irq_name);
+ }
+ 
+ static int bcm63xx_gpio_probe(struct platform_device *pdev)
+@@ -50,7 +51,9 @@
+ 	unsigned long sz;
+ 	int err;
+ 	struct gpio_chip *gc;
+-	struct bgpio_pdata *pdata = dev_get_platdata(dev);
++	struct gpio_generic_chip *gen_gc;
++	struct gpio_generic_chip_config config = { };
++	struct bcm63xx_gpio_platform_data *pdata = dev_get_platdata(dev);
+ 
+ 	dirout_r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	dat_r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+@@ -70,12 +73,17 @@
+ 	if (IS_ERR(dirout))
+ 		return PTR_ERR(dirout);
+ 
+-	gc = devm_kzalloc(&pdev->dev, sizeof(*gc), GFP_KERNEL);
+-	if (!gc)
++	gen_gc = devm_kzalloc(dev, sizeof(*gen_gc), GFP_KERNEL);
++	if (!gen_gc)
+ 		return -ENOMEM;
+ 
+-	err = bgpio_init(gc, dev, sz, dat, NULL, NULL, dirout, NULL,
+-			 BGPIOF_BIG_ENDIAN_BYTE_ORDER);
++	gc = &gen_gc->gc;
++	config.dev = dev;
++	config.sz = sz;
++	config.dat = dat;
++	config.dirout = dirout;
++	config.flags = GPIO_GENERIC_BIG_ENDIAN_BYTE_ORDER;
++	err = gpio_generic_chip_init(gen_gc, &config);
+ 	if (err)
+ 		return err;
+ 
+@@ -101,15 +109,7 @@
+ 			gc->ngpio = pdata->ngpio;
+ 	}
+ 
+-	return gpiochip_add(gc);
+-}
+-
+-static int bcm63xx_gpio_remove(struct platform_device *pdev)
+-{
+-	struct gpio_chip *gc = platform_get_drvdata(pdev);
+-
+-	gpiochip_remove(gc);
+-	return 0;
++	return devm_gpiochip_add_data(dev, gc, gen_gc);
+ }
+ 
+ #ifdef CONFIG_OF
+@@ -121,7 +121,6 @@
+ 
+ static struct platform_driver bcm63xx_gpio_driver = {
+ 	.probe = bcm63xx_gpio_probe,
+-	.remove = bcm63xx_gpio_remove,
+ 	.driver = {
+ 		.name = "bcm63xx-gpio",
+ 		.of_match_table = of_match_ptr(bcm63xx_gpio_of_match),
+--- a/drivers/irqchip/irq-bcm6345-ext.c
++++ b/drivers/irqchip/irq-bcm6345-ext.c
+@@ -230,7 +230,7 @@
+ 	if (start && num_irqs < 4)
+ 		start += 4;
+ 
+-	data->domain = irq_domain_add_simple(node, num_irqs, start,
++	data->domain = irq_domain_create_simple(of_fwnode_handle(node), num_irqs, start,
+ 					     &bcm6345_ext_domain_ops, data);
+ 	if (!data->domain) {
+ 		kfree(data);
+--- a/drivers/irqchip/irq-bcm6345-periph.c
++++ b/drivers/irqchip/irq-bcm6345-periph.c
+@@ -261,7 +261,7 @@
+ 		data->chip.irq_set_affinity = bcm6345_periph_set_affinity;
+ #endif
+ 
+-	data->domain = irq_domain_add_simple(node, IRQS_PER_WORD * num_words,
++	data->domain = irq_domain_create_simple(of_fwnode_handle(node), IRQS_PER_WORD * num_words,
+ 					     VIRQ_BASE,
+ 					     &bcm6345_periph_domain_ops, data);
+ 	if (!data->domain) {
+--- a/drivers/mfd/syscon.c
++++ b/drivers/mfd/syscon.c
+@@ -17,6 +17,7 @@
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/regmap.h>
++#include <linux/platform_device.h>
+ #include <linux/reset.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/slab.h>
+@@ -291,24 +292,18 @@
+ }
+ EXPORT_SYMBOL_GPL(syscon_regmap_lookup_by_compatible);
+ 
+-static int syscon_match_pdevname(struct device *dev, const void *data)
+-{
+-	return !strcmp(dev_name(dev), (const char *)data);
+-}
+-
+ struct regmap *syscon_regmap_lookup_by_pdevname(const char *s)
+ {
+ 	struct device *dev;
+-	struct syscon *syscon;
++	struct regmap *regmap;
+ 
+-	dev = driver_find_device(&syscon_driver.driver, NULL, (void *)s,
+-				 syscon_match_pdevname);
++	dev = bus_find_device_by_name(&platform_bus_type, NULL, s);
+ 	if (!dev)
+ 		return ERR_PTR(-EPROBE_DEFER);
+ 
+-	syscon = dev_get_drvdata(dev);
+-
+-	return syscon->regmap;
++	regmap = dev_get_regmap(dev, NULL);
++	put_device(dev);
++	return regmap ? regmap : ERR_PTR(-EPROBE_DEFER);
+ }
+ EXPORT_SYMBOL_GPL(syscon_regmap_lookup_by_pdevname);
+ 
+@@ -381,3 +376,37 @@
+ 	return regmap;
+ }
+ EXPORT_SYMBOL_GPL(syscon_regmap_lookup_by_phandle_optional);
++
++/* Legacy BCM63xx pin controllers can share non-DT syscon devices. */
++static int syscon_platform_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct regmap_config config = syscon_regmap_config;
++	struct resource *res;
++	struct regmap *regmap;
++	void __iomem *base;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res || resource_size(res) < 4)
++		return -EINVAL;
++
++	base = devm_ioremap(dev, res->start, resource_size(res));
++	if (!base)
++		return -ENOMEM;
++
++	config.max_register = resource_size(res) - 4;
++	config.max_register_is_0 = !config.max_register;
++	regmap = devm_regmap_init_mmio(dev, base, &config);
++	return PTR_ERR_OR_ZERO(regmap);
++}
++
++static struct platform_driver syscon_platform_driver = {
++	.driver.name = "syscon",
++	.probe = syscon_platform_probe,
++};
++
++static int __init syscon_platform_init(void)
++{
++	return platform_driver_register(&syscon_platform_driver);
++}
++postcore_initcall(syscon_platform_init);
+--- a/drivers/net/phy/b53/b53_spi.c
++++ b/drivers/net/phy/b53/b53_spi.c
+@@ -16,7 +16,7 @@
+  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ 
+-#include <asm/unaligned.h>
++#include <linux/unaligned.h>
+ 
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+@@ -304,14 +304,13 @@
+ 	return 0;
+ }
+ 
+-static int b53_spi_remove(struct spi_device *spi)
++static void b53_spi_remove(struct spi_device *spi)
+ {
+ 	struct b53_device *dev = spi_get_drvdata(spi);
+ 
+ 	if (dev)
+ 		b53_switch_remove(dev);
+ 
+-	return 0;
+ }
+ 
+ static const struct of_device_id b53_of_match[] = {
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6318.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6318.c
+@@ -9,7 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/spinlock.h>
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/gpio/driver.h>
+ #include <linux/of.h>
+ #include <linux/of_gpio.h>
+@@ -54,7 +54,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ static const struct pinctrl_pin_desc bcm6318_pins[] = {
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm63268.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm63268.c
+@@ -9,7 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/spinlock.h>
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/of.h>
+ #include <linux/of_gpio.h>
+ #include <linux/slab.h>
+@@ -70,7 +70,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ #define BCM63268_PIN(a, b, basemode)			\
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6328.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6328.c
+@@ -7,7 +7,7 @@
+  */
+ 
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/kernel.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+@@ -56,7 +56,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio;
++	struct gpio_generic_chip gpio;
+ };
+ 
+ static const struct pinctrl_pin_desc bcm6328_pins[] = {
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6348.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6348.c
+@@ -9,7 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/spinlock.h>
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/of.h>
+ #include <linux/of_gpio.h>
+ #include <linux/slab.h>
+@@ -55,7 +55,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ #define BCM6348_PIN(a, b, group)		\
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6358.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6358.c
+@@ -8,7 +8,7 @@
+ 
+ #include <linux/kernel.h>
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/gpio/driver.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/of.h>
+@@ -70,7 +70,7 @@
+ 
+ 	struct regmap_field *overlays;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ #define BCM6358_GPIO_PIN(a, b, bit1, bit2, bit3)		\
+@@ -288,7 +288,7 @@
+ 
+ 	for (pin = 0; pin < grp->num_pins; pin++) {
+ 		int hw_gpio = bcm6358_pins[pin].number;
+-		struct gpio_chip *gc = &pctl->gpio[hw_gpio / 32];
++		struct gpio_chip *gc = &pctl->gpio[hw_gpio / 32].gc;
+ 
+ 		if (grp->direction & BIT(pin))
+ 			gc->direction_output(gc, hw_gpio % 32, 0);
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6362.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6362.c
+@@ -9,7 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/spinlock.h>
+ #include <linux/bitops.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/of.h>
+ #include <linux/of_gpio.h>
+ #include <linux/slab.h>
+@@ -64,7 +64,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ #define BCM6362_PIN(a, b, mask)			\
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm6368.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm6368.c
+@@ -8,7 +8,7 @@
+ 
+ #include <linux/bitops.h>
+ #include <linux/kernel.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+@@ -58,7 +58,7 @@
+ 	/* register access lock */
+ 	spinlock_t lock;
+ 
+-	struct gpio_chip gpio[2];
++	struct gpio_generic_chip gpio[2];
+ };
+ 
+ #define BCM6368_BASEMODE_PIN(a, b)		\
+@@ -449,7 +449,7 @@
+ 
+ 	for (pin = 0; pin < grp->num_pins; pin++) {
+ 		int hw_gpio = bcm6368_pins[pin].number;
+-		struct gpio_chip *gc = &pctl->gpio[hw_gpio / 32];
++		struct gpio_chip *gc = &pctl->gpio[hw_gpio / 32].gc;
+ 
+ 		if (fun->dir_out & BIT(pin))
+ 			gc->direction_output(gc, hw_gpio % 32, 0);
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm63xx.c
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm63xx.c
+@@ -8,7 +8,7 @@
+ 
+ #include <linux/bitops.h>
+ #include <linux/device.h>
+-#include <linux/gpio/driver.h>
++#include <linux/gpio/generic.h>
+ #include <linux/of_irq.h>
+ 
+ #include "pinctrl-bcm63xx.h"
+@@ -22,10 +22,10 @@
+ 				 const struct of_phandle_args *gpiospec,
+ 				 u32 *flags)
+ {
+-	struct gpio_chip *base = gpiochip_get_data(gc);
++	struct gpio_generic_chip *base = gpiochip_get_data(gc);
+ 	int pin = gpiospec->args[0];
+ 
+-	if (gc != &base[pin / PINS_PER_BANK])
++	if (gc != &base[pin / PINS_PER_BANK].gc)
+ 		return -EINVAL;
+ 
+ 	pin = pin % PINS_PER_BANK;
+@@ -42,28 +42,34 @@
+ 
+ static int bcm63xx_gpio_to_irq(struct gpio_chip *chip, unsigned gpio)
+ {
+-	struct gpio_chip *base = gpiochip_get_data(chip);
++	struct gpio_generic_chip *base = gpiochip_get_data(chip);
+ 	char irq_name[7]; /* "gpioXX" */
+ 
+ 	/* FIXME: this is ugly */
+-	sprintf(irq_name, "gpio%d", gpio + PINS_PER_BANK * (chip - base));
+-	return of_irq_get_byname(chip->of_node, irq_name);
++	sprintf(irq_name, "gpio%d", gpio + PINS_PER_BANK * (to_gpio_generic_chip(chip) - base));
++	return of_irq_get_byname(dev_of_node(chip->parent), irq_name);
+ }
+ 
+-static int bcm63xx_setup_gpio(struct device *dev, struct gpio_chip *gc,
++static int bcm63xx_setup_gpio(struct device *dev, struct gpio_generic_chip *chips,
+ 			      void __iomem *dirout, void __iomem *data,
+ 			      size_t sz, int ngpio)
+ 
+ {
+-	int banks, chips, i, ret = -EINVAL;
++	int banks, nchips, i, ret = -EINVAL;
+ 
+-	chips = DIV_ROUND_UP(ngpio, PINS_PER_BANK);
++	nchips = DIV_ROUND_UP(ngpio, PINS_PER_BANK);
+ 	banks = sz / BANK_SIZE;
+ 
+-	for (i = 0; i < chips; i++) {
++	for (i = 0; i < nchips; i++) {
++		struct gpio_chip *gc = &chips[i].gc;
+ 		int offset, pins;
+ 		int reg_offset;
+ 		char *label;
++		struct gpio_generic_chip_config config = {
++			.dev = dev,
++			.sz = BANK_SIZE,
++			.flags = GPIO_GENERIC_BIG_ENDIAN_BYTE_ORDER,
++		};
+ 
+ 		label = devm_kasprintf(dev, GFP_KERNEL, "bcm63xx-gpio.%i", i);
+ 		if (!label)
+@@ -74,51 +80,54 @@
+ 
+ 		/* the registers are treated like a huge big endian register */
+ 		reg_offset = (banks - i - 1) * BANK_SIZE;
++		config.dat = data + reg_offset;
++		config.dirout = dirout + reg_offset;
+ 
+-		ret = bgpio_init(&gc[i], dev, BANK_SIZE, data + reg_offset,
+-				 NULL, NULL, dirout + reg_offset, NULL,
+-				 BGPIOF_BIG_ENDIAN_BYTE_ORDER);
++		ret = gpio_generic_chip_init(&chips[i], &config);
+ 		if (ret)
+ 			return ret;
+ 
+-		gc[i].request = gpiochip_generic_request;
+-		gc[i].free = gpiochip_generic_free;
++		gc->request = gpiochip_generic_request;
++		gc->free = gpiochip_generic_free;
+ 
+ 		if (of_get_property(dev->of_node, "interrupt-names", NULL))
+-			gc[i].to_irq = bcm63xx_gpio_to_irq;
++			gc->to_irq = bcm63xx_gpio_to_irq;
+ 
+ #ifdef CONFIG_OF
+-		gc[i].of_gpio_n_cells = 2;
+-		gc[i].of_xlate = bcm63xx_gpio_of_xlate;
++		gc->of_gpio_n_cells = 2;
++		gc->of_xlate = bcm63xx_gpio_of_xlate;
+ #endif
+ 
+-		gc[i].label = label;
+-		gc[i].ngpio = pins;
++		gc->label = label;
++		gc->ngpio = pins;
+ 
+-		devm_gpiochip_add_data(dev, &gc[i], gc);
++		ret = devm_gpiochip_add_data(dev, gc, chips);
++		if (ret)
++			return ret;
+ 	}
+ 
+ 	return 0;
+ }
+ 
+-static void bcm63xx_setup_pinranges(struct gpio_chip *gc, const char *name,
++static void bcm63xx_setup_pinranges(struct gpio_generic_chip *chips, const char *name,
+ 				    int ngpio)
+ {
+-	int i, chips = DIV_ROUND_UP(ngpio, PINS_PER_BANK);
++	int i, nchips = DIV_ROUND_UP(ngpio, PINS_PER_BANK);
+ 
+-	for (i = 0; i < chips; i++) {
++	for (i = 0; i < nchips; i++) {
++		struct gpio_chip *gc = &chips[i].gc;
+ 		int offset, pins;
+ 
+ 		offset = i * PINS_PER_BANK;
+ 		pins = min_t(int, ngpio - offset, PINS_PER_BANK);
+ 
+-		gpiochip_add_pin_range(&gc[i], name, 0, offset, pins);
++		gpiochip_add_pin_range(gc, name, 0, offset, pins);
+ 	}
+ }
+ 
+ struct pinctrl_dev *bcm63xx_pinctrl_register(struct platform_device *pdev,
+ 					     struct pinctrl_desc *desc,
+-					     void *priv, struct gpio_chip *gc,
++					     void *priv, struct gpio_generic_chip *chips,
+ 					     int ngpio)
+ {
+ 	struct pinctrl_dev *pctldev;
+@@ -139,7 +148,7 @@
+ 
+ 	sz = resource_size(res);
+ 
+-	ret = bcm63xx_setup_gpio(&pdev->dev, gc, dirout, data, sz, ngpio);
++	ret = bcm63xx_setup_gpio(&pdev->dev, chips, dirout, data, sz, ngpio);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+ 
+@@ -147,7 +156,7 @@
+ 	if (IS_ERR(pctldev))
+ 		return pctldev;
+ 
+-	bcm63xx_setup_pinranges(gc, pinctrl_dev_get_devname(pctldev), ngpio);
++	bcm63xx_setup_pinranges(chips, pinctrl_dev_get_devname(pctldev), ngpio);
+ 
+ 	dev_info(&pdev->dev, "registered at mmio %p\n", dirout);
+ 
+--- a/drivers/pinctrl/bcm63xx/pinctrl-bcm63xx.h
++++ b/drivers/pinctrl/bcm63xx/pinctrl-bcm63xx.h
+@@ -2,13 +2,13 @@
+ #define __PINCTRL_BCM63XX
+ 
+ #include <linux/kernel.h>
+-#include <linux/gpio.h>
++#include <linux/gpio/generic.h>
+ #include <linux/pinctrl/pinctrl.h>
+ #include <linux/platform_device.h>
+ 
+ struct pinctrl_dev *bcm63xx_pinctrl_register(struct platform_device *pdev,
+ 					     struct pinctrl_desc *desc,
+-					     void *priv, struct gpio_chip *gc,
++					     void *priv, struct gpio_generic_chip *chips,
+ 					     int ngpio);
+ 
+ #endif
+--- /dev/null
++++ b/include/linux/platform_data/gpio-bcm63xx.h
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _LINUX_PLATFORM_DATA_GPIO_BCM63XX_H
++#define _LINUX_PLATFORM_DATA_GPIO_BCM63XX_H
++struct bcm63xx_gpio_platform_data {
++	int base;
++	unsigned int ngpio;
++};
++#endif

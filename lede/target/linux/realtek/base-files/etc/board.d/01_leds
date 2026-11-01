@@ -1,13 +1,10 @@
 
-. /lib/functions/uci-defaults.sh
 
-board=$(board_name)
-
-board_config_update
-
-case $board in
+case "$(uname -r)" in
+	6.18|6.18.*)
+		. /lib/realtek/6.18/leds.sh
+		;;
+	*)
+		. /lib/realtek/legacy/leds.sh
+		;;
 esac
-
-board_config_flush
-
-exit 0

@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "mt7621_haier-sim_wr1800k.dtsi"
+
+/ {
+	compatible = "haier,har-20s2u1", "mediatek,mt7621-soc";
+	model = "Haier HAR-20S2U1";
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
+};
+
+&gmac1 {
+	phy-handle = <&ethphy4>;
+};
+
+&gsw {
+
+		port@1 {
+		compatible = "mediatek,mt753x-port";
+			label = "lan3";
+		};
+
+		port@3 {
+		compatible = "mediatek,mt753x-port";
+			label = "lan1";
+		};
+
+};

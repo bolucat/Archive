@@ -1,0 +1,12 @@
+diff --git a/drivers/gpu/drm/msm/msm_gem.c b/drivers/gpu/drm/msm/msm_gem.c
+--- a/drivers/gpu/drm/msm/msm_gem.c
++++ b/drivers/gpu/drm/msm/msm_gem.c
+@@ -10,7 +10,7 @@
+ #include <linux/shmem_fs.h>
+ #include <linux/dma-buf.h>
+ 
+-#include <drm/drm_dumb_buffers.h>
++#include <drm/drm_gem.h>
+ #include <drm/drm_prime.h>
+ #include <drm/drm_file.h>
+ #include <drm/drm_fourcc.h>

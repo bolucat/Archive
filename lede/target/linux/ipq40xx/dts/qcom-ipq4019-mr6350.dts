@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "qcom-ipq4019-xx8300.dtsi"
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "Linksys MR6350";
+	compatible = "linksys,mr6350", "qcom,ipq4019";
+
+	aliases {
+		led-boot = &led_blue;
+		led-failsafe = &led_red;
+		led-running = &led_green;
+		led-upgrade = &led_blue;
+		serial0 = &blsp1_uart1;
+	};
+
+	// Top panel LEDs, above Linksys logo
+	leds {
+		compatible = "gpio-leds";
+
+		led_blue: led-blue {
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&tlmm 46 GPIO_ACTIVE_LOW>;
+		};
+
+		led_red: led-red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&tlmm 47 GPIO_ACTIVE_HIGH>;
+			panic-indicator;
+		};
+
+		led_green: led-green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&tlmm 49 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		button-reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&tlmm 50 GPIO_ACTIVE_LOW>;
+		};
+
+		button-wps {
+			label = "wps";
+			linux,code = <KEY_WPS_BUTTON>;
+			gpios = <&tlmm 18 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&mdio {
+	status = "okay";
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+	reset-gpios = <&tlmm 54 GPIO_ACTIVE_LOW>;
+	reset-delay-us = <2000>;
+	reset-post-delay-us = <5000>;
+};
+
+&tlmm {
+	status = "okay";
+
+	mdio_pins: mdio_pinmux {
+		mdio {
+			pins = "gpio6";
+			function = "mdio";
+			bias-pull-up;
+		};
+
+		mdc {
+			pins = "gpio7";
+			function = "mdc";
+			bias-pull-up;
+		};
+	};
+};
+
+&wifi0 {
+	status = "okay";
+	qcom,ath10k-calibration-variant = "linksys-mr6350";
+
+};
+
+&wifi1 {
+	status = "okay";
+	qcom,ath10k-calibration-variant = "linksys-mr6350";
+
+};
+
+&swport1 {
+	label = "wan";
+};
+
+&swport2 {
+	label = "lan1";
+};
+
+&swport3 {
+	label = "lan2";
+};
+
+&swport4 {
+	label = "lan3";
+};
+
+&swport5 {
+	label = "lan4";
+};
+
+/* QSDK 10: retain this board's physical LAN/WAN port assignment. */
+#define QSDK_LAN_BMP 0x3c
+#define QSDK_WAN_BMP 0x2
+#define QSDK_WAN_PHY 0
+#define QSDK_WAN_POLL 1
+#include "qcom-ipq40xx-qsdk-10.dtsi"
+
+&switch {
+	qcom,port_phyinfo {
+		port1 { port_id = <1>; phy_address = <0>; };
+		port2 { port_id = <2>; phy_address = <1>; };
+		port3 { port_id = <3>; phy_address = <2>; };
+		port4 { port_id = <4>; phy_address = <3>; };
+		port5 { port_id = <5>; phy_address = <4>; };
+	};
+};
+
+&qsdk_gmac0 {
+	qcom,mac-source = <&swport1>;
+};

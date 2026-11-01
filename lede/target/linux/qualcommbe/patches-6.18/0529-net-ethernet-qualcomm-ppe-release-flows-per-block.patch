@@ -1,0 +1,178 @@
+From: Akshay Kakatkar <me@kakatkarakshay.dev>
+Date: Sat, 1 Aug 2026 05:45:00 +0530
+Subject: [PATCH] net: ethernet: qualcomm: ppe: release flows owned by an unbound block
+
+Netfilter unbinds a flowtable before its old rules can issue destroy
+callbacks. Waiting for every block to disappear leaves stale hardware
+rows and wireless injection hooks when bridge and inet tables coexist.
+
+Track each flow's owning block and release that block's rows through the
+ordinary destroy transaction when its last port binding disappears.
+Other flowtables retain their hardware forwarding. Restart the walk after
+each removal, and preserve the existing readback/quarantine failure path.
+
+BE7000 testing reproduced hardware counters continuing to grow after the
+bridge table was deleted while the inet table remained bound.
+
+Link: https://github.com/torvalds/linux/blob/v6.18/net/netfilter/nf_flow_table_offload.c
+Signed-off-by: Akshay Kakatkar <me@kakatkarakshay.dev>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -171,6 +171,7 @@ struct ppe_ft_flow {
+ 	struct list_head zombie_node;
+ 	struct rcu_head rcu;
+ 	unsigned long cookie;
++	struct flow_block *block;
+ 	int index;
+ 	struct ppe_flow_entry entry;
+ 	u16 nexthop;
+@@ -312,6 +313,12 @@ struct ppe_flowtable {
+ 	struct list_head block_cb_list;
+ };
+ 
++/* One callback is shared by the physical ports of one flowtable. */
++struct ppe_ft_block {
++	struct ppe_flowtable *ft;
++	struct flow_block *block;
++};
++
+ static const struct rhashtable_params ppe_ft_params = {
+ 	.head_offset = offsetof(struct ppe_ft_flow, node),
+ 	.key_offset = offsetof(struct ppe_ft_flow, cookie),
+@@ -1822,7 +1829,8 @@ static int ppe_ft_dsa_port(struct net_de
+ }
+ 
+ static int ppe_ft_flow_replace(struct ppe_flowtable *ft,
+-			       struct flow_cls_offload *f)
++			       struct flow_cls_offload *f,
++			       struct flow_block *block)
+ {
+ 	struct flow_rule *rule = flow_cls_offload_flow_rule(f);
+ 	struct edma_port_priv *port_priv;
+@@ -1887,6 +1895,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		return -ENOMEM;
+ 
+ 	flow->cookie = f->cookie;
++	flow->block = block;
+ 	flow->ingress_my_mac = -1;
+ 	flow->my_mac = -1;
+ 	flow->pub_ip = -1;
+@@ -2986,7 +2995,8 @@ void ppe_flowtable_debugfs_init(struct p
+ static int ppe_ft_block_cb(enum tc_setup_type type, void *type_data,
+ 			   void *cb_priv)
+ {
+-	struct ppe_flowtable *ft = cb_priv;
++	struct ppe_ft_block *fb = cb_priv;
++	struct ppe_flowtable *ft = fb->ft;
+ 	struct flow_cls_offload *f = type_data;
+ 	int ret;
+ 
+@@ -2995,7 +3005,7 @@ static int ppe_ft_block_cb(enum tc_setup
+ 
+ 	switch (f->command) {
+ 	case FLOW_CLS_REPLACE:
+-		ret = ppe_ft_flow_replace(ft, f);
++		ret = ppe_ft_flow_replace(ft, f, fb->block);
+ 		atomic_long_inc(&ft->replace_calls);
+ 		if (ret == -EOPNOTSUPP)
+ 			atomic_long_inc(&ft->replace_unsupported);
+@@ -3032,6 +3042,60 @@ void ppe_flowtable_port_carrier(struct p
+ 		clear_bit(port, ppe_dev->carrier_ok);
+ }
+ 
++/* Netfilter unbinds a block before its old rules can issue destroy
++ * callbacks. Release only that block's entries, including its VP hooks,
++ * while other tables keep their routed or bridged hardware forwarding.
++ */
++static void ppe_ft_block_release(void *cb_priv)
++{
++	struct ppe_ft_block *fb = cb_priv;
++	struct ppe_flowtable *ft = fb->ft;
++	struct rhashtable_iter iter;
++	struct ppe_ft_flow *flow;
++	bool found;
++
++	do {
++		struct flow_cls_offload f = { .command = FLOW_CLS_DESTROY };
++		int ret;
++
++		found = false;
++		mutex_lock(&ft->lock);
++		rhashtable_walk_enter(&ft->flows, &iter);
++		rhashtable_walk_start(&iter);
++		while ((flow = rhashtable_walk_next(&iter))) {
++			if (IS_ERR(flow)) {
++				if (PTR_ERR(flow) == -EAGAIN)
++					continue;
++				break;
++			}
++			if (flow->block != fb->block)
++				continue;
++			f.cookie = flow->cookie;
++			found = true;
++			break;
++		}
++		rhashtable_walk_stop(&iter);
++		rhashtable_walk_exit(&iter);
++		mutex_unlock(&ft->lock);
++
++		if (!found)
++			break;
++		/* Restart the walk after every removal so no entry is skipped.
++		 * The ordinary destroy path owns hardware readback/quarantine.
++		 */
++		atomic_long_inc(&ft->destroy_calls);
++		ret = ppe_ft_flow_destroy(ft, &f);
++		if (ret && ret != -ENOENT) {
++			dev_err(ft->ppe_dev->dev,
++				"failed to release block flow %lx: %d\n",
++				f.cookie, ret);
++			break;
++		}
++	} while (found);
++
++	kfree(fb);
++}
++
+ /**
+  * ppe_flowtable_setup_tc - Bind a flow block to a PPE port
+  * @dev: PPE port net device
+@@ -3045,6 +3109,7 @@ int ppe_flowtable_setup_tc(struct net_de
+ 	struct ppe_flowtable *ft = port_priv->ppe_port->ppe_dev->flowtable;
+ 	struct flow_block_offload *f = type_data;
+ 	struct flow_block_cb *block_cb;
++	struct ppe_ft_block *fb;
+ 
+ 	if (!ft)
+ 		return -EOPNOTSUPP;
+@@ -3063,9 +3128,18 @@ int ppe_flowtable_setup_tc(struct net_de
+ 			return 0;
+ 		}
+ 
+-		block_cb = flow_block_cb_alloc(ppe_ft_block_cb, ft, ft, NULL);
+-		if (IS_ERR(block_cb))
++		fb = kzalloc(sizeof(*fb), GFP_KERNEL);
++		if (!fb)
++			return -ENOMEM;
++		fb->ft = ft;
++		fb->block = f->block;
++
++		block_cb = flow_block_cb_alloc(ppe_ft_block_cb, ft, fb,
++					       ppe_ft_block_release);
++		if (IS_ERR(block_cb)) {
++			kfree(fb);
+ 			return PTR_ERR(block_cb);
++		}
+ 
+ 		flow_block_cb_incref(block_cb);
+ 		flow_block_cb_add(block_cb, f);
+@@ -3080,6 +3154,7 @@ int ppe_flowtable_setup_tc(struct net_de
+ 			flow_block_cb_remove(block_cb, f);
+ 			list_del(&block_cb->driver_list);
+ 		}
++
+ 		return 0;
+ 	default:
+ 		return -EOPNOTSUPP;

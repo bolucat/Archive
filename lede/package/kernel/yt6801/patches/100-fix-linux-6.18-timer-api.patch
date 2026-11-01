@@ -4,6 +4,7 @@ Subject: yt6801: fix timer API for Linux 6.18
 Adapt the YT6801 driver to the timer API changes in Linux 6.18.
 
 Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+Signed-off-by: lean <chenlin@fnnas.com>
 
 --- a/fuxi-gmac-phy.c
 +++ b/fuxi-gmac-phy.c
@@ -24,7 +25,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 -#endif
      add_timer(&pdata->expansion.phy_poll_tm);
  
-     DPRINTK("fxgmac_phy_timer started, %lx\\n", jiffies);
+     DPRINTK("fxgmac_phy_timer started, %lx\n", jiffies);
 --- a/fuxi-os.h
 +++ b/fuxi-os.h
 @@ -67,6 +67,14 @@
@@ -33,10 +34,12 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)
 +#ifndef from_timer
-+#define from_timer(var, callback_timer, timer_fieldname) \\
++#define from_timer(var, callback_timer, timer_fieldname) \
 +    timer_container_of(var, callback_timer, timer_fieldname)
 +#endif
 +#define del_timer_sync(timer) timer_delete_sync(timer)
 +#endif
 +
  #ifndef RHEL_MAJOR
+ 
+ //must used like : if ( RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(a,b) )

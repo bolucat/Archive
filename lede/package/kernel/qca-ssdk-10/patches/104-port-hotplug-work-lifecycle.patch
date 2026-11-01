@@ -1,0 +1,112 @@
+Subject: [PATCH] ssdk: initialize and drain port hotplug work safely
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/port_netlink.c
++++ b/src/ref/port_netlink.c
+@@ -3,6 +3,7 @@
+ #include <linux/kmod.h>
+ 
+ #include <linux/workqueue.h>
++#include <linux/mutex.h>
+ #include <linux/skbuff.h>
+ #include <linux/netlink.h>
+ #include <linux/kobject.h>
+@@ -24,16 +25,19 @@
+ 	unsigned int		duplex;
+ 	char				action[8];
+ 	struct delayed_work	work;
++	bool initialized;
+ 	struct sk_buff		*skb;
+ };
+ 
+ struct port_event event_port[EVENT_PORT_NUMBER]= {{{0}}}; //event_port[0]: Port0; event_port[1]: Port1;
+ 
++static DEFINE_MUTEX(port_event_lock);
++
+ /* -------------------port netlink------------------------------------*/
+ static int port_event_add_var(struct port_event *event, int argv,
+                               const char *format, ...)
+ {
+-	static char buf[128];
++	char buf[128];
+ 	char *s;
+ 	va_list args;
+ 	int len;
+@@ -59,10 +63,10 @@
+ 	return 0;
+ }
+ 
+-static void port_link_hotplug(struct delayed_work *work)
++static void port_link_hotplug(struct work_struct *work)
+ {
+ 	int ret = 0;
+-	struct port_event *event = container_of(work, struct port_event, work);
++	struct port_event *event = container_of(to_delayed_work(work), struct port_event, work);
+ 
+ 	if(in_interrupt())
+ 		printk("%s:%d in_interrupt!!!!",__FUNCTION__,__LINE__);
+@@ -120,14 +124,20 @@
+ {
+ 	struct port_event *event = NULL;
+ 
+-	if(port_num > ARRAY_SIZE(event_port)  ||  port_num < 0)
++	if(port_num >= ARRAY_SIZE(event_port)  ||  port_num < 0)
+ 	{
+ 		printk("[Warning] invalid port number\n");
+ 		return;
+ 	}
+ 
++	mutex_lock(&port_event_lock);
+ 	event = &event_port[port_num];
+-	cancel_delayed_work_sync(&event->work);
++	if (event->initialized) {
++		cancel_delayed_work_sync(&event->work);
++	} else {
++		INIT_DELAYED_WORK(&event->work, port_link_hotplug);
++		event->initialized = true;
++	}
+ 
+ 
+ 	strcpy(event->type, "switch");
+@@ -137,6 +147,18 @@
+ 	event->speed = link_speed;
+ 	event->duplex = duplex;
+ 
+-	INIT_DELAYED_WORK(&event->work, (void *)(void *)port_link_hotplug);
+ 	schedule_delayed_work(&event->work, msecs_to_jiffies(WORKQUEUE_DELAY_TIME));
++	mutex_unlock(&port_event_lock);
++}
++
++/* Called after link polling has stopped. */
++void port_link_hotplug_cleanup(void)
++{
++	unsigned int i;
++
++	mutex_lock(&port_event_lock);
++	for (i = 0; i < ARRAY_SIZE(event_port); i++)
++		if (event_port[i].initialized)
++			cancel_delayed_work_sync(&event_port[i].work);
++	mutex_unlock(&port_event_lock);
+ }
+--- a/include/ref/ref_port_ctrl.h
++++ b/include/ref/ref_port_ctrl.h
+@@ -47,6 +47,8 @@
+ 						struct switch_port_link *link);
+ #endif
+ 
++void port_link_hotplug_cleanup(void);
++
+ int ssdk_port_link_notify_register(struct notifier_block *nb);
+ int ssdk_port_link_notify_unregister(struct notifier_block *nb);
+ int ssdk_port_link_notify(unsigned char port_id,
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -3449,6 +3449,7 @@
+ 			priv->qca_ssdk_sw_dev_registered = false;
+ 		}
+ 	}
++	port_link_hotplug_cleanup();
+ 	ssdk_cleanup();
+ 	for (dev_id = 0; qca_phy_priv_global && dev_id < dev_num; dev_id++) {
+ 		struct qca_phy_priv *priv = qca_phy_priv_global[dev_id];

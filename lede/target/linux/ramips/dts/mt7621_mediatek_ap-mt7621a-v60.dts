@@ -3,18 +3,6 @@
 / {
 	compatible = "mediatek,ap-mt7621a-v60", "mediatek,mt7621-soc";
 	model = "Mediatek AP-MT7621A-V60 EVB";
-	
-	chosen {
-		bootargs = "console=ttyS0,57600";
-	};
-
-	watchdog: watchdog {
-		compatible = "linux,wdt-gpio";
-		gpios = <&gpio 27 0>;
-		hw_algo = "toggle";
-		hw_margin_ms = <3000>;
-		always-running;
-	};
 
 	sound {
 		compatible = "simple-audio-card";
@@ -50,12 +38,6 @@
 };
 
 &pinctrl {
-	state_default: pinctrl0 {
-		gpio {
-			ralink,group = "rgmii2", "jtag";
-			ralink,function = "gpio";
-		};
-	};
 	i2s_pins: i2s {
 		i2s {
 			groups = "uart3";
@@ -90,10 +72,9 @@
 	status = "okay";
 
 	flash@0 {
-		compatible = "jedec,spi-nor";
+		compatible = "mx25l6405d","jedec,spi-nor";
 		reg = <0>;
-		spi-max-frequency = <45000000>;
-		broken-flash-reset;
+		spi-max-frequency = <10000000>;
 
 		partitions {
 			compatible = "fixed-partitions";
@@ -112,16 +93,28 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_factory_5: macaddr@5 {
+						compatible = "mac-base";
+						reg = <0x5 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@50000 {
 				compatible = "denx,uimage";
 				label = "firmware";
-				reg = <0x50000 0x1fb0000>;
+				reg = <0x50000 0x7b0000>;
 			};
 		};
 	};
@@ -132,38 +125,49 @@
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0x5>;
+	nvmem-cells = <&macaddr_factory_5 0>;
+	nvmem-cell-names = "mac-address";
 };
 
-&switch0 {
-	ports {
+&gmac1 {
+	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy4>;
+
+	nvmem-cells = <&macaddr_factory_5 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
+};
+
+&gsw {
+
 		port@0 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan1";
 		};
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan2";
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan3";
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
 			label = "lan4";
 		};
 
-		port@4 {
-			status = "okay";
-			label = "wan";
-			mtd-mac-address = <&factory 0x5>;
-			mtd-mac-address-increment = <1>;
-		};
-	};
 };
 
 &pcie {

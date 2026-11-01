@@ -73,3 +73,33 @@ qemu-system-aarch64 -nographic \
 One can obtain other EFI/BIOS binaries from:
 - Distribution packages (such as qemu-efi-arm and qemu-efi-aarch64 in Debian)
 - Community builds, like retrage/edk2-nightly: https://retrage.github.io/edk2-nightly/
+
+Unified ARMv8 EFI image (Linux 6.18)
+----------------------------------
+The generic combined EFI image shares one kernel and rootfs between these
+GRUB choices, each with a failsafe entry:
+
+- Generic (default): retain firmware-provided ACPI tables or device tree.
+- Radxa Dragon Q6A: load /efi/openwrt/q6a.dtb and use the Q6A UART parameters.
+- Radxa Dragon Q8B: load /efi/openwrt/q8b.dtb and use the Q8B UART parameters.
+
+The menu waits five seconds. Qualcomm entries use ttyMSM0 independently of
+Generic's configured serial console. The FAT32 EFI partition uses GPT;
+combined-efi-ufs images instead have a GPT for 4096-byte logical sectors.
+The UFS image uses a matching 4K-sector FAT32 filesystem and at least
+512 MiB for its EFI partition. Select the image matching the destination
+disk's logical sector size.
+
+Qualcomm configuration, source overlays and patches are scoped to armv8's
+6.18 kernel. The shared patch stack is applied before armv8/patches-6.18.
+ARMv7 and the 6.12 testing kernel retain the generic EFI menu. VirtIO disk
+transports remain built-in for booting the generic image without an initramfs.
+
+Inspect a built image and boot Generic with AAVMF firmware under QEMU:
+
+  scripts/armsr-unified-qemu.py IMAGE --output /tmp/armsr-check \
+    --firmware /usr/share/AAVMF
+
+Add --failsafe to boot Generic failsafe, or --check-grub-menus to exercise
+all six entries' GRUB linux/devicetree commands without booting a physical
+board DTB on QEMU virt. QEMU cannot validate Qualcomm hardware peripherals.

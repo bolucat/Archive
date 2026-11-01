@@ -1,0 +1,33 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] net: phy: rtk: adapt RTL8367S platform driver to Linux 6.18
+
+Use the remaining managed legacy GPIO request helper and the platform
+remove callback name used by Linux 6.18. Request the reset line low, as
+required by the existing hardware reset sequence.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/phy/rtk/rtl8367s_mdio.c
++++ b/drivers/net/phy/rtk/rtl8367s_mdio.c
+@@ -244,9 +244,10 @@
+ 
+ 	gsw->reset_pin = of_get_named_gpio(np, "mediatek,reset-pin", 0);
+ 	if (gsw->reset_pin >= 0) {
+-		ret = devm_gpio_request(gsw->dev, gsw->reset_pin, "mediatek,reset-pin");
++		ret = devm_gpio_request_one(gsw->dev, gsw->reset_pin,
++				    GPIOF_OUT_INIT_LOW, "mediatek,reset-pin");
+ 		if (ret)
+-			printk("fail to devm_gpio_request\n");
++			printk("fail to devm_gpio_request_one\n");
+ 	}
+ 
+ 	_gsw = gsw;
+@@ -286,7 +287,7 @@
+ 
+ static struct platform_driver gsw_driver = {
+ 	.probe = rtk_gsw_probe,
+-	.remove_new = rtk_gsw_remove,
++	.remove = rtk_gsw_remove,
+ 	.driver = {
+ 		.name = "rtk-gsw",
+ 		.of_match_table = rtk_gsw_match,

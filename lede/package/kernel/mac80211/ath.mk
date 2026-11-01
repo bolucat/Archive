@@ -409,7 +409,7 @@ define KernelPackage/ath11k-ahb
   $(call KernelPackage/mac80211/Default)
   TITLE:=Qualcomm 802.11ax AHB wireless chipset support
   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
-  DEPENDS+= @TARGET_qualcommax +kmod-ath11k +kmod-qrtr-smd
+  DEPENDS+= @(TARGET_qualcommax||TARGET_qualcommbe) +kmod-ath11k +kmod-qrtr-smd
   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_ahb.ko
   AUTOLOAD:=$(call AutoProbe,ath11k_ahb)
 endef
@@ -440,6 +440,7 @@ define KernelPackage/ath12k
   DEPENDS+= @PCI_SUPPORT +kmod-ath +kmod-crypto-michael-mic \
   +kmod-qrtr-mhi +kmod-qcom-qmi-helpers +@DRIVER_11AC_SUPPORT \
   +@DRIVER_11AX_SUPPORT +@DRIVER_11BE_SUPPORT \
+  +TARGET_qualcommbe:kmod-qcom-ppe +TARGET_qualcommbe:kmod-qrtr-smd \
   +ATH12K_THERMAL:kmod-hwmon-core +ATH12K_THERMAL:kmod-thermal
   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath12k/ath12k.ko
   AUTOLOAD:=$(call AutoProbe,ath12k)

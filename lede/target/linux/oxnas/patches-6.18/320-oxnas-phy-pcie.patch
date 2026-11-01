@@ -1,0 +1,43 @@
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/arch/arm/boot/dts/ox820.dtsi
++++ b/arch/arm/boot/dts/ox820.dtsi
+@@ -247,6 +247,15 @@
+ 				};
+ 			};
+ 
++			pcie_phy: pcie-phy@a00000 {
++				compatible = "oxsemi,ox820-pcie-phy";
++				reg = <0xa00000 0x10>;
++				#phy-cells = <0>;
++				resets = <&reset RESET_PCIEPHY>;
++				reset-names = "phy";
++				status = "disabled";
++			};
++
+ 			sys: sys-ctrl@e00000 {
+ 				compatible = "oxsemi,ox820-sys-ctrl", "syscon", "simple-mfd";
+ 				reg = <0xe00000 0x200000>;
+--- a/drivers/phy/Kconfig
++++ b/drivers/phy/Kconfig
+@@ -154,3 +154,11 @@
+ source "drivers/phy/xilinx/Kconfig"
+ 
+ endmenu
++
++config PHY_OXNAS
++	tristate "Oxford Semi. OX820 PCI-E PHY support"
++	depends on HAS_IOMEM && OF && (ARM || COMPILE_TEST)
++	select GENERIC_PHY
++	help
++	  This option enables support for OXNAS OX820 SoC PCIE PHY.
++
+--- a/drivers/phy/Makefile
++++ b/drivers/phy/Makefile
+@@ -44,3 +44,5 @@
+ 					   tegra/	\
+ 					   ti/		\
+ 					   xilinx/
++
++obj-$(CONFIG_PHY_OXNAS)			+= phy-oxnas-pcie.o

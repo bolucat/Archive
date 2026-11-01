@@ -1,0 +1,60 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] wifi: ath11k: preserve monitor PPDU state across status buffers
+
+HE PHY status and PPDU end user statistics can arrive in different status
+buffers and NAPI polls. Clearing the persistent PPDU state at either
+boundary loses the NSS before the completed capture reaches mac80211.
+
+Reset the state on a new PPDU start instead. Initialize the invalid peer
+sentinel when the monitor state is attached and retain it when starting
+another PPDU, preserving the upstream protection against stale peer IDs.
+Keep the completed-PPDU cleanup, rate validation and normal data path.
+
+Link: https://github.com/torvalds/linux/commit/09f16f7390f302937409738d6cb6ce99b265f455
+Link: https://github.com/torvalds/linux/commit/a20ed60bb357776301c2dad7b4a4f0db97e143e9
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -5287,9 +5287,6 @@ int ath11k_dp_rx_process_mon_status(stru
+ 	if (!num_buffs_reaped)
+ 		goto exit;
+ 
+-	memset(ppdu_info, 0, sizeof(*ppdu_info));
+-	ppdu_info->peer_id = HAL_INVALID_PEERID;
+-
+ 	while ((skb = __skb_dequeue(&skb_list))) {
+ 		if (ath11k_debugfs_is_pktlog_lite_mode_enabled(ar)) {
+ 			log_type = ATH11K_PKTLOG_TYPE_LITE_RX;
+@@ -5305,8 +5302,6 @@ int ath11k_dp_rx_process_mon_status(stru
+ 		if (log_type != ATH11K_PKTLOG_TYPE_INVALID)
+ 			trace_ath11k_htt_rxdesc(ar, skb->data, log_type, rx_buf_sz);
+ 
+-		memset(ppdu_info, 0, sizeof(*ppdu_info));
+-		ppdu_info->peer_id = HAL_INVALID_PEERID;
+ 		hal_status = ath11k_hal_rx_parse_mon_status(ab, ppdu_info, skb);
+ 
+ 		if (test_bit(ATH11K_FLAG_MONITOR_STARTED, &ar->monitor_flags) &&
+@@ -5733,6 +5728,8 @@ static int ath11k_dp_rx_pdev_mon_status_
+ 	struct ath11k_mon_data *pmon = (struct ath11k_mon_data *)&dp->mon_data;
+ 
+ 	pmon->mon_ppdu_status = DP_PPDU_STATUS_START;
++	memset(&pmon->mon_ppdu_info, 0, sizeof(pmon->mon_ppdu_info));
++	pmon->mon_ppdu_info.peer_id = HAL_INVALID_PEERID;
+ 
+ 	memset(&pmon->rx_mon_stats, 0,
+ 	       sizeof(pmon->rx_mon_stats));
+--- a/drivers/net/wireless/ath/ath11k/hal_rx.c
++++ b/drivers/net/wireless/ath/ath11k/hal_rx.c
+@@ -885,6 +885,10 @@ ath11k_hal_rx_parse_mon_status_tlv(struc
+ 		struct hal_rx_ppdu_start *ppdu_start =
+ 			(struct hal_rx_ppdu_start *)tlv_data;
+ 
++		/* A PPDU may span status buffers and NAPI polls. */
++		memset(ppdu_info, 0, sizeof(*ppdu_info));
++		ppdu_info->peer_id = HAL_INVALID_PEERID;
++
+ 		ppdu_info->ppdu_id =
+ 			FIELD_GET(HAL_RX_PPDU_START_INFO0_PPDU_ID,
+ 				  __le32_to_cpu(ppdu_start->info0));

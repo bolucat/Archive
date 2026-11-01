@@ -1,0 +1,19 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] firmware: qcom: scm: use the current wait queue interface
+
+The wait queue helper takes the context directly and obtains the SCM
+instance internally. Match its declaration when the SMC path is enabled.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/firmware/qcom/qcom_scm-smc.c
++++ b/drivers/firmware/qcom/qcom_scm-smc.c
+@@ -111,7 +111,7 @@
+ 			smc_call_ctx = res->a2;
+ 
+ 			trace_scm_waitq_sleep(wq_ctx, smc_call_ctx);
+-			ret = qcom_scm_wait_for_wq_completion(dev, wq_ctx);
++			ret = qcom_scm_wait_for_wq_completion(wq_ctx);
+ 			if (ret)
+ 				return ret;
+ 

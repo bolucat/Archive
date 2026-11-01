@@ -1,0 +1,188 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] ARM: restore OXNAS platform and driver build support
+
+Restore build registrations for the OX810SE and OX820 platform code
+and drivers retained by this target.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -426,6 +426,7 @@
+ source "arch/arm/mach-omap2/Kconfig"
+ 
+ source "arch/arm/mach-orion5x/Kconfig"
++source "arch/arm/mach-oxnas/Kconfig"
+ 
+ source "arch/arm/mach-pxa/Kconfig"
+ 
+--- a/arch/arm/Makefile
++++ b/arch/arm/Makefile
+@@ -211,6 +211,7 @@
+ machine-$(CONFIG_ARCH_QCOM)		+= qcom
+ machine-$(CONFIG_ARCH_REALTEK)		+= realtek
+ machine-$(CONFIG_ARCH_ROCKCHIP)		+= rockchip
++machine-$(CONFIG_ARCH_OXNAS)		+= oxnas
+ machine-$(CONFIG_ARCH_RPC)		+= rpc
+ machine-$(CONFIG_PLAT_SAMSUNG)		+= s3c
+ machine-$(CONFIG_ARCH_S5PV210)		+= s5pv210
+--- a/arch/arm/boot/dts/Makefile
++++ b/arch/arm/boot/dts/Makefile
+@@ -39,3 +39,5 @@
+ subdir-y += vt8500
+ subdir-y += xen
+ subdir-y += xilinx
++dtb-$(CONFIG_MACH_OX810SE) += ox810se-wd-mbwe.dtb
++dtb-$(CONFIG_MACH_OX820) += ox820-akitio-mycloud.dtb ox820-cloudengines-pogoplug-series-3.dtb ox820-cloudengines-pogoplugpro.dtb ox820-mitrastar-stg-212.dtb ox820-shuttle-kd20.dtb
+--- a/drivers/clk/Kconfig
++++ b/drivers/clk/Kconfig
+@@ -584,3 +584,11 @@
+ 	  Kunit test for the clk-fractional-divider type.
+ 
+ endif
++
++config COMMON_CLK_OXNAS
++	bool "Clock driver for the OXNAS SoC Family"
++	depends on COMMON_CLK && (ARCH_OXNAS || COMPILE_TEST)
++	select MFD_SYSCON
++	help
++	  Support for the OXNAS SoC Family clocks.
++
+--- a/drivers/clk/Makefile
++++ b/drivers/clk/Makefile
+@@ -168,3 +168,4 @@
+ obj-y					+= xilinx/
+ obj-$(CONFIG_ARCH_ZYNQ)			+= zynq/
+ obj-$(CONFIG_COMMON_CLK_ZYNQMP)         += zynqmp/
++obj-$(CONFIG_COMMON_CLK_OXNAS) += clk-oxnas.o
+--- a/drivers/clocksource/Kconfig
++++ b/drivers/clocksource/Kconfig
+@@ -784,3 +784,11 @@
+           s32g NXP platform series.
+ 
+ endmenu
++
++config OXNAS_RPS_TIMER
++	bool "Oxford Semiconductor OXNAS RPS Timers driver" if COMPILE_TEST
++	select TIMER_OF
++	select CLKSRC_MMIO
++	help
++	  This enables support for the Oxford Semiconductor OXNAS RPS timers.
++
+--- a/drivers/clocksource/Makefile
++++ b/drivers/clocksource/Makefile
+@@ -95,3 +95,4 @@
+ obj-$(CONFIG_EP93XX_TIMER)		+= timer-ep93xx.o
+ obj-$(CONFIG_RALINK_TIMER)		+= timer-ralink.o
+ obj-$(CONFIG_NXP_STM_TIMER)		+= timer-nxp-stm.o
++obj-$(CONFIG_OXNAS_RPS_TIMER) += timer-oxnas-rps.o
+--- a/drivers/mtd/nand/raw/Kconfig
++++ b/drivers/mtd/nand/raw/Kconfig
+@@ -538,3 +538,11 @@
+ 	  parameter "inftl_bbt_write=1".
+ 
+ endif # MTD_RAW_NAND
++
++config MTD_NAND_OXNAS
++	tristate "Oxford Semiconductor NAND controller"
++	depends on MTD_RAW_NAND && (ARCH_OXNAS || COMPILE_TEST)
++	depends on HAS_IOMEM
++	help
++	  This enables the NAND flash controller on Oxford Semiconductor SoCs.
++
+--- a/drivers/mtd/nand/raw/Makefile
++++ b/drivers/mtd/nand/raw/Makefile
+@@ -71,3 +71,4 @@
+ nand-objs += nand_sandisk.o
+ nand-objs += nand_samsung.o
+ nand-objs += nand_toshiba.o
++obj-$(CONFIG_MTD_NAND_OXNAS) += oxnas_nand.o
+--- a/drivers/net/ethernet/stmicro/stmmac/Kconfig
++++ b/drivers/net/ethernet/stmicro/stmmac/Kconfig
+@@ -379,3 +379,15 @@
+ 
+ 	  If unsure, say N.
+ endif
++
++config DWMAC_OXNAS
++	tristate "Oxford Semiconductor OXNAS dwmac support"
++	default ARCH_OXNAS
++	depends on STMMAC_PLATFORM && OF && COMMON_CLK && (ARCH_OXNAS || COMPILE_TEST)
++	select MFD_SYSCON
++	help
++	  Support for Ethernet controller on Oxford Semiconductor OXNAS SoCs.
++
++	  This selects the Oxford Semiconductor OXNASSoC glue layer support for
++	  the stmmac device driver. This driver is used for OX820.
++
+--- a/drivers/net/ethernet/stmicro/stmmac/Makefile
++++ b/drivers/net/ethernet/stmicro/stmmac/Makefile
+@@ -48,3 +48,4 @@
+ obj-$(CONFIG_DWMAC_LOONGSON)	+= dwmac-loongson.o
+ obj-$(CONFIG_DWMAC_MOTORCOMM)	+= dwmac-motorcomm.o
+ stmmac-pci-objs:= stmmac_pci.o
++obj-$(CONFIG_DWMAC_OXNAS) += dwmac-oxnas.o
+--- a/drivers/pinctrl/Kconfig
++++ b/drivers/pinctrl/Kconfig
+@@ -716,3 +716,15 @@
+ source "drivers/pinctrl/vt8500/Kconfig"
+ 
+ endif
++
++config PINCTRL_OXNAS
++	bool
++	depends on PINCTRL && OF
++	select PINMUX
++	select PINCONF
++	select GENERIC_PINCONF
++	select GPIOLIB
++	select OF_GPIO
++	select GPIOLIB_IRQCHIP
++	select MFD_SYSCON
++
+--- a/drivers/pinctrl/Makefile
++++ b/drivers/pinctrl/Makefile
+@@ -95,3 +95,4 @@
+ obj-$(CONFIG_PINCTRL_UNIPHIER)	+= uniphier/
+ obj-$(CONFIG_PINCTRL_VISCONTI)	+= visconti/
+ obj-$(CONFIG_ARCH_VT8500)	+= vt8500/
++obj-$(CONFIG_PINCTRL_OXNAS) += pinctrl-oxnas.o
+--- a/drivers/power/reset/Kconfig
++++ b/drivers/power/reset/Kconfig
+@@ -346,3 +346,11 @@
+ 	  This driver supports reset or low power mode handling for Mellanox BlueField.
+ 
+ endif
++
++config POWER_RESET_OXNAS
++	bool "OXNAS SoC restart driver"
++	depends on POWER_RESET && ARCH_OXNAS
++	default MACH_OX820
++	help
++	  Restart support for OXNAS/PLXTECH OX820 SoC.
++
+--- a/drivers/power/reset/Makefile
++++ b/drivers/power/reset/Makefile
+@@ -40,3 +40,4 @@
+ obj-$(CONFIG_POWER_RESET_SC27XX) += sc27xx-poweroff.o
+ obj-$(CONFIG_NVMEM_REBOOT_MODE) += nvmem-reboot-mode.o
+ obj-$(CONFIG_POWER_MLXBF) += pwr-mlxbf.o
++obj-$(CONFIG_POWER_RESET_OXNAS) += oxnas-restart.o
+--- a/drivers/reset/Kconfig
++++ b/drivers/reset/Kconfig
+@@ -399,3 +399,8 @@
+ source "drivers/reset/tegra/Kconfig"
+ 
+ endif
++
++config RESET_OXNAS
++	bool
++	depends on RESET_CONTROLLER
++
+--- a/drivers/reset/Makefile
++++ b/drivers/reset/Makefile
+@@ -49,3 +49,4 @@
+ obj-$(CONFIG_RESET_UNIPHIER_GLUE) += reset-uniphier-glue.o
+ obj-$(CONFIG_RESET_ZYNQ) += reset-zynq.o
+ obj-$(CONFIG_RESET_ZYNQMP) += reset-zynqmp.o
++obj-$(CONFIG_RESET_OXNAS) += reset-oxnas.o

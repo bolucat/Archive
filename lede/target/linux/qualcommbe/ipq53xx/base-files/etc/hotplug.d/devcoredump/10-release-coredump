@@ -1,0 +1,66 @@
+#!/bin/sh
+# Release firmware coredumps so crash recovery can continue.
+#
+# The IPQ53xx WCSS remoteproc takes its coredump "inline": recovery of the
+# crashed Wi-Fi firmware waits until the devcoredump is read or released,
+# or until it expires after five minutes. Until then every radio is dead
+# while hostapd still reports them up. Release each dump as it appears,
+# after keeping a compressed copy when the overlay has room for one.
+#
+# The dumps are firmware RAM and can hold Wi-Fi key material: they are
+# written 0600 into a 0700 directory and never leave the device on their own.
+
+[ "$ACTION" = "add" ] || exit 0
+[ "$SUBSYSTEM" = "devcoredump" ] || exit 0
+
+# Exactly /devices/virtual/devcoredump/devcdN, nothing deeper: in a case
+# pattern '*' also matches '/'.
+case "${DEVPATH##*/}" in
+devcd[0-9]*) ;;
+*) exit 0 ;;
+esac
+[ "$DEVPATH" = "/devices/virtual/devcoredump/${DEVPATH##*/}" ] || exit 0
+
+dev="/sys$DEVPATH"
+[ -L "$dev/data" ] && exit 0
+[ -f "$dev/data" ] && [ -w "$dev/data" ] || exit 0
+
+dir=/root/coredumps
+keep=4
+min_free_kb=262144
+
+src=$(printf '%s' "$(basename "$(readlink -f "$dev/failing_device")")" |
+	tr -c 'A-Za-z0-9._:-' '_')
+[ -n "$src" ] || src=unknown
+
+umask 077
+# Only a mounted overlay counts: on an initramfs boot /overlay is a plain
+# directory on the RAM root, and a dump saved there would eat memory.
+free_kb=0
+grep -q " /overlay " /proc/mounts &&
+	free_kb=$(df -Pk /overlay 2>/dev/null | awk '$NF == "/overlay" { print $4 }')
+if [ "${free_kb:-0}" -ge "$min_free_kb" ] && mkdir -p -m 700 "$dir" &&
+   chmod 700 "$dir"; then
+	rm -f "$dir"/*.tmp
+	out="$dir/$(date +%Y%m%d-%H%M%S)-${DEVPATH##*/}-$src.gz"
+	# Bounded: procd runs hotplug jobs one at a time, and a stalled write
+	# must not hold up recovery or every later hotplug event.
+	if timeout 60 gzip -c "$dev/data" > "$out.tmp" 2>/dev/null &&
+	   mv "$out.tmp" "$out"; then
+		logger -t coredump "saved $src firmware dump to $out"
+		for old in $(ls -1t "$dir"/*.gz 2>/dev/null | tail -n +$((keep + 1))); do
+			rm -f "$old"
+		done
+	else
+		rm -f "$out.tmp"
+		logger -t coredump "could not save $src firmware dump"
+	fi
+else
+	logger -t coredump "not saving $src firmware dump: overlay too small"
+fi
+
+if echo 1 2>/dev/null > "$dev/data"; then
+	logger -t coredump "released $src firmware dump"
+else
+	logger -t coredump "could not release $src firmware dump (already gone?)"
+fi

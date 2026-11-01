@@ -21,7 +21,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/phy.h>
 #include <linux/ethtool.h>
-#include <linux/version.h>
 
 enum fe_reg {
 	FE_REG_PDMA_GLO_CFG = 0,
@@ -152,14 +151,7 @@ enum fe_work_flag {
 #define MT7620A_GDMA_OFFSET		0x0600
 #endif
 #define	MT7620A_GDMA1_FWD_CFG		(MT7620A_GDMA_OFFSET + 0x00)
-#define MT7620A_FE_GDMA1_SCH_CFG	(MT7620A_GDMA_OFFSET + 0x04)
-#define MT7620A_FE_GDMA1_SHPR_CFG	(MT7620A_GDMA_OFFSET + 0x08)
-#define MT7620A_FE_GDMA1_MAC_ADRL	(MT7620A_GDMA_OFFSET + 0x0C)
-#define MT7620A_FE_GDMA1_MAC_ADRH	(MT7620A_GDMA_OFFSET + 0x10)
-
-#define MT7620A_RESET_FE	BIT(21)
-#define MT7620A_RESET_ESW	BIT(23)
-#define MT7620A_RESET_EPHY	BIT(24)
+#define MT7620A_FE_GDMA1_SHPR_CFG	(MT7620A_GDMA_OFFSET + 0x04)
 
 #define RT5350_TX_BASE_PTR0	(RT5350_PDMA_OFFSET + 0x00)
 #define RT5350_TX_MAX_CNT0	(RT5350_PDMA_OFFSET + 0x04)
@@ -314,6 +306,7 @@ enum fe_work_flag {
 #define RX_DMA_VID(_x)		((_x) & 0xffff)
 /* rxd4 */
 #define RX_DMA_L4VALID		BIT(30)
+#define MT7620_RX_DMA_SP	GENMASK(21, 19)
 
 struct fe_rx_dma {
 	unsigned int rxd1;
@@ -342,6 +335,8 @@ struct fe_rx_dma {
 #define TX_DMA_UDF		BIT(20)
 #define TX_DMA_CHKSUM		(0x7 << 29)
 #define TX_DMA_TSO		BIT(28)
+#define MT7620_TX_DMA_FP_BMAP	GENMASK(27, 20)
+#define MT7620_TX_DMA_LAST_PORT	5
 
 /* frame engine counters */
 #define FE_PPE_AC_BCNT0		(FE_CMTABLE_OFFSET + 0x00)
@@ -360,6 +355,7 @@ struct fe_tx_dma {
 } __packed __aligned(4);
 
 struct fe_priv;
+struct metadata_dst;
 
 struct fe_phy {
 	/* make sure that phy operations are atomic */
@@ -382,12 +378,12 @@ struct fe_soc_data {
 	const u16 *reg_table;
 
 	void (*init_data)(struct fe_soc_data *data, struct net_device *netdev);
-	void (*reset_fe)(struct fe_priv *priv);
-	void (*set_mac)(struct fe_priv *priv, unsigned char *mac);
+	void (*set_mac)(struct fe_priv *priv, const unsigned char *mac);
 	int (*fwd_config)(struct fe_priv *priv);
 	void (*tx_dma)(struct fe_tx_dma *txd);
 	int (*switch_init)(struct fe_priv *priv);
 	int (*switch_config)(struct fe_priv *priv);
+	void (*switch_cleanup)(struct fe_priv *priv);
 	void (*port_init)(struct fe_priv *priv, struct device_node *port);
 	int (*has_carrier)(struct fe_priv *priv);
 	int (*mdio_init)(struct fe_priv *priv);
@@ -488,8 +484,9 @@ struct fe_priv {
 	struct fe_phy			*phy;
 	struct mii_bus			*mii_bus;
 	struct phy_device		*phy_dev;
+	struct metadata_dst		*dsa_meta[8];
+	bool				dsa_switch;
 	u32				phy_flags;
-
 	int				link[8];
 
 	struct fe_hw_stats		*hw_stats;
@@ -497,8 +494,9 @@ struct fe_priv {
 	struct work_struct		pending_work;
 	DECLARE_BITMAP(pending_flags, FE_FLAG_MAX);
 
-	struct reset_control		*rst_ppe;
 	struct reset_control		*rst_fe;
+	struct reset_control		*rst_esw;
+	bool				fe_needs_reinit;
 	struct mtk_foe_entry		*foe_table;
 	dma_addr_t			foe_table_phys;
 	struct flow_offload __rcu	**foe_flow_table;
@@ -517,22 +515,10 @@ void fe_fwd_config(struct fe_priv *priv);
 void fe_reg_w32(u32 val, enum fe_reg reg);
 u32 fe_reg_r32(enum fe_reg reg);
 
-void fe_reset(u32 reset_bits);
-void fe_reset_fe(struct fe_priv *priv);
-
 static inline void *priv_netdev(struct fe_priv *priv)
 {
 	return (char *)priv - ALIGN(sizeof(struct net_device), NETDEV_ALIGN);
 }
-
-int ra_ppe_probe(struct fe_priv *eth);
-void ra_ppe_remove(struct fe_priv *eth);
-int mtk_flow_offload(struct fe_priv *eth,
-		     enum flow_offload_type type,
-		     struct flow_offload *flow,
-		     struct flow_offload_hw_path *src,
-		     struct flow_offload_hw_path *dest);
-int ra_offload_check_rx(struct fe_priv *eth, struct sk_buff *skb, u32 rxd4);
 
 
 #endif /* FE_ETH_H */

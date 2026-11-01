@@ -1,0 +1,44 @@
+Subject: [PATCH] ssdk: preserve wired offload on unsupported path admission
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_hw.c
++++ b/src/ref/ref_flow_hw.c
+@@ -37,6 +37,20 @@
+ 	return error;
+ }
+ #define failed(hw, error) failed_at(hw, error, __func__, __LINE__)
++/* Admission failures precede any per-flow table writes. The resolver's
++ * EOPNOTSUPP/EAGAIN paths do not modify the global prefix either. Preserve
++ * existing wired flows when a wireless/unresolved path stays in software.
++ * Epoch validation still forbids resuming after an asynchronous invalidation.
++ */
++static int declined(struct ssdk_flow_hw *hw, int error, u64 epoch)
++{
++	int ret;
++	if (any_ready(hw)) {
++		ret = ssdk_flow_gate_resume(hw->dev, epoch);
++		if (ret) return failed(hw, ret);
++	}
++	return error;
++}
+ static int hw_install(void *ctx, unsigned int slot, const struct ssdk_flow_rule rules[2],
+ 		      const struct ssdk_flow_pair *pair, struct ssdk_flow_counts *baseline)
+ {
+@@ -56,6 +70,7 @@
+ 	if (ret) return failed(hw, ret);
+ 	memset(paths, 0, sizeof(paths));
+ 	ret = hw->resolve(hw->ctx, rules, paths);
++	if (ret == -EOPNOTSUPP || ret == -EAGAIN) return declined(hw, ret, epoch);
+ 	if (ret) return failed(hw, ret);
+ 	for (i = 0; i < 2; i++) {
+ 		/* The action's L2 rewrite must agree with the live next hop. */
+@@ -65,7 +80,7 @@
+ 		    !paths[i].port || paths[i].port > 5 ||
+ 		    (rules[i].vlan_push && rules[i].egress_vid != paths[i].vid) ||
+ 		    (rules[i].vlan_match && rules[i].ingress_vid != paths[1-i].vid))
+-			return failed(hw, -EOPNOTSUPP);
++			return declined(hw, -EOPNOTSUPP, epoch);
+ 	}
+ 	flow->used = true;
+ 	memcpy(flow->paths, paths, sizeof(paths));

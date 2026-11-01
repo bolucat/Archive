@@ -1,0 +1,25 @@
+Subject: [PATCH] netfilter: retain software ingress on mixed IPQ40xx flowtables
+
+DESS and QCA WiFi share the LAN bridge but only EDMA can bind hardware
+offload. Keep software hooks for devices reporting EOPNOTSUPP so both
+directions remain accelerated in software when DESS rejects their route.
+Other setup failures remain fatal. Apply the same policy on unbind.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -1277,6 +1277,13 @@
+ 	else
+ 		err = nf_flow_table_indr_offload_cmd(&bo, flowtable, dev, cmd,
+ 						     &extack);
++	/* Hardware offload is opportunistic: keep the software ingress hook
++	 * on ports without an offload binding (for example QCA WiFi). The
++	 * hardware callbacks still reject unsupported routes, leaving those
++	 * flows in the software table. Propagate genuine setup failures.
++	 */
++	if (err == -EOPNOTSUPP)
++		return 0;
+ 	if (err < 0)
+ 		return err;
+ 

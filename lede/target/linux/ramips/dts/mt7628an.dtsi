@@ -1,5 +1,7 @@
 /dts-v1/;
 
+#include <dt-bindings/clock/mediatek,mtmips-sysc.h>
+
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
@@ -30,6 +32,22 @@
 		compatible = "mti,cpu-interrupt-controller";
 	};
 
+	reg_vmmc: regulator-vmmc {
+		compatible = "regulator-fixed";
+		regulator-always-on;
+		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <3300000>;
+		regulator-name = "mmc_power";
+	};
+
+	reg_vqmmc: regulator-vqmmc {
+		compatible = "regulator-fixed";
+		regulator-always-on;
+		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <3300000>;
+		regulator-name = "mmc_io";
+	};
+
 	palmbus: palmbus@10000000 {
 		compatible = "palmbus";
 		reg = <0x10000000 0x200000>;
@@ -38,28 +56,22 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		sysc: sysc@0 {
-			compatible = "ralink,mt7620a-sysc", "syscon";
+		sysc: syscon@0 {
+			compatible = "ralink,mt7628-sysc", "ralink,mt7688-sysc", "syscon";
 			reg = <0x0 0x100>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
 		};
 
 		watchdog: watchdog@100 {
-			compatible = "ralink,mt7628an-wdt", "mediatek,mt7621-wdt";
-			reg = <0x100 0x30>;
-
-			resets = <&rstctrl 8>;
-			reset-names = "wdt";
-
-			interrupt-parent = <&intc>;
-			interrupts = <24>;
+			compatible = "mediatek,mt7621-wdt";
+			reg = <0x100 0x100>;
+			mediatek,sysctl = <&sysc>;
 		};
 
 		intc: intc@200 {
-			compatible = "ralink,mt7628an-intc", "ralink,rt2880-intc";
+			compatible = "ralink,rt2880-intc";
 			reg = <0x200 0x100>;
-
-			resets = <&rstctrl 9>;
-			reset-names = "intc";
 
 			interrupt-controller;
 			#interrupt-cells = <1>;
@@ -75,9 +87,6 @@
 		memc: memc@300 {
 			compatible = "ralink,mt7620a-memc", "ralink,rt3050-memc";
 			reg = <0x300 0x100>;
-
-			resets = <&rstctrl 10>;
-			reset-names = "mc";
 
 			interrupt-parent = <&intc>;
 			interrupts = <3>;
@@ -101,7 +110,10 @@
 			compatible = "mediatek,mt7621-i2c";
 			reg = <0x900 0x100>;
 
-			resets = <&rstctrl 16>;
+			clocks = <&sysc MT76X8_CLK_I2C>;
+			clock-names = "i2c";
+
+			resets = <&sysc 16>;
 			reset-names = "i2c";
 
 			#address-cells = <1>;
@@ -117,7 +129,9 @@
 			compatible = "mediatek,mt7628-i2s";
 			reg = <0xa00 0x100>;
 
-			resets = <&rstctrl 17>;
+			clocks = <&sysc MT76X8_CLK_I2S>;
+
+			resets = <&sysc 17>;
 			reset-names = "i2s";
 
 			interrupt-parent = <&intc>;
@@ -137,7 +151,10 @@
 			compatible = "ralink,mt7621-spi";
 			reg = <0xb00 0x100>;
 
-			resets = <&rstctrl 18>;
+			clocks = <&sysc MT76X8_CLK_SPI1>;
+			clock-names = "spi";
+
+			resets = <&sysc 18>;
 			reset-names = "spi";
 
 			#address-cells = <1>;
@@ -149,7 +166,7 @@
 			status = "disabled";
 		};
 
-		uartlite: uartlite@c00 {
+		uartlite: serial@c00 {
 			compatible = "ns16550a";
 			reg = <0xc00 0x100>;
 
@@ -157,10 +174,9 @@
 			reg-io-width = <4>;
 			no-loopback-test;
 
-			clock-frequency = <40000000>;
+			clocks = <&sysc MT76X8_CLK_UART0>;
 
-			resets = <&rstctrl 12>;
-			reset-names = "uartl";
+			resets = <&sysc 12>;
 
 			interrupt-parent = <&intc>;
 			interrupts = <20>;
@@ -169,7 +185,7 @@
 			pinctrl-0 = <&uart0_pins>;
 		};
 
-		uart1: uart1@d00 {
+		uart1: serial@d00 {
 			compatible = "ns16550a";
 			reg = <0xd00 0x100>;
 
@@ -177,10 +193,9 @@
 			reg-io-width = <4>;
 			no-loopback-test;
 
-			clock-frequency = <40000000>;
+			clocks = <&sysc MT76X8_CLK_UART1>;
 
-			resets = <&rstctrl 19>;
-			reset-names = "uart1";
+			resets = <&sysc 19>;
 
 			interrupt-parent = <&intc>;
 			interrupts = <21>;
@@ -191,7 +206,7 @@
 			status = "disabled";
 		};
 
-		uart2: uart2@e00 {
+		uart2: serial@e00 {
 			compatible = "ns16550a";
 			reg = <0xe00 0x100>;
 
@@ -199,10 +214,9 @@
 			reg-io-width = <4>;
 			no-loopback-test;
 
-			clock-frequency = <40000000>;
+			clocks = <&sysc MT76X8_CLK_UART2>;
 
-			resets = <&rstctrl 20>;
-			reset-names = "uart2";
+			resets = <&sysc 20>;
 
 			interrupt-parent = <&intc>;
 			interrupts = <22>;
@@ -218,8 +232,14 @@
 			reg = <0x5000 0x1000>;
 			#pwm-cells = <2>;
 
-			resets = <&rstctrl 31>;
-			reset-names = "pwm";
+			clocks = <&sysc MT76X8_CLK_PWM_TOP>,
+				 <&sysc MT76X8_CLK_PWM_MAIN>,
+				 <&sysc MT76X8_CLK_PWM_CH1>,
+				 <&sysc MT76X8_CLK_PWM_CH2>,
+				 <&sysc MT76X8_CLK_PWM_CH3>,
+				 <&sysc MT76X8_CLK_PWM_CH4>;
+			clock-names = "top", "main",
+				      "pwm1", "pwm2", "pwm3", "pwm4";
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&pwm0_pins>, <&pwm1_pins>;
@@ -231,7 +251,7 @@
 			compatible = "ralink,mt7620a-pcm";
 			reg = <0x2000 0x800>;
 
-			resets = <&rstctrl 11>;
+			resets = <&sysc 11>;
 			reset-names = "pcm";
 
 			interrupt-parent = <&intc>;
@@ -244,7 +264,7 @@
 			compatible = "ralink,rt3883-gdma";
 			reg = <0x2800 0x800>;
 
-			resets = <&rstctrl 14>;
+			resets = <&sysc 14>;
 			reset-names = "dma";
 
 			interrupt-parent = <&intc>;
@@ -343,6 +363,13 @@
 			};
 		};
 
+		pcie_pins: pcie {
+			pcie_reset {
+				groups = "perst";
+				function = "perst";
+			};
+		};
+
 		refclk_pins: refclk {
 			refclk {
 				groups = "refclk";
@@ -351,37 +378,43 @@
 		};
 	};
 
-	rstctrl: rstctrl {
-		compatible = "ralink,mt7620a-reset", "ralink,rt2880-reset";
-		#reset-cells = <1>;
-	};
-
-	clkctrl: clkctrl {
-		compatible = "ralink,rt2880-clock";
-		#clock-cells = <1>;
-	};
-
 	usbphy: usbphy@10120000 {
 		compatible = "mediatek,mt7628-usbphy", "mediatek,mt7620-usbphy";
 		reg = <0x10120000 0x1000>;
 		#phy-cells = <0>;
 
 		ralink,sysctl = <&sysc>;
-		resets = <&rstctrl 22 &rstctrl 25>;
+		/* usb phy reset is only controled by RSTCTRL bit 22 */
+		resets = <&sysc 22>, <&sysc 25>;
 		reset-names = "host", "device";
-		clocks = <&clkctrl 22 &clkctrl 25>;
-		clock-names = "host", "device";
 	};
 
-	sdhci: sdhci@10130000 {
-		compatible = "ralink,mt7620-sdhci";
+	sdhci: mmc@10130000 {
+		compatible = "mediatek,mt7620-mmc", "ralink,mt7620-sdhci";
 		reg = <0x10130000 0x4000>;
+
+		bus-width = <4>;
+		max-frequency = <48000000>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		disable-wp;
+		no-1-8-v;
+
+		clocks = <&sysc MT76X8_CLK_MMC>, <&sysc MT76X8_CLK_MMC>;
+		clock-names = "source", "hclk";
 
 		interrupt-parent = <&intc>;
 		interrupts = <14>;
 
-		pinctrl-names = "default";
+		pinctrl-names = "default", "state_uhs";
 		pinctrl-0 = <&sdxc_pins>;
+		pinctrl-1 = <&sdxc_pins>;
+
+		resets = <&sysc 30>;
+		reset-names = "hrst";
+
+		vmmc-supply = <&reg_vmmc>;
+		vqmmc-supply = <&reg_vqmmc>;
 
 		status = "disabled";
 	};
@@ -429,18 +462,18 @@
 		interrupt-parent = <&cpuintc>;
 		interrupts = <5>;
 
-		resets = <&rstctrl 21>;
-		reset-names = "fe";
+		resets = <&sysc 21>, <&sysc 23>;
+		reset-names = "fe", "esw";
 
 		mediatek,switch = <&esw>;
 	};
 
 	esw: esw@10110000 {
-		compatible = "mediatek,mt7628-esw", "ralink,rt3050-esw";
+		compatible = "ralink,rt3050-esw";
 		reg = <0x10110000 0x8000>;
 
-		resets = <&rstctrl 23 &rstctrl 24>;
-		reset-names = "esw", "ephy";
+		resets = <&sysc 24>;
+		reset-names = "ephy";
 
 		interrupt-parent = <&intc>;
 		interrupts = <17>;
@@ -448,8 +481,7 @@
 
 	pcie: pcie@10140000 {
 		compatible = "mediatek,mt7620-pci";
-		reg = <0x10140000 0x100
-			0x10142000 0x100>;
+		reg = <0x10140000 0x100>, <0x10142000 0x8000>;
 
 		#address-cells = <3>;
 		#size-cells = <2>;
@@ -457,20 +489,19 @@
 		interrupt-parent = <&cpuintc>;
 		interrupts = <4>;
 
-		resets = <&rstctrl 26 &rstctrl 27>;
-		reset-names = "pcie0", "pcie1";
-		clocks = <&clkctrl 26 &clkctrl 27>;
-		clock-names = "pcie0", "pcie1";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pcie_pins>;
+
+		resets = <&sysc 26>;
+		reset-names = "pcie0";
 
 		status = "disabled";
 
 		device_type = "pci";
 
 		bus-range = <0 255>;
-		ranges = <
-			0x02000000 0 0x00000000 0x20000000 0 0x10000000 /* pci memory */
-			0x01000000 0 0x00000000 0x10160000 0 0x00010000 /* io space */
-		>;
+		ranges = <0x02000000 0 0x00000000 0x20000000 0 0x10000000>, /* pci memory */
+			 <0x01000000 0 0x00000000 0x10160000 0 0x00010000>; /* io space */
 
 		pcie0: pcie@0,0 {
 			reg = <0x0000 0 0 0 0>;
@@ -488,11 +519,11 @@
 		compatible = "mediatek,mt7628-wmac";
 		reg = <0x10300000 0x100000>;
 
+		clocks = <&sysc MT76X8_CLK_WMAC>;
+
 		interrupt-parent = <&cpuintc>;
 		interrupts = <6>;
 
 		status = "disabled";
-
-		mediatek,mtd-eeprom = <&factory 0x0000>;
 	};
 };

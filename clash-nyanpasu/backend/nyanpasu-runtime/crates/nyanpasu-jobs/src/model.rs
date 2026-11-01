@@ -182,40 +182,6 @@ impl Default for Limits {
         }
     }
 }
-/// The journal operation during which a storage step failed.
-#[cfg(feature = "redb-store")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JournalOperation {
-    Open,
-    Recover,
-    Admit,
-    Append,
-    Finish,
-    Get,
-    ListRuns,
-    ReadLogs,
-    Prune,
-    Health,
-}
-
-#[cfg(feature = "redb-store")]
-impl std::fmt::Display for JournalOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Open => "opening the journal",
-            Self::Recover => "recovering interrupted runs",
-            Self::Admit => "admitting a run",
-            Self::Append => "appending run logs",
-            Self::Finish => "finishing a run",
-            Self::Get => "reading a run",
-            Self::ListRuns => "listing runs",
-            Self::ReadLogs => "reading run logs",
-            Self::Prune => "pruning the journal",
-            Self::Health => "checking the journal",
-        })
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid definition or input: {0}")]
@@ -229,50 +195,34 @@ pub enum Error {
     #[error("journal unavailable: {0}")]
     Journal(String),
     #[cfg(feature = "redb-store")]
-    #[error("failed to prepare journal directory")]
+    #[error("failed to prepare journal directory: {0}")]
     JournalDirectory(#[source] std::io::Error),
     #[cfg(feature = "redb-store")]
-    #[error("failed to open journal database")]
+    #[error("failed to open journal database: {0}")]
     JournalOpen(#[source] redb::DatabaseError),
     #[cfg(feature = "redb-store")]
-    #[error("failed to open a journal table while {operation}")]
-    JournalTable {
-        operation: JournalOperation,
-        #[source]
-        source: redb::TableError,
-    },
+    #[error("failed to open journal table: {0}")]
+    JournalTable(#[source] redb::TableError),
     #[cfg(feature = "redb-store")]
-    #[error("failed to begin a journal transaction while {operation}")]
-    JournalTransaction {
-        operation: JournalOperation,
-        #[source]
-        source: redb::TransactionError,
-    },
+    #[error("failed to begin journal transaction: {0}")]
+    JournalTransaction(#[source] redb::TransactionError),
     #[cfg(feature = "redb-store")]
-    #[error("journal storage failed while {operation}")]
-    JournalStorage {
-        operation: JournalOperation,
-        #[source]
-        source: redb::StorageError,
-    },
+    #[error("journal storage operation failed: {0}")]
+    JournalStorage(#[source] redb::StorageError),
     #[cfg(feature = "redb-store")]
-    #[error("failed to commit the journal transaction while {operation}")]
-    JournalCommit {
-        operation: JournalOperation,
-        #[source]
-        source: redb::CommitError,
-    },
+    #[error("failed to commit journal transaction: {0}")]
+    JournalCommit(#[source] redb::CommitError),
     #[cfg(feature = "redb-store")]
-    #[error("failed to encode journal record")]
+    #[error("failed to encode journal record: {0}")]
     JournalEncode(#[source] serde_json::Error),
     #[cfg(feature = "redb-store")]
-    #[error("failed to decode journal record")]
+    #[error("failed to decode journal record: {0}")]
     JournalDecode(#[source] serde_json::Error),
     #[cfg(feature = "redb-store")]
-    #[error("failed to decode journal record during recovery")]
+    #[error("failed to decode journal record during recovery: {0}")]
     JournalRecoveryDecode(#[source] serde_json::Error),
     #[cfg(feature = "redb-store")]
-    #[error("failed to decode journal record during pruning")]
+    #[error("failed to decode journal record during pruning: {0}")]
     JournalPruneDecode(#[source] serde_json::Error),
     #[error("run already submitted: {0}")]
     AlreadySubmitted(RunId),

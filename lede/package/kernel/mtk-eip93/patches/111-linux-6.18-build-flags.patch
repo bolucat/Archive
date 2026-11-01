@@ -1,0 +1,13 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] crypto: eip93: propagate feature flags with ccflags-y
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/crypto/mtk-eip93/Makefile
++++ b/crypto/mtk-eip93/Makefile
+@@ -5,3 +5,5 @@
+ crypto-hw-eip93-$(CONFIG_CRYPTO_DEV_EIP93_SKCIPHER) += eip93-cipher.o
+ crypto-hw-eip93-$(CONFIG_CRYPTO_DEV_EIP93_AEAD) += eip93-aead.o
+ 
++
++ccflags-y += $(EXTRA_CFLAGS)

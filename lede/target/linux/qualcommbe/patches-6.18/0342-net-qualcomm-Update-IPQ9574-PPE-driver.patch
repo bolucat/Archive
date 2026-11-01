@@ -1,15 +1,19 @@
 From a355002e08a1db55eec93f469d28cfaab7b60f4b Mon Sep 17 00:00:00 2001
 From: Luo Jie <quic_luoj@quicinc.com>
-Date: Thu, 22 May 2025 11:16:12 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: qualcomm: Update IPQ9574 PPE driver
 
 Update PPE driver to keep aligned with the upstream patches. The
 updated PPE driver also fix some known issues such as GRO/GSO/TSO
 issue for the performance improvement.
 
-Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
 Alex G: print error code when failing to connect phylink
+Balsam CHIHI: route 1000BASE-X to GMII clock helper for 1G SFP support
+
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
 Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: Balsam CHIHI <balsam.chihi@moment.tech>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 ---
  drivers/net/ethernet/qualcomm/ppe/Makefile    |   2 +-
  drivers/net/ethernet/qualcomm/ppe/edma.c      | 158 +---
@@ -38,7 +42,6 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  24 files changed, 889 insertions(+), 757 deletions(-)
  create mode 100644 drivers/net/ethernet/qualcomm/ppe/ppe_api.c
  create mode 100644 drivers/net/ethernet/qualcomm/ppe/ppe_api.h
-
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile
 +++ b/drivers/net/ethernet/qualcomm/ppe/Makefile
 @@ -4,7 +4,7 @@
@@ -101,7 +104,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  		if (ret) {
  			pr_err("Failed with error: %d to set queue priority class for int_pri: %d for profile_id: %d\n",
-@@ -480,7 +481,7 @@ txcmpl_ring_irq_name_alloc_fail:
+@@ -494,7 +495,7 @@ txcmpl_ring_irq_name_alloc_fail:
  	return ret;
  }
  
@@ -110,7 +113,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  {
  	struct edma_hw_info *hw_info = edma_ctx->hw_info;
  	struct edma_ring_info *txcmpl = hw_info->txcmpl;
-@@ -588,44 +589,23 @@ static int edma_hw_reset(void)
+@@ -602,44 +603,23 @@ static int edma_hw_reset(void)
  	struct device *dev = ppe_dev->dev;
  	struct reset_control *edma_hw_rst;
  	struct device_node *edma_np;
@@ -165,7 +168,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  	of_node_put(edma_np);
  
-@@ -647,14 +627,12 @@ static int edma_hw_configure(void)
+@@ -661,14 +641,12 @@ static int edma_hw_configure(void)
  
  	pr_debug("EDMA ver %d hw init\n", data);
  
@@ -181,7 +184,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		return ret;
  	}
  
-@@ -668,7 +646,7 @@ static int edma_hw_configure(void)
+@@ -682,7 +660,7 @@ static int edma_hw_configure(void)
  	edma_ctx->dummy_dev = alloc_netdev_dummy(0);
  	if (!edma_ctx->dummy_dev) {
  		ret = -ENOMEM;
@@ -190,7 +193,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		goto dummy_dev_alloc_failed;
  	}
  
-@@ -682,7 +660,7 @@ static int edma_hw_configure(void)
+@@ -696,7 +674,7 @@ static int edma_hw_configure(void)
  
  	ret = edma_alloc_rings();
  	if (ret) {
@@ -199,7 +202,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		goto edma_alloc_rings_failed;
  	}
  
-@@ -702,7 +680,7 @@ static int edma_hw_configure(void)
+@@ -716,7 +694,7 @@ static int edma_hw_configure(void)
  
  	ret = edma_cfg_rx_rings();
  	if (ret) {
@@ -208,7 +211,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		goto edma_cfg_rx_rings_failed;
  	}
  
-@@ -720,15 +698,13 @@ static int edma_hw_configure(void)
+@@ -734,15 +712,13 @@ static int edma_hw_configure(void)
  	if (ret)
  		return ret;
  
@@ -225,7 +228,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	data = EDMA_MISC_AXI_RD_ERR_MASK |
  		EDMA_MISC_AXI_WR_ERR_MASK |
  		EDMA_MISC_RX_DESC_FIFO_FULL_MASK |
-@@ -743,15 +719,15 @@ static int edma_hw_configure(void)
+@@ -757,15 +733,15 @@ static int edma_hw_configure(void)
  	edma_cfg_rx_napi_add();
  	edma_cfg_rx_napi_enable();
  
@@ -244,7 +247,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	ret = (int)edma_configure_ucast_prio_map_tbl();
  	if (ret) {
  		pr_err("Failed to initialize unicast priority map table: %d\n",
-@@ -759,7 +735,6 @@ static int edma_hw_configure(void)
+@@ -773,7 +749,6 @@ static int edma_hw_configure(void)
  		goto configure_ucast_prio_map_tbl_failed;
  	}
  
@@ -252,16 +255,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	ret = edma_cfg_rx_rps_hash_map();
  	if (ret) {
  		pr_err("Failed to configure rps hash table: %d\n",
-@@ -767,6 +742,8 @@ static int edma_hw_configure(void)
- 		goto edma_cfg_rx_rps_hash_map_failed;
- 	}
- 
-+	pr_info("EDMA Hardware Configured\n");
-+
- 	return 0;
- 
- edma_cfg_rx_rps_hash_map_failed:
-@@ -803,14 +780,13 @@ void edma_destroy(struct ppe_device *ppe
+@@ -817,14 +792,13 @@ void edma_destroy(struct ppe_device *ppe
  		edma_ctx->rx_rps_ctl_table_hdr = NULL;
  	}
  
@@ -277,7 +271,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	for (i = 0; i < txcmpl->num_rings; i++) {
  		synchronize_irq(edma_ctx->intr_info.intr_txcmpl[i]);
  
-@@ -820,7 +796,7 @@ void edma_destroy(struct ppe_device *ppe
+@@ -834,7 +808,7 @@ void edma_destroy(struct ppe_device *ppe
  	}
  	kfree(edma_txcmpl_irq_name);
  
@@ -286,7 +280,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	for (i = 0; i < rx->num_rings; i++) {
  		synchronize_irq(edma_ctx->intr_info.intr_rx[i]);
  		free_irq(edma_ctx->intr_info.intr_rx[i],
-@@ -861,7 +837,7 @@ static struct ctl_table edma_rx_rps_core
+@@ -875,7 +849,7 @@ static struct ctl_table edma_rx_rps_core
   * edma_setup - EDMA Setup.
   * @ppe_dev: PPE device
   *
@@ -295,7 +289,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
   *
   * Return 0 on success, negative error code on failure.
   */
-@@ -889,22 +865,19 @@ int edma_setup(struct ppe_device *ppe_de
+@@ -903,22 +877,19 @@ int edma_setup(struct ppe_device *ppe_de
  		return -EINVAL;
  	}
  
@@ -320,7 +314,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (ret) {
  		dev_err(dev, "Error in irq initialization\n");
  		return ret;
-@@ -925,70 +898,3 @@ int edma_setup(struct ppe_device *ppe_de
+@@ -939,70 +910,3 @@ int edma_setup(struct ppe_device *ppe_de
  
  	return 0;
  }
@@ -520,11 +514,11 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	struct edma_ring_info *rx = hw_info->rx;
  	u32 i, data, reg;
  
-+        /* Set RXDESC2FILL_MAP_xx reg.
-+         * 3 registers hold the Rxfill mapping for all Rx desc rings.
-+         * 3 bits holds the Rx fill ring mapping for each of the
-+         * Rx descriptor ring.
-+         */
++	/* Set RXDESC2FILL_MAP_xx reg.
++	 * 3 registers hold the Rxfill mapping for all Rx desc rings.
++	 * 3 bits holds the Rx fill ring mapping for each of the
++	 * Rx descriptor ring.
++	 */
  	regmap_write(regmap, EDMA_BASE_OFFSET + EDMA_REG_RXDESC2FILL_MAP_0_ADDR, 0);
  	regmap_write(regmap, EDMA_BASE_OFFSET + EDMA_REG_RXDESC2FILL_MAP_1_ADDR, 0);
  	regmap_write(regmap, EDMA_BASE_OFFSET + EDMA_REG_RXDESC2FILL_MAP_2_ADDR, 0);
@@ -840,7 +834,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
   */
  
  /* ethtool support for EDMA */
-@@ -242,33 +242,6 @@ static int edma_set_pauseparam(struct ne
+@@ -243,33 +243,6 @@ static int edma_set_pauseparam(struct ne
  	return phylink_ethtool_set_pauseparam(port->phylink, pause);
  }
  
@@ -874,7 +868,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  static const struct ethtool_ops edma_ethtool_ops = {
  	.get_strings = &edma_get_strings,
  	.get_sset_count = &edma_get_strset_count,
-@@ -278,8 +251,6 @@ static const struct ethtool_ops edma_eth
+@@ -279,8 +252,6 @@ static const struct ethtool_ops edma_eth
  	.set_link_ksettings = edma_set_link_ksettings,
  	.get_pauseparam = &edma_get_pauseparam,
  	.set_pauseparam = &edma_set_pauseparam,
@@ -1065,8 +1059,9 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 - * status in descriptor.
 - */
 -static void edma_rx_checksum_verify(struct edma_rxdesc_pri *rxdesc_pri,
+-				    struct sk_buff *skb)
 +static inline uint8_t edma_rx_checksum_verify(struct edma_rxdesc_pri *rxdesc_pri,
- 				    struct sk_buff *skb)
++					      struct sk_buff *skb)
  {
  	u8 pid = EDMA_RXDESC_PID_GET(rxdesc_pri);
  
@@ -1290,58 +1285,51 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	while (likely(avail--)) {
  		/* The last descriptor holds the SKB pointer for scattered frames.
  		 * So skip the descriptors with more bit set.
-@@ -172,27 +164,13 @@ u32 edma_tx_complete(u32 work_to_do, str
+@@ -172,7 +164,21 @@ u32 edma_tx_complete(u32 work_to_do, str
  			++txcmpl_stats->invalid_buffer;
  			u64_stats_update_end(&txcmpl_stats->syncp);
  		} else {
 -			dev_dbg(dev, "TXCMPL: skb:%p, skb->len %d, skb->data_len %d, cons_idx:%d prod_idx:%d word2:0x%x word3:0x%x\n",
--				skb, skb->len, skb->data_len, cons_idx, prod_idx,
--				txcmpl->word2, txcmpl->word3);
--
--			txcmpl_errors = EDMA_TXCOMP_RING_ERROR_GET(txcmpl->word3);
--			if (unlikely(txcmpl_errors)) {
--				if (net_ratelimit())
--					dev_err(dev, "Error 0x%0x observed in tx complete %d ring\n",
--						txcmpl_errors, txcmpl_ring->id);
--
--				u64_stats_update_begin(&txcmpl_stats->syncp);
--				++txcmpl_stats->errors;
--				u64_stats_update_end(&txcmpl_stats->syncp);
--			}
- 
- 			/* Retrieve pool id for unmapping.
- 			 * 0 for linear skb and (pool id - 1) represents nr_frag index.
- 			 */
- 			if (!EDMA_TXCOMP_POOL_ID_GET(txcmpl)) {
- 				dma_unmap_single(dev, virt_to_phys(skb->data),
--						 skb->len, DMA_TO_DEVICE);
++			/* Retrieve pool id for unmapping.
++			 * 0 for linear skb and (pool id - 1) represents nr_frag index.
++			 */
++			if (!EDMA_TXCOMP_POOL_ID_GET(txcmpl)) {
++				dma_unmap_single(dev, virt_to_phys(skb->data),
 +						 skb_headlen(skb), DMA_TO_DEVICE);
- 			} else {
- 				u8 frag_index = (EDMA_TXCOMP_POOL_ID_GET(txcmpl) - 1);
- 				skb_frag_t *frag = &skb_shinfo(skb)->frags[frag_index];
-@@ -201,6 +179,21 @@ u32 edma_tx_complete(u32 work_to_do, str
- 					       PAGE_SIZE, DMA_TO_DEVICE);
- 			}
- 
-+			dev_dbg(dev, "TXCMPL: skb:%pK, skb->len %d, skb->data_len %d, cons_idx:%d prod_idx:%d word2:0x%x word3:0x%x\n",
-+				skb, skb->len, skb->data_len, cons_idx, prod_idx,
-+				txcmpl->word2, txcmpl->word3);
++			} else {
++				u8 frag_index = (EDMA_TXCOMP_POOL_ID_GET(txcmpl) - 1);
++				skb_frag_t *frag = &skb_shinfo(skb)->frags[frag_index];
 +
-+			txcmpl_errors = EDMA_TXCOMP_RING_ERROR_GET(txcmpl->word3);
-+			if (unlikely(txcmpl_errors)) {
-+				if (net_ratelimit())
-+					dev_err(dev, "Error 0x%0x observed in tx complete %d ring\n",
-+						txcmpl_errors, txcmpl_ring->id);
-+
-+				u64_stats_update_begin(&txcmpl_stats->syncp);
-+				++txcmpl_stats->errors;
-+				u64_stats_update_end(&txcmpl_stats->syncp);
++				dma_unmap_page(dev, virt_to_phys(frag),
++					       PAGE_SIZE, DMA_TO_DEVICE);
 +			}
 +
++			dev_dbg(dev, "TXCMPL: skb:%pK, skb->len %d, skb->data_len %d, cons_idx:%d prod_idx:%d word2:0x%x word3:0x%x\n",
+ 				skb, skb->len, skb->data_len, cons_idx, prod_idx,
+ 				txcmpl->word2, txcmpl->word3);
+ 
+@@ -187,20 +193,6 @@ u32 edma_tx_complete(u32 work_to_do, str
+ 				u64_stats_update_end(&txcmpl_stats->syncp);
+ 			}
+ 
+-			/* Retrieve pool id for unmapping.
+-			 * 0 for linear skb and (pool id - 1) represents nr_frag index.
+-			 */
+-			if (!EDMA_TXCOMP_POOL_ID_GET(txcmpl)) {
+-				dma_unmap_single(dev, virt_to_phys(skb->data),
+-						 skb->len, DMA_TO_DEVICE);
+-			} else {
+-				u8 frag_index = (EDMA_TXCOMP_POOL_ID_GET(txcmpl) - 1);
+-				skb_frag_t *frag = &skb_shinfo(skb)->frags[frag_index];
+-
+-				dma_unmap_page(dev, virt_to_phys(frag),
+-					       PAGE_SIZE, DMA_TO_DEVICE);
+-			}
+-
  			dev_kfree_skb(skb);
  		}
  
-@@ -211,7 +204,7 @@ u32 edma_tx_complete(u32 work_to_do, str
+@@ -211,7 +203,7 @@ u32 edma_tx_complete(u32 work_to_do, str
  	txcmpl_ring->cons_idx = cons_idx;
  	txcmpl_ring->avail_pkt -= count;
  
@@ -1350,7 +1338,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		txcmpl_ring->id, count, prod_idx, cons_idx);
  	reg = EDMA_BASE_OFFSET + EDMA_REG_TXCMPL_CONS_IDX(txcmpl_ring->id);
  	regmap_write(regmap, reg, cons_idx);
-@@ -265,7 +258,7 @@ int edma_tx_napi_poll(struct napi_struct
+@@ -265,7 +257,7 @@ int edma_tx_napi_poll(struct napi_struct
  	/* No more packets to process. Finish NAPI processing. */
  	napi_complete(napi);
  
@@ -1359,16 +1347,20 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	reg = EDMA_BASE_OFFSET + EDMA_REG_TX_INT_MASK(txcmpl_ring->id);
  	regmap_write(regmap, reg, edma_ctx->intr_info.intr_mask_txcmpl);
  
-@@ -392,7 +385,7 @@ static u32 edma_tx_skb_nr_frags(struct e
+@@ -392,9 +384,9 @@ static u32 edma_tx_skb_nr_frags(struct e
  	return num_descs;
  }
  
 -static void edma_tx_fill_pp_desc(struct edma_port_priv *port_priv,
+-				 struct edma_txdesc_pri *txd, struct sk_buff *skb,
+-	struct edma_port_tx_stats *stats)
 +static void edma_tx_fill_desc(struct edma_port_priv *port_priv,
- 				 struct edma_txdesc_pri *txd, struct sk_buff *skb,
- 	struct edma_port_tx_stats *stats)
++			      struct edma_txdesc_pri *txd, struct sk_buff *skb,
++			      struct edma_port_tx_stats *stats)
  {
-@@ -463,7 +456,7 @@ static struct edma_txdesc_pri *edma_tx_s
+ 	struct ppe_port *port = port_priv->ppe_port;
+ 	int port_id = port->port_id;
+@@ -463,7 +455,7 @@ static struct edma_txdesc_pri *edma_tx_s
  
  	EDMA_TXDESC_BUFFER_ADDR_SET(txd, buff_addr);
  	EDMA_TXDESC_POOL_ID_SET(txd, 0);
@@ -1377,7 +1369,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  	/* Set packet length in the descriptor. */
  	EDMA_TXDESC_DATA_LEN_SET(txd, buf_len);
-@@ -528,6 +521,23 @@ static u32 edma_tx_skb_sg_fill_desc(stru
+@@ -528,6 +520,23 @@ static u32 edma_tx_skb_sg_fill_desc(stru
  	/* Head skb processed already. */
  	num_descs++;
  
@@ -1401,7 +1393,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (unlikely(skb_has_frag_list(skb))) {
  		struct edma_txdesc_pri *start_desc = NULL;
  		u32 start_idx = 0, end_idx = 0;
-@@ -608,23 +618,9 @@ skip_primary:
+@@ -608,23 +617,9 @@ skip_primary:
  		u64_stats_update_begin(&stats->syncp);
  		stats->tx_fraglist_pkts++;
  		u64_stats_update_end(&stats->syncp);
@@ -1426,7 +1418,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		skb, num_descs, skb_shinfo(skb)->nr_frags, num_sg_frag_list);
  
  	*txdesc = txd;
-@@ -775,7 +771,7 @@ enum edma_tx_status edma_tx_ring_xmit(st
+@@ -775,7 +770,7 @@ enum edma_tx_status edma_tx_ring_xmit(st
  			netdev_dbg(netdev, "No descriptor available for ring %d\n",
  				   txdesc_ring->id);
  			dma_unmap_single(dev, virt_to_phys(skb->data),
@@ -1435,7 +1427,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  			u64_stats_update_begin(&txdesc_stats->syncp);
  			++txdesc_stats->no_desc_avail;
  			u64_stats_update_end(&txdesc_stats->syncp);
-@@ -792,10 +788,12 @@ enum edma_tx_status edma_tx_ring_xmit(st
+@@ -792,10 +787,12 @@ enum edma_tx_status edma_tx_ring_xmit(st
  	txdesc_ring->prod_idx = hw_next_to_use & EDMA_TXDESC_PROD_IDX_MASK;
  	txdesc_ring->avail_desc -= num_desc_filled;
  
@@ -1600,7 +1592,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 + * @type: The type can be internal priority or PPE hash
 + * @index: Class index, which can be internal priority or hash value
 + * @queue_offset: Queue offset value which is added by the queue base to get
-+ * 		  the egress queue ID.
++ *		  the egress queue ID.
 + *
 + * PPE EDMA queue offset is configured based on the PPE internal priority or
 + * RSS hash value, the profile ID is fixed to 0 for the EDMA interface.
@@ -1833,7 +1825,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  			     int queue_base,
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
 +++ b/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
-@@ -1,16 +1,17 @@
+@@ -1,17 +1,18 @@
  // SPDX-License-Identifier: GPL-2.0-only
  /*
 - * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
@@ -1844,6 +1836,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  #include <linux/clk.h>
 +#include <linux/of.h>
+ #include <linux/if_vlan.h>
  #include <linux/of_net.h>
  #include <linux/pcs/pcs-qcom-ipq9574.h>
  #include <linux/phylink.h>
@@ -1853,7 +1846,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  #include <linux/rtnetlink.h>
  
  #include "edma_port.h"
-@@ -117,7 +118,7 @@ enum ppe_xgmib_stats_type {
+@@ -118,7 +119,7 @@ enum ppe_xgmib_stats_type {
  	xgmib_rx_broadcast_g,
  	xgmib_rx_multicast_g,
  	xgmib_rx_crc_err,
@@ -1862,7 +1855,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	xgmib_rx_jabber_err,
  	xgmib_rx_undersize_g,
  	xgmib_rx_oversize_g,
-@@ -219,7 +220,7 @@ static const struct ppe_mac_mib_info xgm
+@@ -220,7 +221,7 @@ static const struct ppe_mac_mib_info xgm
  	PPE_MAC_MIB_DESC(8, XGMAC_RXBROAD_G_ADDR, "rx_broadcast_g"),
  	PPE_MAC_MIB_DESC(8, XGMAC_RXMULTI_G_ADDR, "rx_multicast_g"),
  	PPE_MAC_MIB_DESC(8, XGMAC_RXCRC_ERR_ADDR, "rx_crc_err"),
@@ -1871,7 +1864,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	PPE_MAC_MIB_DESC(4, XGMAC_RXJABBER_ERR_ADDR, "rx_jabber_err"),
  	PPE_MAC_MIB_DESC(4, XGMAC_RXUNDERSIZE_G_ADDR, "rx_undersize_g"),
  	PPE_MAC_MIB_DESC(4, XGMAC_RXOVERSIZE_G_ADDR, "rx_oversize_g"),
-@@ -257,7 +258,8 @@ static void ppe_port_gmib_update(struct
+@@ -258,7 +259,8 @@ static void ppe_port_gmib_update(struct
  
  		ret = regmap_read(ppe_dev->regmap, reg, &val);
  		if (ret) {
@@ -1881,7 +1874,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  			continue;
  		}
  
-@@ -265,8 +267,8 @@ static void ppe_port_gmib_update(struct
+@@ -266,8 +268,8 @@ static void ppe_port_gmib_update(struct
  		if (mib->size == 8) {
  			ret = regmap_read(ppe_dev->regmap, reg + 4, &val);
  			if (ret) {
@@ -1892,7 +1885,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  				continue;
  			}
  
-@@ -288,6 +290,43 @@ static void ppe_port_gmib_stats_poll(str
+@@ -289,6 +291,43 @@ static void ppe_port_gmib_stats_poll(str
  			      msecs_to_jiffies(PPE_GMIB_POLL_INTERVAL_MS));
  }
  
@@ -1936,7 +1929,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  /* Get the XGMAC MIB counter based on the specific MIB stats type */
  static u64 ppe_port_xgmib_get(struct ppe_port *ppe_port,
  			      enum ppe_xgmib_stats_type xgmib_type)
-@@ -304,7 +343,7 @@ static u64 ppe_port_xgmib_get(struct ppe
+@@ -305,7 +344,7 @@ static u64 ppe_port_xgmib_get(struct ppe
  
  	ret = regmap_read(ppe_dev->regmap, reg, &val);
  	if (ret) {
@@ -1945,7 +1938,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		goto data_return;
  	}
  
-@@ -312,7 +351,8 @@ static u64 ppe_port_xgmib_get(struct ppe
+@@ -313,7 +352,8 @@ static u64 ppe_port_xgmib_get(struct ppe
  	if (mib->size == 8) {
  		ret = regmap_read(ppe_dev->regmap, reg + 4, &val);
  		if (ret) {
@@ -1955,7 +1948,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  			goto data_return;
  		}
  
-@@ -338,10 +378,12 @@ int ppe_port_get_sset_count(struct ppe_p
+@@ -339,10 +379,12 @@ int ppe_port_get_sset_count(struct ppe_p
  	if (sset != ETH_SS_STATS)
  		return 0;
  
@@ -1972,7 +1965,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /**
-@@ -361,15 +403,9 @@ void ppe_port_get_strings(struct ppe_por
+@@ -362,15 +404,9 @@ void ppe_port_get_strings(struct ppe_por
  	if (stringset != ETH_SS_STATS)
  		return;
  
@@ -1991,7 +1984,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /**
-@@ -385,17 +421,64 @@ void ppe_port_get_ethtool_stats(struct p
+@@ -386,17 +422,64 @@ void ppe_port_get_ethtool_stats(struct p
  {
  	int i;
  
@@ -2062,7 +2055,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	}
  }
  
-@@ -410,56 +493,57 @@ void ppe_port_get_ethtool_stats(struct p
+@@ -411,56 +494,57 @@ void ppe_port_get_ethtool_stats(struct p
  void ppe_port_get_stats64(struct ppe_port *ppe_port,
  			  struct rtnl_link_stats64 *s)
  {
@@ -2163,7 +2156,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	}
  }
  
-@@ -479,73 +563,37 @@ int ppe_port_set_mac_address(struct ppe_
+@@ -480,73 +564,37 @@ int ppe_port_set_mac_address(struct ppe_
  	u32 reg, val;
  	int ret;
  
@@ -2257,14 +2250,13 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
   */
  int ppe_port_set_maxframe(struct ppe_port *ppe_port, int maxframe_size)
  {
-@@ -585,42 +633,23 @@ int ppe_port_set_maxframe(struct ppe_por
+@@ -591,42 +639,23 @@ int ppe_port_set_maxframe(struct ppe_por
  /* PPE port and MAC reset */
  static int ppe_port_mac_reset(struct ppe_port *ppe_port)
  {
 -	struct ppe_device *ppe_dev = ppe_port->ppe_dev;
 -	int ret;
-+	int ret, i;
- 
+-
 -	ret = reset_control_assert(ppe_port->rstcs[PPE_PORT_CLK_RST_MAC]);
 -	if (ret)
 -		goto error;
@@ -2283,7 +2275,8 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 -	ret = reset_control_deassert(ppe_port->rstcs[PPE_PORT_CLK_RST_MAC]);
 -	if (ret)
 -		goto error;
--
++	int ret, i;
+ 
 -	ret = reset_control_deassert(ppe_port->rstcs[PPE_PORT_CLK_RST_RX]);
 -	if (ret)
 -		goto error;
@@ -2313,7 +2306,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /* PPE port MAC configuration for phylink */
-@@ -643,31 +672,28 @@ static void ppe_port_mac_config(struct p
+@@ -649,31 +678,28 @@ static void ppe_port_mac_config(struct p
  	case PHY_INTERFACE_MODE_10G_QXGMII:
  		mac_type = PPE_MAC_TYPE_XGMAC;
  		break;
@@ -2353,7 +2346,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (ret)
  		goto err_mac_config;
  
-@@ -676,8 +702,111 @@ static void ppe_port_mac_config(struct p
+@@ -682,8 +708,112 @@ static void ppe_port_mac_config(struct p
  	return;
  
  err_mac_config:
@@ -2432,6 +2425,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 +	case PHY_INTERFACE_MODE_SGMII:
 +	case PHY_INTERFACE_MODE_QSGMII:
 +	case PHY_INTERFACE_MODE_PSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
 +	case PHY_INTERFACE_MODE_2500BASEX:
 +		rate = ppe_port_mac_clock_rate_get_gmii(speed);
 +		break;
@@ -2467,7 +2461,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /* PPE port GMAC link up configuration */
-@@ -688,6 +817,11 @@ static int ppe_port_gmac_link_up(struct
+@@ -694,6 +824,11 @@ static int ppe_port_gmac_link_up(struct
  	int ret, port = ppe_port->port_id;
  	u32 reg, val;
  
@@ -2479,7 +2473,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	/* Set GMAC speed */
  	switch (speed) {
  	case SPEED_1000:
-@@ -700,8 +834,8 @@ static int ppe_port_gmac_link_up(struct
+@@ -706,8 +841,8 @@ static int ppe_port_gmac_link_up(struct
  		val = GMAC_SPEED_10;
  		break;
  	default:
@@ -2490,7 +2484,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		return -EINVAL;
  	}
  
-@@ -720,10 +854,8 @@ static int ppe_port_gmac_link_up(struct
+@@ -726,10 +861,8 @@ static int ppe_port_gmac_link_up(struct
  	if (rx_pause)
  		val |= GMAC_RXFCEN;
  
@@ -2503,7 +2497,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /* PPE port XGMAC link up configuration */
-@@ -764,8 +896,8 @@ static int ppe_port_xgmac_link_up(struct
+@@ -770,8 +903,8 @@ static int ppe_port_xgmac_link_up(struct
  		val = XGMAC_SPEED_10;
  		break;
  	default:
@@ -2514,7 +2508,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		return -EINVAL;
  	}
  
-@@ -792,10 +924,8 @@ static int ppe_port_xgmac_link_up(struct
+@@ -798,10 +931,8 @@ static int ppe_port_xgmac_link_up(struct
  		return ret;
  
  	/* Enable XGMAC RX*/
@@ -2527,7 +2521,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /* PPE port MAC link up configuration for phylink */
-@@ -813,9 +943,12 @@ static void ppe_port_mac_link_up(struct
+@@ -819,9 +950,12 @@ static void ppe_port_mac_link_up(struct
  	int ret, port = ppe_port->port_id;
  	u32 reg, val;
  
@@ -2542,7 +2536,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (mac_type == PPE_MAC_TYPE_GMAC)
  		ret = ppe_port_gmac_link_up(ppe_port,
  					    speed, duplex, tx_pause, rx_pause);
-@@ -836,17 +969,47 @@ static void ppe_port_mac_link_up(struct
+@@ -842,17 +976,47 @@ static void ppe_port_mac_link_up(struct
  
  	/* Enable PPE port TX */
  	reg = PPE_PORT_BRIDGE_CTRL_ADDR + PPE_PORT_BRIDGE_CTRL_INC * port;
@@ -2595,7 +2589,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /* PPE port MAC link down configuration for phylink */
-@@ -861,48 +1024,28 @@ static void ppe_port_mac_link_down(struc
+@@ -867,48 +1031,28 @@ static void ppe_port_mac_link_down(struc
  	int ret, port = ppe_port->port_id;
  	u32 reg;
  
@@ -2654,7 +2648,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  {
  	struct ppe_port *ppe_port = container_of(config, struct ppe_port,
  						 phylink_config);
-@@ -920,8 +1063,8 @@ struct phylink_pcs *ppe_port_mac_select_
+@@ -926,8 +1070,8 @@ struct phylink_pcs *ppe_port_mac_select_
  					 PPE_PORT_MUX_CTRL_ADDR,
  					 PPE_PORT5_SEL_PCS1, val);
  		if (ret) {
@@ -2665,7 +2659,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  			return NULL;
  		}
  	}
-@@ -936,6 +1079,17 @@ static const struct phylink_mac_ops ppe_
+@@ -942,6 +1086,17 @@ static const struct phylink_mac_ops ppe_
  	.mac_select_pcs = ppe_port_mac_select_pcs,
  };
  
@@ -2683,7 +2677,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  /**
   * ppe_port_phylink_setup() - Set phylink instance for the given PPE port
   * @ppe_port: PPE port
-@@ -950,9 +1104,9 @@ int ppe_port_phylink_setup(struct ppe_po
+@@ -956,9 +1111,9 @@ int ppe_port_phylink_setup(struct ppe_po
  {
  	struct ppe_device *ppe_dev = ppe_port->ppe_dev;
  	struct device_node *pcs_node;
@@ -2695,7 +2689,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	pcs_node = of_parse_phandle(ppe_port->np, "pcs-handle", 0);
  	if (!pcs_node)
  		return -ENODEV;
-@@ -960,8 +1114,8 @@ int ppe_port_phylink_setup(struct ppe_po
+@@ -966,8 +1121,8 @@ int ppe_port_phylink_setup(struct ppe_po
  	ppe_port->pcs = ipq_pcs_get(pcs_node);
  	of_node_put(pcs_node);
  	if (IS_ERR(ppe_port->pcs)) {
@@ -2706,7 +2700,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		return PTR_ERR(ppe_port->pcs);
  	}
  
-@@ -971,22 +1125,10 @@ int ppe_port_phylink_setup(struct ppe_po
+@@ -977,22 +1132,10 @@ int ppe_port_phylink_setup(struct ppe_po
  	ppe_port->phylink_config.mac_capabilities = MAC_ASYM_PAUSE |
  		MAC_SYM_PAUSE | MAC_10 | MAC_100 | MAC_1000 |
  		MAC_2500FD | MAC_5000FD | MAC_10000FD;
@@ -2733,7 +2727,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  	/* Create phylink */
  	ppe_port->phylink = phylink_create(&ppe_port->phylink_config,
-@@ -994,8 +1136,8 @@ int ppe_port_phylink_setup(struct ppe_po
+@@ -1000,8 +1143,8 @@ int ppe_port_phylink_setup(struct ppe_po
  					   ppe_port->interface,
  					   &ppe_phylink_ops);
  	if (IS_ERR(ppe_port->phylink)) {
@@ -2744,7 +2738,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		ret = PTR_ERR(ppe_port->phylink);
  		goto err_free_pcs;
  	}
-@@ -1003,8 +1145,8 @@ int ppe_port_phylink_setup(struct ppe_po
+@@ -1009,8 +1152,8 @@ int ppe_port_phylink_setup(struct ppe_po
  	/* Connect phylink */
  	ret = phylink_of_phy_connect(ppe_port->phylink, ppe_port->np, 0);
  	if (ret) {
@@ -2755,7 +2749,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		goto err_free_phylink;
  	}
  
-@@ -1037,7 +1179,7 @@ void ppe_port_phylink_destroy(struct ppe
+@@ -1043,7 +1186,7 @@ void ppe_port_phylink_destroy(struct ppe
  		ppe_port->phylink = NULL;
  	}
  
@@ -2764,7 +2758,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (ppe_port->pcs) {
  		ipq_pcs_put(ppe_port->pcs);
  		ppe_port->pcs = NULL;
-@@ -1050,7 +1192,7 @@ static int ppe_port_clock_init(struct pp
+@@ -1056,7 +1199,7 @@ static int ppe_port_clock_init(struct pp
  	struct device_node *port_node = ppe_port->np;
  	struct reset_control *rstc;
  	struct clk *clk;
@@ -2773,7 +2767,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  	for (i = 0; i < PPE_PORT_CLK_RST_MAX; i++) {
  		/* Get PPE port resets which will be used to reset PPE
-@@ -1084,10 +1226,11 @@ err_clk_en:
+@@ -1090,10 +1233,11 @@ err_clk_en:
  err_clk_get:
  	reset_control_put(rstc);
  err_rst:
@@ -2789,7 +2783,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	}
  
  	return ret;
-@@ -1114,12 +1257,12 @@ static int ppe_port_mac_hw_init(struct p
+@@ -1120,12 +1264,12 @@ static int ppe_port_mac_hw_init(struct p
  
  	/* GMAC RX and TX are initialized as disabled */
  	reg = PPE_PORT_GMAC_ADDR(port);
@@ -2805,7 +2799,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	val = FIELD_PREP(GMAC_JUMBO_SIZE_M, PPE_PORT_MAC_MAX_FRAME_SIZE);
  	ret = regmap_update_bits(ppe_dev->regmap, reg + GMAC_JUMBO_SIZE_ADDR,
  				 GMAC_JUMBO_SIZE_M, val);
-@@ -1128,13 +1271,13 @@ static int ppe_port_mac_hw_init(struct p
+@@ -1134,13 +1278,13 @@ static int ppe_port_mac_hw_init(struct p
  
  	val = FIELD_PREP(GMAC_MAXFRAME_SIZE_M, PPE_PORT_MAC_MAX_FRAME_SIZE);
  	val |= FIELD_PREP(GMAC_TX_THD_M, 0x1);
@@ -2821,7 +2815,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  				 GMAC_HIGH_IPG_M, val);
  	if (ret)
  		return ret;
-@@ -1142,13 +1285,13 @@ static int ppe_port_mac_hw_init(struct p
+@@ -1148,13 +1292,13 @@ static int ppe_port_mac_hw_init(struct p
  	/* Enable and reset GMAC MIB counters and set as read clear
  	 * mode, the GMAC MIB counters will be cleared after reading.
  	 */
@@ -2839,7 +2833,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	if (ret)
  		return ret;
  
-@@ -1179,31 +1322,8 @@ static int ppe_port_mac_hw_init(struct p
+@@ -1185,31 +1329,8 @@ static int ppe_port_mac_hw_init(struct p
  		return ret;
  
  	/* Enable and reset XGMAC MIB counters */
@@ -2873,7 +2867,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  }
  
  /**
-@@ -1218,8 +1338,8 @@ static int ppe_port_mac_mib_work_init(st
+@@ -1224,8 +1345,8 @@ static int ppe_port_mac_mib_work_init(st
  int ppe_port_mac_init(struct ppe_device *ppe_dev)
  {
  	struct device_node *ports_node, *port_node;
@@ -2883,7 +2877,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  	phy_interface_t phy_mode;
  
  	ports_node = of_get_child_by_name(ppe_dev->dev->of_node,
-@@ -1259,6 +1379,7 @@ int ppe_port_mac_init(struct ppe_device
+@@ -1265,6 +1386,7 @@ int ppe_port_mac_init(struct ppe_device
  		ppe_ports->port[i].port_id = port;
  		ppe_ports->port[i].np = port_node;
  		ppe_ports->port[i].interface = phy_mode;
@@ -2891,7 +2885,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  
  		ret = ppe_port_clock_init(&ppe_ports->port[i]);
  		if (ret) {
-@@ -1272,12 +1393,6 @@ int ppe_port_mac_init(struct ppe_device
+@@ -1278,12 +1400,6 @@ int ppe_port_mac_init(struct ppe_device
  			goto err_port_node;
  		}
  
@@ -2904,7 +2898,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  		ret = edma_port_setup(&ppe_ports->port[i]);
  		if (ret) {
  			dev_err(ppe_dev->dev, "QCOM EDMA port setup failed\n");
-@@ -1299,8 +1414,11 @@ err_port_setup:
+@@ -1305,8 +1421,11 @@ err_port_setup:
  	}
  
  err_port_clk:
@@ -2918,7 +2912,7 @@ Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
  err_port_node:
  	of_node_put(port_node);
  err_ports_node:
-@@ -1322,10 +1440,7 @@ void ppe_port_mac_deinit(struct ppe_devi
+@@ -1328,10 +1447,7 @@ void ppe_port_mac_deinit(struct ppe_devi
  
  	for (i = 0; i < ppe_dev->ports->num; i++) {
  		ppe_port = &ppe_dev->ports->port[i];

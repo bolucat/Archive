@@ -1,0 +1,1223 @@
+From: Luo Jie <quic_luoj@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] net: phy: qca8084: implement package probing and initialization
+
+QCA8084 is quad PHY chip, which integrates 4 PHYs, 2 PCS interfaces (PCS0
+and PCS1) and clock controller, which can also be integrated to the switch
+chip named as QCA8386.
+
+Add QCA8084 Quad-PHY support, which is a four-port PHY with maximum link
+capability of 2.5 Gbps. The features of each port are almost same as
+QCA8081. The slave seed and fast retrain configs are not needed for
+QCA8084. It includes two PCSes.
+
+1. The ADC of QCA8084 PHY must be configured as edge inverted and falling
+whenever it is initialized or reset. In addition, the default MSE (Mean
+square error) threshold value is adjusted, which comes into play during
+link partner detection to detect the valid link signal.
+
+When the link is changed, QCA8084 needs to do the fifo reset and adjust the
+IPG level for the 10G-QXGMII link on the speed 1000M.
+
+QCA8084 integrates clock controller and security control modules besides of
+the PHY and PCS. The 32bit registers in these modules are accessed using
+special MDIO sequences to read or write these registers.
+
+Add the PHY package probe function. The MDIO slave address of PHY, PCS and
+XPCS can be optionally customized by configuring the PHY package level
+register.
+
+Parse the PHY package clocks from the PHY package DTS node. These package
+level clocks will be enabled in the PHY package init function.
+
+The package mode of PHY is configured for the interface mode of two PCSes
+working correctly.
+
+Merged from:
+  0301-dt-bindings-net-Document-Qualcomm-QCA8084-PHY-packag.patch
+  0302-net-phy-qca808x-Add-QCA8084-ethernet-phy-support.patch
+  0303-net-phy-qca808x-Add-config_init-function-for-QCA8084.patch
+  0304-net-phy-qca808x-Add-link_change_notify-function-for-.patch
+  0305-net-phy-qca808x-Add-register-access-support-routines.patch
+  0306-net-phy-qca808x-Add-QCA8084-probe-function.patch
+  0307-net-phy-qca808x-Add-package-clocks-and-resets-for-QC.patch
+  0308-net-phy-qca808x-Add-QCA8084-package-init-function.patch
+
+Based on work by:
+  Alexandru Gagniuc <mr.nuke.me@gmail.com>
+  Luo Jie <quic_luoj@quicinc.com>
+
+Original-commit: 9aa8c91d20f6cf1e97a3aa55788f4900970c3ad5
+Original-commit: a4466aa8e02626f95910e0ef1484e62e57317e4e
+Original-commit: eb7fa4e4886d8b5e3e832b63a6ca0c163961ffdf
+Original-commit: 1cc9a784c68b03bf1845214685f88ef519d917a2
+Original-commit: d6f61665d97cf1077ccbfff19c0df509b7c26aae
+Original-commit: 5f58d9c84d96c6427e31373fe2b13eb8f6975769
+Original-commit: 3d5e5c940f98e6c627afe57123c4765c9306ca50
+Original-commit: 7da15e71be92f1db476f631642cd1eb590102a43
+
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- /dev/null
++++ b/Documentation/devicetree/bindings/net/qcom,qca8084.yaml
+@@ -0,0 +1,536 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/net/qcom,qca8084.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Qualcomm QCA8084 Ethernet Quad PHY
++
++maintainers:
++  - Luo Jie <quic_luoj@quicinc.com>
++
++description:
++  Qualcomm QCA8084 is PHY package of four-port Ethernet transceiver,
++  the Ethernet port supports link speed 10/100/1000/2500 Mbps.
++  There are two PCSes (PCS0 and PCS1) integrated in the PHY
++  package, PCS1 includes XPCS and PCS to support the interface
++  mode 10G-QXGMII and SGMII, PCS0 includes a PCS to support the
++  interface mode SGMII only. There is also a clock controller
++  integrated in the PHY package. This four-port Ethernet
++  transceiver can also be integrated to the switch chip named
++  as QCA8386. The PHY package mode needs to be configured as the
++  correct value to apply the interface mode of two PCSes as
++  mentioned below.
++
++  QCA8084 expects an input reference clock 50 MHZ as the clock
++  source of the integrated clock controller, the integrated
++  clock controller supplies the clocks and resets to the
++  integrated PHY, PCS and PHY package.
++
++  - |
++                 +--| |--+-------------------+--| |--+
++                 | PCS1  |<------------+---->| PCS0  |
++                 +-------+             |     +-------+
++                 |                     |             |
++    Ref 50M clk  +--------+            |             |
++    ------------>|        | clk & rst  |             |
++    GPIO Reset   |QCA8K-CC+------------+             |
++    ------------>|        |            |             |
++                 +--------+            |             |
++                 |                     V             |
++                 +--------+--------+--------+--------+
++                 |  PHY0  |  PHY1  |  PHY2  |  PHY3  |
++                 +--------+--------+--------+--------+
++
++properties:
++  compatible:
++    const: qcom,qca8084-package
++
++  clocks:
++    description:
++      PHY package level initial common clocks, which are needed to
++      be enabled after GPIO reset on the PHY package, these clocks
++      are supplied from the PHY integrated clock controller (QCA8K-CC).
++    items:
++      - description: APB bridge clock
++      - description: AHB clock
++      - description: Security control clock
++      - description: TLMM clock
++      - description: TLMM AHB clock
++      - description: CNOC AHB clock
++      - description: MDIO AHB clock
++
++  clock-names:
++    items:
++      - const: apb_bridge
++      - const: ahb
++      - const: sec_ctrl_ahb
++      - const: tlmm
++      - const: tlmm_ahb
++      - const: cnoc_ahb
++      - const: mdio_ahb
++
++  resets:
++    description:
++      PHY package level initial common reset, which are needed to
++      be deasserted after GPIO reset on the PHY package, this reset
++      is provided by the PHY integrated clock controller to do PHY
++      DSP reset.
++    maxItems: 1
++
++  qcom,package-mode:
++    description: |
++      The package mode of PHY supports to be configured as 3 modes
++      to apply the combinations of interface mode of two PCSes
++      correctly. This value should use one of the values defined in
++      dt-bindings/net/qcom,qca808x.h. The package mode 10G-QXGMII of
++      Quad PHY is used by default.
++
++      package mode             PCS1             PCS0
++      phy mode (0)             10G-QXGMII for   not used
++                               PHY0-PHY3
++
++      switch mode (1)          SGMII for        SGMII for
++                               switch MAC0      switch MAC5 (optional)
++
++      switch bypass MAC5 (2)   SGMII for        SGMII for
++                               switch MAC0      PHY3
++    $ref: /schemas/types.yaml#/definitions/uint32
++    enum: [0, 1, 2]
++    default: 0
++
++  qcom,pcs1-sgmii-plus:
++    description:
++      Configure PCS1 as a fixed 2500BASE-X MAC link for switch designs
++      such as QCA8386. The property is only valid with package mode 1.
++    type: boolean
++
++  qcom,phy-addr-fixup:
++    description:
++      MDIO address for PHY0-PHY3, PCS0 and PCS1 including PCS and XPCS,
++      which can be optionally customized by programming the security
++      control register of PHY package. The hardware default MDIO address
++      of PHY0-PHY3, PCS0 and PCS1 including PCS and XPCS is 0-6.
++    $ref: /schemas/types.yaml#/definitions/uint32-array
++    minItems: 7
++    maxItems: 7
++
++patternProperties:
++  ^ethernet-phy@[a-f0-9]+$:
++    unevaluatedProperties: false
++    $ref: ethernet-phy.yaml#
++
++    properties:
++      compatible:
++        const: ethernet-phy-id004d.d180
++
++      qcom,xpcs-channel:
++        description:
++          When PCS1 works on the interface mode 10G-QXGMII, the integrated
++          XPCS including 4 channels is used to connected with the Quad PHYs,
++          each PHY needs to be specified the XPCS channel ID to deliver the
++          PHY link status to the XPCS.
++        $ref: /schemas/types.yaml#/definitions/uint32
++        enum: [0, 1, 2, 3]
++
++      clocks:
++        minItems: 1
++        maxItems: 5
++        items:
++          - description: PHY system clock
++          - description: Switch MAC TX clock
++          - description: Switch MAC RX clock
++          - description: GEPHY TX clock
++          - description: GEPHY RX clock
++
++      clock-names:
++        minItems: 1
++        maxItems: 5
++        items:
++          - const: phy
++          - const: mac_tx
++          - const: mac_rx
++          - const: gephy_tx
++          - const: gephy_rx
++
++    required:
++      - compatible
++      - reg
++      - clocks
++      - resets
++
++  ^pcs-phy@[a-f0-9]+$:
++    type: object
++    additionalProperties: false
++    description:
++      PCS device has the independent MDIO address, which controls
++      the interface mode used and provides the clocks such as
++      312.5 MHZ as RX and TX root clocks to the integrated clock
++      controller.
++    properties:
++      compatible:
++        const: qcom,qca8k-pcs-phy
++
++      reg:
++        items:
++          - description: PCS MDIO address.
++
++      clocks:
++        minItems: 3
++        maxItems: 7
++        items:
++          - description: PCS clock.
++          - description: PCS RX root clock.
++          - description: PCS TX root clock.
++          - description: Switch CPU MAC TX clock.
++          - description: Switch CPU MAC RX clock.
++          - description: Switch CPU MAC TX SerDes clock.
++          - description: Switch CPU MAC RX SerDes clock.
++
++      clock-names:
++        minItems: 3
++        maxItems: 7
++        items:
++          - const: pcs
++          - const: pcs_rx_root
++          - const: pcs_tx_root
++          - const: mac_tx
++          - const: mac_rx
++          - const: mac_tx_serdes
++          - const: mac_rx_serdes
++
++      resets:
++        minItems: 1
++        maxItems: 2
++        items:
++          - description: PCS reset.
++          - description: Optional XPCS reset held during SGMII operation.
++
++      reset-names:
++        minItems: 1
++        maxItems: 2
++        items:
++          - const: pcs
++          - const: xpcs
++
++    required:
++      - compatible
++      - reg
++      - clocks
++      - resets
++
++  ^xpcs-phy@[a-f0-9]+$:
++    type: object
++    additionalProperties: false
++    description:
++      XPCS device has the independent MDIO address, which includes 4
++      channels to connect with Quad PHYs.
++    properties:
++      compatible:
++        const: qcom,qca8k-xpcs-phy
++
++      reg:
++        items:
++          - description: XPCS MDIO address.
++
++      resets:
++        items:
++          - description: XPCS reset.
++
++      '#address-cells':
++        const: 1
++
++      '#size-cells':
++        const: 0
++
++    required:
++      - compatible
++      - reg
++      - resets
++      - '#address-cells'
++      - '#size-cells'
++
++    patternProperties:
++      "^channel@[0-3]+$":
++        type: object
++        additionalProperties: false
++        description:
++          XPCS is used to support 10G-QXGMII mode, which inlcudes 4 channels
++          to be connected with Quad PHYs, each channels has the dedicated
++          clocks and resets from the integrated clock controller of QCA8084.
++
++        properties:
++          reg:
++            items:
++              - description: XPCS channel ID
++
++          clocks:
++            items:
++              - description: XPCS XGMII RX clock
++              - description: XPCS XGMII TX clock
++              - description: XPCS RX clock
++              - description: XPCS TX clock
++              - description: Port RX clock
++              - description: Port TX clock
++              - description: RX source clock
++              - description: TX source clock
++
++          clock-names:
++            items:
++              - const: xgmii_rx
++              - const: xgmii_tx
++              - const: xpcs_rx
++              - const: xpcs_tx
++              - const: port_rx
++              - const: port_tx
++              - const: rx_src
++              - const: tx_src
++
++          resets:
++            items:
++              - description: XPCS XGMII RX reset
++              - description: XPCS XGMII TX reset
++              - description: XPCS RX reset
++              - description: XPCS TX reset
++              - description: Port RX reset
++              - description: Port TX reset
++
++          reset-names:
++            items:
++              - const: xgmii_rx
++              - const: xgmii_tx
++              - const: xpcs_rx
++              - const: xpcs_tx
++              - const: port_rx
++              - const: port_tx
++
++        required:
++          - reg
++          - clocks
++          - clock-names
++          - resets
++          - reset-names
++
++required:
++  - compatible
++  - clocks
++  - clock-names
++  - resets
++
++allOf:
++  - $ref: ethernet-phy-package.yaml#
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/clock/qcom,qca8k-nsscc.h>
++    #include <dt-bindings/net/qcom,qca808x.h>
++    #include <dt-bindings/reset/qcom,qca8k-nsscc.h>
++
++    mdio {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        ethernet-phy-package@1 {
++            #address-cells = <1>;
++            #size-cells = <0>;
++            compatible = "qcom,qca8084-package";
++            reg = <1>;
++            clocks = <&qca8k_nsscc NSS_CC_APB_BRIDGE_CLK>,
++                     <&qca8k_nsscc NSS_CC_AHB_CLK>,
++                     <&qca8k_nsscc NSS_CC_SEC_CTRL_AHB_CLK>,
++                     <&qca8k_nsscc NSS_CC_TLMM_CLK>,
++                     <&qca8k_nsscc NSS_CC_TLMM_AHB_CLK>,
++                     <&qca8k_nsscc NSS_CC_CNOC_AHB_CLK>,
++                     <&qca8k_nsscc NSS_CC_MDIO_AHB_CLK>;
++            clock-names = "apb_bridge",
++                          "ahb",
++                          "sec_ctrl_ahb",
++                          "tlmm",
++                          "tlmm_ahb",
++                          "cnoc_ahb",
++                          "mdio_ahb";
++            resets = <&qca8k_nsscc NSS_CC_GEPHY_FULL_ARES>;
++            qcom,package-mode = <QCA808X_PCS1_10G_QXGMII_PCS0_UNUNSED>;
++            qcom,phy-addr-fixup = <1 2 3 4 5 6 7>;
++
++            ethernet-phy@1 {
++                compatible = "ethernet-phy-id004d.d180";
++                reg = <1>;
++                clocks = <&qca8k_nsscc NSS_CC_GEPHY0_SYS_CLK>;
++                resets = <&qca8k_nsscc NSS_CC_GEPHY0_SYS_ARES>;
++                qcom,xpcs-channel = <0>;
++            };
++
++            ethernet-phy@2 {
++                compatible = "ethernet-phy-id004d.d180";
++                reg = <2>;
++                clocks = <&qca8k_nsscc NSS_CC_GEPHY1_SYS_CLK>;
++                resets = <&qca8k_nsscc NSS_CC_GEPHY1_SYS_ARES>;
++                qcom,xpcs-channel = <1>;
++            };
++
++            ethernet-phy@3 {
++                compatible = "ethernet-phy-id004d.d180";
++                reg = <3>;
++                clocks = <&qca8k_nsscc NSS_CC_GEPHY2_SYS_CLK>;
++                resets = <&qca8k_nsscc NSS_CC_GEPHY2_SYS_ARES>;
++                qcom,xpcs-channel = <2>;
++            };
++
++            ethernet-phy@4 {
++                compatible = "ethernet-phy-id004d.d180";
++                reg = <4>;
++                clocks = <&qca8k_nsscc NSS_CC_GEPHY3_SYS_CLK>;
++                resets = <&qca8k_nsscc NSS_CC_GEPHY3_SYS_ARES>;
++                qcom,xpcs-channel = <3>;
++            };
++
++            pcs-phy@6 {
++                compatible = "qcom,qca8k-pcs-phy";
++                reg = <6>;
++                clocks = <&qca8k_nsscc NSS_CC_SRDS1_SYS_CLK>,
++                         <&qca8k_uniphy1_tx312p5m>,
++                         <&qca8k_uniphy1_rx312p5m>;
++                clock-names = "pcs", "pcs_rx_root", "pcs_tx_root";
++                resets = <&qca8k_nsscc NSS_CC_SRDS1_SYS_ARES>;
++            };
++
++            xpcs-phy@7 {
++                compatible = "qcom,qca8k-xpcs-phy";
++                reg = <7>;
++                #address-cells = <1>;
++                #size-cells = <0>;
++                resets = <&qca8k_nsscc NSS_CC_XPCS_ARES>;
++
++                channel@0 {
++                    reg = <0>;
++                    clocks = <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_XGMII_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_XGMII_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_GEPHY0_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_GEPHY0_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC1_RX_CLK_SRC>,
++                             <&qca8k_nsscc NSS_CC_MAC1_TX_CLK_SRC>;
++                    clock-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx",
++                                  "rx_src",
++                                  "tx_src";
++                    resets = <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_XGMII_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_XGMII_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC1_SRDS1_CH0_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC1_GEPHY0_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC1_GEPHY0_TX_ARES>;
++                    reset-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx";
++                };
++
++                channel@1 {
++                    reg = <1>;
++                    clocks = <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_XGMII_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_XGMII_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_GEPHY1_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_GEPHY1_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC2_RX_CLK_SRC>,
++                             <&qca8k_nsscc NSS_CC_MAC2_TX_CLK_SRC>;
++                    clock-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx",
++                                  "rx_src",
++                                  "tx_src";
++                    resets = <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_XGMII_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_XGMII_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC2_SRDS1_CH1_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC2_GEPHY1_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC2_GEPHY1_TX_ARES>;
++                    reset-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx";
++                };
++
++                channel@2 {
++                    reg = <2>;
++                    clocks = <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_XGMII_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_XGMII_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_GEPHY2_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_GEPHY2_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC3_RX_CLK_SRC>,
++                             <&qca8k_nsscc NSS_CC_MAC3_TX_CLK_SRC>;
++                    clock-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx",
++                                  "rx_src",
++                                  "tx_src";
++                    resets = <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_XGMII_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_XGMII_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC3_SRDS1_CH2_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC3_GEPHY2_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC3_GEPHY2_TX_ARES>;
++                    reset-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx";
++                };
++
++                channel@3 {
++                    reg = <3>;
++                    clocks = <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_XGMII_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_XGMII_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_GEPHY3_RX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_GEPHY3_TX_CLK>,
++                             <&qca8k_nsscc NSS_CC_MAC4_RX_CLK_SRC>,
++                             <&qca8k_nsscc NSS_CC_MAC4_TX_CLK_SRC>;
++                    clock-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx",
++                                  "rx_src",
++                                  "tx_src";
++                    resets = <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_XGMII_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_XGMII_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_TX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC4_SRDS1_CH3_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC4_GEPHY3_RX_ARES>,
++                             <&qca8k_nsscc NSS_CC_MAC4_GEPHY3_TX_ARES>;
++                    reset-names = "xgmii_rx",
++                                  "xgmii_tx",
++                                  "xpcs_rx",
++                                  "xpcs_tx",
++                                  "port_rx",
++                                  "port_tx";
++                };
++            };
++        };
++    };
+--- a/drivers/net/phy/qcom/Kconfig
++++ b/drivers/net/phy/qcom/Kconfig
+@@ -18,6 +18,7 @@ config QCA83XX_PHY
+ config QCA808X_PHY
+ 	tristate "Qualcomm QCA808x PHYs"
+ 	select QCOM_NET_PHYLIB
++	select PHY_PACKAGE
+ 	help
+ 	  Currently supports the QCA8081 model
+ 
+--- a/drivers/net/phy/qcom/qca808x.c
++++ b/drivers/net/phy/qcom/qca808x.c
+@@ -1,8 +1,13 @@
+ // SPDX-License-Identifier: GPL-2.0+
+ 
++#include <dt-bindings/net/qcom,qca808x.h>
+ #include <linux/phy.h>
+ #include <linux/module.h>
++#include <linux/of.h>
++#include <linux/reset.h>
++#include <linux/clk.h>
+ 
++#include "../phylib.h"
+ #include "qcom.h"
+ 
+ /* ADC threshold */
+@@ -86,16 +91,179 @@
+ #define QCA8081_PHY_FIFO_RSTN			BIT(11)
+ 
+ #define QCA8081_PHY_ID				0x004dd101
++#define QCA8084_PHY_ID				0x004dd180
++
++#define QCA8084_MMD3_CDT_PULSE_CTRL		0x8075
++#define QCA8084_CDT_PULSE_THRESH_VAL		0xa060
++
++#define QCA8084_MMD3_CDT_NEAR_CTRL		0x807f
++#define QCA8084_CDT_NEAR_BYPASS			BIT(15)
++
++/* QCA8084 ADC clock edge */
++#define QCA8084_ADC_CLK_SEL			0x8b80
++#define QCA8084_ADC_CLK_SEL_ACLK		GENMASK(7, 4)
++#define QCA8084_ADC_CLK_SEL_ACLK_FALL		0xf
++#define QCA8084_ADC_CLK_SEL_ACLK_RISE		0x0
++
++#define QCA8084_MSE_THRESHOLD			0x800a
++#define QCA8084_MSE_THRESHOLD_2P5G_VAL		0x51c6
++
++/* QCA8084 FIFO reset control */
++#define QCA8084_FIFO_CONTROL			0x19
++#define QCA8084_FIFO_MAC_2_PHY			BIT(1)
++#define QCA8084_FIFO_PHY_2_MAC			BIT(0)
++
++#define QCA8084_MMD7_IPG_OP			0x901d
++#define QCA8084_IPG_10_TO_11_EN			BIT(0)
++
++/* QCA8084 includes secure control module, which supports customizing the
++ * MDIO address of PHY device and PCS device and configuring package mode
++ * for the interface mode of PCS. The register of secure control is accessed
++ * by MDIO bus with the special MDIO sequences, where the 32 bits register
++ * address is split into 3 MDIO operations with 16 bits address.
++ */
++#define QCA8084_HIGH_ADDR_PREFIX		0x18
++#define QCA8084_LOW_ADDR_PREFIX			0x10
++
++/* Bottom two bits of REG must be zero */
++#define QCA8084_MII_REG_MASK			GENMASK(4, 0)
++#define QCA8084_MII_PHY_ADDR_MASK		GENMASK(7, 5)
++#define QCA8084_MII_PAGE_MASK			GENMASK(23, 8)
++#define QCA8084_MII_SW_ADDR_MASK		GENMASK(31, 24)
++#define QCA8084_MII_REG_DATA_UPPER_16_BITS	BIT(1)
++
++/* QCA8084 integrates 4 PHYs, PCS0 and PCS1(includes PCS and XPCS). */
++#define QCA8084_MDIO_DEVICE_NUM			7
++
++#define QCA8084_PCS_CFG				0xc90f014
++#define QCA8084_PCS_ADDR0_MASK			GENMASK(4, 0)
++#define QCA8084_PCS_ADDR1_MASK			GENMASK(9, 5)
++#define QCA8084_PCS_ADDR2_MASK			GENMASK(14, 10)
++
++#define QCA8084_EPHY_CFG			0xc90f018
++#define QCA8084_EPHY_ADDR0_MASK			GENMASK(4, 0)
++#define QCA8084_EPHY_ADDR1_MASK			GENMASK(9, 5)
++#define QCA8084_EPHY_ADDR2_MASK			GENMASK(14, 10)
++#define QCA8084_EPHY_ADDR3_MASK			GENMASK(19, 15)
++#define QCA8084_EPHY_LDO_EN			GENMASK(21, 20)
++
++#define QCA8084_WORK_MODE_CFG			0xc90f030
++#define QCA8084_WORK_MODE_MASK			GENMASK(5, 0)
++#define QCA8084_WORK_MODE_QXGMII		(BIT(5) | GENMASK(3, 0))
++#define QCA8084_WORK_MODE_SWITCH		BIT(4)
++#define QCA8084_WORK_MODE_SWITCH_PORT4_SGMII	BIT(5)
+ 
+ MODULE_DESCRIPTION("Qualcomm Atheros QCA808X PHY driver");
+-MODULE_AUTHOR("Matus Ujhelyi");
++MODULE_AUTHOR("Matus Ujhelyi, Luo Jie");
+ MODULE_LICENSE("GPL");
+ 
++enum {
++	APB_BRIDGE_CLK,
++	AHB_CLK,
++	SEC_CTRL_AHB_CLK,
++	TLMM_CLK,
++	TLMM_AHB_CLK,
++	CNOC_AHB_CLK,
++	MDIO_AHB_CLK,
++	MDIO_MASTER_AHB_CLK,
++	SWITCH_CORE_CLK,
++	PACKAGE_CLK_MAX
++};
++
+ struct qca808x_priv {
+ 	int led_polarity_mode;
+ 	struct qcom_phy_hw_stats hw_stats;
+ };
+ 
++struct qca808x_shared_priv {
++	int package_mode;
++	struct clk *clk[PACKAGE_CLK_MAX];
++};
++
++static const char *const qca8084_package_clk_name[PACKAGE_CLK_MAX] = {
++	[APB_BRIDGE_CLK] =	"apb_bridge",
++	[AHB_CLK] =		"ahb",
++	[SEC_CTRL_AHB_CLK] =	"sec_ctrl_ahb",
++	[TLMM_CLK] =		"tlmm",
++	[TLMM_AHB_CLK] =	"tlmm_ahb",
++	[CNOC_AHB_CLK] =	"cnoc_ahb",
++	[MDIO_AHB_CLK] =	"mdio_ahb",
++	[MDIO_MASTER_AHB_CLK] =	"mdio_master_ahb",
++	[SWITCH_CORE_CLK] =	"switch_core",
++};
++
++static int __qca8084_set_page(struct mii_bus *bus, u16 sw_addr, u16 page)
++{
++	return __mdiobus_write(bus, QCA8084_HIGH_ADDR_PREFIX | (sw_addr >> 5),
++			       sw_addr & 0x1f, page);
++}
++
++static int __qca8084_mii_read(struct mii_bus *bus, u16 addr, u16 reg, u32 *val)
++{
++	int ret, data;
++
++	ret = __mdiobus_read(bus, addr, reg);
++	if (ret < 0)
++		return ret;
++
++	data = ret;
++	ret = __mdiobus_read(bus, addr,
++			     reg | QCA8084_MII_REG_DATA_UPPER_16_BITS);
++	if (ret < 0)
++		return ret;
++
++	*val =  data | ret << 16;
++
++	return 0;
++}
++
++static int __qca8084_mii_write(struct mii_bus *bus, u16 addr, u16 reg, u32 val)
++{
++	int ret;
++
++	ret = __mdiobus_write(bus, addr, reg, lower_16_bits(val));
++	if (!ret)
++		ret = __mdiobus_write(bus, addr,
++				      reg | QCA8084_MII_REG_DATA_UPPER_16_BITS,
++				      upper_16_bits(val));
++
++	return ret;
++}
++
++static int qca8084_mii_modify(struct phy_device *phydev, u32 regaddr,
++			      u32 clear, u32 set)
++{
++	u16 reg, addr, page, sw_addr;
++	struct mii_bus *bus;
++	u32 val;
++	int ret;
++
++	bus = phydev->mdio.bus;
++	mutex_lock(&bus->mdio_lock);
++
++	reg = FIELD_GET(QCA8084_MII_REG_MASK, regaddr);
++	addr = FIELD_GET(QCA8084_MII_PHY_ADDR_MASK, regaddr);
++	page = FIELD_GET(QCA8084_MII_PAGE_MASK, regaddr);
++	sw_addr = FIELD_GET(QCA8084_MII_SW_ADDR_MASK, regaddr);
++
++	ret = __qca8084_set_page(bus, sw_addr, page);
++	if (ret < 0)
++		goto qca8084_mii_modify_exit;
++
++	ret = __qca8084_mii_read(bus, QCA8084_LOW_ADDR_PREFIX | addr,
++				 reg, &val);
++	if (ret < 0)
++		goto qca8084_mii_modify_exit;
++
++	val &= ~clear;
++	val |= set;
++	ret = __qca8084_mii_write(bus, QCA8084_LOW_ADDR_PREFIX | addr,
++				  reg, val);
++qca8084_mii_modify_exit:
++	mutex_unlock(&bus->mdio_lock);
++	return ret;
++};
++
+ static int qca808x_phy_fast_retrain_config(struct phy_device *phydev)
+ {
+ 	int ret;
+@@ -154,13 +322,18 @@ static bool qca808x_is_prefer_master(str
+ 
+ static bool qca808x_has_fast_retrain_or_slave_seed(struct phy_device *phydev)
+ {
+-	return linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, phydev->supported);
++	return phydev_id_compare(phydev, QCA8081_PHY_ID) &&
++		linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
++				  phydev->supported);
+ }
+ 
+ static bool qca808x_is_1g_only(struct phy_device *phydev)
+ {
+ 	int ret;
+ 
++	if (!phydev_id_compare(phydev, QCA8081_PHY_ID))
++		return false;
++
+ 	ret = phy_read_mmd(phydev, MDIO_MMD_AN, QCA808X_PHY_MMD7_CHIP_TYPE);
+ 	if (ret < 0)
+ 		return true;
+@@ -278,6 +451,23 @@ static int qca808x_read_status(struct ph
+ 		return ret;
+ 
+ 	if (phydev->link) {
++		/* There are two PCSes available for QCA8084, which support
++		 * the following interface modes.
++		 *
++		 * 1. PHY_INTERFACE_MODE_10G_QXGMII utilizes PCS1 for all
++		 * available 4 ports, which is for all link speeds.
++		 *
++		 * 2. PHY_INTERFACE_MODE_2500BASEX utilizes PCS0 for the
++		 * fourth port, which is only for the link speed 2500M same
++		 * as QCA8081.
++		 *
++		 * 3. PHY_INTERFACE_MODE_SGMII utilizes PCS0 for the fourth
++		 * port, which is for the link speed 10M, 100M and 1000M same
++		 * as QCA8081.
++		 */
++		if (phydev->interface == PHY_INTERFACE_MODE_10G_QXGMII)
++			return 0;
++
+ 		if (phydev->speed == SPEED_2500)
+ 			phydev->interface = PHY_INTERFACE_MODE_2500BASEX;
+ 		else
+@@ -357,6 +547,18 @@ static int qca808x_cable_test_start(stru
+ 	phy_write_mmd(phydev, MDIO_MMD_PCS, 0x807a, 0xc060);
+ 	phy_write_mmd(phydev, MDIO_MMD_PCS, 0x807e, 0xb060);
+ 
++	if (phydev_id_compare(phydev, QCA8084_PHY_ID)) {
++		/* Adjust the positive and negative pulse thereshold of CDT. */
++		phy_write_mmd(phydev, MDIO_MMD_PCS,
++			      QCA8084_MMD3_CDT_PULSE_CTRL,
++			      QCA8084_CDT_PULSE_THRESH_VAL);
++
++		/* Disable the near bypass of CDT. */
++		phy_modify_mmd(phydev, MDIO_MMD_PCS,
++			       QCA8084_MMD3_CDT_NEAR_CTRL,
++			       QCA8084_CDT_NEAR_BYPASS, 0);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -643,6 +845,298 @@ static void qca808x_get_phy_stats(struct
+ 	qcom_phy_get_stats(stats, priv->hw_stats);
+ }
+ 
++static int qca8084_package_clock_init(struct qca808x_shared_priv *shared_priv)
++{
++	int ret;
++
++	/* Configure clock rate 312.5MHZ for the PHY package
++	 * APB bridge clock tree.
++	 */
++	ret = clk_set_rate(shared_priv->clk[APB_BRIDGE_CLK], 312500000);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[SWITCH_CORE_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[APB_BRIDGE_CLK]);
++	if (ret)
++		return ret;
++
++	/* Configure clock rate 104.17MHZ for the PHY package
++	 * AHB clock tree.
++	 */
++	ret = clk_set_rate(shared_priv->clk[AHB_CLK], 104170000);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[AHB_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[SEC_CTRL_AHB_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[TLMM_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[TLMM_AHB_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[CNOC_AHB_CLK]);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(shared_priv->clk[MDIO_MASTER_AHB_CLK]);
++	if (ret)
++		return ret;
++
++	return clk_prepare_enable(shared_priv->clk[MDIO_AHB_CLK]);
++}
++
++static int qca8084_phy_package_config_init_once(struct phy_device *phydev)
++{
++	struct qca808x_shared_priv *shared_priv;
++	int ret, mode;
++
++	shared_priv = phy_package_get_priv(phydev);
++	switch (shared_priv->package_mode) {
++	case QCA808X_PCS1_10G_QXGMII_PCS0_UNUNSED:
++		mode = QCA8084_WORK_MODE_QXGMII;
++		break;
++	case QCA808X_PCS1_SGMII_MAC_PCS0_SGMII_MAC:
++		mode = QCA8084_WORK_MODE_SWITCH;
++		break;
++	case QCA808X_PCS1_SGMII_MAC_PCS0_SGMII_PHY:
++		mode = QCA8084_WORK_MODE_SWITCH_PORT4_SGMII;
++		break;
++	default:
++		phydev_err(phydev, "Invalid qcom,package-mode %d\n",
++			   shared_priv->package_mode);
++		return -EINVAL;
++	}
++
++	ret = qca8084_mii_modify(phydev, QCA8084_WORK_MODE_CFG,
++				 QCA8084_WORK_MODE_MASK,
++				 FIELD_PREP(QCA8084_WORK_MODE_MASK, mode));
++	if (ret)
++		return ret;
++
++	/* Enable efuse loading into analog circuit */
++	ret = qca8084_mii_modify(phydev, QCA8084_EPHY_CFG,
++				 QCA8084_EPHY_LDO_EN, 0);
++	if (ret)
++		return ret;
++
++	usleep_range(10000, 11000);
++
++	/* Initialize the PHY package clock and reset, which is the
++	 * necessary config sequence after GPIO reset on the PHY package.
++	 */
++	return qca8084_package_clock_init(shared_priv);
++}
++
++static int qca8084_config_init(struct phy_device *phydev)
++{
++	int ret;
++
++	if (phy_package_init_once(phydev)) {
++		ret = qca8084_phy_package_config_init_once(phydev);
++		if (ret)
++			return ret;
++	}
++
++	if (phydev->interface == PHY_INTERFACE_MODE_10G_QXGMII)
++		__set_bit(PHY_INTERFACE_MODE_10G_QXGMII,
++			  phydev->possible_interfaces);
++	else
++		qca808x_fill_possible_interfaces(phydev);
++
++	/* Configure the ADC to convert the signal using falling edge
++	 * instead of the default rising edge.
++	 */
++	ret = at803x_debug_reg_mask(phydev, QCA8084_ADC_CLK_SEL,
++				    QCA8084_ADC_CLK_SEL_ACLK,
++				    FIELD_PREP(QCA8084_ADC_CLK_SEL_ACLK,
++					       QCA8084_ADC_CLK_SEL_ACLK_FALL));
++	if (ret < 0)
++		return ret;
++
++	/* Adjust MSE threshold value to avoid link issue with
++	 * some link partner.
++	 */
++	return phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
++			     QCA8084_MSE_THRESHOLD,
++			     QCA8084_MSE_THRESHOLD_2P5G_VAL);
++}
++
++static void qca8084_link_change_notify(struct phy_device *phydev)
++{
++	int ret;
++
++	/* Assert the FIFO between PHY and MAC. */
++	ret = phy_modify(phydev, QCA8084_FIFO_CONTROL,
++			 QCA8084_FIFO_MAC_2_PHY | QCA8084_FIFO_PHY_2_MAC,
++			 0);
++	if (ret) {
++		phydev_err(phydev, "Asserting PHY FIFO failed\n");
++		return;
++	}
++
++	/* If the PHY is in 10G_QXGMII mode, the FIFO needs to be kept in
++	 * reset state when link is down, otherwise the FIFO needs to be
++	 * de-asserted after waiting 50 ms to make the assert completed.
++	 */
++	if (phydev->interface != PHY_INTERFACE_MODE_10G_QXGMII ||
++	    phydev->link) {
++		msleep(50);
++
++		/* Deassert the FIFO between PHY and MAC. */
++		ret = phy_modify(phydev, QCA8084_FIFO_CONTROL,
++				 QCA8084_FIFO_MAC_2_PHY |
++				 QCA8084_FIFO_PHY_2_MAC,
++				 QCA8084_FIFO_MAC_2_PHY |
++				 QCA8084_FIFO_PHY_2_MAC);
++		if (ret) {
++			phydev_err(phydev, "De-asserting PHY FIFO failed\n");
++			return;
++		}
++	}
++
++	/* Enable IPG level 10 to 11 tuning for link speed 1000M in the
++	 * 10G_QXGMII mode.
++	 */
++	if (phydev->interface == PHY_INTERFACE_MODE_10G_QXGMII)
++		phy_modify_mmd(phydev, MDIO_MMD_AN, QCA8084_MMD7_IPG_OP,
++			       QCA8084_IPG_10_TO_11_EN,
++			       phydev->speed == SPEED_1000 ?
++			       QCA8084_IPG_10_TO_11_EN : 0);
++}
++
++/* QCA8084 is a four-port PHY, which integrates the clock controller,
++ * 4 PHY devices and 2 PCS interfaces (PCS0 and PCS1). PCS1 includes
++ * XPCS and PCS to support 10G-QXGMII and SGMII. PCS0 includes one PCS
++ * to support SGMII.
++ *
++ * The clocks and resets are sourced from the integrated clock controller
++ * of the PHY package. This integrated clock controller is driven by a
++ * QCA8K clock provider that supplies the clocks and resets to the four
++ * PHYs, PCS and PHY package.
++ */
++static int qca8084_phy_package_probe_once(struct phy_device *phydev)
++{
++	int addr[QCA8084_MDIO_DEVICE_NUM] = {0, 1, 2, 3, 4, 5, 6};
++	struct device_node *np = phy_package_get_node(phydev);
++	struct qca808x_shared_priv *shared_priv;
++	struct reset_control *rstc;
++	int i, ret, clear, set;
++	struct clk *clk;
++
++	/* Program the MDIO address of PHY and PCS optionally, the MDIO
++	 * address 0-6 is used for PHY and PCS MDIO devices by default.
++	 */
++	ret = of_property_read_u32_array(np, "qcom,phy-addr-fixup",
++					 addr, ARRAY_SIZE(addr));
++	if (ret && ret != -EINVAL)
++		return ret;
++
++	/* Configure the MDIO addresses for the four PHY devices. */
++	clear = QCA8084_EPHY_ADDR0_MASK | QCA8084_EPHY_ADDR1_MASK |
++		QCA8084_EPHY_ADDR2_MASK | QCA8084_EPHY_ADDR3_MASK;
++	set = FIELD_PREP(QCA8084_EPHY_ADDR0_MASK, addr[0]);
++	set |= FIELD_PREP(QCA8084_EPHY_ADDR1_MASK, addr[1]);
++	set |= FIELD_PREP(QCA8084_EPHY_ADDR2_MASK, addr[2]);
++	set |= FIELD_PREP(QCA8084_EPHY_ADDR3_MASK, addr[3]);
++
++	ret = qca8084_mii_modify(phydev, QCA8084_EPHY_CFG, clear, set);
++	if (ret)
++		return ret;
++
++	/* Configure the MDIO addresses for PCS0 and PCS1 including
++	 * PCS and XPCS.
++	 */
++	clear = QCA8084_PCS_ADDR0_MASK | QCA8084_PCS_ADDR1_MASK |
++		QCA8084_PCS_ADDR2_MASK;
++	set = FIELD_PREP(QCA8084_PCS_ADDR0_MASK, addr[4]);
++	set |= FIELD_PREP(QCA8084_PCS_ADDR1_MASK, addr[5]);
++	set |= FIELD_PREP(QCA8084_PCS_ADDR2_MASK, addr[6]);
++
++	ret =  qca8084_mii_modify(phydev, QCA8084_PCS_CFG, clear, set);
++	if (ret)
++		return ret;
++
++	shared_priv = phy_package_get_priv(phydev);
++	for (i = 0; i < ARRAY_SIZE(qca8084_package_clk_name); i++) {
++		clk = of_clk_get_by_name(np, qca8084_package_clk_name[i]);
++		if (IS_ERR(clk)) {
++			if (PTR_ERR(clk) == -EINVAL)
++				clk = NULL;
++			else
++				return dev_err_probe(&phydev->mdio.dev, PTR_ERR(clk),
++						     "package clock %s not ready\n",
++						     qca8084_package_clk_name[i]);
++		}
++
++		shared_priv->clk[i] = clk;
++	}
++
++	/* The package mode 10G-QXGMII of PCS1 is used for Quad PHY and
++	 * PCS0 is unused by default.
++	 */
++	shared_priv->package_mode = QCA808X_PCS1_10G_QXGMII_PCS0_UNUNSED;
++	ret = of_property_read_u32(np, "qcom,package-mode",
++				   &shared_priv->package_mode);
++	if (ret && ret != -EINVAL)
++		return ret;
++
++	rstc = of_reset_control_get_exclusive(np, NULL);
++	if (IS_ERR(rstc))
++		return dev_err_probe(&phydev->mdio.dev, PTR_ERR(rstc),
++				     "package reset not ready\n");
++
++	/* Deassert PHY package. */
++	return reset_control_deassert(rstc);
++}
++
++static int qca8084_probe(struct phy_device *phydev)
++{
++	struct qca808x_shared_priv *shared_priv;
++	struct device *dev = &phydev->mdio.dev;
++	struct reset_control *rstc;
++	struct clk *clk;
++	int ret;
++
++	ret = devm_of_phy_package_join(dev, phydev, sizeof(*shared_priv));
++	if (ret)
++		return ret;
++
++	if (phy_package_probe_once(phydev)) {
++		ret = qca8084_phy_package_probe_once(phydev);
++		if (ret)
++			return ret;
++	}
++
++	/* Enable clock of PHY device, so that the PHY register
++	 * can be accessed to get PHY features.
++	 */
++	clk = devm_clk_get_enabled(dev, NULL);
++	if (IS_ERR(clk))
++		return dev_err_probe(dev, PTR_ERR(clk),
++				     "Enable PHY clock failed\n");
++
++	/* De-assert PHY reset after the clock of PHY enabled. */
++	rstc = devm_reset_control_get_exclusive(dev, NULL);
++	if (IS_ERR(rstc))
++		return dev_err_probe(dev, PTR_ERR(rstc),
++				     "Get PHY reset failed\n");
++
++	return reset_control_deassert(rstc);
++}
++
+ static struct phy_driver qca808x_driver[] = {
+ {
+ 	/* Qualcomm QCA8081 */
+@@ -674,12 +1168,35 @@ static struct phy_driver qca808x_driver[
+ 	.led_polarity_set	= qca808x_led_polarity_set,
+ 	.update_stats		= qca808x_update_stats,
+ 	.get_phy_stats		= qca808x_get_phy_stats,
++}, {
++	/* Qualcomm QCA8084 */
++	PHY_ID_MATCH_MODEL(QCA8084_PHY_ID),
++	.name			= "Qualcomm QCA8084",
++	.flags			= PHY_POLL_CABLE_TEST,
++	.config_intr		= at803x_config_intr,
++	.handle_interrupt	= at803x_handle_interrupt,
++	.get_tunable		= at803x_get_tunable,
++	.set_tunable		= at803x_set_tunable,
++	.set_wol		= at803x_set_wol,
++	.get_wol		= at803x_get_wol,
++	.get_features		= qca808x_get_features,
++	.config_aneg		= qca808x_config_aneg,
++	.suspend		= genphy_suspend,
++	.resume			= genphy_resume,
++	.read_status		= qca808x_read_status,
++	.soft_reset		= qca808x_soft_reset,
++	.cable_test_start	= qca808x_cable_test_start,
++	.cable_test_get_status	= qca808x_cable_test_get_status,
++	.config_init		= qca8084_config_init,
++	.link_change_notify	= qca8084_link_change_notify,
++	.probe			= qca8084_probe,
+ }, };
+ 
+ module_phy_driver(qca808x_driver);
+ 
+ static const struct mdio_device_id __maybe_unused qca808x_tbl[] = {
+ 	{ PHY_ID_MATCH_EXACT(QCA8081_PHY_ID) },
++	{ PHY_ID_MATCH_MODEL(QCA8084_PHY_ID) },
+ 	{ }
+ };
+ 
+--- /dev/null
++++ b/include/dt-bindings/net/qcom,qca808x.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++/*
++ * Device Tree constants for the Qualcomm QCA808X PHYs
++ */
++
++#ifndef _DT_BINDINGS_QCOM_QCA808X_H
++#define _DT_BINDINGS_QCOM_QCA808X_H
++
++/* PHY package modes of QCA8084 to apply the interface modes of two PCSes. */
++#define QCA808X_PCS1_10G_QXGMII_PCS0_UNUNSED		0
++#define QCA808X_PCS1_SGMII_MAC_PCS0_SGMII_MAC		1
++#define QCA808X_PCS1_SGMII_MAC_PCS0_SGMII_PHY		2
++
++#endif

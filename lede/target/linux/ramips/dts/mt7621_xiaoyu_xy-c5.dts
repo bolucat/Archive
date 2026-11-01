@@ -47,6 +47,7 @@
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <25000000>;
+		broken-flash-reset;
 
 		partitions {
 			compatible = "fixed-partitions";
@@ -65,10 +66,22 @@
 				read-only;
 			};
 
-			factory: partition@40000 {
+			partition@40000 {
 				label = "factory";
 				reg = <0x40000 0x10000>;
 				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_factory_4: macaddr@4 {
+						compatible = "mac-base";
+						reg = <0x4 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@50000 {
@@ -85,30 +98,49 @@
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0x4>;
+	nvmem-cells = <&macaddr_factory_4 0>;
+	nvmem-cell-names = "mac-address";
 };
 
 &gmac1 {
-	mtd-mac-address = <&factory 0x4>;
-	mtd-mac-address-increment = <1>;
 	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy4>;
+
+	nvmem-cells = <&macaddr_factory_4 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
 };
 
 &gsw {
-	mediatek,portmap = "llllw";
-	status = "okay";
-};
 
-&hnat {
-	mtketh-wan = "eth1";
-	mtketh-ppd = "eth0";
-	mtketh-lan = "eth0";
-	mtketh-max-gmac = <2>;
-	/delete-property/ mtkdsa-wan-port;
-};
+		port@0 {
+		compatible = "mediatek,mt753x-port";
+			status = "okay";
+			label = "lan1";
+		};
 
-&switch0 {
-	status = "disabled";
+		port@1 {
+		compatible = "mediatek,mt753x-port";
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@2 {
+		compatible = "mediatek,mt753x-port";
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@3 {
+		compatible = "mediatek,mt753x-port";
+			status = "okay";
+			label = "lan4";
+		};
+
 };
 
 &state_default {

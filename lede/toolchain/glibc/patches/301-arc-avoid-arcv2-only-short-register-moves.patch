@@ -1,0 +1,21 @@
+Subject: [PATCH] arc: use full-width moves for syscall argument registers
+
+The ARC700 MOV_S encoding cannot move between r4/r5 or r5/r6.
+Use the full-width instruction, which supports these registers on
+both ARC700 and ARCv2.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/sysdeps/unix/sysv/linux/arc/syscall.S
++++ b/sysdeps/unix/sysv/linux/arc/syscall.S
+@@ -24,8 +24,8 @@
+ 	mov_s	r1, r2
+ 	mov_s	r2, r3
+ 	mov_s	r3, r4
+-	mov_s	r4, r5
+-	mov_s	r5, r6
++	mov	r4, r5
++	mov	r5, r6
+ 
+ 	ARC_TRAP_INSN
+ 	brhi	r0, -4096, L (call_syscall_err)

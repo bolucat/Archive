@@ -1,0 +1,255 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Fri, 30 Oct 2026 15:36:46 +0800
+Subject: [PATCH] net: ppe: offload PPPoE over QCA4B customer VLANs
+
+Match tagged QCA4B ingress by its virtual-port ID using the XLT port-type
+field, rather than treating a VP number as a physical-port bitmap. Bind
+the VLAN VSI and the PPPoE session to the same terminating L3 interface.
+Retain the VP independently for each active VLAN slot, including failed
+hardware cleanup, and restore C-tags on CPU-punted control packets.
+
+The selector encoding follows QSDK's XLT_RULE_TBL PORT_TYPE field at
+bit 73: type 0 is a physical bitmap and type 1 is an exact VP ID. Ordinary
+bridge and physical VLAN users continue to select the bitmap type.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_bridge.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_bridge.c
+@@ -365,7 +365,7 @@ static int ppe_bridge_vsi_xlt_update(str
+ 		}
+ 
+ 		ret = ppe_ing_xlt_rule_set(pb->ppe_dev, idx, rules[i].bitmap,
+-					   -1, rules[i].vid, vsi,
++					   false, -1, rules[i].vid, vsi,
+ 					   false, false);
+ 		if (ret)
+ 			return ret;
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_config.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_config.c
+@@ -24,6 +24,7 @@
+ #include "ppe_config.h"
+ #include "ppe_port.h"
+ #include "ppe_regs.h"
++#include "ppe_vp.h"
+ 
+ #define PPE_QUEUE_SCH_PRI_NUM		8
+ 
+@@ -1827,7 +1828,8 @@ static int ppe_xlt_write_verify(struct p
+  * ppe_ing_xlt_rule_set - Program an ingress VLAN translation rule
+  * @ppe_dev: PPE device
+  * @index: Rule index to program
+- * @port_bitmap: Bitmap of the ingress ports the rule matches
++ * @port_value: Physical-port bitmap or virtual-port ID matched by the rule
++ * @is_vp: Match one virtual port instead of a physical-port bitmap
+  * @svid: S-VLAN ID matched by the rule, or a negative value for untagged
+  * @cvid: C-VLAN ID matched by the rule, or a negative value to match
+  * untagged and priority-tagged packets instead
+@@ -1842,7 +1844,7 @@ static int ppe_xlt_write_verify(struct p
+  * Return: 0 on success, negative error code on failure.
+  */
+ int ppe_ing_xlt_rule_set(struct ppe_device *ppe_dev, int index,
+-			 unsigned int port_bitmap, int svid, int cvid,
++			 unsigned int port_value, bool is_vp, int svid, int cvid,
+ 			 int vsi, bool strip_svid, bool strip_cvid)
+ {
+ 	u32 rule[4] = {}, action[3] = {};
+@@ -1852,7 +1854,11 @@ int ppe_ing_xlt_rule_set(struct ppe_devi
+ 	int ret;
+ 
+ 	if (index < 0 || index >= PPE_XLT_RULE_TBL_ENTRIES ||
+-	    !port_bitmap || port_bitmap & ~GENMASK(ppe_dev->num_ports - 1, 0) ||
++	    (!is_vp && (!port_value ||
++			port_value & ~GENMASK(ppe_dev->num_ports - 1, 0))) ||
++	    (is_vp && (!ppe_dev->variant->has_vports ||
++		       port_value < PPE_VP_PORT_BASE ||
++		       port_value >= PPE_VP_PORT_BASE + PPE_VP_SLOTS)) ||
+ 	    vsi < 0 || vsi >= PPE_VSI_TBL_ENTRIES ||
+ 	    svid < -1 || svid > VLAN_VID_MASK ||
+ 	    cvid < -1 || cvid > VLAN_VID_MASK)
+@@ -1895,7 +1901,9 @@ int ppe_ing_xlt_rule_set(struct ppe_devi
+ 		return ret;
+ 
+ 	rule[0] = PPE_XLT_RULE_W0_VALID;
+-	rule[0] |= FIELD_PREP(PPE_XLT_RULE_W0_PORT_BITMAP, port_bitmap);
++	rule[0] |= FIELD_PREP(PPE_XLT_RULE_W0_PORT_BITMAP, port_value);
++	if (is_vp)
++		rule[2] |= FIELD_PREP(PPE_XLT_RULE_W2_PORT_TYPE, 1);
+ 
+ 	if (svid >= 0) {
+ 		sfmt = svid ? PPE_XLT_FMT_TAGGED : PPE_XLT_FMT_PRIO_TAGGED;
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_config.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_config.h
+@@ -358,7 +358,7 @@ int ppe_port_vlan_ingress_type_set(struc
+ int ppe_port_vlan_egress_type_set(struct ppe_device *ppe_dev, int port,
+ 				  bool core);
+ int ppe_ing_xlt_rule_set(struct ppe_device *ppe_dev, int index,
+-			 unsigned int port_bitmap, int svid, int cvid,
++			 unsigned int port_value, bool is_vp, int svid, int cvid,
+ 			 int vsi, bool strip_svid, bool strip_cvid);
+ int ppe_ing_xlt_rule_clear(struct ppe_device *ppe_dev, int index);
+ int ppe_ing_xlt_l3_if_set(struct ppe_device *ppe_dev, int index, int l3_if);
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -1083,8 +1083,8 @@ static int ppe_ft_pppoe_activate(struct
+ 	 * The caller already holds its flow's VP reference.
+ 	 */
+ 	if (vp >= 0) {
+-		/* VLAN-over-VP needs VP translation rules, not a physical rule. */
+-		if (session->svid >= 0 || session->cvid >= 0)
++		/* QCA4B carries its transport identity outside the VLAN slots. */
++		if (session->svid >= 0)
+ 			return -EOPNOTSUPP;
+ 		ret = ppe_vp_ref_qca4b(ft->ppe_dev, vp, session->port);
+ 		if (ret)
+@@ -1092,7 +1092,8 @@ static int ppe_ft_pppoe_activate(struct
+ 	}
+ 
+ 	if (session->svid >= 0 || session->cvid >= 0) {
+-		vlan = ppe_ft_vlan_get(ft, session->port, session->svid,
++		vlan = ppe_ft_vlan_get(ft, vp >= 0 ? vp : session->port,
++				       session->svid,
+ 				       session->cvid, session->vlan_mtu,
+ 				       session->keep_svid,
+ 				       session->keep_cvid);
+@@ -1101,7 +1102,8 @@ static int ppe_ft_pppoe_activate(struct
+ 				"PPPoE VLAN activation failed: slot=%d port=%u svid=%d cvid=%d ret=%d\n",
+ 				index, session->port, session->svid,
+ 				session->cvid, vlan);
+-			return vlan;
++			ret = vlan;
++			goto err_vp;
+ 		}
+ 		/* A VSI has one L3 selector. Do not redirect another session or
+ 		 * an already installed plain-IP flow into this session's L3.
+@@ -1192,6 +1194,7 @@ err_cleanup:
+ 	session->l3_if = -1;
+ err_vlan:
+ 	ppe_ft_vlan_put(ft, vlan);
++err_vp:
+ 	ppe_vp_put(ft->ppe_dev, vp);
+ 	return ret;
+ }
+@@ -1580,7 +1583,8 @@ static int ppe_ft_vlan_port_get(struct p
+ 	if (ret)
+ 		goto rollback;
+ 	ret = ppe_ing_xlt_rule_set(ft->ppe_dev, ppe_ft_vlan_port_xlt(port),
+-				   BIT(port), -1, -1, ppe_ft_vlan_port_vsi(port),
++				   BIT(port), false, -1, -1,
++				   ppe_ft_vlan_port_vsi(port),
+ 				   false, false);
+ 	if (ret)
+ 		goto rollback;
+@@ -1669,16 +1673,31 @@ static int ppe_ft_vlan_get(struct ppe_fl
+ 	bool l3_touched = false, vsi_bound = false;
+ 	bool ingress_touched = false, egress_touched = false;
+ 	bool port_owned = false;
++	bool is_vp = port >= PPE_VP_PORT_BASE;
++	bool vp_owned = false;
+ 	bool restore_cvid = cvid >= 0 && (svid >= 0 || keep_cvid);
+ 	u32 eg_modes;
+ 	bool is_new;
+ 	int i, p, ret, err = 0, cleanup_ret;
+ 
++	if (is_vp && svid >= 0)
++		return -EOPNOTSUPP;
++	if (port < 0 || (!is_vp && port >= ft->ppe_dev->num_ports) ||
++	    (is_vp && port >= PPE_VP_PORT_BASE + PPE_VP_SLOTS))
++		return -EINVAL;
++
+ 	i = ppe_ft_ref_get(ft->vlans, sizeof(*ft->vlans),
+ 			   PPE_L3_VLAN_UPLINKS, ppe_ft_vlan_match,
+ 			   &want, &is_new);
+ 	if (i < 0 || !is_new)
+ 		return i;
++	if (is_vp) {
++		ret = ppe_vp_ref_qca4b(ft->ppe_dev, port,
++				       ppe_vp_physical_port(ft->ppe_dev, port));
++		if (ret)
++			return ret;
++		vp_owned = true;
++	}
+ 	if (svid >= 0) {
+ 		/* QSDK keeps CPU port 0 in CORE mode: EDGE egress can drop
+ 		 * a parsed S-tag even when the VSI requests UNMODIFIED.
+@@ -1734,17 +1753,20 @@ static int ppe_ft_vlan_get(struct ppe_fl
+ 			goto err_config;
+ 	}
+ 
+-	ret = ppe_ft_vlan_port_get(ft, port);
+-	if (ret)
+-		goto err_config;
+-	port_owned = true;
++	if (!is_vp) {
++		ret = ppe_ft_vlan_port_get(ft, port);
++		if (ret)
++			goto err_config;
++		port_owned = true;
++	}
+ 
+ 	/* The flow key uses L3 identity, not the sixth-tuple VLAN mode.
+ 	 * keep_* describes CPU delivery, not tags in the routed pipeline.
+ 	 */
+ 	ingress_touched = true;
+ 	ret = ppe_ing_xlt_rule_set(ft->ppe_dev, ppe_ft_vlan_xlt(i),
+-				   BIT(port), svid, cvid, ppe_ft_vlan_vsi(i),
++				   is_vp ? port : BIT(port), is_vp,
++				   svid, cvid, ppe_ft_vlan_vsi(i),
+ 				   svid >= 0, cvid >= 0);
+ 	if (ret)
+ 		goto err_config;
+@@ -1792,6 +1814,8 @@ quarantine:
+ 		return ret;
+ 	if (cpu_core)
+ 		ppe_ft_core_port_put(ft, 0, false);
++	if (vp_owned)
++		ppe_vp_put(ft->ppe_dev, port);
+ 
+ 	return ret;
+ }
+@@ -1831,7 +1855,7 @@ static void ppe_ft_vlan_put(struct ppe_f
+ 	err = ppe_l3_if_clear(ft->ppe_dev, ppe_ft_vlan_l3_if(ft, index));
+ 	if (!ret)
+ 		ret = err;
+-	if (!ret)
++	if (!ret && slot->port < PPE_VP_PORT_BASE)
+ 		ret = ppe_ft_vlan_port_put(ft, slot->port);
+ quarantine:
+ 	if (ret) {
+@@ -1845,6 +1869,8 @@ quarantine:
+ 	if (slot->svid >= 0 &&
+ 	    !ppe_ft_core_port_put(ft, slot->port, true))
+ 		ppe_ft_core_port_put(ft, 0, false);
++	if (slot->port >= PPE_VP_PORT_BASE)
++		ppe_vp_put(ft->ppe_dev, slot->port);
+ 	memset(slot, 0, sizeof(*slot));
+ }
+ 
+@@ -3684,11 +3710,14 @@ put_idev:
+ 	}
+ 
+ 	if ((data.ingress_svid >= 0 || data.ingress_cvid >= 0) &&
+-	    !ingress_vp_vlan) {
+-		flow->vlan = ppe_ft_vlan_get(ft, iport, data.ingress_svid,
++	    (!ingress_vp_vlan || data.ingress_pppoe_sid >= 0)) {
++		int port = flow->ivp >= 0 ? flow->ivp : iport;
++
++		flow->vlan = ppe_ft_vlan_get(ft, port, data.ingress_svid,
+ 					     data.ingress_cvid, imtu,
+ 					     data.ingress_svid >= 0,
+-					     (data.ingress_dsa ||
++					     (data.ingress_pppoe_sid >= 0 ||
++					      data.ingress_dsa ||
+ 					      data.ingress_svid >= 0) &&
+ 					     data.ingress_cvid >= 0);
+ 		if (flow->vlan < 0) {
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
+@@ -144,6 +144,7 @@
+ #define PPE_XLT_RULE_W1_CKEY_FMT_HI		GENMASK(1, 0)
+ #define PPE_XLT_RULE_W1_CKEY_VID_INCL		BIT(2)
+ #define PPE_XLT_RULE_W1_CKEY_VID		GENMASK(14, 3)
++#define PPE_XLT_RULE_W2_PORT_TYPE		GENMASK(10, 9)
+ 
+ #define PPE_XLT_FMT_UNTAGGED			BIT(0)
+ #define PPE_XLT_FMT_PRIO_TAGGED			BIT(1)

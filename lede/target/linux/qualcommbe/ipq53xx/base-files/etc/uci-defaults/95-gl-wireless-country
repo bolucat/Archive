@@ -1,0 +1,117 @@
+#!/bin/sh
+#
+# GL.iNet boards store the factory regulatory domain as a 2-byte ISO-3166
+# country code in the ART partition. The vendor firmware exposes it as
+# /proc/gl-hw-info/country_code via an out-of-tree module; read it straight
+# out of the partition instead.
+#
+# Without a country set, hostapd refuses to start on 6 GHz ("Invalid
+# country_code '00'"), so the radios stay down on a fresh install.
+#
+# This is a uci-defaults script: OpenWrt deletes it only when it exits 0.
+# On a fresh install the three wifi-device sections (2.4/5/6 GHz) can still
+# be missing when this runs. If we can't confirm all of them, exit non-zero
+# so the script is retained and retried on the next boot instead of quietly
+# becoming a permanent no-op that leaves the radios country-less forever.
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+LOG_TAG=gl-wireless-country
+EXPECTED_RADIOS=3
+
+log_warn() {
+	logger -t "$LOG_TAG" -p daemon.warn "$1"
+}
+
+retry_later() {
+	log_warn "$1"
+	log_warn "regulatory initialization incomplete; keeping this script for retry"
+	exit 1
+}
+
+normalize_country() {
+	printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -dc 'A-Z'
+}
+
+# A country counts as set only if it is two letters. `wifi config` writes
+# country='00' for the 6 GHz radio whenever the board supplies no wlan defaults
+# (see mac80211.uc), and '00' is worse than an unset value: hostapd rejects it
+# with "Invalid country_code '00'" and then NO interface on the phy starts, not
+# just 6 GHz. normalize_country already strips digits, so "00" comes out empty
+# here and correctly fails the length check.
+country_is_set() {
+	[ "${#1}" = 2 ] || return 1
+	case "$1" in
+		*[!A-Z]*) return 1 ;;
+	esac
+	return 0
+}
+
+list_wifi_devices() {
+	uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"
+}
+
+board=$(board_name)
+
+case "$board" in
+gl.inet,gl-be9300) ;;
+*) exit 0 ;;
+esac
+
+[ -f /etc/config/wireless ] || /sbin/wifi config
+
+devices=$(list_wifi_devices)
+set -- $devices
+
+if [ "$#" -lt "$EXPECTED_RADIOS" ]; then
+	log_warn "found $# of $EXPECTED_RADIOS expected wifi-device sections; regenerating wireless config"
+	/sbin/wifi config
+	devices=$(list_wifi_devices)
+	set -- $devices
+fi
+
+if [ "$#" -lt "$EXPECTED_RADIOS" ]; then
+	retry_later "found $# of $EXPECTED_RADIOS expected wifi-device sections after wifi config"
+fi
+
+need_country=0
+for dev in "$@"; do
+	cur=$(normalize_country "$(uci -q get "wireless.$dev.country")")
+	country_is_set "$cur" || need_country=1
+done
+
+if [ "$need_country" = 0 ]; then
+	logger -t "$LOG_TAG" "all $# radio countries already set; left unchanged"
+	exit 0
+fi
+
+art=$(find_mmc_part "0:ART")
+[ -n "$art" ] || retry_later "ART partition (0:ART) not found"
+
+# Offset 0x88, 2 bytes. Accept lower case too - only a value that is not two
+# letters at all means the field is unprogrammed.
+country=$(dd if="$art" bs=1 skip=136 count=2 2>/dev/null |
+	tr '[:lower:]' '[:upper:]' | tr -dc 'A-Z')
+
+country_is_set "$country" || retry_later "ART regulatory field at 0x88 is not a valid ISO-3166 code"
+
+changed=0
+for dev in "$@"; do
+	cur=$(normalize_country "$(uci -q get "wireless.$dev.country")")
+	country_is_set "$cur" && continue
+	uci set "wireless.$dev.country=$country" || retry_later "failed to set wireless.$dev.country"
+	changed=$((changed + 1))
+done
+
+if [ "$changed" -gt 0 ]; then
+	uci commit wireless || retry_later "failed to commit wireless configuration"
+fi
+
+for dev in "$@"; do
+	cur=$(normalize_country "$(uci -q get "wireless.$dev.country")")
+	country_is_set "$cur" || retry_later "wireless.$dev.country is still unset or invalid after commit"
+done
+
+logger -t "$LOG_TAG" "set regulatory country '$country' from ART on $changed radio(s)"
+exit 0

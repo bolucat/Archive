@@ -1,5 +1,0 @@
-config GRUB_BOOTOPTS
-	default "" if TARGET_qcom
-
-config GRUB_TIMEOUT
-	default "3" if TARGET_qcom

@@ -1,0 +1,39 @@
+Subject: [PATCH] ARM: allow board-selected device tree command line override
+
+Use the same opt-in mechanism as the ipq806x target for vendor U-Boot
+arguments which attach a nonexistent rootfs UBI partition.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -1490,6 +1490,13 @@
+ 
+ endchoice
+ 
++config CMDLINE_OVERRIDE
++	bool "Use alternative cmdline from device tree"
++	help
++	  Some bootloaders supply bootargs for a different firmware layout.
++	  Use chosen/bootargs-override when present, without forcing one
++	  command line on every board sharing the kernel.
++
+ config CMDLINE
+ 	string "Default kernel command string"
+ 	default ""
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -1120,6 +1120,13 @@
+ 	if (p != NULL && l > 0)
+ 		strlcat(cmdline, p, min_t(int, strlen(cmdline) + (int)l, COMMAND_LINE_SIZE));
+ 
++#ifdef CONFIG_CMDLINE_OVERRIDE
++	/* Board-selected replacement for immutable vendor boot arguments. */
++	p = of_get_flat_dt_prop(node, "bootargs-override", &l);
++	if (p != NULL && l > 0)
++		strscpy(cmdline, p, min(l, COMMAND_LINE_SIZE));
++#endif
++
+ handle_cmdline:
+ 	/*
+ 	 * CONFIG_CMDLINE is meant to be a default in case nothing else

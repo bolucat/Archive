@@ -1,0 +1,240 @@
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: recover AHB UserPD failures and independent reloads
+
+The IPQ5332 DT exposes a UserPD fatal interrupt but ath12k only requests
+spawn, ready and stop-ack. Consequently a UserPD-only failure is noticed
+only after QMI or a WSI partner fails, losing the first crash indication
+and leaving the hardware group on stale shared state.
+
+The IPQ5332 1.6 firmware uses the QSDK configuration with multi-PD
+remoteproc disabled. Its q6_fw1.mdt is a standalone UserPD image and does
+not contain the ASID-tagged writable segments required by the legacy BDMA
+loader, so that loader must not be used for this firmware.
+
+Merged from:
+  330-ath12k-handle-AHB-userPD-fatal-IRQ.patch
+  331-ath12k-harden-independent-UserPD-reload.patch
+
+Based on work by:
+  JiaY-shi <shi05275@163.com>
+
+Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/ahb.c
++++ b/drivers/net/wireless/ath/ath12k/ahb.c
+@@ -11,19 +11,24 @@
+ #include <linux/platform_device.h>
+ #include <linux/remoteproc.h>
+ #include <linux/soc/qcom/mdt_loader.h>
++#include <linux/soc/qcom/smem.h>
+ #include <linux/soc/qcom/smem_state.h>
+ #include "ahb.h"
+ #include "debug.h"
+ #include "hif.h"
+ 
+ #define ATH12K_IRQ_CE0_OFFSET 4
++#define ATH12K_USERPD_SMEM_HOST			1
++#define ATH12K_USERPD_CRASH_REASON_SMEM_ID	421
+ #define ATH12K_MAX_UPDS 1
+ #define ATH12K_UPD_IRQ_WRD_LEN  18
+ 
+ static struct ath12k_ahb_driver *ath12k_ahb_family_drivers[ATH12K_DEVICE_FAMILY_MAX];
+ static const char ath12k_userpd_irq[][9] = {"spawn",
+ 				     "ready",
+-				     "stop-ack"};
++				     "stop-ack",
++				     "fatal"};
++static void ath12k_ahb_queue_group_recovery(struct ath12k_base *ab);
+ 
+ static const char *irq_name[ATH12K_IRQ_NUM_MAX] = {
+ 	"misc-pulse1",
+@@ -358,6 +363,7 @@ static int ath12k_ahb_power_up(struct at
+ 	char fw_name[ATH12K_USERPD_FW_NAME_LEN];
+ 	char fw2_name[ATH12K_USERPD_FW_NAME_LEN];
+ 	bool spawn_requested = false;
++	bool scm_prepared = false;
+ 	struct device *dev = ab->dev;
+ 	const struct firmware *fw, *fw2;
+ 	struct reserved_mem *rmem = NULL;
+@@ -368,18 +374,26 @@ static int ath12k_ahb_power_up(struct at
+ 	u32 pasid;
+ 	int ret;
+ 
+-	rmem = ath12k_core_get_reserved_mem(ab, 0);
++	rmem = ath12k_core_get_rmem_by_name(ab, "q6-region");
+ 	if (!rmem)
+ 		return -ENODEV;
+ 
+-	mem_phys = rmem->base;
+-	mem_size = rmem->size;
+-	mem_region = devm_memremap(dev, mem_phys, mem_size, MEMREMAP_WC);
+-	if (IS_ERR(mem_region)) {
+-		ath12k_err(ab, "unable to map memory region: %pa+%pa\n",
+-			   &rmem->base, &rmem->size);
+-		return PTR_ERR(mem_region);
++	if (!ab_ahb->userpd_mem_region) {
++		ab_ahb->userpd_mem_phys = rmem->base;
++		ab_ahb->userpd_mem_size = rmem->size;
++		ab_ahb->userpd_mem_region =
++			devm_memremap(dev, rmem->base, rmem->size, MEMREMAP_WC);
++		if (IS_ERR(ab_ahb->userpd_mem_region)) {
++			ret = PTR_ERR(ab_ahb->userpd_mem_region);
++			ab_ahb->userpd_mem_region = NULL;
++			ath12k_err(ab, "unable to map UserPD memory: %pa+%pa: %d\n",
++				   &rmem->base, &rmem->size, ret);
++			return ret;
++		}
+ 	}
++	mem_phys = ab_ahb->userpd_mem_phys;
++	mem_size = ab_ahb->userpd_mem_size;
++	mem_region = ab_ahb->userpd_mem_region;
+ 
+ 	ret = ath12k_ahb_get_firmware_name(ab, 0, fw_name, sizeof(fw_name));
+ 	if (ret) {
+@@ -406,12 +420,14 @@ static int ath12k_ahb_power_up(struct at
+ 		ATH12K_AHB_UPD_SWID;
+ 
+ 	/* Load FW image to a reserved memory location */
+-	if (ab_ahb->scm_auth_enabled)
++	if (ab_ahb->scm_auth_enabled) {
++		scm_prepared = true;
+ 		ret = qcom_mdt_load(dev, fw, fw_name, pasid, mem_region,
+ 				    mem_phys, mem_size, &mem_phys);
+-	else
++	} else {
+ 		ret = qcom_mdt_load_no_init(dev, fw, fw_name, mem_region,
+ 					    mem_phys, mem_size, &mem_phys);
++	}
+ 	if (ret) {
+ 		ath12k_err(ab, "Failed to load MDT segments: %d\n", ret);
+ 		goto err_fw;
+@@ -483,6 +499,7 @@ static int ath12k_ahb_power_up(struct at
+ 	}
+ 
+ 	ab_ahb->rootpd_crashed = false;
++	atomic_set(&ab_ahb->userpd_crashed, 0);
+ 	ath12k_dbg(ab, ATH12K_DBG_AHB, "UserPD%d is now UP\n", ab_ahb->userpd_id);
+ 
+ err_fw2:
+@@ -492,6 +509,15 @@ err_fw2:
+ 	release_firmware(fw2);
+ err_fw:
+ 	release_firmware(fw);
++	if (ret && scm_prepared) {
++		int shutdown_ret;
++
++		shutdown_ret = qcom_scm_pas_shutdown(pasid);
++		if (shutdown_ret)
++			ath12k_warn(ab,
++				    "failed to release UserPD%u after boot error %d: %d\n",
++				    ab_ahb->userpd_id, ret, shutdown_ret);
++	}
+ 	return ret;
+ }
+ 
+@@ -505,15 +531,18 @@ static void ath12k_ahb_power_down(struct
+ 	if (ab_ahb->rootpd_crashed)
+ 		return;
+ 
+-	reinit_completion(&ab_ahb->userpd_stopped);
+-	qcom_smem_state_update_bits(ab_ahb->stop_state, BIT(ab_ahb->stop_bit),
+-				    BIT(ab_ahb->stop_bit));
+-
+-	time_left = wait_for_completion_timeout(&ab_ahb->userpd_stopped,
+-						ATH12K_USERPD_STOP_TIMEOUT);
+-	if (!time_left) {
+-		ath12k_err(ab, "UserPD stop wait timed out\n");
+-		return;
++	if (!atomic_read(&ab_ahb->userpd_crashed)) {
++		reinit_completion(&ab_ahb->userpd_stopped);
++		qcom_smem_state_update_bits(ab_ahb->stop_state,
++					    BIT(ab_ahb->stop_bit),
++					    BIT(ab_ahb->stop_bit));
++
++		time_left = wait_for_completion_timeout(&ab_ahb->userpd_stopped,
++							ATH12K_USERPD_STOP_TIMEOUT);
++		if (!time_left) {
++			ath12k_err(ab, "UserPD stop wait timed out\n");
++			return;
++		}
+ 	}
+ 
+ 	qcom_smem_state_update_bits(ab_ahb->stop_state, BIT(ab_ahb->stop_bit), 0);
+@@ -754,6 +783,38 @@ static const struct ath12k_hif_ops ath12
+ 	.power_down = ath12k_ahb_power_down,
+ };
+ 
++static void ath12k_ahb_log_userpd_crash_reason(struct ath12k_base *ab)
++{
++	size_t len;
++	char *msg;
++
++	msg = qcom_smem_get(ATH12K_USERPD_SMEM_HOST,
++			    ATH12K_USERPD_CRASH_REASON_SMEM_ID, &len);
++	if (!IS_ERR(msg) && len && msg[0])
++		ath12k_err(ab, "UserPD fatal error: %.*s\n",
++			   (int)min_t(size_t, len, INT_MAX), msg);
++	else
++		ath12k_err(ab, "UserPD fatal error without crash reason\n");
++}
++
++static void ath12k_ahb_handle_userpd_crash(struct ath12k_base *ab)
++{
++	struct ath12k_ahb *ab_ahb = ath12k_ab_to_ahb(ab);
++
++	if (!test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags) ||
++	    test_bit(ATH12K_FLAG_UNREGISTERING, &ab->dev_flags))
++		return;
++
++	if (atomic_cmpxchg(&ab_ahb->userpd_crashed, 0, 1))
++		return;
++
++	complete_all(&ab_ahb->userpd_spawned);
++	complete_all(&ab_ahb->userpd_ready);
++	complete_all(&ab_ahb->userpd_stopped);
++	ath12k_ahb_log_userpd_crash_reason(ab);
++	ath12k_ahb_queue_group_recovery(ab);
++}
++
+ static irqreturn_t ath12k_userpd_irq_handler(int irq, void *data)
+ {
+ 	struct ath12k_base *ab = data;
+@@ -765,6 +826,8 @@ static irqreturn_t ath12k_userpd_irq_han
+ 		complete(&ab_ahb->userpd_ready);
+ 	} else if (irq == ab_ahb->userpd_irq_num[ATH12K_USERPD_STOP_ACK_IRQ])	{
+ 		complete(&ab_ahb->userpd_stopped);
++	} else if (irq == ab_ahb->userpd_irq_num[ATH12K_USERPD_FATAL_IRQ]) {
++		ath12k_ahb_handle_userpd_crash(ab);
+ 	} else {
+ 		ath12k_err(ab, "Invalid userpd interrupt\n");
+ 		return IRQ_NONE;
+--- a/drivers/net/wireless/ath/ath12k/ahb.h
++++ b/drivers/net/wireless/ath/ath12k/ahb.h
+@@ -39,6 +39,7 @@ enum ath12k_ahb_userpd_irq {
+ 	ATH12K_USERPD_SPAWN_IRQ,
+ 	ATH12K_USERPD_READY_IRQ,
+ 	ATH12K_USERPD_STOP_ACK_IRQ,
++	ATH12K_USERPD_FATAL_IRQ,
+ 	ATH12K_USERPD_MAX_IRQ,
+ };
+ 
+@@ -54,6 +55,9 @@ struct ath12k_ahb {
+ 	struct ath12k_base *ab;
+ 	struct rproc *tgt_rproc;
+ 	struct clk *xo_clk;
++	phys_addr_t userpd_mem_phys;
++	size_t userpd_mem_size;
++	void *userpd_mem_region;
+ 	struct completion rootpd_ready;
+ 	struct notifier_block root_pd_nb;
+ 	void *root_pd_notifier;
+@@ -70,6 +74,7 @@ struct ath12k_ahb {
+ 	const struct ath12k_ahb_device_family_ops *device_family_ops;
+ 	bool scm_auth_enabled;
+ 	bool rootpd_crashed;
++	atomic_t userpd_crashed;
+ };
+ 
+ struct ath12k_ahb_driver {

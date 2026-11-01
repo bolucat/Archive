@@ -1,0 +1,341 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath11k: batch TX completions and TCL submissions
+
+The TX completion handler takes base_lock and searches the peer list for
+every frame, although consecutive completions mostly belong to one peer,
+and it frees each buffer on its own. Carry the peer's station and TX rate
+across one completion run and look them up again only when the peer ID
+changes. Collect the completed buffers on the status free list and free
+them with napi_consume_skb() at the end of the run.
+
+Each frame a TXQ hands over took the TCL ring lock twice, read the hardware
+tail pointer three times and wrote the head pointer once. Take the ring
+once for the whole dequeue run instead: read the free count at the start,
+queue the frames on that ring and write the head pointer after the last
+one. ath11k_dp_tx() takes the ring the caller holds and does not fall back
+to another ring while it is held.
+
+Merged from:
+  992-15-wifi-ath11k-batch-TX-completion-frees-and-peer-lookups.patch
+  992-16-wifi-ath11k-fill-the-TCL-ring-once-per-dequeue-run.patch
+
+Based on work by:
+  Julius Bairaktaris <julius@bairaktaris.de>
+
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -6505,7 +6505,7 @@ static int ath11k_mac_mgmt_tx(struct ath
+ 
+ static int ath11k_mac_tx(struct ieee80211_hw *hw,
+ 			 struct ieee80211_tx_control *control,
+-			 struct sk_buff *skb)
++			 struct sk_buff *skb, int held_ring)
+ {
+ 	struct ath11k_skb_cb *skb_cb = ATH11K_SKB_CB(skb);
+ 	struct ath11k *ar = hw->priv;
+@@ -6543,7 +6543,7 @@ static int ath11k_mac_tx(struct ieee8021
+ 	if (control->sta)
+ 		arsta = ath11k_sta_to_arsta(control->sta);
+ 
+-	ret = ath11k_dp_tx(ar, arvif, arsta, skb);
++	ret = ath11k_dp_tx(ar, arvif, arsta, skb, held_ring);
+ 	if (unlikely(ret)) {
+ 		ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
+ 		ieee80211_free_txskb(ar->hw, skb);
+@@ -6556,7 +6556,7 @@ static void ath11k_mac_op_tx(struct ieee
+ 			     struct ieee80211_tx_control *control,
+ 			     struct sk_buff *skb)
+ {
+-	ath11k_mac_tx(hw, control, skb);
++	ath11k_mac_tx(hw, control, skb, -1);
+ }
+ 
+ void ath11k_mac_drain_tx(struct ath11k *ar)
+@@ -10124,7 +10124,7 @@ static int ath11k_mac_tx_push_txq(struct
+ 	struct hal_srng *tcl_ring;
+ 	struct sk_buff *skb;
+ 	u32 ring_selector;
+-	int num_free;
++	int num_free, avail;
+ 	int ret;
+ 	u8 ring_id;
+ 
+@@ -10137,38 +10137,55 @@ static int ath11k_mac_tx_push_txq(struct
+ 	 * selection ends where that limit binds or the queue empties. A full
+ 	 * TCL ring ends the whole round, and so does a frame the hardware
+ 	 * refuses, as long as a frame in flight will restart it.
++	 *
++	 * The run holds the TCL ring for its whole length: the free count is
++	 * read once and the head pointer written once, after the last frame,
++	 * rather than per frame. The head pointer is a device register, which
++	 * is not written while the firmware restarts or when no frame was
++	 * added.
+ 	 */
+-	while (1) {
++again:
++	if (unlikely(test_bit(ATH11K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
++		return -ESHUTDOWN;
++
++	spin_lock_bh(&tx_ring->wake_tx_lock);
++	spin_lock_bh(&tcl_ring->lock);
++	ath11k_hal_srng_access_begin(ar->ab, tcl_ring);
++	num_free = ath11k_hal_srng_src_num_free(ar->ab, tcl_ring, false);
++	avail = num_free;
++
++	ret = 0;
++	while (num_free) {
+ 		if (unlikely(test_bit(ATH11K_FLAG_CRASH_FLUSH,
+ 				      &ar->ab->dev_flags)))
+ 			break;
+ 
+-		spin_lock_bh(&tx_ring->wake_tx_lock);
+-
+-		spin_lock_bh(&tcl_ring->lock);
+-		num_free = ath11k_hal_srng_src_num_free(ar->ab, tcl_ring, true);
+-		spin_unlock_bh(&tcl_ring->lock);
+-
+-		if (num_free == 0) {
+-			spin_unlock_bh(&tx_ring->wake_tx_lock);
+-			if (ath11k_mac_mark_txq_starved(ar, txq->ac))
+-				return -ENOSPC;
+-			continue;
+-		}
+-
+ 		skb = ieee80211_tx_dequeue(hw, txq);
+-		if (!skb) {
+-			spin_unlock_bh(&tx_ring->wake_tx_lock);
++		if (!skb)
+ 			break;
+-		}
+-
+-		ret = ath11k_mac_tx(hw, &control, skb);
+ 
+-		spin_unlock_bh(&tx_ring->wake_tx_lock);
++		ret = ath11k_mac_tx(hw, &control, skb, ring_id);
++		if (unlikely(ret == -ENOSPC || ret == -ENOMEM))
++			break;
++		ret = 0;
++		num_free--;
++	}
+ 
+-		if (unlikely(ret == -ENOSPC || ret == -ENOMEM) &&
+-		    ath11k_mac_mark_txq_starved(ar, txq->ac))
++	if (num_free != avail &&
++	    likely(!test_bit(ATH11K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags))) {
++		ath11k_hal_srng_access_end(ar->ab, tcl_ring);
++		ath11k_dp_shadow_start_timer(ar->ab, tcl_ring,
++					     &ar->ab->dp.tx_ring_timer[ring_id]);
++	}
++	spin_unlock_bh(&tcl_ring->lock);
++	spin_unlock_bh(&tx_ring->wake_tx_lock);
++
++	if (!num_free)
++		ret = -ENOSPC;
++	if (unlikely(ret == -ENOSPC || ret == -ENOMEM)) {
++		if (ath11k_mac_mark_txq_starved(ar, txq->ac))
+ 			return ret;
++		goto again;
+ 	}
+ 
+ 	return 0;
+--- a/drivers/net/wireless/ath/ath11k/dp_tx.h
++++ b/drivers/net/wireless/ath/ath11k/dp_tx.h
+@@ -20,7 +20,7 @@ struct ath11k_dp_htt_wbm_tx_status {
+ void ath11k_dp_tx_update_txcompl(struct ath11k *ar, struct hal_tx_status *ts);
+ int ath11k_dp_tx_htt_h2t_ver_req_msg(struct ath11k_base *ab);
+ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
+-		 struct ath11k_sta *arsta, struct sk_buff *skb);
++		 struct ath11k_sta *arsta, struct sk_buff *skb, int held_ring);
+ int ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id,
+ 				    int budget);
+ void ath11k_dp_tx_free_pending(struct ath11k_base *ab);
+--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
+@@ -79,8 +79,12 @@ enum hal_encrypt_type ath11k_dp_tx_get_e
+ 	}
+ }
+ 
++/* A caller that passes @held_ring holds that TCL ring's lock with an access
++ * open, and ends the access itself once it has queued its last frame; the frame
++ * goes on that ring or not at all.
++ */
+ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
+-		 struct ath11k_sta *arsta, struct sk_buff *skb)
++		 struct ath11k_sta *arsta, struct sk_buff *skb, int held_ring)
+ {
+ 	struct ath11k_base *ab = ar->ab;
+ 	struct ath11k_dp *dp = &ab->dp;
+@@ -108,7 +112,10 @@ int ath11k_dp_tx(struct ath11k *ar, stru
+ 
+ 	pool_id = skb_get_queue_mapping(skb) & (ATH11K_HW_MAX_QUEUES - 1);
+ 
+-	ring_selector = ab->hw_params.hw_ops->get_ring_selector(skb_get_queue_mapping(skb));
++	if (held_ring >= 0)
++		ring_selector = held_ring;
++	else
++		ring_selector = ab->hw_params.hw_ops->get_ring_selector(skb_get_queue_mapping(skb));
+ 
+ tcl_ring_sel:
+ 	tcl_ring_retry = false;
+@@ -126,7 +133,7 @@ tcl_ring_sel:
+ 	spin_unlock_bh(&tx_ring->tx_idr_lock);
+ 
+ 	if (unlikely(ret < 0)) {
+-		if (ring_map == (BIT(num_tx_rings) - 1) ||
++		if (held_ring >= 0 || ring_map == (BIT(num_tx_rings) - 1) ||
+ 		    !ab->hw_params.tcl_ring_retry) {
+ 			atomic_inc(&ab->soc_stats.tx_err.misc_fail);
+ 			return -ENOSPC;
+@@ -225,11 +232,17 @@ tcl_ring_sel:
+ 	hal_ring_id = tx_ring->tcl_data_ring.ring_id;
+ 	tcl_ring = &ab->hal.srng_list[hal_ring_id];
+ 
+-	spin_lock_bh(&tcl_ring->lock);
+-
+-	ath11k_hal_srng_access_begin(ab, tcl_ring);
++	if (held_ring < 0) {
++		spin_lock_bh(&tcl_ring->lock);
++		ath11k_hal_srng_access_begin(ab, tcl_ring);
++	}
+ 
+ 	hal_tcl_desc = (void *)ath11k_hal_srng_src_get_next_entry(ab, tcl_ring);
++	if (unlikely(!hal_tcl_desc && held_ring >= 0)) {
++		ab->soc_stats.tx_err.desc_na[ti.ring_id]++;
++		ret = -ENOSPC;
++		goto fail_unmap_dma;
++	}
+ 	if (unlikely(!hal_tcl_desc)) {
+ 		/* NOTE: It is highly unlikely we'll be running out of tcl_ring
+ 		 * desc because the desc is directly enqueued onto hw queue.
+@@ -263,11 +276,12 @@ tcl_ring_sel:
+ 			skb->data, skb->len);
+ 	atomic_inc(&ar->dp.num_tx_pending);
+ 
+-	ath11k_hal_srng_access_end(ab, tcl_ring);
+-
+-	ath11k_dp_shadow_start_timer(ab, tcl_ring, &dp->tx_ring_timer[ti.ring_id]);
+-
+-	spin_unlock_bh(&tcl_ring->lock);
++	if (held_ring < 0) {
++		ath11k_hal_srng_access_end(ab, tcl_ring);
++		ath11k_dp_shadow_start_timer(ab, tcl_ring,
++					     &dp->tx_ring_timer[ti.ring_id]);
++		spin_unlock_bh(&tcl_ring->lock);
++	}
+ 
+ 	return 0;
+ 
+@@ -600,9 +614,20 @@ err_out:
+ 	spin_unlock_bh(&ab->base_lock);
+ }
+ 
++/* State carried across one completion run: consecutive frames mostly belong
++ * to one peer, and the statuses hand their buffers back to be freed in bulk.
++ */
++struct ath11k_dp_tx_compl {
++	struct list_head free;
++	struct ieee80211_sta *sta;
++	struct rate_info rate;
++	u16 peer_id;
++};
++
+ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+ 				       struct sk_buff *msdu,
+-				       struct hal_tx_status *ts)
++				       struct hal_tx_status *ts,
++				       struct ath11k_dp_tx_compl *c)
+ {
+ 	struct ieee80211_tx_status status = {};
+ 	struct ieee80211_rate_status status_rate = {};
+@@ -610,8 +635,6 @@ static void ath11k_dp_tx_complete_msdu(s
+ 	struct ieee80211_tx_info *info;
+ 	struct ath11k_skb_cb *skb_cb;
+ 	struct ath11k_peer *peer;
+-	struct ath11k_sta *arsta;
+-	struct rate_info rate;
+ 
+ 	if (WARN_ON_ONCE(ts->buf_rel_source != HAL_WBM_REL_SRC_MODULE_TQM)) {
+ 		/* Must not happen */
+@@ -678,30 +701,34 @@ static void ath11k_dp_tx_complete_msdu(s
+ 		ath11k_dp_tx_cache_peer_stats(ar, msdu, ts);
+ 	}
+ 
+-	spin_lock_bh(&ab->base_lock);
+-	peer = ath11k_peer_find_by_id(ab, ts->peer_id);
+-	if (!peer || !peer->sta) {
++	if (!c->sta || c->peer_id != ts->peer_id) {
++		spin_lock_bh(&ab->base_lock);
++		peer = ath11k_peer_find_by_id(ab, ts->peer_id);
++		c->sta = peer ? peer->sta : NULL;
++		c->peer_id = ts->peer_id;
++		if (c->sta)
++			c->rate = ath11k_sta_to_arsta(c->sta)->last_txrate;
++		spin_unlock_bh(&ab->base_lock);
++	}
++
++	if (!c->sta) {
+ 		ath11k_dbg(ab, ATH11K_DBG_DATA,
+ 			   "dp_tx: failed to find the peer with peer_id %d\n",
+ 			    ts->peer_id);
+-		spin_unlock_bh(&ab->base_lock);
+ 		ieee80211_free_txskb(ar->hw, msdu);
+ 		return;
+ 	}
+-	arsta = ath11k_sta_to_arsta(peer->sta);
+-	status.sta = peer->sta;
++	status.sta = c->sta;
+ 	status.skb = msdu;
+ 	status.info = info;
+-	rate = arsta->last_txrate;
++	status.free_list = &c->free;
+ 
+-	status_rate.rate_idx = rate;
++	status_rate.rate_idx = c->rate;
+ 	status_rate.try_count = 1;
+ 
+ 	status.rates = &status_rate;
+ 	status.n_rates = 1;
+ 
+-	spin_unlock_bh(&ab->base_lock);
+-
+ 	ieee80211_tx_status_ext(ar->hw, &status);
+ }
+ 
+@@ -749,6 +776,8 @@ int ath11k_dp_tx_completion_handler(stru
+ 	struct sk_buff *msdu;
+ 	struct hal_tx_status ts = {};
+ 	struct dp_tx_ring *tx_ring = &dp->tx_ring[ring_id];
++	struct ath11k_dp_tx_compl c = { .free = LIST_HEAD_INIT(c.free) };
++	struct sk_buff *tmp;
+ 	unsigned long push = 0;
+ 	int done = 0;
+ 	u32 *desc;
+@@ -779,6 +808,8 @@ int ath11k_dp_tx_completion_handler(stru
+ 
+ 	spin_unlock_bh(&status_ring->lock);
+ 
++	/* Keep cached stations alive until this completion batch is done. */
++	rcu_read_lock();
+ 	while (done < budget &&
+ 	       ATH11K_TX_COMPL_NEXT(tx_ring->tx_status_tail) !=
+ 	       tx_ring->tx_status_head) {
+@@ -822,8 +853,14 @@ int ath11k_dp_tx_completion_handler(stru
+ 		if (atomic_dec_and_test(&ar->dp.num_tx_pending))
+ 			wake_up(&ar->dp.tx_empty_waitq);
+ 
+-		ath11k_dp_tx_complete_msdu(ar, msdu, &ts);
++		ath11k_dp_tx_complete_msdu(ar, msdu, &ts, &c);
++	}
++
++	list_for_each_entry_safe(msdu, tmp, &c.free, list) {
++		skb_list_del_init(msdu);
++		napi_consume_skb(msdu, budget);
+ 	}
++	rcu_read_unlock();
+ 
+ 	/* A completion returns the airtime the frame was charged, which is
+ 	 * what an airtime-limited station in that access category is waiting

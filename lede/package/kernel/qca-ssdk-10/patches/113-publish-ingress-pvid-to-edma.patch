@@ -1,0 +1,25 @@
+Subject: [PATCH] ssdk: publish committed ingress PVIDs with the EDMA VLAN map
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/include/ref/ssdk_edma.h
++++ b/include/ref/ssdk_edma.h
+@@ -8,6 +8,7 @@
+ /* Native switch ports: bit 0 is the CPU, bits 1..5 are external ports. */
+ struct ssdk_edma_vlan_config {
+ 	u16 default_vid[2]; /* EDMA GMAC0/WAN, GMAC1/LAN */
++	u16 pvid[6]; /* Committed ingress PVID, indexed by physical port. */
+ 	u8 members[SSDK_EDMA_VIDS];
+ 	u8 tagged[SSDK_EDMA_VIDS];
+ };
+--- a/src/ref/ref_vlan.c
++++ b/src/ref/ref_vlan.c
+@@ -376,6 +376,8 @@
+         if (!priv->init) {
+             edma->default_vid[0] = priv->vlan_id[2];
+             edma->default_vid[1] = priv->vlan_id[1];
++            for (i = 0; i < dev->ports && i < 6; i++)
++                edma->pvid[i] = priv->vlan ? priv->vlan_id[priv->pvid[i]] : 0;
+             for (j = 0; j < AR8327_MAX_VLANS; j++) {
+                 if (!priv->vlan_table[j])
+                     continue;

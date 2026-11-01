@@ -1,0 +1,43 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] firmware: qcom: scm: clear IPQ4019 download mode using legacy ABI
+
+The IPQ4019 BSP and bootloader clear the crashdump cookie with a single
+32-bit zero in a buffered boot service command 0x10. The atomic interface
+used by newer firmware does not implement this ABI. Use the vendor format
+only at orderly shutdown on IPQ4019 legacy firmware, preserving the
+existing download and panic policy and other platforms' shutdown paths.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2464,6 +2464,29 @@
+ 
+ static void qcom_scm_shutdown(struct platform_device *pdev)
+ {
++	/*
++	 * IPQ4019 firmware expects a buffered legacy call with one boolean
++	 * argument, not the atomic two-argument download-mode interface.
++	 * Clear the bootloader's inherited crashdump cookie on orderly
++	 * shutdown even when Linux did not request download mode itself.
++	 */
++	if (of_device_is_compatible(pdev->dev.of_node, "qcom,scm-ipq4019") &&
++	    __get_convention() == SMC_CONVENTION_LEGACY) {
++		const struct qcom_scm_desc desc = {
++			.svc = QCOM_SCM_SVC_BOOT,
++			.cmd = QCOM_SCM_BOOT_SET_DLOAD_MODE,
++			.arginfo = QCOM_SCM_ARGS(1),
++			.args[0] = 0,
++			.owner = ARM_SMCCC_OWNER_SIP,
++		};
++		int ret;
++
++		ret = qcom_scm_call(&pdev->dev, &desc, NULL);
++		if (ret)
++			dev_err(&pdev->dev, "failed to clear legacy download mode: %d\n", ret);
++		return;
++	}
++
+ 	/* Clean shutdown, disable download mode to allow normal restart */
+ 	if (download_mode)
+ 		qcom_scm_set_download_mode(QCOM_DLOAD_NODUMP);

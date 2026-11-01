@@ -1,0 +1,46 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] pinctrl: select the legacy BCM63xx platform implementation
+
+The legacy platform drivers also cover BCM6348 and use platform resources.
+Keep their registration separate from the BMIPS DT-only implementation.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/pinctrl/bcm/Kconfig
++++ b/drivers/pinctrl/bcm/Kconfig
+@@ -43,6 +43,8 @@
+ 
+ 	  If compiled as module it will be called pinctrl-bcm4908.
+ 
++if !BCM63XX
++
+ config PINCTRL_BCM63XX
+ 	bool
+ 	select PINMUX
+@@ -106,6 +108,8 @@
+ 	help
+ 	   Say Y here to enable the Broadcom BCM63268 GPIO driver.
+ 
++endif # !BCM63XX
++
+ config PINCTRL_BRCMSTB
+         tristate "Broadcom STB product line pin controller driver"
+         depends on OF && (ARCH_BCM2835 || ARCH_BRCMSTB || COMPILE_TEST)
+--- a/drivers/pinctrl/bcm/Makefile
++++ b/drivers/pinctrl/bcm/Makefile
+@@ -4,6 +4,7 @@
+ obj-$(CONFIG_PINCTRL_BCM281XX)		+= pinctrl-bcm281xx.o
+ obj-$(CONFIG_PINCTRL_BCM2835)		+= pinctrl-bcm2835.o
+ obj-$(CONFIG_PINCTRL_BCM4908)		+= pinctrl-bcm4908.o
++ifneq ($(CONFIG_BCM63XX),y)
+ obj-$(CONFIG_PINCTRL_BCM63XX)		+= pinctrl-bcm63xx.o
+ obj-$(CONFIG_PINCTRL_BCM6318)		+= pinctrl-bcm6318.o
+ obj-$(CONFIG_PINCTRL_BCM6328)		+= pinctrl-bcm6328.o
+@@ -11,6 +12,7 @@
+ obj-$(CONFIG_PINCTRL_BCM6362)		+= pinctrl-bcm6362.o
+ obj-$(CONFIG_PINCTRL_BCM6368)		+= pinctrl-bcm6368.o
+ obj-$(CONFIG_PINCTRL_BCM63268)		+= pinctrl-bcm63268.o
++endif
+ obj-$(CONFIG_PINCTRL_BRCMSTB)		+= pinctrl-brcmstb.o
+ obj-$(CONFIG_PINCTRL_BCM2712)		+= pinctrl-brcmstb-bcm2712.o
+ obj-$(CONFIG_PINCTRL_IPROC_GPIO)	+= pinctrl-iproc-gpio.o

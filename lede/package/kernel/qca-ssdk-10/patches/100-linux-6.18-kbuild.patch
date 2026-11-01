@@ -1,0 +1,5476 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] ssdk: port DESS switch and native flow offload to Linux 6.18
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/Kbuild
++++ b/Kbuild
+@@ -0,0 +1,119 @@
++obj-m += qca-ssdk.o
++qca-ssdk-y := src/fal/fal_acl.o \
++	src/fal/fal_bm.o \
++	src/fal/fal_cosmap.o \
++	src/fal/fal_ctrlpkt.o \
++	src/fal/fal_fdb.o \
++	src/fal/fal_flow.o \
++	src/fal/fal_igmp.o \
++	src/fal/fal_init.o \
++	src/fal/fal_interface_ctrl.o \
++	src/fal/fal_ip.o \
++	src/fal/fal_leaky.o \
++	src/fal/fal_led.o \
++	src/fal/fal_mib.o \
++	src/fal/fal_mirror.o \
++	src/fal/fal_misc.o \
++	src/fal/fal_nat.o \
++	src/fal/fal_policer.o \
++	src/fal/fal_port_ctrl.o \
++	src/fal/fal_portvlan.o \
++	src/fal/fal_pppoe.o \
++	src/fal/fal_qm.o \
++	src/fal/fal_qos.o \
++	src/fal/fal_rate.o \
++	src/fal/fal_reg_access.o \
++	src/fal/fal_rss_hash.o \
++	src/fal/fal_sec.o \
++	src/fal/fal_servcode.o \
++	src/fal/fal_shaper.o \
++	src/fal/fal_stp.o \
++	src/fal/fal_trunk.o \
++	src/fal/fal_vlan.o \
++	src/fal/fal_vsi.o \
++	src/hsl/dess/dess_acl.o \
++	src/hsl/dess/dess_acl_parse.o \
++	src/hsl/dess/dess_cosmap.o \
++	src/hsl/dess/dess_fdb.o \
++	src/hsl/dess/dess_igmp.o \
++	src/hsl/dess/dess_init.o \
++	src/hsl/dess/dess_interface_ctrl.o \
++	src/hsl/dess/dess_ip.o \
++	src/hsl/dess/dess_leaky.o \
++	src/hsl/dess/dess_led.o \
++	src/hsl/dess/dess_mib.o \
++	src/hsl/dess/dess_mirror.o \
++	src/hsl/dess/dess_misc.o \
++	src/hsl/dess/dess_multicast_acl.o \
++	src/hsl/dess/dess_nat.o \
++	src/hsl/dess/dess_port_ctrl.o \
++	src/hsl/dess/dess_portvlan.o \
++	src/hsl/dess/dess_psgmii.o \
++	src/hsl/dess/dess_qos.o \
++	src/hsl/dess/dess_rate.o \
++	src/hsl/dess/dess_reg_access.o \
++	src/hsl/dess/dess_sec.o \
++	src/hsl/dess/dess_stp.o \
++	src/hsl/dess/dess_trunk.o \
++	src/hsl/dess/dess_vlan.o \
++	src/hsl/hsl_acl.o \
++	src/hsl/hsl_api.o \
++	src/hsl/hsl_dev.o \
++	src/hsl/hsl_lock.o \
++	src/hsl/hsl_port_prop.o \
++	src/ref/port_netlink.o \
++	src/ref/ref_fdb.o \
++	src/ref/ref_mib.o \
++	src/ref/ref_misc.o \
++	src/ref/ref_port_ctrl.o \
++	src/ref/ref_uci.o \
++	src/ref/ref_vlan.o \
++	src/ref/ref_vsi.o \
++	src/api/api_access.o \
++	src/sal/sd/sd.o \
++	src/sal/sd/linux/uk_interface/sw_api_ks_ioctl.o \
++	src/init/ssdk_clk.o \
++	src/init/ssdk_dts.o \
++	src/init/ssdk_init.o \
++	src/init/ssdk_interrupt.o \
++	src/init/ssdk_plat.o \
++	src/init/ssdk_uci.o \
++	src/hsl/phy/malibu_phy.o \
++	src/hsl/phy/hsl_phy.o
++ccflags-y += -I$(src)/include -I$(src)/include/common -I$(src)/include/api -I$(src)/include/fal -I$(src)/include/ref -I$(src)/include/adpt -I$(src)/include/hsl -I$(src)/include/hsl/phy -I$(src)/include/hsl/dess -I$(src)/include/sal/os -I$(src)/include/sal/os/linux -I$(src)/include/sal/sd -I$(src)/include/sal/sd/linux/uk_interface -I$(src)/include/init -I$(src)/app/nathelper/linux -I$(src)/app/nathelper/linux/lib
++ccflags-y += -DIN_ACL -DIN_FDB -DIN_IGMP -DIN_LEAKY -DIN_LED -DIN_MIB -DIN_MIRROR -DIN_MISC -DIN_PORTCONTROL -DIN_PORTVLAN -DIN_QOS -DIN_RATE -DIN_STP -DIN_VLAN -DIN_COSMAP -DIN_IP -DIN_NAT -DIN_TRUNK -DIN_SEC -DIN_INTERFACECONTROL -DIN_MALIBU_PHY -DIN_SWCONFIG 
++ccflags-y += -DDESS -DKERNEL_MODULE -DKVER34 -DKVER32 -DLNX26_22 -DUK_IF -DUK_MINOR_DEV=254
++ccflags-y += -DVERSION=\"2.0-pandorabox\" -DBUILD_DATE=\"reproducible\" -DOS=\"linux\"
++ccflags-y += -I$(src)/include/shell_lib
++qca-ssdk-y += src/util/util.o src/shell_lib/shell_io.o src/shell_lib/shell_sw.o
++qca-ssdk-y += src/adpt/adpt.o src/shell_lib/shell.o
++qca-ssdk-y += src/shell_lib/shell_config.o
++
++# External RGMII PHYs used by the single-port IPQ40xx boards.
++ccflags-y += -DIN_QCA803X_PHY
++qca-ssdk-y += src/hsl/phy/qca803x_phy.o
++
++qca-ssdk-y += src/ref/ref_edma.o
++
++qca-ssdk-y += src/ref/ref_flow_parse.o
++
++qca-ssdk-y += src/ref/ref_flow_acl.o
++
++qca-ssdk-y += src/ref/ref_flow_state.o
++
++qca-ssdk-y += src/ref/ref_flow_napt.o
++
++qca-ssdk-y += src/ref/ref_flow_host.o
++
++qca-ssdk-y += src/ref/ref_flow_acl_owner.o
++
++qca-ssdk-y += src/ref/ref_flow_gate.o
++qca-ssdk-y += src/ref/ref_flow_profile.o
++
++qca-ssdk-y += src/ref/ref_flow_hw.o
++
++qca-ssdk-y += src/ref/ref_flow_path.o
++
++qca-ssdk-y += src/ref/ref_flow_engine.o
++
++qca-ssdk-y += src/ref/ref_flow_control.o
+--- a/include/fal/fal_ip.h
++++ b/include/fal/fal_ip.h
+@@ -46,6 +46,8 @@
+ #define FAL_IP_ENTRY_ALL_EN              0x20
+ 
+     /* IP host entry structure flags field */
++/* Explicit route ownership for the native flowtable backend. */
++#define FAL_IP_HOST_NO_ROUTE                    0x80000000U
+ #define FAL_IP_IP4_ADDR                         0x1
+ #define FAL_IP_IP6_ADDR                         0x2
+ #define FAL_IP_CPU_ADDR                         0x4
+--- a/include/fal/fal_nat.h
++++ b/include/fal/fal_nat.h
+@@ -47,6 +47,9 @@
+ #define FAL_NAT_ENTRY_SOURCE_IP_EN          0x20
+ #define FAL_NAT_ENTRY_AGE_EN                0x40
+ #define FAL_NAT_ENTRY_SYNC_EN               0x80
++/* Delete a caller-owned public slot, including a partially installed slot.
++ * Existing public delete modes continue to search by address. */
++#define FAL_NAT_PUBLIC_OWNED_INDEX          0x100
+ 
+ 
+     typedef struct
+--- a/include/hsl/dess/dess_acl.h
++++ b/include/hsl/dess/dess_acl.h
+@@ -135,6 +135,10 @@
+ 
+ #endif
+ 
++/* Restore the last committed policy after an I/O failure; quiesce L3 first. */
++sw_error_t dess_acl_recover(a_uint32_t dev_id);
++sw_error_t dess_acl_native_empty(a_uint32_t dev_id);
++
+ #ifdef __cplusplus
+ }
+ #endif                          /* __cplusplus */
+--- a/include/init/ssdk_plat.h
++++ b/include/init/ssdk_plat.h
+@@ -270,6 +270,8 @@
+ 	struct mutex reg_mutex;
+ 	struct mutex mib_lock;
+ 	struct delayed_work mib_dwork;
++	bool mib_work_started;
++	bool qm_work_started;
+ 	/*qm_err_check*/
+ 	struct mutex 	qm_lock;
+ 	a_uint32_t port_link_down[SW_MAX_NR_PORT];
+@@ -316,6 +318,9 @@
+ 	a_uint8_t  vlan_tagged[AR8327_MAX_VLANS];
+ 	a_uint16_t pvid[SSDK_MAX_PORT_NUM];
+ 	a_uint32_t ports;
++	bool driver_registered;
++	bool ess_clk_enabled;
++	bool psgmii_region_requested;
+ 	u8 __iomem *hw_addr;
+ 	u8 __iomem *psgmii_hw_addr;
+ 	u8 __iomem *uniphy_hw_addr;
+--- a/include/ref/ssdk_edma.h
++++ b/include/ref/ssdk_edma.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_EDMA_H
++#define _SSDK_EDMA_H
++#include <linux/types.h>
++#include <linux/notifier.h>
++
++#define SSDK_EDMA_VIDS 4096
++/* Native switch ports: bit 0 is the CPU, bits 1..5 are external ports. */
++struct ssdk_edma_vlan_config {
++	u16 default_vid[2]; /* EDMA GMAC0/WAN, GMAC1/LAN */
++	u8 members[SSDK_EDMA_VIDS];
++	u8 tagged[SSDK_EDMA_VIDS];
++};
++enum ssdk_edma_vlan_event {
++	SSDK_EDMA_PREPARE = 1,
++	SSDK_EDMA_COMMIT,
++	SSDK_EDMA_ABORT,
++	SSDK_EDMA_FAILED,
++};
++/* Callbacks run synchronously in process context. PREPARE may allocate and
++ * reject the update. Other events must not fail. FAILED requires dropping
++ * traffic, because hardware may contain a partially programmed table.
++ * Callbacks must not reenter these APIs or take the swconfig reg_mutex. */
++int ssdk_edma_register_notifier(struct notifier_block *nb);
++void ssdk_edma_unregister_notifier(struct notifier_block *nb);
++int ssdk_edma_vlan_begin(const struct ssdk_edma_vlan_config *config);
++void ssdk_edma_vlan_finish(bool success);
++void ssdk_edma_cleanup(void);
++#endif
+--- a/include/ref/ssdk_flow.h
++++ b/include/ref/ssdk_flow.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_H
++#define _SSDK_FLOW_H
++#include <linux/types.h>
++#include <linux/if_ether.h>
++struct flow_rule;
++struct net_device;
++struct ssdk_flow_tuple {
++	__be32 src, dst;
++	__be16 sport, dport;
++};
++struct ssdk_flow_rule {
++	struct ssdk_flow_tuple match, translated;
++	int ingress_ifindex;
++	/* Borrowed for the duration of the callback; the owner must take a
++	 * netdev reference before retaining a parsed rule asynchronously. */
++	struct net_device *egress;
++	u8 protocol;
++	u8 tcp_mask;
++	u8 destination[ETH_ALEN], source[ETH_ALEN];
++	u16 ingress_vid, egress_vid;
++	bool vlan_match, vlan_pop, vlan_push;
++};
++/* One DESS NAPT record owns both Linux direction cookies. */
++struct ssdk_flow_pair {
++	struct ssdk_flow_tuple outbound, translated;
++	u8 protocol, outbound_direction;
++};
++int ssdk_flow_pair(const struct ssdk_flow_rule rules[2], struct ssdk_flow_pair *result);
++int ssdk_flow_parse(const struct flow_rule *rule, struct ssdk_flow_rule *result);
++#endif
+--- a/include/ref/ssdk_flow_acl.h
++++ b/include/ref/ssdk_flow_acl.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_ACL_H
++#define _SSDK_FLOW_ACL_H
++#include "sw.h"
++#include "fal_acl.h"
++#include "ssdk_flow.h"
++/* DESS concatenates extraction windows. All other windows must have length 0.
++ * L3 bytes 0..8 followed by L4 bytes 0..6 give a 16-byte UDF key. */
++#define SSDK_FLOW_UDF_L3_LENGTH 9
++#define SSDK_FLOW_UDF_L4_LENGTH 7
++/* Smaller list priority wins. Exceptions precede permissions and the guard. */
++#define SSDK_FLOW_ACL_EXCEPTION_PRIORITY 10
++#define SSDK_FLOW_ACL_PERMIT_PRIORITY 20
++#define SSDK_FLOW_ACL_GUARD_PRIORITY 30
++enum ssdk_flow_exception {
++	SSDK_FLOW_TRAP_ALL,
++	SSDK_FLOW_TRAP_TTL,
++	SSDK_FLOW_TRAP_UDP_ZERO,
++};
++int ssdk_flow_acl(const struct ssdk_flow_rule *rule, const u8 router[ETH_ALEN],
++		 u16 vid, u16 arp, bool outbound, fal_acl_rule_t *result);
++int ssdk_flow_trap(const u8 router[ETH_ALEN], enum ssdk_flow_exception exception,
++		  fal_acl_rule_t *result);
++#endif
+--- a/include/ref/ssdk_flow_acl_owner.h
++++ b/include/ref/ssdk_flow_acl_owner.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_ACL_OWNER_H
++#define _SSDK_FLOW_ACL_OWNER_H
++#include "ssdk_flow_acl.h"
++struct ssdk_flow_acl_owner;
++struct ssdk_flow_acl_path { int guard; u16 vid, arp; u8 port; };
++/* Caller serializes access and quiesces L3/NAT before every mutation. It must
++ * keep forwarding stopped after an error until cleanup and recovery succeed.
++ * Guard refs must outlive interfaces and every permission using that MAC. */
++struct ssdk_flow_acl_owner *ssdk_flow_acl_owner_create(unsigned int dev);
++int ssdk_flow_guard_get(struct ssdk_flow_acl_owner *owner, const u8 *mac, int *handle);
++int ssdk_flow_guard_put(struct ssdk_flow_acl_owner *owner, int handle);
++int ssdk_flow_permission_add(struct ssdk_flow_acl_owner *owner, unsigned int slot,
++			    const struct ssdk_flow_rule rules[2],
++			    const struct ssdk_flow_acl_path paths[2], unsigned int outbound);
++int ssdk_flow_permission_remove(struct ssdk_flow_acl_owner *owner, unsigned int slot);
++int ssdk_flow_acl_owner_destroy(struct ssdk_flow_acl_owner *owner);
++#endif
+--- a/include/ref/ssdk_flow_control.h
++++ b/include/ref/ssdk_flow_control.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_CONTROL_H
++#define _SSDK_FLOW_CONTROL_H
++#include <linux/netdevice.h>
++/* Called after both EDMA GMACs and the VLAN consumer are ready. */
++int ssdk_flow_attach(struct net_device *wan, struct net_device *lan);
++void ssdk_flow_detach(void);
++void ssdk_flow_control_cleanup(void);
++int ssdk_flow_setup_tc(struct net_device *dev, enum tc_setup_type type, void *data);
++/* raw SDK operations cannot race native ownership. Reconfiguration first
++ * stops/destroys the engine, preserving normal LuCI/swconfig functionality.
++ * Every successful begin requires end, including operation error exits. */
++int ssdk_flow_user_begin(bool reconfigure);
++void ssdk_flow_user_end(void);
++#endif
+--- a/include/ref/ssdk_flow_engine.h
++++ b/include/ref/ssdk_flow_engine.h
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_ENGINE_H
++#define _SSDK_FLOW_ENGINE_H
++#include <linux/io.h>
++#include "ssdk_flow_path.h"
++struct flow_cls_offload;
++struct ssdk_flow_engine;
++/* The outer owner excludes competing hardware writers and retains MMIO,
++ * GMACs until destroy succeeds. The VLAN snapshot is copied. Creation publishes an
++ * object before hardware access; even a failed create may require destroy
++ * retries. Never discard a non-NULL output pointer after an error. */
++int ssdk_flow_engine_create(unsigned int dev, void __iomem *base, size_t size,
++	const struct ssdk_flow_resolver *resolver, struct ssdk_flow_engine **out);
++/* Atomic notifier entry; caller guarantees object lifetime. */
++void ssdk_flow_engine_invalidate(struct ssdk_flow_engine *engine);
++/* Process-context callback/worker APIs. replace uses rtnl_trylock because
++ * nf_flowtable holds its block read lock while unbind can hold RTNL. A
++ * blocking RTNL acquisition there would invert those locks. */
++int ssdk_flow_engine_command(struct ssdk_flow_engine *engine, struct flow_cls_offload *flow);
++int ssdk_flow_engine_collect(struct ssdk_flow_engine *engine);
++int ssdk_flow_engine_flush(struct ssdk_flow_engine *engine);
++/* Switch VLAN PREPARE must suspend before hardware changes. Even a failed
++ * suspend remains suspended until end; the caller must veto that update.
++ * End copies COMMIT/FAILED's map; NULL keeps the previous map for ABORT. */
++int ssdk_flow_engine_vlan_begin(struct ssdk_flow_engine *engine);
++void ssdk_flow_engine_vlan_end(struct ssdk_flow_engine *engine,
++			      const struct ssdk_edma_vlan_config *config);
++/* Quiesce callbacks and atomic invalidators before destroy; retain on error. */
++int ssdk_flow_engine_destroy(struct ssdk_flow_engine *engine);
++#endif
+--- a/include/ref/ssdk_flow_gate.h
++++ b/include/ref/ssdk_flow_gate.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_GATE_H
++#define _SSDK_FLOW_GATE_H
++#include <linux/types.h>
++#include <linux/io.h>
++/* The caller must retain the MMIO mapping and quiesce all notifier/callback
++ * users before release/unmap. Native ownership excludes other table writers.
++ * Process-context transactions must be serialized by the caller; epochs
++ * arbitrate asynchronous invalidation, not competing transaction owners.
++ * A failed claim may retain ownership if restoration also fails.
++ * pause/invalidate/write do not sleep and are usable in atomic context. */
++int ssdk_flow_gate_claim(unsigned int dev, void __iomem *base, size_t size);
++int ssdk_flow_gate_pause(unsigned int dev, u64 *epoch);
++int ssdk_flow_gate_invalidate(unsigned int dev);
++int ssdk_flow_gate_ack(unsigned int dev, u64 epoch);
++int ssdk_flow_gate_resume(unsigned int dev, u64 epoch);
++/* All owned resources must be gone before restoring the original gate bits.
++ * A failed release retains ownership and must be retried. */
++int ssdk_flow_gate_release(unsigned int dev);
++/* True only while ownership is valid (forwarding may still be paused). */
++bool ssdk_flow_gate_valid(unsigned int dev);
++/* Intercept SDK writes to gate registers to prevent a stale RMW from undoing
++ * an atomic invalidation. Returns true if the write has been performed. */
++bool ssdk_flow_gate_write(unsigned int dev, void __iomem *base, u32 offset, u32 value);
++#endif
+--- a/include/ref/ssdk_flow_host.h
++++ b/include/ref/ssdk_flow_host.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_HOST_H
++#define _SSDK_FLOW_HOST_H
++#include <linux/types.h>
++#include <linux/if_ether.h>
++struct ssdk_flow_host;
++struct ssdk_flow_path {
++	__be32 address;
++	u16 vid;
++	u8 port;
++	u8 router[ETH_ALEN], neighbour[ETH_ALEN];
++};
++/* Serialize access and exclude autonomous learning/other table writers.
++ * Install router-MAC guards before get; revoke flow permissions before put.
++ * get publishes a cleanup handle before hardware writes, including on error.
++ * Hardware readback does not preserve the software NO_ROUTE operation flag. */
++struct ssdk_flow_host *ssdk_flow_host_create(unsigned int dev);
++int ssdk_flow_host_get(struct ssdk_flow_host *hosts, const struct ssdk_flow_path *path,
++		      int *handle, u16 *arp);
++int ssdk_flow_host_put(struct ssdk_flow_host *hosts, int handle);
++int ssdk_flow_host_destroy(struct ssdk_flow_host *hosts);
++#endif
+--- a/include/ref/ssdk_flow_hw.h
++++ b/include/ref/ssdk_flow_hw.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_HW_H
++#define _SSDK_FLOW_HW_H
++#include "ssdk_flow_state.h"
++#include "ssdk_flow_host.h"
++struct ssdk_flow_acl_owner;
++struct ssdk_flow_napt;
++struct ssdk_flow_hw;
++/* Resolve each direction's egress next hop, physical port and VID. The resolver
++ * must also verify that each ingress is the reverse direction's egress path,
++ * including bridge/VLAN membership and the configured private NAT prefix.
++ * Resolution runs in process context with forwarding paused. It must not take
++ * a lock held by a synchronous VLAN invalidation notifier. */
++typedef int (*ssdk_flow_resolve_t)(void *ctx, const struct ssdk_flow_rule rules[2],
++				 struct ssdk_flow_path paths[2]);
++/* Borrow already initialized resource owners; retain them until hw destruction.
++ * The gate must be claimed and profiles applied before any install. Serialize
++ * all operations and exclude other table writers. After ANY transaction error,
++ * flush the state and revalidate/ack the gate before allowing new replacements.
++ * Atomic notifier invalidation may run concurrently. */
++struct ssdk_flow_hw *ssdk_flow_hw_create(unsigned int dev,
++	struct ssdk_flow_acl_owner *acl, struct ssdk_flow_host *hosts,
++	struct ssdk_flow_napt *napt, ssdk_flow_resolve_t resolve, void *ctx);
++extern const struct ssdk_flow_ops ssdk_flow_hw_ops;
++/* Destroy the connection state first; failure retains this object for retry. */
++int ssdk_flow_hw_destroy(struct ssdk_flow_hw *hw);
++#endif
+--- a/include/ref/ssdk_flow_napt.h
++++ b/include/ref/ssdk_flow_napt.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_NAPT_H
++#define _SSDK_FLOW_NAPT_H
++#include "ssdk_flow_state.h"
++struct ssdk_flow_napt;
++/* Caller serializes access, excludes other NAT table writers, and revokes
++ * ACL permissions before remove/destroy. This layer never enables L3/NAT or
++ * grants a forwarding permission. create rejects pre-existing NAT resources. */
++struct ssdk_flow_napt *ssdk_flow_napt_create(unsigned int dev);
++int ssdk_flow_napt_add(struct ssdk_flow_napt *napt, unsigned int slot,
++		       const struct ssdk_flow_pair *pair, struct ssdk_flow_counts *baseline);
++int ssdk_flow_napt_read(struct ssdk_flow_napt *napt, unsigned int slot,
++			struct ssdk_flow_counts *counts);
++int ssdk_flow_napt_remove(struct ssdk_flow_napt *napt, unsigned int slot);
++int ssdk_flow_napt_destroy(struct ssdk_flow_napt *napt);
++#endif
+--- a/include/ref/ssdk_flow_path.h
++++ b/include/ref/ssdk_flow_path.h
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_PATH_H
++#define _SSDK_FLOW_PATH_H
++#include "ssdk_flow_hw.h"
++#include "ssdk_edma.h"
++struct ssdk_flow_resolver {
++	unsigned int dev;
++	/* Retained by the outer owner; access serialized under RTNL then its
++	 * mutex. VLAN snapshot must remain immutable during resolution. */
++	struct net_device *gmac[2];
++	const struct ssdk_edma_vlan_config *vlans;
++	/* Claim/program the LAN private prefix, or reject a conflict with
++	 * existing flows. Invoked only after all paths have been verified. */
++	int (*prefix)(void *ctx, __be32 base, __be32 mask);
++	void *ctx;
++};
++/* Caller holds RTNL and has paused the forwarding gate. Notifiers must
++ * invalidate that gate before topology changes can race a later resume. */
++int ssdk_flow_resolve_paths(void *ctx, const struct ssdk_flow_rule rules[2],
++			    struct ssdk_flow_path paths[2]);
++/* Process-context hardware revalidation; does not acquire RTNL. */
++int ssdk_flow_path_alive(unsigned int dev, const struct ssdk_flow_path *path);
++#endif
+--- a/include/ref/ssdk_flow_profile.h
++++ b/include/ref/ssdk_flow_profile.h
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_PROFILE_H
++#define _SSDK_FLOW_PROFILE_H
++#include <linux/types.h>
++struct ssdk_flow_profile;
++/* Caller serializes access, excludes other writers. create audits both the
++ * software ACL shadow and hardware filters without changing either. Gate must remain paused throughout apply/restore.
++ * No resource may exist before apply or remain when restore is called.
++ * create only snapshots; apply failure retains a handle for restoration.
++ * restore deliberately leaves ACL enabled: release the gate after restore,
++ * then destroy restores the original ACL enable bit. Failed operations retain
++ * ownership and must be retried. No function enables L3/NAT forwarding. */
++struct ssdk_flow_profile *ssdk_flow_profile_create(unsigned int dev);
++int ssdk_flow_profile_apply(struct ssdk_flow_profile *profile);
++/* Resolver callback: lock one connected LAN prefix for the active flow set.
++ * Gate must be paused. Reset only after every owned flow has been removed. */
++int ssdk_flow_profile_prefix(void *ctx, __be32 base, __be32 mask);
++int ssdk_flow_profile_prefix_reset(struct ssdk_flow_profile *profile);
++int ssdk_flow_profile_restore(struct ssdk_flow_profile *profile);
++int ssdk_flow_profile_destroy(struct ssdk_flow_profile *profile);
++#endif
+--- a/include/ref/ssdk_flow_state.h
++++ b/include/ref/ssdk_flow_state.h
+@@ -0,0 +1,37 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _SSDK_FLOW_STATE_H
++#define _SSDK_FLOW_STATE_H
++#include "ssdk_flow.h"
++#define SSDK_FLOW_COUNTERS 8
++#define SSDK_FLOW_PENDING 32
++struct ssdk_flow_state;
++struct ssdk_flow_counts { u32 packets[2], bytes[2]; };
++struct ssdk_flow_delta { u64 packets, bytes; };
++/* Operations run serialized in process context. Each slot owns an exclusive
++ * hardware counter. install must capture its baseline before enabling ACL
++ * permissions. remove must handle partial installs and revoke permissions
++ * before releasing dependent resources. Failed removal retains the slot and
++ * freezes new installs; the backend must also stop unsafe hardware forwarding.
++ * Counter direction 0 is canonical outbound, direction 1 is inbound. */
++struct ssdk_flow_ops {
++	int (*install)(void *ctx, unsigned int slot, const struct ssdk_flow_rule rules[2],
++		       const struct ssdk_flow_pair *pair, struct ssdk_flow_counts *baseline);
++	int (*remove)(void *ctx, unsigned int slot);
++	int (*read)(void *ctx, unsigned int slot, struct ssdk_flow_counts *counts);
++};
++struct ssdk_flow_state *ssdk_flow_state_create(const struct ssdk_flow_ops *ops, void *ctx);
++int ssdk_flow_state_replace(struct ssdk_flow_state *state, unsigned long cookie,
++			    const struct ssdk_flow_rule *rule, unsigned long now);
++int ssdk_flow_state_delete(struct ssdk_flow_state *state, unsigned long cookie);
++int ssdk_flow_state_stats(struct ssdk_flow_state *state, unsigned long cookie,
++			  struct ssdk_flow_delta *delta);
++int ssdk_flow_state_gc(struct ssdk_flow_state *state, unsigned long now);
++/* Flush both pending and installed flows after invalidation. Failed removals
++ * retain their refs for retry. The caller must prevent new replace callbacks
++ * until configuration has been revalidated and the gate acknowledged. */
++int ssdk_flow_state_flush(struct ssdk_flow_state *state);
++/* Caller must quiesce callbacks before destruction. Close to new work and
++ * free only after all hardware resources are released.
++ * On error the object remains valid for retry; the caller must retain it. */
++int ssdk_flow_state_destroy(struct ssdk_flow_state *state);
++#endif
+--- a/src/hsl/dess/dess_acl.c
++++ b/src/hsl/dess/dess_acl.c
+@@ -34,6 +34,7 @@
+ 
+ static dess_acl_rule_t *sw_rule_tmp[SW_MAX_NR_DEV];
+ static dess_acl_rule_t *hw_rule_tmp[SW_MAX_NR_DEV];
++static a_bool_t acl_hw_dirty[SW_MAX_NR_DEV];
+ #ifdef DESS_SW_ENTRY
+ static a_uint8_t *sw_filter_mem = NULL;
+ #endif
+@@ -156,9 +157,7 @@
+     filter.msk[4] &= 0xfffffff8;
+     filter.msk[4] |= (flag & 0x7);
+ 
+-    _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+-
+-    return SW_OK;
++    return _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+ #else
+ #ifdef DESS_HW_ENTRY
+     hw_filter_t filter;
+@@ -168,8 +167,7 @@
+     filter.msk[4] &= 0xfffffff8;
+     filter.msk[4] |= (flag & 0x7);
+ 
+-    _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+-    return SW_OK;
++    return _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+ #else
+     sw_error_t rv;
+     a_uint32_t addr, data = 0;
+@@ -216,9 +214,7 @@
+     filter.vlu[4] &= 0xffffff80;
+     filter.vlu[4] |= (ports & 0x7f);
+ 
+-    _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+-
+-    return SW_OK;
++    return _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+ #else
+ #ifdef DESS_HW_ENTRY
+     hw_filter_t filter;
+@@ -228,9 +224,7 @@
+     filter.vlu[4] &= 0xffffff80;
+     filter.vlu[4] |= (ports & 0x7f);
+ 
+-    _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+-
+-    return SW_OK;
++    return _dess_filter_down_to_hw(dev_id, &filter, flt_idx);
+ #else
+     sw_error_t rv;
+     a_uint32_t addr, data;
+@@ -683,35 +677,66 @@
+     return SW_OK;
+ }
+ 
+-static void
+-_dess_acl_rule_sync(a_uint32_t dev_id, a_uint32_t flt_idx, a_uint32_t flt_nr)
++static sw_error_t
++_dess_acl_entry_write(a_uint32_t dev_id, a_uint32_t index,
++                      const dess_acl_rule_t *rule)
+ {
+-    a_uint32_t i, data;
++    a_uint32_t type;
++    sw_error_t rv;
++    SW_GET_FIELD_BY_REG(MAC_RUL_M4, RULE_TYP, type, rule->filter.msk[4]);
++    if (type)
++        rv = _dess_filter_down_to_hw(dev_id, (hw_filter_t *)&rule->filter, index);
++    else
++        rv = _dess_filter_valid_set(dev_id, index, 0);
++    SW_RTN_ON_ERROR(rv);
++    return _dess_acl_rule_src_filter_sts_set(dev_id, index, !rule->src_flt_dis);
++}
+ 
+-    for (i = flt_idx; i < (flt_idx + flt_nr); i++)
++static sw_error_t
++_dess_acl_restore(a_uint32_t dev_id)
++{
++    a_uint32_t i;
++    sw_error_t rv;
++    acl_hw_dirty[dev_id] = A_TRUE;
++    for (i = 0; i < DESS_MAX_FILTER; i++)
+     {
+-        if (aos_mem_cmp
+-                (&(sw_rule_ent[dev_id][i]), &(sw_rule_tmp[dev_id][i]),
+-                 sizeof (dess_acl_rule_t)))
+-        {
+-            SW_GET_FIELD_BY_REG(MAC_RUL_M4, RULE_TYP, data,
+-                                sw_rule_tmp[dev_id][i].filter.msk[4]);
+-            if (data)
+-            {
+-                _dess_filter_down_to_hw(dev_id,
+-                                        &(sw_rule_tmp[dev_id][i].filter), i);
+-            }
+-            else
+-            {
+-                _dess_filter_valid_set(dev_id, i, 0);
+-            }
++        rv = _dess_acl_entry_write(dev_id, i, &sw_rule_ent[dev_id][i]);
++        SW_RTN_ON_ERROR(rv);
++    }
++    acl_hw_dirty[dev_id] = A_FALSE;
++    return SW_OK;
++}
+ 
+-            aos_mem_copy(&(sw_rule_ent[dev_id][i]), &(sw_rule_tmp[dev_id][i]),
+-                         sizeof (dess_acl_rule_t));
+-            _dess_acl_rule_src_filter_sts_set(dev_id, i,
+-                                              !sw_rule_tmp[dev_id][i].src_flt_dis);
++/* L3/NAT must be quiesced by the native owner during ACL updates: hardware
++ * rule relocation is not atomic. On error the software snapshot remains the
++ * last committed policy. Restore it before resuming or releasing resources. */
++static sw_error_t
++_dess_acl_rule_sync(a_uint32_t dev_id, a_uint32_t flt_idx, a_uint32_t flt_nr)
++{
++    a_uint32_t i;
++    sw_error_t rv;
++    if (acl_hw_dirty[dev_id])
++    {
++        rv = _dess_acl_restore(dev_id);
++        SW_RTN_ON_ERROR(rv);
++    }
++    for (i = flt_idx; i < flt_idx + flt_nr; i++)
++    {
++        if (!aos_mem_cmp(&sw_rule_ent[dev_id][i], &sw_rule_tmp[dev_id][i],
++                        sizeof(dess_acl_rule_t)))
++            continue;
++        rv = _dess_acl_entry_write(dev_id, i, &sw_rule_tmp[dev_id][i]);
++        if (rv != SW_OK)
++        {
++            /* A failed write may have reached hardware. A persistent error
++             * leaves dirty set; callers must not restart hardware forwarding. */
++            _dess_acl_restore(dev_id);
++            return rv;
+         }
+     }
++    aos_mem_copy(&sw_rule_ent[dev_id][flt_idx], &sw_rule_tmp[dev_id][flt_idx],
++                 flt_nr * sizeof(dess_acl_rule_t));
++    return SW_OK;
+ }
+ 
+ static sw_error_t
+@@ -902,7 +927,8 @@
+     }
+     SW_RTN_ON_ERROR(rv);
+ 
+-    _dess_acl_rule_sync(dev_id, 0, DESS_MAX_FILTER);
++    rv = _dess_acl_rule_sync(dev_id, 0, DESS_MAX_FILTER);
++    SW_RTN_ON_ERROR(rv);
+     sw_list->rule_nr += rule_nr;
+ 
+     _dess_acl_sw_rule_dump("sw rule after add", sw_rule_ent[dev_id]);
+@@ -990,7 +1016,8 @@
+         SW_RTN_ON_ERROR(rv);
+     }
+ 
+-    _dess_acl_rule_sync(dev_id, flt_idx, flt_nr);
++    rv = _dess_acl_rule_sync(dev_id, flt_idx, flt_nr);
++    SW_RTN_ON_ERROR(rv);
+     sw_list->rule_nr -= rule_nr;
+ 
+     _dess_acl_sw_rule_dump("sw rule after del", sw_rule_ent[dev_id]);
+@@ -1043,24 +1070,33 @@
+ {
+     sw_error_t rv;
+     a_uint32_t i;
+-    dess_acl_rule_t *sw_rule;
+-
++    dess_acl_rule_t *rule;
++    if (acl_hw_dirty[dev_id])
++    {
++        rv = _dess_acl_restore(dev_id);
++        SW_RTN_ON_ERROR(rv);
++    }
+     for (i = 0; i < DESS_MAX_FILTER; i++)
+     {
+-        sw_rule = &(sw_rule_ent[dev_id][i]);
+-
+-        if ((ENT_USED & sw_rule->status)
+-                && (list_id == sw_rule->list_id)
+-                && (!(ENT_DEACTIVE & sw_rule->status)))
++        rule = &sw_rule_ent[dev_id][i];
++        if (!(rule->status & ENT_USED) || rule->list_id != list_id ||
++            (rule->status & ENT_DEACTIVE))
++            continue;
++        rv = _dess_filter_ports_bind(dev_id, i, ports);
++        if (rv != SW_OK)
+         {
+-            rv = _dess_filter_ports_bind(dev_id, i, ports);
+-            SW_RTN_ON_ERROR(rv);
+-
+-            SW_SET_REG_BY_FIELD(MAC_RUL_V4, SRC_PT, ports,
+-                                (sw_rule->filter.vlu[4]));
++            _dess_acl_restore(dev_id);
++            return rv;
+         }
+     }
+-
++    /* Update the software policy only after every hardware filter succeeds. */
++    for (i = 0; i < DESS_MAX_FILTER; i++)
++    {
++        rule = &sw_rule_ent[dev_id][i];
++        if ((rule->status & ENT_USED) && rule->list_id == list_id &&
++            !(rule->status & ENT_DEACTIVE))
++            SW_SET_REG_BY_FIELD(MAC_RUL_V4, SRC_PT, ports, rule->filter.vlu[4]);
++    }
+     return SW_OK;
+ }
+ 
+@@ -1561,6 +1597,7 @@
+     aos_mem_zero(sw_rule_ent[dev_id],
+                  DESS_MAX_FILTER * sizeof (dess_acl_rule_t));
+ 
++    acl_hw_dirty[dev_id] = A_TRUE;
+     return SW_OK;
+ }
+ 
+@@ -2007,29 +2044,35 @@
+     if (NULL != sw_list_ent[dev_id])
+     {
+         aos_mem_free(sw_list_ent[dev_id]);
++        sw_list_ent[dev_id] = NULL;
+     }
+ 
+     if (NULL != sw_rule_ent[dev_id])
+     {
+         aos_mem_free(sw_rule_ent[dev_id]);
++        sw_rule_ent[dev_id] = NULL;
+     }
+ 
+     if (NULL != hw_rule_tmp[dev_id])
+     {
+         aos_mem_free(hw_rule_tmp[dev_id]);
++        hw_rule_tmp[dev_id] = NULL;
+     }
+ 
+     if (NULL != sw_rule_tmp[dev_id])
+     {
+         aos_mem_free(sw_rule_tmp[dev_id]);
++        sw_rule_tmp[dev_id] = NULL;
+     }
+ #ifdef DESS_SW_ENTRY
+     if (NULL != sw_filter_mem)
+     {
+         aos_mem_free(sw_filter_mem);
++        sw_filter_mem = NULL;
+     }
+ #endif
+ 
++    acl_hw_dirty[dev_id] = A_FALSE;
+     return SW_OK;
+ }
+ 
+@@ -2037,3 +2080,55 @@
+  * @}
+  */
+ 
++
++sw_error_t
++dess_acl_recover(a_uint32_t dev_id)
++{
++    sw_error_t rv = SW_OK;
++    HSL_DEV_ID_CHECK(dev_id);
++    HSL_API_LOCK;
++    if (!sw_rule_ent[dev_id])
++        rv = SW_NOT_SUPPORTED;
++    else if (acl_hw_dirty[dev_id])
++        rv = _dess_acl_restore(dev_id);
++    HSL_API_UNLOCK;
++    return rv;
++}
++
++/* Read-only admission audit; never erase an unknown hardware policy. The
++ * caller must exclude other writers until native ownership is released. */
++sw_error_t
++dess_acl_native_empty(a_uint32_t dev_id)
++{
++    sw_error_t rv = SW_OK;
++    a_uint32_t i;
++    hw_filter_t filter;
++    HSL_DEV_ID_CHECK(dev_id);
++    HSL_API_LOCK;
++    if (!sw_list_ent[dev_id] || !sw_rule_ent[dev_id]) {
++        rv = SW_NOT_SUPPORTED;
++        goto out;
++    }
++    if (acl_hw_dirty[dev_id]) {
++        rv = SW_BUSY;
++        goto out;
++    }
++    for (i = 0; i < DESS_MAX_FILTER; i++) {
++        if ((sw_list_ent[dev_id][i].status & ENT_USED) ||
++            (sw_rule_ent[dev_id][i].status & ENT_USED)) {
++            rv = SW_BUSY;
++            goto out;
++        }
++        rv = _dess_filter_up_to_sw(dev_id, &filter, i);
++        if (rv != SW_OK)
++            goto out;
++        /* A nonzero rule type is active even if the software shadow is empty. */
++        if (filter.msk[4] & 7) {
++            rv = SW_BUSY;
++            goto out;
++        }
++    }
++out:
++    HSL_API_UNLOCK;
++    return rv;
++}
+--- a/src/hsl/dess/dess_ip.c
++++ b/src/hsl/dess/dess_ip.c
+@@ -233,46 +233,37 @@
+ 
+ 
+ 
+-static void
+-_dess_ip_pt_learn_save(a_uint32_t dev_id, a_uint32_t * status)
++static sw_error_t
++_dess_ip_pt_learn_save(a_uint32_t dev_id, a_uint32_t *status, a_bool_t *saved)
+ {
+     sw_error_t rv;
+     a_uint32_t data = 0;
+ 
++    *saved = A_FALSE;
+     HSL_REG_ENTRY_GET(rv, dev_id, ROUTER_PTCTRL2, 0,
+-                      (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    if (SW_OK != rv)
+-    {
+-        return;
+-    }
+-
+-    *status = (data & 0x7f7f);
+-
++                      (a_uint8_t *) &data, sizeof(data));
++    SW_RTN_ON_ERROR(rv);
++    *status = data & 0x7f7f;
++    *saved = A_TRUE;
+     data &= 0xffff8080;
+     HSL_REG_ENTRY_SET(rv, dev_id, ROUTER_PTCTRL2, 0,
+-                      (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    return;
++                      (a_uint8_t *) &data, sizeof(data));
++    return rv;
+ }
+ 
+-static void
++static sw_error_t
+ _dess_ip_pt_learn_restore(a_uint32_t dev_id, a_uint32_t status)
+ {
+     sw_error_t rv;
+     a_uint32_t data = 0;
+ 
+     HSL_REG_ENTRY_GET(rv, dev_id, ROUTER_PTCTRL2, 0,
+-                      (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    if (SW_OK != rv)
+-    {
+-        return;
+-    }
+-
+-    data &= 0xffff8080;
+-    data |= (status & 0x7f7f);
+-
++                      (a_uint8_t *) &data, sizeof(data));
++    SW_RTN_ON_ERROR(rv);
++    data = (data & 0xffff8080) | (status & 0x7f7f);
+     HSL_REG_ENTRY_SET(rv, dev_id, ROUTER_PTCTRL2, 0,
+-                      (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    return;
++                      (a_uint8_t *) &data, sizeof(data));
++    return rv;
+ }
+ 
+ static sw_error_t
+@@ -319,114 +310,88 @@
+ static sw_error_t
+ _dess_host_entry_commit(a_uint32_t dev_id, a_uint32_t entry_type, a_uint32_t op)
+ {
+-    a_uint32_t busy = 1, i = 0x9000000, entry = 0, j, try_num;
+-    a_uint32_t learn_status = 0, data = 0;
+-    sw_error_t rv;
++    a_uint32_t busy = 1, i = 1000, entry = 0, j, try_num;
++    a_uint32_t learn_status = 0;
++    a_bool_t saved = A_FALSE;
++    sw_error_t rv, restore_rv;
+ 
+     while (busy && --i)
+     {
+-        HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+-                          sizeof (a_uint32_t));
++        HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0,
++                          (a_uint8_t *) &entry, sizeof(entry));
+         SW_RTN_ON_ERROR(rv);
+-        //printk("IP first entry is 0x%x\r\n", entry);
+         SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_BUSY, busy, entry);
++        if (busy)
++            aos_udelay(1);
+     }
+-
+-    if (i == 0)
+-    {
+-	printk("host entry busy!\n");
++    if (!i)
+         return SW_BUSY;
+-    }
+-
+-
+-    /* hardware requirements, we should disable ARP learn at first */
+-    /* and maybe we should try several times... */
+-    _dess_ip_pt_learn_save(dev_id, &learn_status);
+ 
+-    //printk("data0=0x%x\n", data);
+-    if(learn_status) {
++    /* Preserve the SDK learning workaround for other callers. The native
++     * flow owner must disable autonomous learning before it owns host entries
++     * so that the 800 ms quiescence path is never used for flow operations. */
++    rv = _dess_ip_pt_learn_save(dev_id, &learn_status, &saved);
++    if (rv != SW_OK)
++        goto restore;
++    if (learn_status)
+         aos_mdelay(800);
+-        HSL_REG_ENTRY_GET(rv, dev_id, ROUTER_PTCTRL2, 0,
+-                          (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    }
+-        //printk("data1=0x%x\n", data);
+-
+ 
+     SW_SET_REG_BY_FIELD(HOST_ENTRY7, TBL_BUSY, 1, entry);
+     SW_SET_REG_BY_FIELD(HOST_ENTRY7, TBL_SEL, entry_type, entry);
+     SW_SET_REG_BY_FIELD(HOST_ENTRY7, ENTRY_FUNC, op, entry);
++    HSL_REG_ENTRY_SET(rv, dev_id, HOST_ENTRY7, 0,
++                      (a_uint8_t *) &entry, sizeof(entry));
++    if (rv != SW_OK)
++        goto restore;
+ 
+-    HSL_REG_ENTRY_SET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+-			sizeof (a_uint32_t));
+-    SW_RTN_ON_ERROR(rv);
+-
+-    if (learn_status)
+-    {
+-        try_num = 300;
+-    }
+-    else
+-    {
+-        try_num = 1;
+-    }
+-
++    try_num = learn_status ? 300 : 1;
+     for (j = 0; j < try_num; j++)
+     {
+         busy = 1;
+-	i = 0x9000000;
++        i = 1000;
+         while (busy && --i)
+         {
+-            HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+-                              sizeof (a_uint32_t));
+-	    //printk("IP second entry is 0x%x\r\n", entry);
+-            if (SW_OK != rv)
+-            {
+-                _dess_ip_pt_learn_restore(dev_id, learn_status);
+-                return rv;
+-            }
++            HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0,
++                              (a_uint8_t *) &entry, sizeof(entry));
++            if (rv != SW_OK)
++                goto restore;
+             SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_BUSY, busy, entry);
++            if (busy)
++                aos_udelay(1);
+         }
+-
+-        if (i == 0)
+-        {
+-            _dess_ip_pt_learn_restore(dev_id, learn_status);
+-            return SW_BUSY;
+-        }
+-
+-        /* hardware requirement, we should read again... */
+-        HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+-                          sizeof (a_uint32_t));
+-        if (SW_OK != rv)
++        if (!i)
+         {
+-            _dess_ip_pt_learn_restore(dev_id, learn_status);
+-            return rv;
++            rv = SW_BUSY;
++            goto restore;
+         }
+-
+-        /* operation success...... */
++        /* Keep the additional completion read required by the SDK. */
++        HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0,
++                          (a_uint8_t *) &entry, sizeof(entry));
++        if (rv != SW_OK)
++            goto restore;
+         SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_STAUS, busy, entry);
+         if (busy)
+         {
+-            _dess_ip_pt_learn_restore(dev_id, learn_status);
+-            return SW_OK;
++            rv = SW_OK;
++            goto restore;
+         }
+     }
+-
+-    _dess_ip_pt_learn_restore(dev_id, learn_status);
+-    if (DESS_HOST_ENTRY_NEXT == op)
+-    {
+-        return SW_NO_MORE;
+-    }
+-    else if (DESS_HOST_ENTRY_SEARCH == op)
+-    {
+-        return SW_NOT_FOUND;
+-    }
+-    else if (DESS_HOST_ENTRY_DEL == op)
+-    {
+-        return SW_NOT_FOUND;
+-    }
+-    else
+-    {
+-        return SW_FAIL;
++    if (op == DESS_HOST_ENTRY_NEXT)
++        rv = SW_NO_MORE;
++    else if (op == DESS_HOST_ENTRY_SEARCH || op == DESS_HOST_ENTRY_DEL)
++        rv = SW_NOT_FOUND;
++    else
++        rv = SW_FAIL;
++restore:
++    /* A failed write may have reached hardware. Restore whenever the original
++     * learning bits were read, and never report success if restoration fails. */
++    if (saved)
++    {
++        restore_rv = _dess_ip_pt_learn_restore(dev_id, learn_status);
++        if (restore_rv != SW_OK)
++            return restore_rv;
+     }
++    return rv;
+ }
+ 
+ static sw_error_t
+@@ -800,7 +765,9 @@
+ 	}
+ 	aos_unlock_bh(&dess_nat_lock);
+     SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_IDX, entry->entry_id, reg[7]);
+-	if(entry->flags == FAL_IP_IP4_ADDR) {
++	if (entry->flags & FAL_IP_HOST_NO_ROUTE) {
++		/* Route resources are owned by the caller. */
++	} else if (entry->flags & FAL_IP_IP4_ADDR) {
+ 		_dess_ip_host_route_ip4_hw_add(entry);
+ 	} else {
+ 		_dess_ip_host_route_ip6_hw_add(entry);
+@@ -872,7 +839,7 @@
+ 
+     rv = _dess_host_entry_commit(dev_id, DESS_ENTRY_ARP, op);
+ 	aos_unlock_bh(&dess_nat_lock);
+-	if(!rv) {
++	if (!rv && !(entry->flags & FAL_IP_HOST_NO_ROUTE)) {
+ 		if(FAL_IP_IP4_ADDR & entry->flags)
+ 			_dess_ip_host_route_ip4_hw_del(entry);
+ 		else
+@@ -1803,6 +1770,8 @@
+ 
+     SW_SET_REG_BY_FIELD(INTF_ADDR_ENTRY2, VRF_ID, entry->vrf_id, tbl[2]);
+ 
++    /* Allow the owner to remove a partially programmed interface. */
++    entry->entry_id = i;
+     for (j = 0; j < 2; j++)
+     {
+         addr = DESS_INTF_MAC_EDIT0_ADDR + (i << 4) + (j << 2);
+--- a/src/hsl/dess/dess_nat.c
++++ b/src/hsl/dess/dess_nat.c
+@@ -167,21 +167,23 @@
+ static sw_error_t
+ _dess_nat_entry_commit(a_uint32_t dev_id, a_uint32_t entry_type, a_uint32_t op)
+ {
+-    a_uint32_t busy = 1, i = 0x9000000, entry = 0;
++    a_uint32_t busy = 1, i = 1000, entry = 0;
+     sw_error_t rv;
+ 
+ 
++    /* Bounded atomic polling: never consume a result while TBL_BUSY is set. */
+     while (busy && --i)
+     {
+         HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+                           sizeof (a_uint32_t));
+         SW_RTN_ON_ERROR(rv);
+         SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_BUSY, busy, entry);
++        if (busy)
++            aos_udelay(1);
+     }
+ 
+     if (i == 0)
+     {
+-	printk("busy 1\n");
+         return SW_BUSY;
+     }
+ 
+@@ -194,21 +196,20 @@
+     SW_RTN_ON_ERROR(rv);
+ 
+     busy = 1;
+-    i = 0x90000000;
++    i = 1000;
+     while (busy && --i)
+     {
+         HSL_REG_ENTRY_GET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&entry),
+                           sizeof (a_uint32_t));
+         SW_RTN_ON_ERROR(rv);
+         SW_GET_FIELD_BY_REG(HOST_ENTRY7, TBL_BUSY, busy, entry);
+-#if 1
+-        if(DESS_NAT_ENTRY_SEARCH == op &&  busy) break;
+-#endif
++        if (busy)
++            aos_udelay(1);
++
+     }
+ 
+     if (i == 0)
+     {
+-	printk("busy 2\n");
+         return SW_BUSY;
+     }
+ 
+@@ -1879,6 +1880,25 @@
+ }
+ 
+ static sw_error_t
++_dess_nat_pub_addr_clear(a_uint32_t dev_id, a_uint32_t index)
++{
++    sw_error_t rv;
++    a_uint32_t addr, data = 0;
++    if (index >= DESS_PUB_ADDR_NUM)
++        return SW_BAD_PARAM;
++    addr = DESS_PUB_ADDR_VALID_ADDR;
++    HSL_REG_ENTRY_GEN_GET(rv, dev_id, addr, sizeof(data), (a_uint8_t *) &data, sizeof(data));
++    SW_RTN_ON_ERROR(rv);
++    data &= ~(1U << index);
++    HSL_REG_ENTRY_GEN_SET(rv, dev_id, addr, sizeof(data), (a_uint8_t *) &data, sizeof(data));
++    SW_RTN_ON_ERROR(rv);
++    addr = DESS_PUB_ADDR_TBL1_ADDR + (index << 4);
++    data = 0;
++    HSL_REG_ENTRY_GEN_SET(rv, dev_id, addr, sizeof(data), (a_uint8_t *) &data, sizeof(data));
++    return rv;
++}
++
++static sw_error_t
+ _dess_nat_pub_addr_commit(a_uint32_t dev_id, fal_nat_pub_addr_t * entry,
+                           a_uint32_t op, a_uint32_t * empty)
+ {
+@@ -1908,11 +1928,8 @@
+             {
+                 if (DESS_NAT_ENTRY_DEL == op)
+                 {
+-                    addr = DESS_PUB_ADDR_TBL1_ADDR + (index << 4);
+-                    tbl[1] = 0;
+-                    HSL_REG_ENTRY_GEN_SET(rv, dev_id, addr, sizeof (a_uint32_t),
+-                                          (a_uint8_t *) (&(tbl[1])),
+-                                          sizeof (a_uint32_t));
++                    /* Disable offload while the slot is still searchable. */
++                    rv = _dess_nat_pub_addr_clear(dev_id, index);
+                     *empty = index;
+                     return rv;
+                 }
+@@ -1938,6 +1955,7 @@
+     sw_error_t rv;
+     a_uint32_t i, empty, addr, data = 0, tbl[2] = { 0 };
+ 
++    entry->entry_id = DESS_PUB_ADDR_NUM;
+     HSL_DEV_ID_CHECK(dev_id);
+ 
+     rv = _dess_nat_feature_check(dev_id);
+@@ -1947,7 +1965,9 @@
+     tbl[1] = 1;
+ 
+     rv = _dess_nat_pub_addr_commit(dev_id, entry, DESS_NAT_ENTRY_ADD, &empty);
+-    if (SW_ALREADY_EXIST == rv)
++    /* SW_NOT_FOUND is the successful scan for an unused address. An I/O
++     * error may leave an earlier free slot in empty; do not write there. */
++    if (SW_NOT_FOUND != rv)
+     {
+         return rv;
+     }
+@@ -1957,6 +1977,9 @@
+         return SW_NO_RESOURCE;
+     }
+ 
++    /* Publish the reserved index before the first write so a caller can
++     * clean a partial install even if no searchable table slot exists. */
++    entry->entry_id = empty;
+     for (i = 0; i < 1; i++)
+     {
+         addr = DESS_PUB_ADDR_EDIT0_ADDR + (empty << 4) + (i << 2);
+@@ -1997,26 +2020,14 @@
+                        fal_nat_pub_addr_t * entry)
+ {
+     sw_error_t rv;
+-    a_uint32_t empty, addr, data = 0;
++    a_uint32_t empty;
+ 
+     HSL_DEV_ID_CHECK(dev_id);
+-
+     rv = _dess_nat_feature_check(dev_id);
+     SW_RTN_ON_ERROR(rv);
+-
+-    rv = _dess_nat_pub_addr_commit(dev_id, entry, DESS_NAT_ENTRY_DEL, &empty);
+-    SW_RTN_ON_ERROR(rv);
+-
+-    addr = DESS_PUB_ADDR_VALID_ADDR;
+-    HSL_REG_ENTRY_GEN_GET(rv, dev_id, addr, sizeof (a_uint32_t),
+-                          (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-    SW_RTN_ON_ERROR(rv);
+-
+-    data &= (~(0x1 << empty));
+-    HSL_REG_ENTRY_GEN_SET(rv, dev_id, addr, sizeof (a_uint32_t),
+-                          (a_uint8_t *) (&data), sizeof (a_uint32_t));
+-
+-    return rv;
++    if (del_mode == FAL_NAT_PUBLIC_OWNED_INDEX)
++        return _dess_nat_pub_addr_clear(dev_id, entry->entry_id);
++    return _dess_nat_pub_addr_commit(dev_id, entry, DESS_NAT_ENTRY_DEL, &empty);
+ }
+ 
+ static sw_error_t
+--- a/src/init/ssdk_dts.c
++++ b/src/init/ssdk_dts.c
+@@ -124,6 +124,8 @@
+ {
+ 	ssdk_dt_cfg* cfg = ssdk_dt_global.ssdk_dt_switch_nodes[dev_id];
+ 
++	if (!port_id || port_id > cfg->phyinfo_num)
++		return NULL;
+ 	return &cfg->port_phyinfo[port_id-1];
+ }
+ 
+@@ -653,7 +655,7 @@
+ {
+ 	struct device_node *dp_node = NULL;
+ 	a_uint32_t dp = 0;
+-	a_uint8_t *maddr = NULL;
++	a_uint8_t maddr[ETH_ALEN];
+ 	char dp_name[8] = {0};
+ 
+ 	for (dp = 1; dp <= SSDK_MAX_NR_ETH; dp++) {
+@@ -662,8 +664,7 @@
+ 		if (!dp_node) {
+ 			continue;
+ 		}
+-		maddr = (a_uint8_t *)of_get_mac_address(dp_node);
+-		if (maddr && is_valid_ether_addr(maddr)) {
++		if (!of_get_mac_address(dp_node, maddr) && is_valid_ether_addr(maddr)) {
+ 			ssdk_dt_global.num_intf_mac++;
+ 			ether_addr_copy(ssdk_dt_global.intf_mac[dp-1].uc, maddr);
+ 			SSDK_INFO("%s MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+@@ -816,6 +817,8 @@
+ 	 */
+ 	switch_instance = of_find_node_by_name(NULL, "ess-instance");
+ 	*switch_node = of_find_node_by_name(switch_instance, ess_switch_name);
++	if (!*switch_node && num == 0)
++		*switch_node = of_find_compatible_node(NULL, NULL, "qcom,ess-switch");
+ 	if (!*switch_node) {
+ 		SSDK_WARN("cannot find ess-switch node\n");
+ 		return SW_BAD_PARAM;
+@@ -826,6 +829,8 @@
+ 	if (!of_device_is_available(*switch_node))
+ 	{
+ 		SSDK_WARN("ess-switch node[%s] is disabled\n", ess_switch_name);
++		of_node_put(*switch_node);
++		*switch_node = NULL;
+ 		return SW_DISABLE;
+ 	}
+ 
+@@ -849,6 +854,10 @@
+ 	else
+ 		*dev_id = be32_to_cpup(device_id);
+ 
++	if (*dev_id >= ssdk_dt_global.num_devices) {
++		of_node_put(switch_node);
++		return -EINVAL;
++	}
+ 	ssdk_dt_priv = ssdk_dt_global.ssdk_dt_switch_nodes[*dev_id];
+ 	ssdk_dt_priv->device_id = *dev_id;
+ 	ssdk_dt_priv->ess_switch_flag = A_TRUE;
+@@ -915,6 +924,8 @@
+ 		}
+ 	} else { /* single ess-switch */
+ 		switch_np = of_find_node_by_name(NULL, "ess-switch");
++		if (!switch_np)
++			switch_np = of_find_compatible_node(NULL, NULL, "qcom,ess-switch");
+ 		if (switch_np && dev_id == 0) {
+ 			port_np = of_find_node_by_name(switch_np, "qcom,port_phyinfo");
+ 			if (port_np) {
+@@ -949,16 +960,20 @@
+ 			dev_num = be32_to_cpup(num_devices);
+ 	}
+ 
+-	ssdk_dt_global.ssdk_dt_switch_nodes = kzalloc(dev_num * sizeof(ssdk_dt_cfg *), GFP_KERNEL);
++	of_node_put(switch_instance);
++	if (!dev_num || dev_num > SW_MAX_NR_DEV)
++		return -EINVAL;
++	ssdk_dt_global.num_devices = dev_num;
++	ssdk_dt_global.ssdk_dt_switch_nodes = kcalloc(dev_num, sizeof(ssdk_dt_cfg *), GFP_KERNEL);
+ 	if (ssdk_dt_global.ssdk_dt_switch_nodes == NULL) {
+-		return -ENOMEM;
++		goto nomem;
+ 	}
+ 
+ 	for (dev_id = 0; dev_id < dev_num; dev_id++) {
+ 		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id] = kzalloc(sizeof(ssdk_dt_cfg),
+ 								GFP_KERNEL);
+ 		if (ssdk_dt_global.ssdk_dt_switch_nodes[dev_id] == NULL) {
+-			return -ENOMEM;
++			goto nomem;
+ 		}
+ 
+ #ifndef BOARD_AR71XX
+@@ -966,15 +981,18 @@
+ 		port_n = ssdk_get_switch_port_nums(dev_id);
+ #endif
+ #endif
+-		if (!port_n) {
++		/* Indexed by physical port id, including sparse board layouts. */
++		if (port_n < SW_MAX_NR_PORT) {
+ 			port_n = SW_MAX_NR_PORT;
+ 		}
+ 		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->port_phyinfo = kzalloc(port_n *
+ 				sizeof(ssdk_port_phyinfo), GFP_KERNEL);
+ 		if (!ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->port_phyinfo) {
+-			return -ENOMEM;
++			goto nomem;
+ 		}
+ 		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->phyinfo_num = port_n;
++		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->ess_clk = ERR_PTR(-ENOENT);
++		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->cmnblk_clk = ERR_PTR(-ENOENT);
+ 
+ 		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->switch_reg_access_mode = HSL_REG_MDIO;
+ 		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->psgmii_reg_access_mode = HSL_REG_MDIO;
+@@ -985,27 +1003,32 @@
+ 	SSDK_INFO("ess-switch dts node number: %d\n", dev_num);
+ 
+ 	return 0;
++nomem:
++	ssdk_switch_device_num_exit();
++	return -ENOMEM;
+ }
+ 
+ void ssdk_switch_device_num_exit(void)
+ {
+-	a_uint32_t dev_id = 0;
++	a_uint32_t dev_id;
+ 
+-	for (dev_id = 0; dev_id < ssdk_dt_global.num_devices; dev_id++) {
+-		if (ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->port_phyinfo) {
+-			kfree(ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->port_phyinfo);
+-			ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]->port_phyinfo = NULL;
++	if (ssdk_dt_global.ssdk_dt_switch_nodes) {
++		for (dev_id = 0; dev_id < ssdk_dt_global.num_devices; dev_id++) {
++			ssdk_dt_cfg *dt = ssdk_dt_global.ssdk_dt_switch_nodes[dev_id];
++
++			if (!dt)
++				continue;
++			if (!IS_ERR_OR_NULL(dt->ess_clk))
++				clk_put(dt->ess_clk);
++			if (!IS_ERR_OR_NULL(dt->cmnblk_clk))
++				clk_put(dt->cmnblk_clk);
++			of_node_put(dt->of_node);
++			kfree(dt->port_phyinfo);
++			kfree(dt);
+ 		}
+-
+-		if (ssdk_dt_global.ssdk_dt_switch_nodes[dev_id])
+-			kfree(ssdk_dt_global.ssdk_dt_switch_nodes[dev_id]);
+-		ssdk_dt_global.ssdk_dt_switch_nodes[dev_id] = NULL;
+-	}
+-
+-	if (ssdk_dt_global.ssdk_dt_switch_nodes)
+ 		kfree(ssdk_dt_global.ssdk_dt_switch_nodes);
++	}
+ 	ssdk_dt_global.ssdk_dt_switch_nodes = NULL;
+-
+ 	ssdk_dt_global.num_devices = 0;
+ }
+ 
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -1,3 +1,5 @@
++#include "ssdk_flow_control.h"
++#include "ssdk_edma.h"
+ /*
+  * Copyright (c) 2012, 2014-2018, The Linux Foundation. All rights reserved.
+  * Permission to use, copy, modify, and/or distribute this software for
+@@ -41,11 +43,14 @@
+ /*qca808x_start*/
+ #include <linux/phy.h>
+ #include <linux/mdio.h>
++#include <linux/of_mdio.h>
++#include <linux/of_net.h>
+ /*qca808x_end*/
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/string.h>
+ #include <linux/gpio.h>
++#include <linux/gpio/consumer.h>
+ 
+ #if defined(IN_SWCONFIG)
+ #if defined(CONFIG_OF) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
+@@ -1044,19 +1049,105 @@
+ 	return 0;
+ }
+ #endif
++/* Serialize user configuration against native flow ownership. */
++static int flow_qca_ar8327_sw_set_vlan(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_vlan(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_max_frame_size(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_max_frame_size(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_reset_mibs(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_reset_mibs(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_atu_flush(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_atu_flush(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_switch_ext(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_switch_ext(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_port_reset_mib(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_port_reset_mib(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_vid(struct switch_dev *dev, const struct switch_attr *attr, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_vid(dev, attr, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_pvid(struct switch_dev *dev, int port, int value)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_pvid(dev, port, value);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_ports(struct switch_dev *dev, struct switch_val *val)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_ports(dev, val);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_hw_apply(struct switch_dev *dev)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_hw_apply(dev);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_reset_switch(struct switch_dev *dev)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_reset_switch(dev);
++	ssdk_flow_user_end(); return ret;
++}
++static int flow_qca_ar8327_sw_set_reg_val(struct switch_dev *dev, int reg, int value)
++{
++	int ret = ssdk_flow_user_begin(true);
++	if (ret) return ret;
++	ret = qca_ar8327_sw_set_reg_val(dev, reg, value);
++	ssdk_flow_user_end(); return ret;
++}
++
+ static struct switch_attr qca_ar8327_globals[] = {
+ 	{
+ 		.name = "enable_vlan",
+ 		.description = "Enable 8021q VLAN",
+ 		.type = SWITCH_TYPE_INT,
+-		.set = qca_ar8327_sw_set_vlan,
++		.set = flow_qca_ar8327_sw_set_vlan,
+ 		.get = qca_ar8327_sw_get_vlan,
+ 		.max = 1
+ 	},{
+ 		.name = "max_frame_size",
+ 		.description = "Set Max frame Size Of Mac",
+ 		.type = SWITCH_TYPE_INT,
+-		.set = qca_ar8327_sw_set_max_frame_size,
++		.set = flow_qca_ar8327_sw_set_max_frame_size,
+ 		.get = qca_ar8327_sw_get_max_frame_size,
+ 		.max = 9018
+ 	},
+@@ -1064,13 +1155,13 @@
+ 		.name = "reset_mibs",
+ 		.description = "Reset All MIB Counters",
+ 		.type = SWITCH_TYPE_NOVAL,
+-		.set = qca_ar8327_sw_set_reset_mibs,
++		.set = flow_qca_ar8327_sw_set_reset_mibs,
+ 	},
+ 	{
+ 		.name = "flush_arl",
+ 		.description = "Flush All ARL table",
+ 		.type = SWITCH_TYPE_NOVAL,
+-		.set = qca_ar8327_sw_atu_flush,
++		.set = flow_qca_ar8327_sw_atu_flush,
+ 	},
+ 	{
+ 		.name = "dump_arl",
+@@ -1082,7 +1173,7 @@
+ 		.name = "switch_ext",
+ 		.description = "Switch extended configuration",
+ 		.type = SWITCH_TYPE_EXT,
+-		.set = qca_ar8327_sw_switch_ext,
++		.set = flow_qca_ar8327_sw_switch_ext,
+ 	},
+ };
+ 
+@@ -1091,7 +1182,7 @@
+ 		.name = "reset_mib",
+ 		.description = "Reset Mib Counters",
+ 		.type = SWITCH_TYPE_NOVAL,
+-		.set = qca_ar8327_sw_set_port_reset_mib,
++		.set = flow_qca_ar8327_sw_set_port_reset_mib,
+ 	},
+ 	{
+ 		.name = "mib",
+@@ -1107,7 +1198,7 @@
+ 		.name = "vid",
+ 		.description = "Configure Vlan Id",
+ 		.type = SWITCH_TYPE_INT,
+-		.set = qca_ar8327_sw_set_vid,
++		.set = flow_qca_ar8327_sw_set_vid,
+ 		.get = qca_ar8327_sw_get_vid,
+ 		.max = 4094,
+ 	},
+@@ -1127,16 +1218,16 @@
+ 		.n_attr = ARRAY_SIZE(qca_ar8327_vlan),
+ 	},
+ 	.get_port_pvid = qca_ar8327_sw_get_pvid,
+-	.set_port_pvid = qca_ar8327_sw_set_pvid,
++	.set_port_pvid = flow_qca_ar8327_sw_set_pvid,
+ 	.get_vlan_ports = qca_ar8327_sw_get_ports,
+-	.set_vlan_ports = qca_ar8327_sw_set_ports,
+-	.apply_config = qca_ar8327_sw_hw_apply,
+-	.reset_switch = qca_ar8327_sw_reset_switch,
++	.set_vlan_ports = flow_qca_ar8327_sw_set_ports,
++	.apply_config = flow_qca_ar8327_sw_hw_apply,
++	.reset_switch = flow_qca_ar8327_sw_reset_switch,
+ 	.get_port_link = qca_ar8327_sw_get_port_link,
+ 	.get_port_stats = qca_ar8327_sw_get_port_stats,
+ #ifndef BOARD_AR71XX
+ 	.get_reg_val = qca_ar8327_sw_get_reg_val,
+-	.set_reg_val = qca_ar8327_sw_set_reg_val,
++	.set_reg_val = flow_qca_ar8327_sw_set_reg_val,
+ #endif
+ };
+ #endif
+@@ -1180,6 +1271,7 @@
+ 	}
+ 
+ 	INIT_DELAYED_WORK(&priv->mib_dwork, qca_phy_mib_work_task);
++	priv->mib_work_started = true;
+ #ifndef SSDK_MIB_CHANGE_WQ
+ 	schedule_delayed_work(&priv->mib_dwork,
+ 			               msecs_to_jiffies(QCA_PHY_MIB_WORK_DELAY));
+@@ -1194,11 +1286,14 @@
+ void
+ qca_phy_mib_work_stop(struct qca_phy_priv *priv)
+ {
+-	if(!priv)
++	if (!priv)
+ 		return;
+-	if(priv->mib_counters)
+-		kfree(priv->mib_counters);
+-	cancel_delayed_work_sync(&priv->mib_dwork);
++	if (priv->mib_work_started) {
++		cancel_delayed_work_sync(&priv->mib_dwork);
++		priv->mib_work_started = false;
++	}
++	kfree(priv->mib_counters);
++	priv->mib_counters = NULL;
+ }
+ 
+ #define SSDK_QM_CHANGE_WQ
+@@ -1235,7 +1330,7 @@
+ 			SSDK_ERROR("gpio request faild \n");
+ 			return -1;
+ 		}
+-		gpio_set_debounce(gpio_num, 60000);
++		gpiod_set_debounce(gpio_to_desc(gpio_num), 60000);
+ 	}
+ 	else
+ 	{
+@@ -1306,6 +1401,7 @@
+ 
+ 	mutex_init(&priv->qm_lock);
+ 	INIT_DELAYED_WORK(&priv->qm_dwork_polling, qm_err_check_work_task_polling);
++	priv->qm_work_started = true;
+ 	#ifndef SSDK_MIB_CHANGE_WQ
+ 	schedule_delayed_work(&priv->qm_dwork_polling,
+ 							msecs_to_jiffies(QCA_QM_WORK_DELAY));
+@@ -1320,14 +1416,12 @@
+ void
+ qm_err_check_work_stop(struct qca_phy_priv *priv)
+ {
+-	/*Only valid for S17c chip*/
+-	if (priv->version != QCA_VER_AR8337 &&
+-		priv->version != QCA_VER_AR8327 &&
+-		priv->version != QCA_VER_DESS) return;
+-
++	if (priv && priv->qm_work_started) {
+ 		cancel_delayed_work_sync(&priv->qm_dwork_polling);
+-
++		priv->qm_work_started = false;
++	}
+ }
++
+ #ifdef DESS
+ static void
+ dess_rgmii_mac_work_task(struct work_struct *work)
+@@ -1515,8 +1609,8 @@
+ #else
+ 	if (pdev->addr != 0) {
+ #endif
+-        pdev->supported |= SUPPORTED_1000baseT_Full;
+-        pdev->advertising |= ADVERTISED_1000baseT_Full;
++        linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, pdev->supported);
++        linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, pdev->advertising);
+ 		#ifndef BOARD_AR71XX
+ 		#if defined(CONFIG_OF) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
+ 		ssdk_phy_rgmii_set(priv);
+@@ -1547,8 +1641,8 @@
+ 	if(ret)
+ 		priv->link_polling_required = 1;
+ 	pdev->priv = priv;
+-	pdev->supported |= SUPPORTED_1000baseT_Full;
+-	pdev->advertising |= ADVERTISED_1000baseT_Full;
++	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, pdev->supported);
++	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, pdev->advertising);
+ 
+ #if defined(IN_SWCONFIG)
+ 	ret = qca_switchdev_register(priv);
+@@ -1856,44 +1950,26 @@
+ 
+ static int ssdk_probe(struct platform_device *pdev)
+ {
+-	struct device_node *np;
++	struct reset_control *reset, *gates[5];
++	struct device_node *np = pdev->dev.of_node;
++	char name[24];
++	int i;
+ 
+-	np = of_node_get(pdev->dev.of_node);
+ 	if (of_device_is_compatible(np, "qcom,ess-instance"))
+ 		return of_platform_populate(np, NULL, NULL, &pdev->dev);
+ 
+-	ess_rst = devm_reset_control_get(&pdev->dev, "ess_rst");
+-	ess_mac_clock_disable[0] = devm_reset_control_get(&pdev->dev, "ess_mac1_clk_dis");
+-	ess_mac_clock_disable[1] = devm_reset_control_get(&pdev->dev, "ess_mac2_clk_dis");
+-	ess_mac_clock_disable[2] = devm_reset_control_get(&pdev->dev, "ess_mac3_clk_dis");
+-	ess_mac_clock_disable[3] = devm_reset_control_get(&pdev->dev, "ess_mac4_clk_dis");
+-	ess_mac_clock_disable[4] = devm_reset_control_get(&pdev->dev, "ess_mac5_clk_dis");
+-
+-	if (IS_ERR(ess_rst)) {
+-		SSDK_INFO("ess_rst doesn't exist!\n");
+-		return 0;
++	reset = devm_reset_control_get_exclusive(&pdev->dev, "ess_rst");
++	if (IS_ERR(reset))
++		return dev_err_probe(&pdev->dev, PTR_ERR(reset), "ESS reset unavailable\n");
++	for (i = 0; i < ARRAY_SIZE(gates); i++) {
++		snprintf(name, sizeof(name), "ess_mac%d_clk_dis", i + 1);
++		gates[i] = devm_reset_control_get_exclusive(&pdev->dev, name);
++		if (IS_ERR(gates[i]))
++			return dev_err_probe(&pdev->dev, PTR_ERR(gates[i]),
++					     "ESS MAC clock gate unavailable\n");
+ 	}
+-	if (!ess_mac_clock_disable[0]) {
+-		SSDK_ERROR("ess_mac1_clock_disable fail!\n");
+-		return -1;
+-	}
+-	if (!ess_mac_clock_disable[1]) {
+-		SSDK_ERROR("ess_mac2_clock_disable fail!\n");
+-		return -1;
+-	}
+-	if (!ess_mac_clock_disable[2]) {
+-		SSDK_ERROR("ess_mac3_clock_disable fail!\n");
+-		return -1;
+-	}
+-	if (!ess_mac_clock_disable[3]) {
+-		SSDK_ERROR("ess_mac4_clock_disable fail!\n");
+-		return -1;
+-	}
+-	if (!ess_mac_clock_disable[4]) {
+-		SSDK_ERROR("ess_mac5_clock_disable fail!\n");
+-		return -1;
+-	}
+-
++	ess_rst = reset;
++	memcpy(ess_mac_clock_disable, gates, sizeof(gates));
+ 	return 0;
+ }
+ 
+@@ -2248,8 +2324,10 @@
+ 	sw_error_t rv;
+ 
+ 	rv = fal_init(dev_id, cfg);
+-	if (rv != SW_OK)
++	if (rv != SW_OK) {
+ 		SSDK_ERROR("ssdk fal init failed: %d. \r\n", rv);
++		return rv;
++	}
+ 
+ #ifndef HAWKEYE_CHIP
+ 	if (cfg->chip_type != CHIP_HPPE) {
+@@ -2319,7 +2397,10 @@
+ 	int ret = -EINVAL;
+ #ifdef CONFIG_MDIO
+ 	struct mii_ioctl_data *mii_data = if_mii(ifr);
++	ret = ssdk_flow_user_begin(false);
++	if (ret) return ret;
+ 	ret = mdio_mii_ioctl(&ssdk_mdio_ctl, mii_data, cmd);
++	ssdk_flow_user_end();
+ #endif
+ 	return ret;
+ }
+@@ -2388,20 +2469,22 @@
+ #else
+ 	ssdk_miireg_netdev = alloc_netdev(100, "miireg", ssdk_netdev_setup);
+ #endif
+-	if (ssdk_miireg_netdev)
+-		register_netdev(ssdk_miireg_netdev);
++	if (ssdk_miireg_netdev && register_netdev(ssdk_miireg_netdev)) {
++		free_netdev(ssdk_miireg_netdev);
++		ssdk_miireg_netdev = NULL;
++	}
+ }
+ 
+ static void ssdk_miireg_ioctrl_unregister(void)
+ {
+ 	if (ssdk_miireg_netdev) {
+ 		unregister_netdev(ssdk_miireg_netdev);
+-		kfree(ssdk_miireg_netdev);
++		free_netdev(ssdk_miireg_netdev);
+ 		ssdk_miireg_netdev = NULL;
+ 	}
+ }
+ 
+-static void ssdk_driver_register(a_uint32_t dev_id)
++static int ssdk_driver_register(a_uint32_t dev_id)
+ {
+ 	hsl_reg_mode reg_mode;
+ 	a_bool_t flag;
+@@ -2412,7 +2495,14 @@
+ 	if(reg_mode == HSL_REG_LOCAL_BUS) {
+ #ifndef BOARD_AR71XX
+ #if defined(CONFIG_OF) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
+-		platform_driver_register(&ssdk_driver);
++		int ret = platform_driver_register(&ssdk_driver);
++		if (ret)
++			return ret;
++		/* Registering the driver alone does not prove probe succeeded. */
++		if (!ess_rst) {
++			platform_driver_unregister(&ssdk_driver);
++			return -EPROBE_DEFER;
++		}
+ #endif
+ #endif
+ 	}
+@@ -2422,12 +2512,12 @@
+ 	if(reg_mode == HSL_REG_MDIO && flag == A_FALSE) {
+ 		if(driver_find(qca_phy_driver.name, &mdio_bus_type)){
+ 			SSDK_ERROR("QCA PHY driver had been Registered\n");
+-			return;
++			return 0;
+ 		}
+ 
+ 		SSDK_INFO("Register QCA PHY driver\n");
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
+-		phy_driver_register(&qca_phy_driver, THIS_MODULE);
++		phy_drivers_register(&qca_phy_driver, 1, THIS_MODULE);
+ #else
+ 		phy_driver_register(&qca_phy_driver);
+ #endif
+@@ -2443,6 +2533,7 @@
+ 		ar7240_port_link_notify_register(ssdk_port_link_notify);
+ #endif
+ 	}
++	return 0;
+ }
+ 
+ static void ssdk_driver_unregister(a_uint32_t dev_id)
+@@ -2453,7 +2544,7 @@
+ 	reg_mode= ssdk_switch_reg_access_mode_get(dev_id);
+ 	flag = ssdk_ess_switch_flag_get(dev_id);
+ 	if(reg_mode == HSL_REG_MDIO && flag == A_FALSE) {
+-		phy_driver_unregister(&qca_phy_driver);
++		phy_drivers_unregister(&qca_phy_driver, 1);
+ 
+ 	#if defined(BOARD_AR71XX) && defined(IN_SWCONFIG)
+ 		ssdk_uci_takeover_exit();
+@@ -2628,12 +2719,77 @@
+ 	return 0;
+ }
+ 
++/* Use the board's PHY driver and phy-mode for external RGMII delays. */
++static int ssdk_dess_rgmii5_init(a_uint32_t dev_id)
++{
++	struct device_node *ports, *port, *phy_node;
++	struct phy_device *phydev;
++	phy_interface_t interface;
++	u32 id, value;
++	int ret = -ENODEV;
++
++	ports = of_get_child_by_name(qca_phy_priv_global[dev_id]->of_node, "ports");
++	if (!ports)
++		return -ENODEV;
++	for_each_available_child_of_node(ports, port) {
++		if (of_property_read_u32(port, "reg", &id) || id != 5)
++			continue;
++		ret = of_get_phy_mode(port, &interface);
++		if (ret)
++			break;
++		if (interface != PHY_INTERFACE_MODE_RGMII &&
++		    interface != PHY_INTERFACE_MODE_RGMII_ID &&
++		    interface != PHY_INTERFACE_MODE_RGMII_RXID &&
++		    interface != PHY_INTERFACE_MODE_RGMII_TXID) {
++			ret = -EINVAL;
++			break;
++		}
++		phy_node = of_parse_phandle(port, "phy-handle", 0);
++		phydev = of_phy_find_device(phy_node);
++		of_node_put(phy_node);
++		if (!phydev) {
++			ret = -EPROBE_DEFER;
++			break;
++		}
++		mutex_lock(&phydev->lock);
++		if (!phydev->drv) {
++			ret = -EPROBE_DEFER;
++		} else {
++			phydev->interface = interface;
++			ret = phy_init_hw(phydev);
++			if (!ret)
++				ret = phy_config_aneg(phydev);
++		}
++		mutex_unlock(&phydev->lock);
++		put_device(&phydev->mdio.dev);
++		break;
++	}
++	of_node_put(port);
++	of_node_put(ports);
++	if (ret)
++		return ret;
++
++	ret = qca_switch_reg_read(dev_id, 0x4, (a_uint8_t *)&value, 4);
++	if (ret)
++		return ret;
++	value |= BIT(10); /* RGMII clock source, matching IPQ4019 ESS. */
++	ret = qca_switch_reg_write(dev_id, 0x4, (a_uint8_t *)&value, 4);
++	if (ret)
++		return ret;
++	/* Polling enables TX/RX after reading the actual PHY link and speed. */
++	value = 0;
++	return qca_switch_reg_write(dev_id, AR8327_REG_PORT_STATUS(5),
++				    (a_uint8_t *)&value, 4);
++}
++
+ static int ssdk_dess_mac_mode_init(a_uint32_t dev_id, a_uint32_t mac_mode)
+ {
+ 	a_uint32_t reg_value;
+ 	u8  __iomem      *gcc_addr = NULL;
+ 
+ 	switch(mac_mode) {
++		case PORT_WRAPPER_PSGMII_RGMII5:
++			return ssdk_dess_rgmii5_init(dev_id);
+ 		case PORT_WRAPPER_PSGMII:
+ 		case PORT_WRAPPER_PSGMII_FIBER:
+ 			reg_value = 0x2200;
+@@ -2680,7 +2836,7 @@
+ 							(a_uint8_t *)&reg_value, 4);
+ 			mdelay(10);
+ 			/*softreset psgmii, fixme*/
+-			gcc_addr = ioremap_nocache(0x1812000, 0x200);
++			gcc_addr = ioremap(0x1812000, 0x200);
+ 			if (!gcc_addr) {
+ 				SSDK_ERROR("gcc map fail!\n");
+ 				return 0;
+@@ -2891,7 +3047,11 @@
+ 
+ 
+ 	/*config psgmii,sgmii or rgmii mode for Dakota*/
+-	ssdk_dess_mac_mode_init(dev_id, cfg->mac_mode);
++	{
++		int ret = ssdk_dess_mac_mode_init(dev_id, cfg->mac_mode);
++		if (ret)
++			return ret;
++	}
+ 
+ 	/*add BGA Board led contorl*/
+ 	ssdk_dess_led_init(cfg);
+@@ -3206,7 +3366,7 @@
+ /*qca808x_end*/
+ 	dev_num = ssdk_switch_device_num_get();
+ /*qca808x_start*/
+-	for (dev_id = 0; dev_id < dev_num; dev_id++) {
++	for (dev_id = 0; qca_phy_priv_global && dev_id < dev_num; dev_id++) {
+ 		if (qca_phy_priv_global[dev_id])
+ 			kfree(qca_phy_priv_global[dev_id]);
+ 
+@@ -3241,7 +3401,9 @@
+ 		qca_phy_priv_global[dev_id]->qca_ssdk_sw_dev_registered = A_FALSE;
+ 		qca_phy_priv_global[dev_id]->ess_switch_flag = A_FALSE;
+ /*qca808x_start*/
+-		qca_ssdk_phy_info_init(dev_id);
++		rev = qca_ssdk_phy_info_init(dev_id);
++		if (rev)
++			return rev;
+ 		qca_ssdk_port_bmp_init(dev_id);
+ 	}
+ 
+@@ -3251,6 +3413,46 @@
+ #ifndef SSDK_STR
+ #define SSDK_STR "ssdk"
+ #endif
++static bool ssdk_notifier_registered;
++
++static void ssdk_release(void)
++{
++	a_uint32_t dev_id, dev_num = ssdk_switch_device_num_get();
++
++	if (ssdk_notifier_registered) {
++		unregister_netdevice_notifier(&ssdk_dev_notifier);
++		ssdk_notifier_registered = false;
++	}
++#ifdef DESS
++	qca_dess_rfs_remove();
++#endif
++	ssdk_flow_control_cleanup();
++	ssdk_sysfs_exit();
++	ssdk_miireg_ioctrl_unregister();
++	for (dev_id = 0; qca_phy_priv_global && dev_id < dev_num; dev_id++) {
++		struct qca_phy_priv *priv = qca_phy_priv_global[dev_id];
++
++		if (priv && priv->qca_ssdk_sw_dev_registered) {
++			ssdk_switch_unregister(dev_id);
++			priv->qca_ssdk_sw_dev_registered = false;
++		}
++	}
++	ssdk_cleanup();
++	for (dev_id = 0; qca_phy_priv_global && dev_id < dev_num; dev_id++) {
++		struct qca_phy_priv *priv = qca_phy_priv_global[dev_id];
++
++		if (!priv)
++			continue;
++		if (priv->driver_registered) {
++			ssdk_driver_unregister(dev_id);
++			priv->driver_registered = false;
++		}
++		ssdk_plat_exit(dev_id);
++	}
++	ssdk_free_priv();
++	ssdk_edma_cleanup();
++}
++
+ static int __init regi_init(void)
+ {
+ 	a_uint32_t num = 0, dev_id = 0, dev_num = 1;
+@@ -3261,7 +3463,9 @@
+ 	int rv = 0;
+ /*qca808x_end*/
+ 	/*init switch device num firstly*/
+-	ssdk_switch_device_num_init();
++	rv = ssdk_switch_device_num_init();
++	if (rv)
++		return rv;
+ 
+ 	dev_num = ssdk_switch_device_num_get();
+ /*qca808x_start*/
+@@ -3274,10 +3478,9 @@
+ /*qca808x_end*/
+ #ifndef BOARD_AR71XX
+ #if defined(CONFIG_OF) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
+-		if(SW_DISABLE == ssdk_dt_parse(&cfg, num, &dev_id)) {
+-			SSDK_INFO("ess-switch node is unavalilable\n");
+-			continue;
+-		}
++		rv = ssdk_dt_parse(&cfg, num, &dev_id);
++		if (rv)
++			goto out;
+ #endif
+ #endif
+ 
+@@ -3287,12 +3490,17 @@
+ 		qca_phy_priv_global[dev_id]->of_node = ssdk_dts_node_get(dev_id);
+ /*qca808x_start*/
+ 		rv = ssdk_plat_init(&cfg, dev_id);
+-		SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++		if (rv)
++			goto out;
+ /*qca808x_end*/
+-		ssdk_driver_register(dev_id);
++		rv = ssdk_driver_register(dev_id);
++		if (rv)
++			goto out;
++		qca_phy_priv_global[dev_id]->driver_registered = true;
+ /*qca808x_start*/
+ 		rv = chip_ver_get(dev_id, &cfg);
+-		SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++		if (rv)
++			goto out;
+ /*qca808x_end*/
+ 		ssdk_miireg_ioctrl_register();
+ 
+@@ -3300,7 +3508,8 @@
+ 		cfg.chip_spec_cfg = &chip_spec_cfg;
+ /*qca808x_start*/
+ 		rv = ssdk_init(dev_id, &cfg);
+-		SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++		if (rv)
++			goto out;
+ /*qca808x_end*/
+ 
+ 
+@@ -3312,7 +3521,8 @@
+ 				if (qca_phy_priv_global[dev_id]->ess_switch_flag == A_TRUE) {
+ 					SSDK_INFO("Initializing ISISC!!\n");
+ 					rv = ssdk_switch_register(dev_id);
+-					SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++					if (rv)
++			goto out;
+ 					rv = qca_ar8327_hw_init(qca_phy_priv_global[dev_id]);
+ 					SSDK_INFO("Initializing ISISC Done!!\n");
+ 				}
+@@ -3323,7 +3533,8 @@
+ 				SSDK_INFO("Initializing HPPE!!\n");
+ 				qca_hppe_hw_init(&cfg, dev_id);
+ 				rv = ssdk_switch_register(dev_id);
+-				SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++				if (rv)
++			goto out;
+ 				SSDK_INFO("Initializing HPPE Done!!\n");
+ 			#endif
+ 				break;
+@@ -3332,13 +3543,16 @@
+ 			#if defined(DESS)
+ 				SSDK_INFO("Initializing DESS!!\n");
+ 
+-				qca_dess_hw_init(&cfg, dev_id);
++				rv = qca_dess_hw_init(&cfg, dev_id);
++				if (rv)
++					goto out;
+ 				qca_dess_rfs_init();
+ 
+ 				/* Setup Cpu port for Dakota platform. */
+ 				switch_cpuport_setup(dev_id);
+ 				rv = ssdk_switch_register(dev_id);
+-				SW_CNTU_ON_ERROR_AND_COND1_OR_GOTO_OUT(rv, -ENODEV);
++				if (rv)
++			goto out;
+ 				SSDK_INFO("Initializing DESS Done!!\n");
+ 			#endif
+ 				break;
+@@ -3358,67 +3572,32 @@
+ 	}
+ /*qca808x_end*/
+ 
+-	ssdk_sysfs_init();
++	rv = ssdk_sysfs_init();
++	if (rv)
++		goto out;
+ 
+ 	/* register the notifier later should be ok */
+ 	ssdk_dev_notifier.notifier_call = ssdk_dev_event;
+ 	ssdk_dev_notifier.priority = 1;
+-	register_netdevice_notifier(&ssdk_dev_notifier);
++	rv = register_netdevice_notifier(&ssdk_dev_notifier);
++	if (rv)
++		goto out;
++	ssdk_notifier_registered = true;
+ /*qca808x_start*/
+ 
+ out:
+-	if (rv == 0)
+-		SSDK_INFO("qca-%s module init succeeded!\n", SSDK_STR);
+-	else {
+-		if (rv == -ENODEV) {
+-			rv = 0;
+-			SSDK_INFO("qca-%s module init, no device found!\n", SSDK_STR);
+-		} else {
+-			SSDK_INFO("qca-%s module init failed! (code: %d)\n", SSDK_STR, rv);
+-			ssdk_free_priv();
+-		}
++	if (rv) {
++		SSDK_ERROR("qca-%s init failed: %d\n", SSDK_STR, rv);
++		ssdk_release();
++		return rv < 0 ? rv : -EIO;
+ 	}
+-
+-	return rv;
++	SSDK_INFO("qca-%s module init succeeded!\n", SSDK_STR);
++	return 0;
+ }
+ 
+-static void __exit
+-regi_exit(void)
++static void __exit regi_exit(void)
+ {
+-/*qca808x_end*/
+-	a_uint32_t dev_id, dev_num = 1;
+-/*qca808x_start*/
+-	sw_error_t rv;
+-/*qca808x_end*/
+-	dev_num = ssdk_switch_device_num_get();
+-	for (dev_id = 0; dev_id < dev_num; dev_id++) {
+-		ssdk_driver_unregister(dev_id);
+-		if (qca_phy_priv_global[dev_id]->qca_ssdk_sw_dev_registered == A_TRUE)
+-			ssdk_switch_unregister(dev_id);
+-	}
+-/*qca808x_start*/
+-	rv = ssdk_cleanup();
+-
+-	if (rv == 0)
+-		SSDK_INFO("qca-%s module exit  done!\n", SSDK_STR);
+-	else
+-		SSDK_ERROR("qca-%s module exit failed! (code: %d)\n", SSDK_STR, rv);
+-/*qca808x_end*/
+-
+-	#ifdef DESS
+-	qca_dess_rfs_remove();
+-	#endif
+-
+-	ssdk_sysfs_exit();
+-	ssdk_miireg_ioctrl_unregister();
+-
+-	for (dev_id = 0; dev_id < dev_num; dev_id++) {
+-		ssdk_plat_exit(dev_id);
+-	}
+-
+-	unregister_netdevice_notifier(&ssdk_dev_notifier);
+-/*qca808x_start*/
+-	ssdk_free_priv();
++	ssdk_release();
+ }
+ 
+ module_init(regi_init);
+--- a/src/init/ssdk_plat.c
++++ b/src/init/ssdk_plat.c
+@@ -12,6 +12,7 @@
+  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ /*qca808x_start*/
++#include "ssdk_flow_control.h"
+ #include "sw.h"
+ #include "ssdk_init.h"
+ #include "fal_init.h"
+@@ -21,6 +22,7 @@
+ #include "ssdk_init.h"
+ /*qca808x_end*/
+ #include "ssdk_dts.h"
++#include "ssdk_flow_gate.h"
+ #ifdef HPPE
+ #include "hppe_init.h"
+ #endif
+@@ -406,7 +408,9 @@
+ 	return SW_BAD_PARAM;
+ 
+ 	aos_mem_copy(&reg_val, reg_data, sizeof (a_uint32_t));
+-	writel(reg_val, qca_phy_priv_global[dev_id]->hw_addr + reg_addr);
++	if (!ssdk_flow_gate_write(dev_id, qca_phy_priv_global[dev_id]->hw_addr,
++				 reg_addr, reg_val))
++		writel(reg_val, qca_phy_priv_global[dev_id]->hw_addr + reg_addr);
+ 	return 0;
+ }
+ 
+@@ -1013,7 +1017,9 @@
+ 
+ 	kstrtouint(this_opt, 0, &reg_value);
+ 
++	if (ssdk_flow_user_begin(false)) return -EBUSY;
+ 	qca_ar8327_phy_write(0, phy_addr, reg_addr, reg_value);
++	ssdk_flow_user_end();
+ 
+ 	return count;
+ 
+@@ -1060,7 +1066,9 @@
+ 
+ 	kstrtouint(this_opt, 0, &reg_addr);
+ 
++	if (ssdk_flow_user_begin(false)) return -EBUSY;
+ 	qca_ar8327_phy_read(0, phy_addr, reg_addr, &phy_reg_val);
++	ssdk_flow_user_end();
+ 
+ 	return count;
+ 
+@@ -1093,7 +1101,7 @@
+ 	ssdk_sys = kobject_create_and_add("ssdk", NULL);
+ 	if (!ssdk_sys) {
+ 		printk("Failed to register SSDK sysfs\n");
+-		return ret;
++		return -ENOMEM;
+ 	}
+ 
+ 	/* create /sys/ssdk/dev_id file */
+@@ -1161,12 +1169,15 @@
+ 	sysfs_remove_file(ssdk_sys, &ssdk_dev_id_attr.attr);
+ CLEANUP_1:
+ 	kobject_put(ssdk_sys);
++	ssdk_sys = NULL;
+ 
+ 	return ret;
+ }
+ 
+ void ssdk_sysfs_exit (void)
+ {
++	if (!ssdk_sys)
++		return;
+ 	sysfs_remove_file(ssdk_sys, &ssdk_phy_read_reg_attr.attr);
+ 	sysfs_remove_file(ssdk_sys, &ssdk_phy_write_reg_attr.attr);
+ 	sysfs_remove_file(ssdk_sys, &ssdk_dts_dump_attr.attr);
+@@ -1175,6 +1186,7 @@
+ 	sysfs_remove_file(ssdk_sys, &ssdk_log_level_attr.attr);
+ 	sysfs_remove_file(ssdk_sys, &ssdk_dev_id_attr.attr);
+ 	kobject_put(ssdk_sys);
++	ssdk_sys = NULL;
+ }
+ 
+ /*qca808x_start*/
+@@ -1186,14 +1198,29 @@
+ 	ssdk_reg_map_info map;
+ 	struct clk *  ess_clk;
+ 	struct clk *  cmn_clk;
+-	#ifdef BOARD_AR71XX
+-	int rv = 0;
+-	#endif
++	int rv = -ENOMEM;
+ /*qca808x_start*/
+ 	printk("ssdk_plat_init start\n");
+ /*qca808x_end*/
+ 	mutex_init(&switch_mdio_lock);
+ 
++#ifdef DESS
++	{
++		struct qca_phy_priv *priv = qca_phy_priv_global[dev_id];
++		struct device_node *node;
++
++		node = of_parse_phandle(priv->of_node, "mdio-bus", 0);
++		if (!node)
++			node = of_find_compatible_node(NULL, NULL, "qcom,ipq4019-mdio");
++		if (!node)
++			return -ENODEV;
++		priv->miibus = of_mdio_find_bus(node);
++		of_node_put(node);
++		if (!priv->miibus)
++			return -EPROBE_DEFER;
++	}
++#endif
++
+ #ifdef HAWKEYE_CHIP
+ /*qca808x_start*/
+ 	if(miibus_get(dev_id))
+@@ -1204,13 +1231,13 @@
+ 	reg_mode = ssdk_uniphy_reg_access_mode_get(dev_id);
+ 	if(reg_mode == HSL_REG_LOCAL_BUS) {
+ 		ssdk_uniphy_reg_map_info_get(dev_id, &map);
+-		qca_phy_priv_global[dev_id]->uniphy_hw_addr = ioremap_nocache(map.base_addr,
++		qca_phy_priv_global[dev_id]->uniphy_hw_addr = ioremap(map.base_addr,
+ 									map.size);
+ 		if (!qca_phy_priv_global[dev_id]->uniphy_hw_addr) {
+ 			SSDK_ERROR("%s ioremap fail.", __func__);
+ 			cfg->reg_func.uniphy_reg_set = NULL;
+ 			cfg->reg_func.uniphy_reg_get = NULL;
+-			return -1;
++			goto fail;
+ 		}
+ 		cfg->reg_func.uniphy_reg_set = qca_uniphy_reg_write;
+ 		cfg->reg_func.uniphy_reg_get = qca_uniphy_reg_read;
+@@ -1218,18 +1245,22 @@
+ 	reg_mode = ssdk_switch_reg_access_mode_get(dev_id);
+ 	if(reg_mode == HSL_REG_LOCAL_BUS) {
+ 		ssdk_switch_reg_map_info_get(dev_id, &map);
+-		qca_phy_priv_global[dev_id]->hw_addr = ioremap_nocache(map.base_addr,
++		qca_phy_priv_global[dev_id]->hw_addr = ioremap(map.base_addr,
+ 								map.size);
+ 		if (!qca_phy_priv_global[dev_id]->hw_addr) {
+ 			SSDK_ERROR("%s ioremap fail.", __func__);
+-			return -1;
++			goto fail;
+ 		}
+ 		ess_clk = ssdk_dts_essclk_get(dev_id);
+ 		cmn_clk = ssdk_dts_cmnclk_get(dev_id);
+ 		if (!IS_ERR(ess_clk)) {
+ 			/* Enable ess clock here */
+ 			SSDK_ERROR("enable ess clk\n");
+-			clk_prepare_enable(ess_clk);
++			rv = clk_prepare_enable(ess_clk);
++			if (rv)
++				goto fail;
++			qca_phy_priv_global[dev_id]->ess_clk_enabled = true;
++			rv = -ENOMEM;
+ 		} else if (!IS_ERR(cmn_clk)) {
+ #if defined(HPPE)
+ #ifdef HAWKEYE_CHIP
+@@ -1248,16 +1279,18 @@
+ 		if (!request_mem_region(map.base_addr,
+ 					map.size, "psgmii_mem")) {
+ 			SSDK_ERROR("%s Unable to request psgmii resource.", __func__);
+-			return -1;
++			rv = -EBUSY;
++			goto fail;
+ 		}
+ 
+-		qca_phy_priv_global[dev_id]->psgmii_hw_addr = ioremap_nocache(map.base_addr,
++		qca_phy_priv_global[dev_id]->psgmii_region_requested = true;
++		qca_phy_priv_global[dev_id]->psgmii_hw_addr = ioremap(map.base_addr,
+ 								map.size);
+ 		if (!qca_phy_priv_global[dev_id]->psgmii_hw_addr) {
+ 			SSDK_ERROR("%s ioremap fail.", __func__);
+ 			cfg->reg_func.psgmii_reg_set = NULL;
+ 			cfg->reg_func.psgmii_reg_get = NULL;
+-			return -1;
++			goto fail;
+ 		}
+ 
+ 		cfg->reg_func.psgmii_reg_set = qca_psgmii_reg_write;
+@@ -1272,35 +1305,44 @@
+ /*qca808x_start*/
+ 
+ 	return 0;
++fail:
++	ssdk_plat_exit(dev_id);
++	return rv;
+ }
+ 
+ void
+ ssdk_plat_exit(a_uint32_t dev_id)
+ {
+-/*qca808x_end*/
+-	hsl_reg_mode reg_mode;
++	struct qca_phy_priv *priv = qca_phy_priv_global[dev_id];
+ 	ssdk_reg_map_info map;
+-/*qca808x_start*/
+-	printk("ssdk_plat_exit\n");
+-/*qca808x_end*/
+-	reg_mode = ssdk_switch_reg_access_mode_get(dev_id);
+-	if (reg_mode == HSL_REG_LOCAL_BUS) {
+-		iounmap(qca_phy_priv_global[dev_id]->hw_addr);
+-	}
+ 
+-	reg_mode = ssdk_psgmii_reg_access_mode_get(dev_id);
+-	if (reg_mode == HSL_REG_LOCAL_BUS) {
++	if (!priv)
++		return;
++	if (priv->psgmii_hw_addr) {
++		iounmap(priv->psgmii_hw_addr);
++		priv->psgmii_hw_addr = NULL;
++	}
++	if (priv->psgmii_region_requested) {
+ 		ssdk_psgmii_reg_map_info_get(dev_id, &map);
+-		iounmap(qca_phy_priv_global[dev_id]->psgmii_hw_addr);
+-		release_mem_region(map.base_addr,
+-                                        map.size);
++		release_mem_region(map.base_addr, map.size);
++		priv->psgmii_region_requested = false;
+ 	}
+-
+-	reg_mode = ssdk_uniphy_reg_access_mode_get(dev_id);
+-	if (reg_mode == HSL_REG_LOCAL_BUS) {
+-		iounmap(qca_phy_priv_global[dev_id]->uniphy_hw_addr);
++	if (priv->ess_clk_enabled) {
++		clk_disable_unprepare(ssdk_dts_essclk_get(dev_id));
++		priv->ess_clk_enabled = false;
++	}
++	if (priv->hw_addr) {
++		iounmap(priv->hw_addr);
++		priv->hw_addr = NULL;
++	}
++	if (priv->uniphy_hw_addr) {
++		iounmap(priv->uniphy_hw_addr);
++		priv->uniphy_hw_addr = NULL;
++	}
++#ifdef DESS
++	if (priv->miibus) {
++		put_device(&priv->miibus->dev);
++		priv->miibus = NULL;
+ 	}
+-/*qca808x_start*/
++#endif
+ }
+-/*qca808x_end*/
+-
+--- a/src/ref/ref_edma.c
++++ b/src/ref/ref_edma.c
+@@ -0,0 +1,85 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Synchronous VLAN configuration handoff between the DESS switch and EDMA. */
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/slab.h>
++#include "ssdk_edma.h"
++
++static DEFINE_MUTEX(ssdk_edma_lock);
++static BLOCKING_NOTIFIER_HEAD(ssdk_edma_chain);
++static struct ssdk_edma_vlan_config *ssdk_edma_current;
++static struct ssdk_edma_vlan_config *ssdk_edma_pending;
++
++int ssdk_edma_register_notifier(struct notifier_block *nb)
++{
++	int ret;
++
++	mutex_lock(&ssdk_edma_lock);
++	ret = blocking_notifier_chain_register(&ssdk_edma_chain, nb);
++	if (!ret && ssdk_edma_current) {
++		ret = notifier_to_errno(nb->notifier_call(nb, SSDK_EDMA_PREPARE,
++							ssdk_edma_current));
++		if (ret) {
++			nb->notifier_call(nb, SSDK_EDMA_ABORT, NULL);
++			blocking_notifier_chain_unregister(&ssdk_edma_chain, nb);
++		} else {
++			nb->notifier_call(nb, SSDK_EDMA_COMMIT, ssdk_edma_current);
++		}
++	}
++	mutex_unlock(&ssdk_edma_lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(ssdk_edma_register_notifier);
++
++void ssdk_edma_unregister_notifier(struct notifier_block *nb)
++{
++	mutex_lock(&ssdk_edma_lock);
++	blocking_notifier_chain_unregister(&ssdk_edma_chain, nb);
++	mutex_unlock(&ssdk_edma_lock);
++}
++EXPORT_SYMBOL_GPL(ssdk_edma_unregister_notifier);
++
++int ssdk_edma_vlan_begin(const struct ssdk_edma_vlan_config *config)
++{
++	int ret;
++
++	mutex_lock(&ssdk_edma_lock);
++	ssdk_edma_pending = config ? kmemdup(config, sizeof(*config), GFP_KERNEL) :
++		kzalloc(sizeof(*ssdk_edma_pending), GFP_KERNEL);
++	if (!ssdk_edma_pending) {
++		mutex_unlock(&ssdk_edma_lock);
++		return -ENOMEM;
++	}
++	ret = notifier_to_errno(blocking_notifier_call_chain(&ssdk_edma_chain,
++					SSDK_EDMA_PREPARE, ssdk_edma_pending));
++	if (ret) {
++		blocking_notifier_call_chain(&ssdk_edma_chain, SSDK_EDMA_ABORT, NULL);
++		kfree(ssdk_edma_pending);
++		ssdk_edma_pending = NULL;
++		mutex_unlock(&ssdk_edma_lock);
++	}
++	/* On success, finish must run in this same task, including error exits. */
++	return ret;
++}
++
++void ssdk_edma_vlan_finish(bool success)
++{
++	if (!success) {
++		memset(ssdk_edma_pending->members, 0, sizeof(ssdk_edma_pending->members));
++		memset(ssdk_edma_pending->tagged, 0, sizeof(ssdk_edma_pending->tagged));
++	}
++	blocking_notifier_call_chain(&ssdk_edma_chain,
++			success ? SSDK_EDMA_COMMIT : SSDK_EDMA_FAILED, ssdk_edma_pending);
++	kfree(ssdk_edma_current);
++	ssdk_edma_current = ssdk_edma_pending;
++	ssdk_edma_pending = NULL;
++	mutex_unlock(&ssdk_edma_lock);
++}
++
++void ssdk_edma_cleanup(void)
++{
++	mutex_lock(&ssdk_edma_lock);
++	kfree(ssdk_edma_current);
++	ssdk_edma_current = NULL;
++	mutex_unlock(&ssdk_edma_lock);
++}
+--- a/src/ref/ref_flow_acl.c
++++ b/src/ref/ref_flow_acl.c
+@@ -0,0 +1,89 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Exact DESS permissions. These constructors never modify hardware. */
++#include <linux/etherdevice.h>
++#include <linux/in.h>
++#include "ssdk_flow_acl.h"
++
++static void ssdk_flow_router(fal_acl_rule_t *acl, const u8 router[ETH_ALEN])
++{
++	FAL_FIELD_FLG_SET(acl->field_flg, FAL_ACL_FIELD_MAC_DA);
++	memcpy(acl->dest_mac_val.uc, router, ETH_ALEN);
++	memset(acl->dest_mac_mask.uc, 0xff, ETH_ALEN);
++}
++
++int ssdk_flow_acl(const struct ssdk_flow_rule *rule, const u8 router[ETH_ALEN],
++		 u16 vid, u16 arp, bool outbound, fal_acl_rule_t *result)
++{
++	fal_acl_rule_t acl = {};
++
++	/* ARP_PTR is only seven bits in DESS ACL actions. Never truncate a
++	 * host-table handle into an unrelated neighbour entry. */
++	if (!rule || !router || !result || !is_valid_ether_addr(router) ||
++	    !vid || vid >= 4095 || arp >= 128 ||
++	    (rule->protocol != IPPROTO_TCP && rule->protocol != IPPROTO_UDP))
++		return -EOPNOTSUPP;
++	acl.rule_type = FAL_ACL_RULE_IP4;
++	ssdk_flow_router(&acl, router);
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_MAC_VID);
++	acl.vid_val = vid; acl.vid_mask = 4095; acl.vid_op = FAL_ACL_FIELD_MASK;
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP4_SIP);
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP4_DIP);
++	acl.src_ip4_val = ntohl(rule->match.src);
++	acl.dest_ip4_val = ntohl(rule->match.dst);
++	acl.src_ip4_mask = acl.dest_ip4_mask = ~0U;
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP_PROTO);
++	acl.ip_proto_val = rule->protocol; acl.ip_proto_mask = 0xff;
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_L4_SPORT);
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_L4_DPORT);
++	acl.src_l4port_val = ntohs(rule->match.sport);
++	acl.dest_l4port_val = ntohs(rule->match.dport);
++	acl.src_l4port_mask = acl.dest_l4port_mask = 0xffff;
++	acl.src_l4port_op = acl.dest_l4port_op = FAL_ACL_FIELD_MASK;
++	if (rule->protocol == IPPROTO_TCP) {
++		FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_TCP_FLAG);
++		acl.tcp_flag_mask = 7; /* FIN/SYN/RST always go to CPU. */
++	}
++	FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_UDF);
++	acl.udf_len = SSDK_FLOW_UDF_L3_LENGTH + SSDK_FLOW_UDF_L4_LENGTH;
++	/* No IP options, reserved fragment flag, MF or fragment offset. DF
++	 * may be set. DESS ignores the generic FAL fragment match flags. */
++	acl.udf_val[0] = 0x45; acl.udf_mask[0] = 0xff;
++	acl.udf_mask[6] = 0xbf; acl.udf_mask[7] = 0xff;
++	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_ARP_EN);
++	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_POLICY_FORWARD_EN);
++	acl.arp_ptr = arp;
++	acl.policy_fwd = outbound ? FAL_ACL_POLICY_SNAT : FAL_ACL_POLICY_DNAT;
++	*result = acl;
++	return 0;
++}
++
++int ssdk_flow_trap(const u8 router[ETH_ALEN], enum ssdk_flow_exception exception,
++		  fal_acl_rule_t *result)
++{
++	fal_acl_rule_t acl = {};
++
++	if (!router || !result || !is_valid_ether_addr(router) ||
++	    exception < SSDK_FLOW_TRAP_ALL || exception > SSDK_FLOW_TRAP_UDP_ZERO)
++		return -EOPNOTSUPP;
++	acl.rule_type = FAL_ACL_RULE_MAC;
++	ssdk_flow_router(&acl, router);
++	FAL_ACTION_FLG_SET(acl.action_flg, FAL_ACL_ACTION_RDTCPU);
++	if (exception != SSDK_FLOW_TRAP_ALL) {
++		acl.rule_type = FAL_ACL_RULE_IP4;
++		FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_UDF);
++		acl.udf_len = SSDK_FLOW_UDF_L3_LENGTH + SSDK_FLOW_UDF_L4_LENGTH;
++		if (exception == SSDK_FLOW_TRAP_TTL) {
++			/* Matches TTL 0 and 1 before any per-connection permission. */
++			acl.udf_mask[8] = 0xfe;
++		} else {
++			FAL_FIELD_FLG_SET(acl.field_flg, FAL_ACL_FIELD_IP_PROTO);
++			acl.ip_proto_val = IPPROTO_UDP; acl.ip_proto_mask = 0xff;
++			/* DESS's zero UDP checksum path needs special handling. The
++			 * 16-byte key fits only its high byte: trap the superset with
++			 * high byte zero, including all checksum-disabled datagrams. */
++			acl.udf_mask[15] = 0xff;
++		}
++	}
++	*result = acl;
++	return 0;
++}
+--- a/src/ref/ref_flow_acl_owner.c
++++ b/src/ref/ref_flow_acl_owner.c
+@@ -0,0 +1,189 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/etherdevice.h>
++#include <linux/slab.h>
++#include "dess_acl.h"
++#include "ssdk_flow_acl_owner.h"
++#include "ssdk_flow_state.h"
++#define FLOW_GUARDS 8
++#define GUARD_LIST_BASE 128
++#define PERMISSION_LIST_BASE 160
++#define EXTERNAL_PORTS 0x3e
++struct owned_list {
++	unsigned int id, rules;
++	bool created, bind_attempted;
++};
++struct owned_guard {
++	bool used, ready;
++	unsigned int refs;
++	u8 mac[ETH_ALEN];
++	struct owned_list fallback, exceptions;
++};
++struct owned_permission {
++	bool used;
++	int guard[2];
++	struct owned_list lists[2];
++};
++struct ssdk_flow_acl_owner {
++	unsigned int dev;
++	struct owned_guard guards[FLOW_GUARDS];
++	struct owned_permission permissions[SSDK_FLOW_COUNTERS];
++};
++static int recover(struct ssdk_flow_acl_owner *owner)
++{
++	return dess_acl_recover(owner->dev) == SW_OK ? 0 : -EIO;
++}
++static int owned_list_add(struct ssdk_flow_acl_owner *owner, struct owned_list *list,
++		    unsigned int id, unsigned int priority, fal_acl_rule_t *rules,
++		    unsigned int count, unsigned int ports)
++{
++	sw_error_t rv;
++	list->id = id;
++	rv = fal_acl_list_creat(owner->dev, id, priority);
++	if (rv != SW_OK) return rv == SW_ALREADY_EXIST ? -EEXIST : -EIO;
++	list->created = true;
++	rv = fal_acl_rule_add(owner->dev, id, 0, count, rules);
++	if (rv != SW_OK) return -EIO;
++	list->rules = count;
++	list->bind_attempted = true;
++	return fal_acl_list_bind(owner->dev, id, FAL_ACL_DIREC_IN,
++				FAL_ACL_BIND_PORTBITMAP, ports) == SW_OK ? 0 : -EIO;
++}
++static int owned_list_remove(struct ssdk_flow_acl_owner *owner, struct owned_list *list)
++{
++	sw_error_t rv;
++	if (!list->created) return 0;
++	if (list->bind_attempted) {
++		if (fal_acl_list_unbind(owner->dev, list->id, FAL_ACL_DIREC_IN,
++				       FAL_ACL_BIND_PORTBITMAP, EXTERNAL_PORTS) != SW_OK) return -EIO;
++		list->bind_attempted = false;
++	}
++	if (list->rules) {
++		if (fal_acl_rule_delete(owner->dev, list->id, 0, list->rules) != SW_OK) return -EIO;
++		list->rules = 0;
++	}
++	rv = fal_acl_list_destroy(owner->dev, list->id);
++	if (rv != SW_OK && rv != SW_NOT_FOUND) return -EIO;
++	memset(list, 0, sizeof(*list)); return 0;
++}
++struct ssdk_flow_acl_owner *ssdk_flow_acl_owner_create(unsigned int dev)
++{
++	struct ssdk_flow_acl_owner *owner = kzalloc(sizeof(*owner), GFP_KERNEL);
++	if (owner) owner->dev = dev;
++	return owner;
++}
++int ssdk_flow_guard_get(struct ssdk_flow_acl_owner *owner, const u8 *mac, int *handle)
++{
++	struct owned_guard *guard;
++	fal_acl_rule_t rules[2];
++	int i, free = -1, ret;
++	if (!handle) return -EINVAL;
++	*handle = -1;
++	if (!mac || !is_valid_ether_addr(mac)) return -EINVAL;
++	if (recover(owner)) return -EIO;
++	for (i = 0; i < FLOW_GUARDS; i++) {
++		guard = &owner->guards[i];
++		if (!guard->used) { if (free < 0) free = i; continue; }
++		if (!guard->ready) return -EIO;
++		if (ether_addr_equal(mac, guard->mac)) {
++			guard->refs++; *handle = i; return 0;
++		}
++	}
++	if (free < 0) return -ENOSPC;
++	guard = &owner->guards[free];
++	guard->used = true; guard->refs = 1; ether_addr_copy(guard->mac, mac);
++	*handle = free;
++	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_ALL, &rules[0]);
++	if (ret) return ret;
++	/* Install the fallback guard before the higher-priority exceptions. */
++	ret = owned_list_add(owner, &guard->fallback, GUARD_LIST_BASE + 2*free + 1,
++		       SSDK_FLOW_ACL_GUARD_PRIORITY, rules, 1, EXTERNAL_PORTS);
++	if (ret) return ret;
++	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_TTL, &rules[0]);
++	if (ret) return ret;
++	ret = ssdk_flow_trap(mac, SSDK_FLOW_TRAP_UDP_ZERO, &rules[1]);
++	if (ret) return ret;
++	ret = owned_list_add(owner, &guard->exceptions, GUARD_LIST_BASE + 2*free,
++		       SSDK_FLOW_ACL_EXCEPTION_PRIORITY, rules, 2, EXTERNAL_PORTS);
++	if (!ret) guard->ready = true;
++	return ret;
++}
++int ssdk_flow_guard_put(struct ssdk_flow_acl_owner *owner, int handle)
++{
++	struct owned_guard *guard;
++	unsigned int i;
++	int ret;
++	if (handle < 0 || handle >= FLOW_GUARDS) return -EINVAL;
++	guard = &owner->guards[handle];
++	if (!guard->used) return 0;
++	if (guard->refs > 1) { guard->refs--; return 0; }
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (owner->permissions[i].used &&
++		    (owner->permissions[i].guard[0] == handle || owner->permissions[i].guard[1] == handle))
++			return -EBUSY;
++	if (recover(owner)) return -EIO;
++	guard->ready = false;
++	ret = owned_list_remove(owner, &guard->exceptions);
++	if (ret) return ret;
++	ret = owned_list_remove(owner, &guard->fallback);
++	if (ret) return ret;
++	memset(guard, 0, sizeof(*guard)); return 0;
++}
++int ssdk_flow_permission_add(struct ssdk_flow_acl_owner *owner, unsigned int slot,
++			    const struct ssdk_flow_rule rules[2],
++			    const struct ssdk_flow_acl_path paths[2], unsigned int outbound)
++{
++	struct owned_permission *permission;
++	fal_acl_rule_t acl;
++	unsigned int i;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS || !rules || !paths || outbound > 1) return -EINVAL;
++	if (recover(owner)) return -EIO;
++	permission = &owner->permissions[slot];
++	if (permission->used) return -EBUSY;
++	for (i = 0; i < 2; i++) {
++		if (paths[i].guard < 0 || paths[i].guard >= FLOW_GUARDS ||
++		    !owner->guards[paths[i].guard].ready || !paths[i].port || paths[i].port > 5)
++			return -EINVAL;
++	}
++	permission->used = true;
++	permission->guard[0] = paths[0].guard; permission->guard[1] = paths[1].guard;
++	for (i = 0; i < 2; i++) {
++		ret = ssdk_flow_acl(&rules[i], owner->guards[paths[i].guard].mac,
++				    paths[i].vid, paths[i].arp, i == outbound, &acl);
++		if (ret) return ret;
++		ret = owned_list_add(owner, &permission->lists[i], PERMISSION_LIST_BASE + 2*slot + i,
++			       SSDK_FLOW_ACL_PERMIT_PRIORITY, &acl, 1, BIT(paths[i].port));
++		if (ret) return ret;
++	}
++	return 0;
++}
++int ssdk_flow_permission_remove(struct ssdk_flow_acl_owner *owner, unsigned int slot)
++{
++	struct owned_permission *permission;
++	unsigned int i;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS) return -EINVAL;
++	permission = &owner->permissions[slot];
++	if (!permission->used) return 0;
++	if (recover(owner)) return -EIO;
++	for (i = 0; i < 2; i++) {
++		ret = owned_list_remove(owner, &permission->lists[i]);
++		if (ret) return ret;
++	}
++	memset(permission, 0, sizeof(*permission)); return 0;
++}
++int ssdk_flow_acl_owner_destroy(struct ssdk_flow_acl_owner *owner)
++{
++	unsigned int i;
++	int ret = 0;
++	if (!owner) return 0;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (ssdk_flow_permission_remove(owner, i)) ret = -EIO;
++	for (i = 0; i < FLOW_GUARDS; i++) {
++		if (!owner->guards[i].used) continue;
++		owner->guards[i].refs = 1;
++		if (ssdk_flow_guard_put(owner, i)) ret = -EIO;
++	}
++	if (!ret) kfree(owner);
++	return ret;
++}
+--- a/src/ref/ref_flow_control.c
++++ b/src/ref/ref_flow_control.c
+@@ -0,0 +1,293 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/module.h>
++#include <linux/inetdevice.h>
++#include <linux/mutex.h>
++#include <linux/rcupdate.h>
++#include <linux/rwsem.h>
++#include <linux/workqueue.h>
++#include <net/flow_offload.h>
++#include <net/pkt_cls.h>
++#include <net/fib_notifier.h>
++#include <net/netevent.h>
++#include <net/switchdev.h>
++#include "ssdk_init.h"
++#include "ssdk_plat.h"
++#include "ssdk_dts.h"
++#include "ssdk_flow_control.h"
++#include "ssdk_flow_engine.h"
++extern struct qca_phy_priv **qca_phy_priv_global;
++extern ssdk_chip_type SSDK_CURRENT_CHIP_TYPE;
++static DEFINE_MUTEX(control_lock);
++static DECLARE_RWSEM(user_access);
++static bool native_owned, attached, initializing, changing, closing;
++static struct net_device *gmac[2];
++static struct ssdk_edma_vlan_config vlan_map;
++static struct ssdk_flow_engine *engine;
++static struct ssdk_flow_engine __rcu *notifier_engine;
++static struct flow_block *bound_block;
++static LIST_HEAD(driver_blocks);
++static void collect_work(struct work_struct *work);
++static DECLARE_DELAYED_WORK(collector, collect_work);
++
++static void release_devices(void)
++{
++	unsigned int i;
++	if (attached || initializing || engine || bound_block) return;
++	for (i = 0; i < 2; i++) if (gmac[i]) { dev_put(gmac[i]); gmac[i] = NULL; }
++}
++static int stop_engine(void)
++{
++	int ret;
++	if (!engine) return 0;
++	if (!closing) {
++		closing = true;
++		RCU_INIT_POINTER(notifier_engine, NULL);
++		synchronize_rcu();
++	}
++	ret = ssdk_flow_engine_destroy(engine);
++	if (ret) {
++		mod_delayed_work(system_wq, &collector, HZ);
++		return ret;
++	}
++	engine = NULL; closing = false;
++	down_write(&user_access); native_owned = false; up_write(&user_access);
++	module_put(THIS_MODULE);
++	release_devices(); return 0;
++}
++static int start_engine(void)
++{
++	struct ssdk_flow_resolver resolver = {};
++	ssdk_reg_map_info map;
++	int ret;
++	if (engine) return closing ? -EAGAIN : 0;
++	if (!attached || changing || !gmac[0] || !gmac[1] ||
++	    !vlan_map.default_vid[0] || !vlan_map.default_vid[1]) return -EAGAIN;
++	if (SSDK_CURRENT_CHIP_TYPE != CHIP_DESS || !qca_phy_priv_global ||
++	    !qca_phy_priv_global[0] || !qca_phy_priv_global[0]->hw_addr ||
++	    ssdk_switch_reg_access_mode_get(0) != HSL_REG_LOCAL_BUS) return -EOPNOTSUPP;
++	/* Never wait under control_lock for a configuration writer that can
++	 * call our VLAN notifier and need that same lock. */
++	if (!down_write_trylock(&user_access)) return -EBUSY;
++	if (native_owned) { up_write(&user_access); return -EBUSY; }
++	if (!try_module_get(THIS_MODULE)) { up_write(&user_access); return -ENODEV; }
++	native_owned = true; up_write(&user_access);
++	ssdk_switch_reg_map_info_get(0, &map);
++	resolver.gmac[0] = gmac[0]; resolver.gmac[1] = gmac[1]; resolver.vlans = &vlan_map;
++	ret = ssdk_flow_engine_create(0, qca_phy_priv_global[0]->hw_addr, map.size, &resolver, &engine);
++	if (ret) {
++		if (engine) stop_engine();
++		else {
++			down_write(&user_access); native_owned = false; up_write(&user_access);
++			module_put(THIS_MODULE);
++		}
++		return ret;
++	}
++	rcu_assign_pointer(notifier_engine, engine);
++	mod_delayed_work(system_wq, &collector, HZ);
++	return 0;
++}
++int ssdk_flow_user_begin(bool reconfigure)
++{
++	int ret = 0;
++	if (reconfigure) {
++		mutex_lock(&control_lock);
++		ret = stop_engine();
++		if (!ret) down_read(&user_access);
++		mutex_unlock(&control_lock);
++		return ret;
++	}
++	down_read(&user_access);
++	if (native_owned) { up_read(&user_access); return -EBUSY; }
++	return 0;
++}
++void ssdk_flow_user_end(void) { up_read(&user_access); }
++static void collect_work(struct work_struct *work)
++{
++	mutex_lock(&control_lock);
++	if (engine) {
++		if (closing || !attached || !bound_block) stop_engine();
++		else ssdk_flow_engine_collect(engine);
++		if (engine) mod_delayed_work(system_wq, &collector, HZ);
++	}
++	release_devices();
++	mutex_unlock(&control_lock);
++}
++static void invalidate(void)
++{
++	struct ssdk_flow_engine *observed;
++	rcu_read_lock();
++	observed = rcu_dereference(notifier_engine);
++	if (observed) ssdk_flow_engine_invalidate(observed);
++	rcu_read_unlock();
++	/* The periodic collector already owns a module reference. Do not
++	 * schedule new work from a notifier after the last engine is gone. */
++}
++static int netdevice_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
++	if (!net_eq(dev_net(dev), &init_net)) return NOTIFY_DONE;
++	switch (event) {
++	case NETDEV_UP: case NETDEV_DOWN: case NETDEV_CHANGE: case NETDEV_UNREGISTER:
++	case NETDEV_CHANGEADDR: case NETDEV_CHANGEMTU: case NETDEV_CHANGEUPPER:
++	case NETDEV_PRECHANGEUPPER: case NETDEV_CHANGELOWERSTATE: case NETDEV_FEAT_CHANGE:
++		invalidate(); break;
++	}
++	return NOTIFY_DONE;
++}
++static int route_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{ invalidate(); return NOTIFY_DONE; }
++static int neighbour_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	if (event == NETEVENT_NEIGH_UPDATE || event == NETEVENT_REDIRECT) invalidate();
++	return NOTIFY_DONE;
++}
++static int bridge_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	if (event == SWITCHDEV_FDB_ADD_TO_DEVICE || event == SWITCHDEV_FDB_DEL_TO_DEVICE)
++		invalidate();
++	return NOTIFY_DONE;
++}
++static int vlan_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	int ret = 0;
++	mutex_lock(&control_lock);
++	switch (event) {
++	case SSDK_EDMA_PREPARE:
++		changing = true;
++		if (engine && !closing) ret = ssdk_flow_engine_vlan_begin(engine);
++		if (closing) ret = -EBUSY;
++		break;
++	case SSDK_EDMA_COMMIT: case SSDK_EDMA_FAILED:
++		if (ptr) vlan_map = *(struct ssdk_edma_vlan_config *)ptr;
++		else memset(&vlan_map, 0, sizeof(vlan_map));
++		if (engine && !closing) ssdk_flow_engine_vlan_end(engine, &vlan_map);
++		changing = false; break;
++	case SSDK_EDMA_ABORT:
++		if (engine && !closing) ssdk_flow_engine_vlan_end(engine, NULL);
++		changing = false; break;
++	}
++	mutex_unlock(&control_lock);
++	return notifier_from_errno(ret);
++}
++static struct notifier_block netdevice_nb = { .notifier_call = netdevice_event };
++static struct notifier_block route_nb = { .notifier_call = route_event };
++static struct notifier_block address_nb = { .notifier_call = route_event };
++static struct notifier_block neighbour_nb = { .notifier_call = neighbour_event };
++static struct notifier_block bridge_nb = { .notifier_call = bridge_event };
++static struct notifier_block vlan_nb = { .notifier_call = vlan_event, .priority = 10 };
++int ssdk_flow_attach(struct net_device *wan, struct net_device *lan)
++{
++	int ret;
++	if (!wan || !lan || wan == lan || !net_eq(dev_net(wan), &init_net) ||
++	    !net_eq(dev_net(lan), &init_net)) return -EINVAL;
++	if (SSDK_CURRENT_CHIP_TYPE != CHIP_DESS || !qca_phy_priv_global ||
++	    !qca_phy_priv_global[0] || !qca_phy_priv_global[0]->hw_addr ||
++	    ssdk_switch_reg_access_mode_get(0) != HSL_REG_LOCAL_BUS) return -EOPNOTSUPP;
++	mutex_lock(&control_lock);
++	if (attached || initializing || gmac[0]) { mutex_unlock(&control_lock); return -EBUSY; }
++	initializing = true; gmac[0] = wan; gmac[1] = lan; dev_hold(wan); dev_hold(lan);
++	mutex_unlock(&control_lock);
++	ret = ssdk_edma_register_notifier(&vlan_nb); if (ret) goto fail;
++	ret = register_netdevice_notifier(&netdevice_nb); if (ret) goto vlan;
++	ret = register_inetaddr_notifier(&address_nb); if (ret) goto netdev;
++	ret = register_netevent_notifier(&neighbour_nb); if (ret) goto address;
++	ret = register_switchdev_notifier(&bridge_nb); if (ret) goto neighbour;
++	ret = register_fib_notifier(&init_net, &route_nb, NULL, NULL); if (ret) goto bridge;
++	mutex_lock(&control_lock); initializing = false; attached = true; mutex_unlock(&control_lock);
++	return 0;
++bridge:
++	unregister_switchdev_notifier(&bridge_nb);
++neighbour:
++	unregister_netevent_notifier(&neighbour_nb);
++address:
++	unregister_inetaddr_notifier(&address_nb);
++netdev:
++	unregister_netdevice_notifier(&netdevice_nb);
++vlan:
++	ssdk_edma_unregister_notifier(&vlan_nb);
++fail:
++	mutex_lock(&control_lock); initializing = false; release_devices(); mutex_unlock(&control_lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(ssdk_flow_attach);
++void ssdk_flow_detach(void)
++{
++	mutex_lock(&control_lock);
++	if (!attached) { mutex_unlock(&control_lock); return; }
++	attached = false;
++	stop_engine();
++	mutex_unlock(&control_lock);
++	unregister_fib_notifier(&init_net, &route_nb);
++	unregister_switchdev_notifier(&bridge_nb);
++	unregister_netevent_notifier(&neighbour_nb);
++	unregister_inetaddr_notifier(&address_nb);
++	unregister_netdevice_notifier(&netdevice_nb);
++	ssdk_edma_unregister_notifier(&vlan_nb);
++	cancel_delayed_work_sync(&collector);
++	mutex_lock(&control_lock);
++	if (engine) mod_delayed_work(system_wq, &collector, HZ);
++	release_devices(); mutex_unlock(&control_lock);
++}
++EXPORT_SYMBOL_GPL(ssdk_flow_detach);
++void ssdk_flow_control_cleanup(void)
++{
++	ssdk_flow_detach();
++	cancel_delayed_work_sync(&collector);
++	WARN_ON(engine || bound_block);
++}
++static int block_command(enum tc_setup_type type, void *data, void *priv)
++{
++	struct flow_cls_offload *flow = data;
++	int ret = -EOPNOTSUPP;
++	if (type != TC_SETUP_CLSFLOWER) return ret;
++	mutex_lock(&control_lock);
++	if (!attached || changing || !bound_block || closing) goto out;
++	if (!(gmac[0]->features & NETIF_F_HW_TC) || !(gmac[1]->features & NETIF_F_HW_TC)) {
++		stop_engine(); goto out;
++	}
++	if (!engine && flow->command == FLOW_CLS_REPLACE) {
++		ret = start_engine(); if (ret) goto out;
++	}
++	if (!engine) { ret = flow->command == FLOW_CLS_DESTROY ? 0 : -ENOENT; goto out; }
++	ret = ssdk_flow_engine_command(engine, flow);
++out:
++	mutex_unlock(&control_lock); return ret;
++}
++static void block_release(void *priv) { module_put(THIS_MODULE); }
++int ssdk_flow_setup_tc(struct net_device *dev, enum tc_setup_type type, void *data)
++{
++	struct flow_block_offload *offload = data;
++	struct flow_block_cb *cb;
++	int ret = -EOPNOTSUPP;
++	if (type != TC_SETUP_FT || !offload || offload->binder_type != FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
++		return ret;
++	mutex_lock(&control_lock);
++	if (dev != gmac[0] && dev != gmac[1]) goto out;
++	offload->driver_block_list = &driver_blocks;
++	if (offload->command == FLOW_BLOCK_BIND) {
++		if (!attached) { ret = -EAGAIN; goto out; }
++		if (!tc_can_offload(dev)) goto out;
++		if (bound_block && bound_block != offload->block) { ret = -EBUSY; goto out; }
++		cb = flow_block_cb_lookup(offload->block, block_command, &control_lock);
++		if (cb) { flow_block_cb_incref(cb); ret = 0; goto out; }
++		/* Binding a flowtable must not depend on a configured switch or
++		 * free hardware tables. Claim the engine on the first REPLACE;
++		 * unavailable hardware then falls back per flow, not per firewall. */
++		if (!try_module_get(THIS_MODULE)) { ret = -ENODEV; goto out; }
++		cb = flow_block_cb_alloc(block_command, &control_lock, NULL, block_release);
++		if (IS_ERR(cb)) { ret = PTR_ERR(cb); module_put(THIS_MODULE); goto out; }
++		flow_block_cb_incref(cb); flow_block_cb_add(cb, offload);
++		list_add_tail(&cb->driver_list, &driver_blocks); bound_block = offload->block; ret = 0;
++	} else if (offload->command == FLOW_BLOCK_UNBIND) {
++		cb = flow_block_cb_lookup(offload->block, block_command, &control_lock);
++		if (!cb) { ret = -ENOENT; goto out; }
++		if (!flow_block_cb_decref(cb)) {
++			flow_block_cb_remove(cb, offload); list_del(&cb->driver_list);
++			bound_block = NULL; stop_engine(); release_devices();
++		}
++		ret = 0;
++	}
++out:
++	mutex_unlock(&control_lock); return ret;
++}
++EXPORT_SYMBOL_GPL(ssdk_flow_setup_tc);
+--- a/src/ref/ref_flow_engine.c
++++ b/src/ref/ref_flow_engine.c
+@@ -0,0 +1,221 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/atomic.h>
++#include <linux/err.h>
++#include <linux/jiffies.h>
++#include <linux/mutex.h>
++#include <linux/rtnetlink.h>
++#include <linux/slab.h>
++#include <net/flow_offload.h>
++#include "ssdk_flow_engine.h"
++#include "ssdk_flow_acl_owner.h"
++#include "ssdk_flow_napt.h"
++#include "ssdk_flow_profile.h"
++#include "ssdk_flow_gate.h"
++struct ssdk_flow_engine {
++	struct mutex lock;
++	unsigned int dev;
++	atomic_t generation;
++	unsigned int acknowledged;
++	bool gate_owned, active, suspended;
++	struct ssdk_edma_vlan_config vlans;
++	struct ssdk_flow_resolver resolver;
++	struct ssdk_flow_profile *profile;
++	struct ssdk_flow_acl_owner *acl;
++	struct ssdk_flow_host *hosts;
++	struct ssdk_flow_napt *napt;
++	struct ssdk_flow_hw *hw;
++	struct ssdk_flow_state *state;
++};
++void ssdk_flow_engine_invalidate(struct ssdk_flow_engine *engine)
++{
++	if (!engine) return;
++	atomic_inc(&engine->generation);
++	if (READ_ONCE(engine->gate_owned)) ssdk_flow_gate_invalidate(engine->dev);
++}
++/* The caller holds engine->lock; hardware removal does not acquire RTNL. */
++static int flush(struct ssdk_flow_engine *engine)
++{
++	unsigned int generation = atomic_read(&engine->generation);
++	u64 epoch;
++	int ret;
++	ret = ssdk_flow_gate_pause(engine->dev, &epoch);
++	if (ret) return ret;
++	ret = ssdk_flow_state_flush(engine->state);
++	if (ret) return ret;
++	ret = ssdk_flow_profile_prefix_reset(engine->profile);
++	if (ret) return ret;
++	ret = ssdk_flow_gate_ack(engine->dev, epoch);
++	if (ret) return ret;
++	/* An invalidation concurrent with cleanup must not be forgotten. */
++	if (generation != atomic_read(&engine->generation)) return -EAGAIN;
++	engine->acknowledged = generation;
++	return 0;
++}
++int ssdk_flow_engine_create(unsigned int dev, void __iomem *base, size_t size,
++	const struct ssdk_flow_resolver *resolver, struct ssdk_flow_engine **out)
++{
++	struct ssdk_flow_engine *engine;
++	int ret;
++	if (!out) return -EINVAL;
++	*out = NULL;
++	if (!resolver || !resolver->gmac[0] || !resolver->gmac[1] || !resolver->vlans)
++		return -EINVAL;
++	engine = kzalloc(sizeof(*engine), GFP_KERNEL);
++	if (!engine) return -ENOMEM;
++	mutex_init(&engine->lock); atomic_set(&engine->generation, 0);
++	engine->dev = dev; engine->resolver = *resolver; engine->resolver.dev = dev;
++	engine->vlans = *resolver->vlans; engine->resolver.vlans = &engine->vlans;
++	*out = engine;
++	ret = ssdk_flow_gate_claim(dev, base, size);
++	/* EIO can mean that claim's own restoration failed and ownership is
++	 * retained. EBUSY belongs to somebody else and must never be released. */
++	if (!ret || ret == -EIO) WRITE_ONCE(engine->gate_owned, true);
++	if (ret) return ret;
++	engine->profile = ssdk_flow_profile_create(dev);
++	if (IS_ERR(engine->profile)) {
++		ret = PTR_ERR(engine->profile); engine->profile = NULL; return ret;
++	}
++	ret = ssdk_flow_profile_apply(engine->profile);
++	if (ret) return ret;
++	engine->resolver.prefix = ssdk_flow_profile_prefix;
++	engine->resolver.ctx = engine->profile;
++	engine->acl = ssdk_flow_acl_owner_create(dev);
++	if (!engine->acl) return -ENOMEM;
++	engine->hosts = ssdk_flow_host_create(dev);
++	if (IS_ERR(engine->hosts)) {
++		ret = PTR_ERR(engine->hosts); engine->hosts = NULL; return ret;
++	}
++	engine->napt = ssdk_flow_napt_create(dev);
++	if (IS_ERR(engine->napt)) {
++		ret = PTR_ERR(engine->napt); engine->napt = NULL; return ret;
++	}
++	engine->hw = ssdk_flow_hw_create(dev, engine->acl, engine->hosts, engine->napt,
++				       ssdk_flow_resolve_paths, &engine->resolver);
++	if (!engine->hw) return -ENOMEM;
++	engine->state = ssdk_flow_state_create(&ssdk_flow_hw_ops, engine->hw);
++	if (!engine->state) return -ENOMEM;
++	engine->active = true;
++	return 0;
++}
++static void check_gate(struct ssdk_flow_engine *engine)
++{
++	/* The hardware transaction can invalidate on a resolver EAGAIN too;
++	 * distinguish that from state.replace's harmless unpaired EAGAIN. */
++	if (!ssdk_flow_gate_valid(engine->dev)) ssdk_flow_engine_invalidate(engine);
++}
++int ssdk_flow_engine_command(struct ssdk_flow_engine *engine, struct flow_cls_offload *flow)
++{
++	struct ssdk_flow_rule rule;
++	struct ssdk_flow_delta delta;
++	bool rtnl = false;
++	int ret = -ESHUTDOWN;
++	if (!engine || !flow || flow->common.chain_index) return -EOPNOTSUPP;
++	if (flow->command == FLOW_CLS_REPLACE) {
++		ret = ssdk_flow_parse(flow_cls_offload_flow_rule(flow), &rule);
++		if (ret) return ret;
++		if (!rtnl_trylock()) return -EAGAIN;
++		rtnl = true;
++	}
++	mutex_lock(&engine->lock);
++	ret = -ESHUTDOWN;
++	if (!engine->active) goto out;
++	if (engine->suspended && flow->command != FLOW_CLS_DESTROY) { ret = -EAGAIN; goto out; }
++	switch (flow->command) {
++	case FLOW_CLS_REPLACE:
++		if (engine->acknowledged != atomic_read(&engine->generation)) {
++			ret = flush(engine);
++			if (ret) break;
++		}
++		ret = ssdk_flow_state_replace(engine->state, flow->cookie, &rule, jiffies);
++		break;
++	case FLOW_CLS_DESTROY:
++		ret = ssdk_flow_state_delete(engine->state, flow->cookie);
++		break;
++	case FLOW_CLS_STATS:
++		if (engine->acknowledged != atomic_read(&engine->generation)) { ret = -EAGAIN; break; }
++		ret = ssdk_flow_state_stats(engine->state, flow->cookie, &delta);
++		if (!ret) flow_stats_update(&flow->stats, delta.bytes, delta.packets, 0,
++					   delta.packets ? jiffies : 0, FLOW_ACTION_HW_STATS_DELAYED);
++		break;
++	default:
++		ret = -EOPNOTSUPP;
++	}
++	check_gate(engine);
++out:
++	mutex_unlock(&engine->lock);
++	if (rtnl) rtnl_unlock();
++	return ret;
++}
++int ssdk_flow_engine_collect(struct ssdk_flow_engine *engine)
++{
++	int ret = -ESHUTDOWN;
++	if (!engine) return ret;
++	mutex_lock(&engine->lock);
++	if (engine->active) {
++		if (engine->acknowledged != atomic_read(&engine->generation)) ret = flush(engine);
++		else ret = ssdk_flow_state_gc(engine->state, jiffies);
++		check_gate(engine);
++	}
++	mutex_unlock(&engine->lock); return ret;
++}
++int ssdk_flow_engine_flush(struct ssdk_flow_engine *engine)
++{
++	int ret = -ESHUTDOWN;
++	if (!engine) return ret;
++	ssdk_flow_engine_invalidate(engine);
++	mutex_lock(&engine->lock);
++	if (engine->active) ret = flush(engine);
++	mutex_unlock(&engine->lock); return ret;
++}
++int ssdk_flow_engine_vlan_begin(struct ssdk_flow_engine *engine)
++{
++	int ret = -ESHUTDOWN;
++	if (!engine) return ret;
++	ssdk_flow_engine_invalidate(engine);
++	mutex_lock(&engine->lock);
++	engine->suspended = true;
++	if (engine->active) ret = flush(engine);
++	mutex_unlock(&engine->lock); return ret;
++}
++void ssdk_flow_engine_vlan_end(struct ssdk_flow_engine *engine,
++			      const struct ssdk_edma_vlan_config *config)
++{
++	if (!engine) return;
++	mutex_lock(&engine->lock);
++	if (config) engine->vlans = *config;
++	engine->suspended = false;
++	mutex_unlock(&engine->lock);
++}
++int ssdk_flow_engine_destroy(struct ssdk_flow_engine *engine)
++{
++	int ret = 0;
++	if (!engine) return 0;
++	/* The outer owner quiesces every callback before entering here. */
++	mutex_lock(&engine->lock); engine->active = false;
++	if (engine->gate_owned && ssdk_flow_gate_invalidate(engine->dev) == -EIO) {
++		ret = -EIO; goto out;
++	}
++#define RELEASE(member, fn) do { \
++	if (engine->member) { ret = fn(engine->member); if (ret) goto out; engine->member = NULL; } \
++} while (0)
++	RELEASE(state, ssdk_flow_state_destroy);
++	RELEASE(hw, ssdk_flow_hw_destroy);
++	RELEASE(napt, ssdk_flow_napt_destroy);
++	RELEASE(hosts, ssdk_flow_host_destroy);
++	RELEASE(acl, ssdk_flow_acl_owner_destroy);
++	if (engine->profile) {
++		ret = ssdk_flow_profile_restore(engine->profile);
++		if (ret) goto out;
++	}
++	if (engine->gate_owned) {
++		ret = ssdk_flow_gate_release(engine->dev);
++		if (ret) goto out;
++		WRITE_ONCE(engine->gate_owned, false);
++	}
++	RELEASE(profile, ssdk_flow_profile_destroy);
++#undef RELEASE
++out:
++	mutex_unlock(&engine->lock);
++	if (!ret) kfree(engine);
++	return ret;
++}
+--- a/src/ref/ref_flow_gate.c
++++ b/src/ref/ref_flow_gate.c
+@@ -0,0 +1,200 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/errno.h>
++#include <linux/spinlock.h>
++#include "sw.h"
++#include "ssdk_flow_gate.h"
++#define GATE_MOD 0x30
++#define GATE_ROUTER 0xe00
++#define GATE_NAT 0xe38
++#define GATE_L3 BIT(2)
++#define GATE_ACL BIT(1)
++#define GATE_ROUTING BIT(0)
++#define GATE_TRANSLATION (BIT(0) | BIT(1))
++struct ssdk_gate {
++	void __iomem *base;
++	bool owned, enabled, invalidated, protect_acl;
++	u32 original_mod, original_router, original_nat;
++	u64 epoch;
++};
++static DEFINE_RAW_SPINLOCK(gate_lock);
++static struct ssdk_gate gates[SW_MAX_NR_DEV];
++
++static void update_bits(struct ssdk_gate *gate, u32 reg, u32 mask, u32 value)
++{
++	u32 old = readl(gate->base + reg);
++	writel((old & ~mask) | (value & mask), gate->base + reg);
++}
++static bool bits_equal(struct ssdk_gate *gate, u32 reg, u32 mask, u32 value)
++{
++	return (readl(gate->base + reg) & mask) == (value & mask);
++}
++static int stop(struct ssdk_gate *gate)
++{
++	gate->enabled = false;
++	/* Close routing first; enable reverses this order. Readback drains
++	 * posted MMIO writes before a notifier schedules deferred cleanup. */
++	update_bits(gate, GATE_MOD, GATE_L3, 0);
++	update_bits(gate, GATE_ROUTER, GATE_ROUTING, 0);
++	update_bits(gate, GATE_NAT, GATE_TRANSLATION, 0);
++	if (!bits_equal(gate, GATE_MOD, GATE_L3, 0) ||
++	    !bits_equal(gate, GATE_ROUTER, GATE_ROUTING, 0) ||
++	    !bits_equal(gate, GATE_NAT, GATE_TRANSLATION, 0))
++		return -EIO;
++	return 0;
++}
++int ssdk_flow_gate_claim(unsigned int dev, void __iomem *base, size_t size)
++{
++	struct ssdk_gate *gate;
++	unsigned long flags;
++	int ret = 0;
++	if (dev >= SW_MAX_NR_DEV || !base || size < GATE_NAT + 4) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	gate = &gates[dev];
++	if (gate->owned) { ret = -EBUSY; goto out; }
++	/* Do not adopt an independently enabled NAT engine. */
++	if (readl(base + GATE_NAT) & GATE_TRANSLATION) { ret = -EBUSY; goto out; }
++	gate->base = base;
++	gate->original_mod = readl(base + GATE_MOD) & GATE_L3;
++	gate->original_router = readl(base + GATE_ROUTER) & GATE_ROUTING;
++	gate->original_nat = readl(base + GATE_NAT) & GATE_TRANSLATION;
++	gate->epoch++;
++	gate->owned = true; gate->invalidated = false; gate->protect_acl = false;
++	ret = stop(gate);
++	if (ret) {
++		/* No table/profile changes exist at claim time. Restore the
++		 * prior routing state; retain ownership if even that fails. */
++		update_bits(gate, GATE_NAT, GATE_TRANSLATION, gate->original_nat);
++		update_bits(gate, GATE_ROUTER, GATE_ROUTING, gate->original_router);
++		update_bits(gate, GATE_MOD, GATE_L3, gate->original_mod);
++		if (bits_equal(gate, GATE_NAT, GATE_TRANSLATION, gate->original_nat) &&
++		    bits_equal(gate, GATE_ROUTER, GATE_ROUTING, gate->original_router) &&
++		    bits_equal(gate, GATE_MOD, GATE_L3, gate->original_mod)) {
++			gate->owned = false; gate->base = NULL;
++		} else {
++			gate->invalidated = true;
++		}
++	}
++out:
++	raw_spin_unlock_irqrestore(&gate_lock, flags);
++	return ret;
++}
++int ssdk_flow_gate_pause(unsigned int dev, u64 *epoch)
++{
++	unsigned long flags;
++	int ret;
++	if (dev >= SW_MAX_NR_DEV || !epoch) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	if (!gates[dev].owned) ret = -ENODEV;
++	else {
++		ret = stop(&gates[dev]);
++		if (ret) { gates[dev].invalidated = true; gates[dev].epoch++; }
++		*epoch = gates[dev].epoch;
++	}
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return ret;
++}
++int ssdk_flow_gate_invalidate(unsigned int dev)
++{
++	unsigned long flags;
++	int ret;
++	if (dev >= SW_MAX_NR_DEV) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	if (!gates[dev].owned) ret = -ENODEV;
++	else {
++		gates[dev].invalidated = true; gates[dev].epoch++;
++		ret = stop(&gates[dev]);
++	}
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return ret;
++}
++int ssdk_flow_gate_ack(unsigned int dev, u64 epoch)
++{
++	unsigned long flags;
++	int ret = 0;
++	if (dev >= SW_MAX_NR_DEV) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	if (!gates[dev].owned) ret = -ENODEV;
++	else if (gates[dev].epoch != epoch || gates[dev].enabled) ret = -ESTALE;
++	else if (stop(&gates[dev])) {
++		gates[dev].invalidated = true; gates[dev].epoch++; ret = -EIO;
++	}
++	else gates[dev].invalidated = false;
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return ret;
++}
++int ssdk_flow_gate_resume(unsigned int dev, u64 epoch)
++{
++	struct ssdk_gate *gate;
++	unsigned long flags;
++	int ret = 0;
++	if (dev >= SW_MAX_NR_DEV) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	gate = &gates[dev];
++	if (!gate->owned) { ret = -ENODEV; goto out; }
++	if (gate->invalidated || gate->epoch != epoch) { ret = -ESTALE; goto out; }
++	if (!(readl(gate->base + GATE_MOD) & GATE_ACL)) { ret = -EINVAL; goto out; }
++	gate->protect_acl = true;
++	update_bits(gate, GATE_NAT, GATE_TRANSLATION, GATE_TRANSLATION);
++	update_bits(gate, GATE_ROUTER, GATE_ROUTING, GATE_ROUTING);
++	update_bits(gate, GATE_MOD, GATE_L3, GATE_L3);
++	if (!bits_equal(gate, GATE_NAT, GATE_TRANSLATION, GATE_TRANSLATION) ||
++	    !bits_equal(gate, GATE_ROUTER, GATE_ROUTING, GATE_ROUTING) ||
++	    !bits_equal(gate, GATE_MOD, GATE_L3 | GATE_ACL, GATE_L3 | GATE_ACL)) {
++		gate->invalidated = true; gate->epoch++;
++		stop(gate); ret = -EIO;
++	} else gate->enabled = true;
++out:
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return ret;
++}
++bool ssdk_flow_gate_write(unsigned int dev, void __iomem *base, u32 offset, u32 value)
++{
++	struct ssdk_gate *gate;
++	unsigned long flags;
++	if (dev >= SW_MAX_NR_DEV || !base ||
++	    (offset != GATE_MOD && offset != GATE_ROUTER && offset != GATE_NAT)) return false;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	gate = &gates[dev];
++	if (gate->owned && gate->base == base) {
++		if (offset == GATE_MOD) {
++			value = (value & ~GATE_L3) | (gate->enabled ? GATE_L3 : 0);
++			if (gate->protect_acl) value |= GATE_ACL;
++		} else if (offset == GATE_ROUTER) {
++			value = (value & ~GATE_ROUTING) | (gate->enabled ? GATE_ROUTING : 0);
++		} else {
++			value = (value & ~GATE_TRANSLATION) | (gate->enabled ? GATE_TRANSLATION : 0);
++		}
++	}
++	writel(value, base + offset);
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return true;
++}
++int ssdk_flow_gate_release(unsigned int dev)
++{
++	struct ssdk_gate *gate;
++	unsigned long flags;
++	int ret = 0;
++	if (dev >= SW_MAX_NR_DEV) return -EINVAL;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	gate = &gates[dev];
++	if (!gate->owned) goto out;
++	if (gate->enabled) { ret = -EBUSY; goto out; }
++	update_bits(gate, GATE_NAT, GATE_TRANSLATION, gate->original_nat);
++	update_bits(gate, GATE_ROUTER, GATE_ROUTING, gate->original_router);
++	update_bits(gate, GATE_MOD, GATE_L3, gate->original_mod);
++	if (!bits_equal(gate, GATE_NAT, GATE_TRANSLATION, gate->original_nat) ||
++	    !bits_equal(gate, GATE_ROUTER, GATE_ROUTING, gate->original_router) ||
++	    !bits_equal(gate, GATE_MOD, GATE_L3, gate->original_mod)) {
++		gate->invalidated = true; gate->epoch++; stop(gate); ret = -EIO;
++	} else {
++		gate->owned = false; gate->base = NULL; gate->epoch++;
++	}
++out:
++	raw_spin_unlock_irqrestore(&gate_lock, flags); return ret;
++}
++
++bool ssdk_flow_gate_valid(unsigned int dev)
++{
++	unsigned long flags;
++	bool valid;
++	if (dev >= SW_MAX_NR_DEV) return false;
++	raw_spin_lock_irqsave(&gate_lock, flags);
++	valid = gates[dev].owned && !gates[dev].invalidated;
++	raw_spin_unlock_irqrestore(&gate_lock, flags);
++	return valid;
++}
+--- a/src/ref/ref_flow_host.c
++++ b/src/ref/ref_flow_host.c
+@@ -0,0 +1,199 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/err.h>
++#include <linux/etherdevice.h>
++#include <linux/slab.h>
++#include <linux/in.h>
++#include "sw.h"
++#include "fal_ip.h"
++#include "fal_reg_access.h"
++#include "ssdk_flow_host.h"
++#define FLOW_HOSTS 16
++#define FLOW_INTERFACES 8
++#define DESS_INTF_VALID 0x5a908
++struct flow_interface {
++	bool used, ready;
++	unsigned int refs;
++	fal_intf_mac_entry_t entry;
++};
++struct flow_host {
++	bool used, ready, host_attempted, route_attempted;
++	unsigned int refs;
++	int interface;
++	struct ssdk_flow_path path;
++	fal_host_entry_t entry;
++};
++struct ssdk_flow_host {
++	unsigned int dev;
++	struct flow_interface interfaces[FLOW_INTERFACES];
++	struct flow_host hosts[FLOW_HOSTS];
++};
++struct ssdk_flow_host *ssdk_flow_host_create(unsigned int dev)
++{
++	struct ssdk_flow_host *table;
++	fal_host_entry_t host = { .entry_id = FAL_NEXT_ENTRY_FIRST_ID };
++	fal_intf_mac_entry_t interface = { .entry_id = FAL_NEXT_ENTRY_FIRST_ID };
++	fal_host_route_t route = {};
++	a_uint32_t word;
++	unsigned int i;
++	sw_error_t rv;
++	rv = fal_ip_host_next(dev, 0, &host);
++	if (rv != SW_NO_MORE) return ERR_PTR(rv == SW_OK ? -EBUSY : -EIO);
++	rv = fal_ip_intf_entry_next(dev, 0, &interface);
++	if (rv != SW_NO_MORE) return ERR_PTR(rv == SW_OK ? -EBUSY : -EIO);
++	/* The SDK interface iterator follows a software shadow: also reject
++	 * hardware route bits left by an interrupted interface installation. */
++	for (i = 0; i < FLOW_INTERFACES; i++) {
++		if (fal_reg_get(dev, DESS_INTF_VALID + (i << 4), (a_uint8_t *)&word, sizeof(word)) != SW_OK)
++			return ERR_PTR(-EIO);
++		if (word & (BIT(8) | BIT(9))) return ERR_PTR(-EBUSY);
++	}
++	for (i = 0; i < FLOW_HOSTS; i++) {
++		route.ip_version = FAL_ADDR_IPV4;
++		if (fal_ip_host_route_get(dev, i, &route) != SW_OK) return ERR_PTR(-EIO);
++		if (route.valid) return ERR_PTR(-EBUSY);
++		route.ip_version = FAL_ADDR_IPV6;
++		if (fal_ip_host_route_get(dev, i, &route) != SW_OK) return ERR_PTR(-EIO);
++		if (route.valid) return ERR_PTR(-EBUSY);
++	}
++	table = kzalloc(sizeof(*table), GFP_KERNEL);
++	if (!table) return ERR_PTR(-ENOMEM);
++	table->dev = dev; return table;
++}
++static bool same_path(const struct ssdk_flow_path *a, const struct ssdk_flow_path *b)
++{
++	return a->address == b->address && a->vid == b->vid && a->port == b->port &&
++		ether_addr_equal(a->router, b->router) && ether_addr_equal(a->neighbour, b->neighbour);
++}
++static int interface_get(struct ssdk_flow_host *table, const struct ssdk_flow_path *path, int *handle)
++{
++	struct flow_interface *interface;
++	int i, free = -1;
++	for (i = 0; i < FLOW_INTERFACES; i++) {
++		interface = &table->interfaces[i];
++		if (!interface->used) { if (free < 0) free = i; continue; }
++		if (interface->entry.vid_low != path->vid) continue;
++		if (!interface->ready) return -EIO;
++		if (!ether_addr_equal(interface->entry.mac_addr.uc, path->router)) return -EEXIST;
++		interface->refs++; *handle = i; return 0;
++	}
++	if (free < 0) return -ENOSPC;
++	interface = &table->interfaces[free];
++	interface->used = true; interface->refs = 1;
++	interface->entry.entry_id = FLOW_INTERFACES;
++	interface->entry.vid_low = interface->entry.vid_high = path->vid;
++	interface->entry.ip4_route = A_TRUE;
++	ether_addr_copy(interface->entry.mac_addr.uc, path->router);
++	*handle = free;
++	if (fal_ip_intf_entry_add(table->dev, &interface->entry) != SW_OK) {
++		if (interface->entry.entry_id >= FLOW_INTERFACES) {
++			memset(interface, 0, sizeof(*interface)); *handle = -1;
++		}
++		return -EIO;
++	}
++	if (interface->entry.entry_id >= FLOW_INTERFACES) return -EIO;
++	interface->ready = true; return 0;
++}
++static int interface_put(struct ssdk_flow_host *table, int handle)
++{
++	struct flow_interface *interface = &table->interfaces[handle];
++	if (interface->refs > 1) { interface->refs--; return 0; }
++	if (fal_ip_intf_entry_del(table->dev, FAL_IP_ENTRY_ID_EN, &interface->entry) != SW_OK)
++		return -EIO;
++	memset(interface, 0, sizeof(*interface)); return 0;
++}
++int ssdk_flow_host_get(struct ssdk_flow_host *table, const struct ssdk_flow_path *path,
++		      int *handle, u16 *arp)
++{
++	struct flow_host *host;
++	fal_host_entry_t probe;
++	fal_host_route_t route = {};
++	int i, free = -1, ret;
++	if (!handle || !arp) return -EINVAL;
++	*handle = -1;
++	if (!path || !path->address || !path->vid || path->vid >= 4095 ||
++	    ipv4_is_zeronet(path->address) || ipv4_is_loopback(path->address) ||
++	    ntohl(path->address) >= 0xe0000000 ||
++	    !path->port || path->port > 5 || !is_valid_ether_addr(path->router) ||
++	    !is_valid_ether_addr(path->neighbour)) return -EOPNOTSUPP;
++	for (i = 0; i < FLOW_HOSTS; i++) {
++		host = &table->hosts[i];
++		if (!host->used) { if (free < 0) free = i; continue; }
++		if (!host->ready) return -EIO; /* Finish uncertain cleanup first. */
++		if (host->path.address != path->address) continue;
++		/* DESS host keys do not distinguish overlapping IPv4 subnets. */
++		if (!host->ready) return -EIO;
++		if (!same_path(&host->path, path)) return -EEXIST;
++		host->refs++; *handle = i; *arp = host->entry.entry_id; return 0;
++	}
++	if (free < 0) return -ENOSPC;
++	host = &table->hosts[free];
++	host->used = true; host->refs = 1; host->interface = -1; host->path = *path;
++	*handle = free;
++	ret = interface_get(table, path, &host->interface);
++	if (ret) return ret;
++	host->entry.flags = FAL_IP_IP4_ADDR | FAL_IP_HOST_NO_ROUTE;
++	host->entry.ip4_addr = ntohl(path->address);
++	host->entry.intf_id = path->vid; /* FAL accepts VID, then encodes HW index. */
++	host->entry.port_id = path->port;
++	host->entry.status = 7; /* Static neighbour; lifetime belongs to Linux. */
++	host->entry.action = FAL_MAC_FRWRD;
++	ether_addr_copy(host->entry.mac_addr.uc, path->neighbour);
++	host->host_attempted = true;
++	if (fal_ip_host_add(table->dev, &host->entry) != SW_OK) return -EIO;
++	probe = host->entry;
++	if (fal_ip_host_get(table->dev, FAL_IP_ENTRY_IPADDR_EN, &probe) != SW_OK) return -EIO;
++	if (probe.entry_id >= 128 || probe.ip4_addr != host->entry.ip4_addr ||
++	    probe.port_id != path->port || probe.intf_id != path->vid ||
++	    !probe.status || probe.counter_en ||
++	    !ether_addr_equal(probe.mac_addr.uc, path->neighbour)) return -EIO;
++	host->entry.entry_id = probe.entry_id;
++	/* SDK prefix encoding is length minus one: /16 uses 15, /32 uses 31.
++	 * A host receives an exact route instead of the legacy automatic /16. */
++	route.ip_version = FAL_ADDR_IPV4; route.valid = A_TRUE;
++	route.prefix_length = 31; route.route_addr.ip4_addr = host->entry.ip4_addr;
++	host->route_attempted = true;
++	if (fal_ip_host_route_set(table->dev, free, &route) != SW_OK) return -EIO;
++	host->ready = true; *arp = host->entry.entry_id; return 0;
++}
++int ssdk_flow_host_put(struct ssdk_flow_host *table, int handle)
++{
++	struct flow_host *host;
++	fal_host_entry_t probe;
++	fal_host_route_t route = {};
++	sw_error_t rv;
++	if (handle < 0 || handle >= FLOW_HOSTS) return -EINVAL;
++	host = &table->hosts[handle];
++	if (!host->used) return 0;
++	if (host->refs > 1) { host->refs--; return 0; }
++	host->ready = false;
++	if (host->route_attempted) {
++		route.ip_version = FAL_ADDR_IPV4;
++		if (fal_ip_host_route_set(table->dev, handle, &route) != SW_OK) return -EIO;
++		host->route_attempted = false;
++	}
++	if (host->host_attempted) {
++		rv = fal_ip_host_del(table->dev, FAL_IP_ENTRY_IPADDR_EN, &host->entry);
++		if (rv != SW_OK && rv != SW_NOT_FOUND) {
++			probe = host->entry;
++			if (fal_ip_host_get(table->dev, FAL_IP_ENTRY_IPADDR_EN, &probe) != SW_NOT_FOUND)
++				return -EIO;
++		}
++		host->host_attempted = false;
++	}
++	if (host->interface >= 0 && interface_put(table, host->interface)) return -EIO;
++	memset(host, 0, sizeof(*host)); return 0;
++}
++int ssdk_flow_host_destroy(struct ssdk_flow_host *table)
++{
++	unsigned int i;
++	int ret = 0;
++	if (!table) return 0;
++	for (i = 0; i < FLOW_HOSTS; i++) {
++		if (!table->hosts[i].used) continue;
++		/* Global shutdown revokes every reference after ACL users stop. */
++		table->hosts[i].refs = 1;
++		if (ssdk_flow_host_put(table, i)) ret = -EIO;
++	}
++	if (!ret) kfree(table);
++	return ret;
++}
+--- a/src/ref/ref_flow_hw.c
++++ b/src/ref/ref_flow_hw.c
+@@ -0,0 +1,172 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/etherdevice.h>
++#include <linux/slab.h>
++#include "ssdk_flow_hw.h"
++#include "ssdk_flow_acl_owner.h"
++#include "ssdk_flow_napt.h"
++#include "ssdk_flow_gate.h"
++#include "ssdk_flow_path.h"
++struct hw_slot {
++	bool used, ready;
++	int guards[2], hosts[2];
++	struct ssdk_flow_path paths[2];
++};
++struct ssdk_flow_hw {
++	unsigned int dev;
++	struct ssdk_flow_acl_owner *acl;
++	struct ssdk_flow_host *hosts;
++	struct ssdk_flow_napt *napt;
++	ssdk_flow_resolve_t resolve;
++	void *ctx;
++	struct hw_slot slots[SSDK_FLOW_COUNTERS];
++};
++static bool any_ready(struct ssdk_flow_hw *hw)
++{
++	unsigned int i;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (hw->slots[i].ready) return true;
++	return false;
++}
++static int failed(struct ssdk_flow_hw *hw, int error)
++{
++	/* Stop other installed connections too: an incomplete ACL relocation
++	 * or invalidated path must never be followed by a speculative resume. */
++	ssdk_flow_gate_invalidate(hw->dev);
++	return error;
++}
++static int hw_install(void *ctx, unsigned int slot, const struct ssdk_flow_rule rules[2],
++		      const struct ssdk_flow_pair *pair, struct ssdk_flow_counts *baseline)
++{
++	struct ssdk_flow_hw *hw = ctx;
++	struct ssdk_flow_path paths[2];
++	struct ssdk_flow_acl_path acl_paths[2];
++	struct hw_slot *flow;
++	u16 arp[2];
++	u64 epoch;
++	unsigned int i;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS || !rules || !pair || !baseline ||
++	    pair->outbound_direction > 1) return -EINVAL;
++	flow = &hw->slots[slot];
++	if (flow->used) return -EBUSY;
++	ret = ssdk_flow_gate_pause(hw->dev, &epoch);
++	if (ret) return failed(hw, ret);
++	memset(paths, 0, sizeof(paths));
++	ret = hw->resolve(hw->ctx, rules, paths);
++	if (ret) return failed(hw, ret);
++	for (i = 0; i < 2; i++) {
++		/* The action's L2 rewrite must agree with the live next hop. */
++		if (!ether_addr_equal(paths[i].router, rules[i].source) ||
++		    !ether_addr_equal(paths[i].neighbour, rules[i].destination) ||
++		    !paths[i].vid || paths[i].vid >= 4095 ||
++		    !paths[i].port || paths[i].port > 5 ||
++		    (rules[i].vlan_push && rules[i].egress_vid != paths[i].vid) ||
++		    (rules[i].vlan_match && rules[i].ingress_vid != paths[1-i].vid))
++			return failed(hw, -EOPNOTSUPP);
++	}
++	flow->used = true;
++	memcpy(flow->paths, paths, sizeof(paths));
++	for (i = 0; i < 2; i++) flow->guards[i] = flow->hosts[i] = -1;
++	/* Both router guards precede either routed interface. Handles are
++	 * published even on partial failure; state.remove owns rollback. */
++	for (i = 0; i < 2; i++) {
++		ret = ssdk_flow_guard_get(hw->acl, paths[i].router, &flow->guards[i]);
++		if (ret) return failed(hw, ret);
++	}
++	for (i = 0; i < 2; i++) {
++		ret = ssdk_flow_host_get(hw->hosts, &paths[i], &flow->hosts[i], &arp[i]);
++		if (ret) return failed(hw, ret);
++	}
++	ret = ssdk_flow_napt_add(hw->napt, slot, pair, baseline);
++	if (ret) return failed(hw, ret);
++	for (i = 0; i < 2; i++) {
++		/* Match the ingress side, but redirect through the egress ARP. */
++		acl_paths[i].guard = flow->guards[1-i];
++		acl_paths[i].port = paths[1-i].port;
++		acl_paths[i].vid = paths[1-i].vid;
++		acl_paths[i].arp = arp[i];
++	}
++	ret = ssdk_flow_permission_add(hw->acl, slot, rules, acl_paths, pair->outbound_direction);
++	if (ret) return failed(hw, ret);
++	ret = ssdk_flow_gate_resume(hw->dev, epoch);
++	if (ret) return failed(hw, ret);
++	flow->ready = true;
++	return 0;
++}
++static int hw_remove(void *ctx, unsigned int slot)
++{
++	struct ssdk_flow_hw *hw = ctx;
++	struct hw_slot *flow;
++	u64 epoch;
++	unsigned int i;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS) return -EINVAL;
++	flow = &hw->slots[slot];
++	if (!flow->used) return 0;
++	ret = ssdk_flow_gate_pause(hw->dev, &epoch);
++	if (ret) return failed(hw, ret);
++	flow->ready = false;
++	ret = ssdk_flow_permission_remove(hw->acl, slot);
++	if (ret) return failed(hw, ret);
++	ret = ssdk_flow_napt_remove(hw->napt, slot);
++	if (ret) return failed(hw, ret);
++	for (i = 0; i < 2; i++) {
++		if (flow->hosts[i] < 0) continue;
++		ret = ssdk_flow_host_put(hw->hosts, flow->hosts[i]);
++		if (ret) return failed(hw, ret);
++		flow->hosts[i] = -1;
++	}
++	/* Never remove a router guard while either routed interface remains. */
++	for (i = 0; i < 2; i++) {
++		if (flow->guards[i] < 0) continue;
++		ret = ssdk_flow_guard_put(hw->acl, flow->guards[i]);
++		if (ret) return failed(hw, ret);
++		flow->guards[i] = -1;
++	}
++	memset(flow, 0, sizeof(*flow));
++	if (!any_ready(hw)) return 0;
++	ret = ssdk_flow_gate_resume(hw->dev, epoch);
++	/* Cleanup succeeded even if a notifier superseded this transaction.
++	 * Keep the global gate stopped; deferred invalidation flushes peers. */
++	if (ret == -ESTALE) return 0;
++	return ret ? failed(hw, ret) : 0;
++}
++static int hw_read(void *ctx, unsigned int slot, struct ssdk_flow_counts *counts)
++{
++	struct ssdk_flow_hw *hw = ctx;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS || !hw->slots[slot].ready) return -ENOENT;
++	ret = ssdk_flow_path_alive(hw->dev, &hw->slots[slot].paths[0]);
++	if (!ret) ret = ssdk_flow_path_alive(hw->dev, &hw->slots[slot].paths[1]);
++	if (ret) return failed(hw, ret);
++	ret = ssdk_flow_napt_read(hw->napt, slot, counts);
++	return ret ? failed(hw, ret) : 0;
++}
++const struct ssdk_flow_ops ssdk_flow_hw_ops = {
++	.install = hw_install, .remove = hw_remove, .read = hw_read,
++};
++struct ssdk_flow_hw *ssdk_flow_hw_create(unsigned int dev,
++	struct ssdk_flow_acl_owner *acl, struct ssdk_flow_host *hosts,
++	struct ssdk_flow_napt *napt, ssdk_flow_resolve_t resolve, void *ctx)
++{
++	struct ssdk_flow_hw *hw;
++	if (!acl || !hosts || !napt || !resolve) return NULL;
++	hw = kzalloc(sizeof(*hw), GFP_KERNEL);
++	if (!hw) return NULL;
++	hw->dev = dev; hw->acl = acl; hw->hosts = hosts; hw->napt = napt;
++	hw->resolve = resolve; hw->ctx = ctx;
++	return hw;
++}
++int ssdk_flow_hw_destroy(struct ssdk_flow_hw *hw)
++{
++	unsigned int i;
++	int ret = 0;
++	if (!hw) return 0;
++	/* State callbacks must already be quiesced. Prevent a peer slot from
++	 * resuming forwarding between successive shutdown removals. */
++	ssdk_flow_gate_invalidate(hw->dev);
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (hw_remove(hw, i)) ret = -EIO;
++	if (!ret) kfree(hw);
++	return ret;
++}
+--- a/src/ref/ref_flow_napt.c
++++ b/src/ref/ref_flow_napt.c
+@@ -0,0 +1,163 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/err.h>
++#include <linux/in.h>
++#include <linux/slab.h>
++#include "sw.h"
++#include "fal_nat.h"
++#include "fal_reg_access.h"
++#define DESS_PUBLIC_VALID 0x2f040
++#include "ssdk_flow_napt.h"
++struct ssdk_flow_public {
++	bool used, owned;
++	unsigned int refs;
++	fal_nat_pub_addr_t entry;
++};
++struct ssdk_flow_napt_entry {
++	bool used, attempted;
++	int public;
++	fal_napt_entry_t entry;
++};
++struct ssdk_flow_napt {
++	unsigned int dev;
++	struct ssdk_flow_public public[SSDK_FLOW_COUNTERS];
++	struct ssdk_flow_napt_entry entries[SSDK_FLOW_COUNTERS];
++};
++struct ssdk_flow_napt *ssdk_flow_napt_create(unsigned int dev)
++{
++	fal_nat_pub_addr_t pub = { .entry_id = FAL_NEXT_ENTRY_FIRST_ID };
++	fal_napt_entry_t napt = { .entry_id = FAL_NEXT_ENTRY_FIRST_ID };
++	fal_nat_entry_t nat = { .entry_id = FAL_NEXT_ENTRY_FIRST_ID };
++	struct ssdk_flow_napt *table;
++	a_uint32_t bitmap;
++	sw_error_t rv;
++	/* A failed old ADD can leave an enabled offload bit without a
++	 * searchable public entry. Do not adopt or overwrite that resource. */
++	rv = fal_reg_get(dev, DESS_PUBLIC_VALID, (a_uint8_t *)&bitmap, sizeof(bitmap));
++	if (rv != SW_OK) return ERR_PTR(-EIO);
++	if (bitmap & 0xffff) return ERR_PTR(-EBUSY);
++	rv = fal_nat_pub_addr_next(dev, 0, &pub);
++	if (rv != SW_NO_MORE) return ERR_PTR(rv == SW_OK ? -EBUSY : -EIO);
++	rv = fal_napt_next(dev, 0, &napt);
++	if (rv != SW_NO_MORE) return ERR_PTR(rv == SW_OK ? -EBUSY : -EIO);
++	rv = fal_nat_next(dev, 0, &nat);
++	if (rv != SW_NO_MORE) return ERR_PTR(rv == SW_OK ? -EBUSY : -EIO);
++	table = kzalloc(sizeof(*table), GFP_KERNEL);
++	if (!table) return ERR_PTR(-ENOMEM);
++	table->dev = dev;
++	return table;
++}
++static int public_get(struct ssdk_flow_napt *table, fal_ip4_addr_t address, int *index)
++{
++	struct ssdk_flow_public *pub;
++	int i, free = -1;
++	sw_error_t rv;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++) {
++		pub = &table->public[i];
++		if (!pub->used) { if (free < 0) free = i; continue; }
++		if (pub->entry.pub_addr == address) {
++			if (!pub->owned) return -EIO;
++			pub->refs++; *index = i; return 0;
++		}
++	}
++	if (free < 0) return -ENOSPC;
++	pub = &table->public[free];
++	pub->used = true; pub->refs = 1; pub->entry.pub_addr = address;
++	pub->entry.entry_id = 16;
++	*index = free;
++	rv = fal_nat_pub_addr_add(table->dev, &pub->entry);
++	if (rv == SW_OK) { pub->owned = true; return 0; }
++	/* A successful scan publishes the chosen index before any write. A
++	 * partially written slot must be retained for explicit index cleanup. */
++	if (rv == SW_ALREADY_EXIST || pub->entry.entry_id >= 16) {
++		memset(pub, 0, sizeof(*pub)); *index = -1;
++	}
++	return rv == SW_ALREADY_EXIST ? -EEXIST : -EIO;
++}
++static int public_put(struct ssdk_flow_napt *table, int index)
++{
++	struct ssdk_flow_public *pub = &table->public[index];
++	if (pub->refs > 1) { pub->refs--; return 0; }
++	if (fal_nat_pub_addr_del(table->dev, FAL_NAT_PUBLIC_OWNED_INDEX, &pub->entry) != SW_OK)
++		return -EIO;
++	memset(pub, 0, sizeof(*pub)); return 0;
++}
++int ssdk_flow_napt_read(struct ssdk_flow_napt *table, unsigned int slot,
++			struct ssdk_flow_counts *counts)
++{
++	fal_napt_entry_t entry;
++	const fal_napt_entry_t *expected;
++	if (slot >= SSDK_FLOW_COUNTERS || !counts || !table->entries[slot].used ||
++	    !table->entries[slot].attempted) return -ENOENT;
++	expected = &table->entries[slot].entry;
++	entry = *expected;
++	if (fal_napt_get(table->dev, FAL_NAT_ENTRY_KEY_EN, &entry) != SW_OK)
++		return -EIO;
++	if (!entry.counter_en || entry.counter_id != slot || !entry.status ||
++	    entry.src_addr != expected->src_addr || entry.dst_addr != expected->dst_addr ||
++	    entry.src_port != expected->src_port || entry.dst_port != expected->dst_port ||
++	    entry.trans_addr != expected->trans_addr || entry.trans_port != expected->trans_port ||
++	    ((entry.flags ^ expected->flags) & (FAL_NAT_ENTRY_PROTOCOL_TCP |
++		FAL_NAT_ENTRY_PROTOCOL_UDP | FAL_NAT_ENTRY_TRANS_IPADDR_INDEX))) return -EIO;
++	/* The vendor conntrack accounting maps egress to SNAT original and
++	 * ingress to its reply; DNAT reverses original/reply, not these axes. */
++	counts->packets[0] = entry.egress_packet; counts->bytes[0] = entry.egress_byte;
++	counts->packets[1] = entry.ingress_packet; counts->bytes[1] = entry.ingress_byte;
++	return 0;
++}
++int ssdk_flow_napt_add(struct ssdk_flow_napt *table, unsigned int slot,
++		       const struct ssdk_flow_pair *pair, struct ssdk_flow_counts *baseline)
++{
++	struct ssdk_flow_napt_entry *flow;
++	int ret;
++	if (slot >= SSDK_FLOW_COUNTERS || !pair || !baseline ||
++	    (pair->protocol != IPPROTO_TCP && pair->protocol != IPPROTO_UDP)) return -EINVAL;
++	flow = &table->entries[slot];
++	if (flow->used) return -EBUSY;
++	flow->used = true; flow->public = -1;
++	ret = public_get(table, ntohl(pair->translated.src), &flow->public);
++	if (ret) return ret;
++	flow->entry.src_addr = ntohl(pair->outbound.src);
++	flow->entry.dst_addr = ntohl(pair->outbound.dst);
++	flow->entry.src_port = ntohs(pair->outbound.sport);
++	flow->entry.dst_port = ntohs(pair->outbound.dport);
++	flow->entry.trans_port = ntohs(pair->translated.sport);
++	flow->entry.trans_addr = table->public[flow->public].entry.entry_id;
++	flow->entry.flags = FAL_NAT_ENTRY_TRANS_IPADDR_INDEX |
++		(pair->protocol == IPPROTO_TCP ? FAL_NAT_ENTRY_PROTOCOL_TCP : FAL_NAT_ENTRY_PROTOCOL_UDP);
++	flow->entry.status = 0xe; /* Same active status as the vendor helper. */
++	flow->entry.action = FAL_MAC_FRWRD;
++	flow->entry.counter_en = A_TRUE; flow->entry.counter_id = slot;
++	flow->attempted = true;
++	if (fal_napt_add(table->dev, &flow->entry) != SW_OK) return -EIO;
++	return ssdk_flow_napt_read(table, slot, baseline);
++}
++int ssdk_flow_napt_remove(struct ssdk_flow_napt *table, unsigned int slot)
++{
++	struct ssdk_flow_napt_entry *flow;
++	fal_napt_entry_t probe;
++	sw_error_t rv;
++	if (slot >= SSDK_FLOW_COUNTERS) return -EINVAL;
++	flow = &table->entries[slot];
++	if (!flow->used) return 0;
++	if (flow->attempted) {
++		rv = fal_napt_del(table->dev, FAL_NAT_ENTRY_KEY_EN, &flow->entry);
++		if (rv != SW_OK && rv != SW_NOT_FOUND) {
++			probe = flow->entry;
++			if (fal_napt_get(table->dev, FAL_NAT_ENTRY_KEY_EN, &probe) != SW_NOT_FOUND)
++				return -EIO;
++		}
++		flow->attempted = false;
++	}
++	if (flow->public >= 0 && public_put(table, flow->public)) return -EIO;
++	memset(flow, 0, sizeof(*flow)); return 0;
++}
++int ssdk_flow_napt_destroy(struct ssdk_flow_napt *table)
++{
++	unsigned int i;
++	int ret = 0;
++	if (!table) return 0;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (ssdk_flow_napt_remove(table, i)) ret = -EIO;
++	if (!ret) kfree(table);
++	return ret;
++}
+--- a/src/ref/ref_flow_parse.c
++++ b/src/ref/ref_flow_parse.c
+@@ -0,0 +1,221 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Strict normalization of Linux flowtable rules before DESS resource changes. */
++#include <linux/etherdevice.h>
++#include <linux/ip.h>
++#include <linux/if_vlan.h>
++#include <linux/in.h>
++#include <linux/tc_act/tc_csum.h>
++#include <net/flow_offload.h>
++#include "ssdk_flow.h"
++
++static int ssdk_flow_mangle_bytes(u8 *bytes, unsigned int length,
++				 const struct flow_action_entry *action, u16 *written)
++{
++	u8 mask[4], value[4];
++	unsigned int i, offset = action->mangle.offset;
++
++	if (offset > length || length - offset < sizeof(value))
++		return -EOPNOTSUPP;
++	memcpy(mask, &action->mangle.mask, sizeof(mask));
++	memcpy(value, &action->mangle.val, sizeof(value));
++	for (i = 0; i < sizeof(value); i++) {
++		/* Only complete bytes are representable by the normalized tuples
++		 * and MACs. Do not reinterpret native-endian action words. */
++		if ((mask[i] != 0 && mask[i] != 0xff) || (value[i] & mask[i]))
++			return -EOPNOTSUPP;
++		bytes[offset + i] = (bytes[offset + i] & mask[i]) | value[i];
++		if (written && !mask[i])
++			*written |= BIT(offset + i);
++	}
++	return 0;
++}
++
++int ssdk_flow_parse(const struct flow_rule *rule, struct ssdk_flow_rule *result)
++{
++	const u64 required = BIT_ULL(FLOW_DISSECTOR_KEY_META) |
++		BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL) | BIT_ULL(FLOW_DISSECTOR_KEY_BASIC) |
++		BIT_ULL(FLOW_DISSECTOR_KEY_IPV4_ADDRS) | BIT_ULL(FLOW_DISSECTOR_KEY_PORTS);
++	const u64 allowed = required | BIT_ULL(FLOW_DISSECTOR_KEY_TCP) |
++		BIT_ULL(FLOW_DISSECTOR_KEY_VLAN);
++	struct flow_match_meta meta;
++	struct flow_match_control control;
++	struct flow_match_basic basic;
++	struct flow_match_ipv4_addrs ipv4;
++	struct flow_match_ports ports;
++	struct ssdk_flow_rule parsed = {};
++	const struct flow_action_entry *action;
++	u8 ethernet[ETH_ALEN * 2] = {};
++	u16 ethernet_written = 0;
++	u32 expected_csum;
++	bool checksum = false, redirected = false;
++	int i, ret;
++
++	if (!rule || !result || !rule->match.dissector ||
++	    (rule->match.dissector->used_keys & required) != required ||
++	    (rule->match.dissector->used_keys & ~allowed))
++		return -EOPNOTSUPP;
++	flow_rule_match_meta(rule, &meta);
++	flow_rule_match_control(rule, &control);
++	flow_rule_match_basic(rule, &basic);
++	flow_rule_match_ipv4_addrs(rule, &ipv4);
++	flow_rule_match_ports(rule, &ports);
++	if (meta.mask->ingress_ifindex != -1 || meta.key->ingress_ifindex <= 0 ||
++	    meta.mask->ingress_iftype || meta.mask->l2_miss ||
++	    control.mask->addr_type != 0xffff || control.mask->thoff ||
++	    control.mask->flags || control.key->addr_type != FLOW_DISSECTOR_KEY_IPV4_ADDRS ||
++	    basic.mask->n_proto != htons(0xffff) || basic.mask->ip_proto != 0xff ||
++	    basic.mask->padding || basic.key->n_proto != htons(ETH_P_IP) ||
++	    ipv4.mask->src != htonl(0xffffffff) || ipv4.mask->dst != htonl(0xffffffff) ||
++	    ports.mask->src != htons(0xffff) || ports.mask->dst != htons(0xffff))
++		return -EOPNOTSUPP;
++	if (basic.key->ip_proto != IPPROTO_TCP && basic.key->ip_proto != IPPROTO_UDP)
++		return -EOPNOTSUPP;
++	parsed.ingress_ifindex = meta.key->ingress_ifindex;
++	parsed.protocol = basic.key->ip_proto;
++	parsed.match.src = ipv4.key->src;
++	parsed.match.dst = ipv4.key->dst;
++	parsed.match.sport = ports.key->src;
++	parsed.match.dport = ports.key->dst;
++	parsed.translated = parsed.match;
++	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_TCP)) {
++		struct flow_match_tcp tcp;
++		u16 flags, mask;
++
++		flow_rule_match_tcp(rule, &tcp);
++		flags = ntohs(tcp.key->flags);
++		mask = ntohs(tcp.mask->flags);
++		if (parsed.protocol != IPPROTO_TCP || (mask & ~0x07) || (flags & mask))
++			return -EOPNOTSUPP;
++		parsed.tcp_mask = mask;
++	}
++	/* SYN/FIN/RST and IP fragments will always be trapped by the hardware
++	 * eligibility guard, even if the input rule has no such match fields. */
++	if (parsed.protocol == IPPROTO_TCP)
++		parsed.tcp_mask |= 0x07;
++	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_VLAN)) {
++		struct flow_match_vlan vlan;
++
++		flow_rule_match_vlan(rule, &vlan);
++		if (vlan.mask->vlan_id != VLAN_VID_MASK || vlan.mask->vlan_priority ||
++		    vlan.mask->vlan_dei || vlan.mask->vlan_eth_type || vlan.mask->padding ||
++		    vlan.mask->vlan_tpid != htons(0xffff) ||
++		    vlan.key->vlan_tpid != htons(ETH_P_8021Q) ||
++		    !vlan.key->vlan_id || vlan.key->vlan_id >= VLAN_VID_MASK)
++			return -EOPNOTSUPP;
++		parsed.vlan_match = true;
++		parsed.ingress_vid = vlan.key->vlan_id;
++	}
++	expected_csum = TCA_CSUM_UPDATE_FLAG_IPV4HDR |
++		(parsed.protocol == IPPROTO_TCP ? TCA_CSUM_UPDATE_FLAG_TCP : TCA_CSUM_UPDATE_FLAG_UDP);
++	flow_action_for_each(i, action, &rule->action) {
++		if (redirected)
++			return -EOPNOTSUPP;
++		switch (action->id) {
++		case FLOW_ACTION_MANGLE:
++			switch (action->mangle.htype) {
++			case FLOW_ACT_MANGLE_HDR_TYPE_ETH:
++				ret = ssdk_flow_mangle_bytes(ethernet, sizeof(ethernet), action,
++							    &ethernet_written);
++				if (ret)
++					return ret;
++				break;
++			case FLOW_ACT_MANGLE_HDR_TYPE_IP4:
++				if (action->mangle.mask)
++					return -EOPNOTSUPP;
++				if (action->mangle.offset == offsetof(struct iphdr, saddr))
++					memcpy(&parsed.translated.src, &action->mangle.val, 4);
++				else if (action->mangle.offset == offsetof(struct iphdr, daddr))
++					memcpy(&parsed.translated.dst, &action->mangle.val, 4);
++				else
++					return -EOPNOTSUPP;
++				checksum = false;
++				break;
++			case FLOW_ACT_MANGLE_HDR_TYPE_TCP:
++			case FLOW_ACT_MANGLE_HDR_TYPE_UDP:
++				if ((action->mangle.htype == FLOW_ACT_MANGLE_HDR_TYPE_TCP) !=
++				    (parsed.protocol == IPPROTO_TCP) || action->mangle.offset)
++					return -EOPNOTSUPP;
++				/* sport/dport are adjacent network-order words. */
++				ret = ssdk_flow_mangle_bytes((u8 *)&parsed.translated.sport, 4, action, NULL);
++				if (ret)
++					return ret;
++				checksum = false;
++				break;
++			default:
++				return -EOPNOTSUPP;
++			}
++			break;
++		case FLOW_ACTION_CSUM:
++			if (action->csum_flags != expected_csum)
++				return -EOPNOTSUPP;
++			checksum = true;
++			break;
++		case FLOW_ACTION_VLAN_POP:
++			if (parsed.vlan_pop || parsed.vlan_push || !parsed.vlan_match)
++				return -EOPNOTSUPP;
++			parsed.vlan_pop = true;
++			break;
++		case FLOW_ACTION_VLAN_PUSH:
++			if (parsed.vlan_push || action->vlan.proto != htons(ETH_P_8021Q) ||
++			    action->vlan.prio || !action->vlan.vid || action->vlan.vid >= VLAN_VID_MASK)
++				return -EOPNOTSUPP;
++			parsed.vlan_push = true;
++			parsed.egress_vid = action->vlan.vid;
++			break;
++		case FLOW_ACTION_REDIRECT:
++			if (!action->dev)
++				return -EOPNOTSUPP;
++			parsed.egress = action->dev;
++			redirected = true;
++			break;
++		default:
++			return -EOPNOTSUPP;
++		}
++	}
++	if (!redirected || ethernet_written != GENMASK(11, 0) ||
++	    !is_valid_ether_addr(ethernet) || !is_valid_ether_addr(ethernet + ETH_ALEN) ||
++	    (parsed.vlan_match && !parsed.vlan_pop) ||
++	    (memcmp(&parsed.match, &parsed.translated, sizeof(parsed.match)) && !checksum))
++		return -EOPNOTSUPP;
++	memcpy(parsed.destination, ethernet, ETH_ALEN);
++	memcpy(parsed.source, ethernet + ETH_ALEN, ETH_ALEN);
++	*result = parsed;
++	return 0;
++}
++
++static bool ssdk_flow_reverse(const struct ssdk_flow_tuple *a,
++			      const struct ssdk_flow_tuple *b)
++{
++	return a->src == b->dst && a->dst == b->src &&
++		a->sport == b->dport && a->dport == b->sport;
++}
++
++int ssdk_flow_pair(const struct ssdk_flow_rule rules[2], struct ssdk_flow_pair *result)
++{
++	struct ssdk_flow_pair pair = {};
++	unsigned int i;
++
++	if (!rules || !result || rules[0].protocol != rules[1].protocol ||
++	    (rules[0].protocol != IPPROTO_TCP && rules[0].protocol != IPPROTO_UDP) ||
++	    !ssdk_flow_reverse(&rules[0].match, &rules[1].translated) ||
++	    !ssdk_flow_reverse(&rules[1].match, &rules[0].translated))
++		return -EOPNOTSUPP;
++	for (i = 0; i < 2; i++) {
++		const struct ssdk_flow_rule *rule = &rules[i];
++
++		/* SNAT original or DNAT reply: only the outbound source changes.
++		 * Hairpin, simultaneous source/destination NAT, port-only NAT and
++		 * pure routing remain in software until their DESS paths exist. */
++		if (rule->match.src == rule->translated.src ||
++		    rule->match.dst != rule->translated.dst ||
++		    rule->match.dport != rule->translated.dport)
++			continue;
++		pair.outbound = rule->match;
++		pair.translated = rule->translated;
++		pair.protocol = rule->protocol;
++		pair.outbound_direction = i;
++		*result = pair;
++		return 0;
++	}
++	return -EOPNOTSUPP;
++}
+--- a/src/ref/ref_flow_path.c
++++ b/src/ref/ref_flow_path.c
+@@ -0,0 +1,202 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/etherdevice.h>
++#include <linux/if_arp.h>
++#include <linux/if_bridge.h>
++#include <linux/if_vlan.h>
++#include <linux/inetdevice.h>
++#include <linux/rtnetlink.h>
++#include <net/arp.h>
++#include <net/route.h>
++#include "sw.h"
++#include "fal_fdb.h"
++#include "fal_misc.h"
++#include "fal_port_ctrl.h"
++#include "fal_portvlan.h"
++#include "ssdk_flow_path.h"
++struct device_path { struct net_device *gmac; u16 vid; };
++static int lower_path(struct ssdk_flow_resolver *resolver, struct net_device *dev,
++		      const u8 *mac, u16 action_vid, struct device_path *path)
++{
++	unsigned int depth, vlans = 0;
++	u16 vid = action_vid;
++	int id;
++	for (depth = 0; depth < 5; depth++) {
++		if (!dev || dev->type != ARPHRD_ETHER || !netif_running(dev) || dev->mtu != 1500)
++			return -EOPNOTSUPP;
++		if (netif_is_bridge_port(dev) && br_port_get_stp_state(dev) != BR_STATE_FORWARDING)
++			return -EAGAIN;
++		for (id = 0; id < 2; id++) if (dev == resolver->gmac[id]) break;
++		if (id < 2) {
++			if (!netif_carrier_ok(dev)) return -EAGAIN;
++			if (!vid) vid = resolver->vlans->default_vid[id];
++			if (!vid || vid >= 4095 || !(resolver->vlans->members[vid] & BIT(0)) ||
++			    !(resolver->vlans->tagged[vid] & BIT(0))) return -EOPNOTSUPP;
++			path->gmac = dev; path->vid = vid; return 0;
++		}
++		if (is_vlan_dev(dev)) {
++			if (++vlans > 1 || vlan_dev_vlan_proto(dev) != htons(ETH_P_8021Q) ||
++			    (vid && vid != vlan_dev_vlan_id(dev))) return -EOPNOTSUPP;
++			vid = vlan_dev_vlan_id(dev); dev = vlan_dev_real_dev(dev); continue;
++		}
++		if (netif_is_bridge_master(dev)) {
++			/* Bridge VLAN filtering can add/remove another tag and needs
++			 * a separate translation model. Keep that case in software. */
++			if (br_vlan_enabled(dev)) return -EOPNOTSUPP;
++			dev = br_fdb_find_port(dev, mac, 0); continue;
++		}
++		return -EOPNOTSUPP;
++	}
++	return -ELOOP;
++}
++static bool same_device_path(const struct device_path *a, const struct device_path *b)
++{
++	return a->gmac == b->gmac && a->vid == b->vid;
++}
++static int lookup_port(unsigned int dev, unsigned int members, struct ssdk_flow_path *path)
++{
++	fal_fdb_entry_t fdb = {};
++	a_bool_t link;
++	a_uint32_t vrf;
++	unsigned int map;
++	fdb.fid = path->vid; ether_addr_copy(fdb.addr.uc, path->neighbour);
++	if (fal_fdb_entry_search(dev, &fdb) != SW_OK) return -EAGAIN;
++	if (fdb.fid != path->vid || !ether_addr_equal(fdb.addr.uc, path->neighbour) ||
++	    fdb.is_multicast || fdb.dacmd != FAL_MAC_FRWRD || fdb.sacmd != FAL_MAC_FRWRD ||
++	    fdb.leaky_en || fdb.mirror_en || fdb.cross_pt_state) return -EOPNOTSUPP;
++	if (fdb.portmap_en) map = fdb.port.map;
++	else {
++		if (fdb.port.id > 5) return -EOPNOTSUPP;
++		map = BIT(fdb.port.id);
++	}
++	if (!is_power_of_2(map) || (map & ~0x3e) ||
++	    !(members & map)) return -EOPNOTSUPP;
++	path->port = __ffs(map);
++	if (fal_port_vrf_id_get(dev, path->port, &vrf) != SW_OK || vrf)
++		return -EOPNOTSUPP;
++	if (fal_port_link_status_get(dev, path->port, &link) != SW_OK || !link)
++		return -EAGAIN;
++	return 0;
++}
++static int private_prefix(struct net_device *dev, __be32 address, __be32 *base, __be32 *mask)
++{
++	struct in_device *in_dev;
++	struct in_ifaddr *ifa;
++	bool found = false;
++	int ret = -EOPNOTSUPP;
++	in_dev = in_dev_get(dev);
++	if (!in_dev) return ret;
++	in_dev_for_each_ifa_rtnl(ifa, in_dev) {
++		if (!ifa->ifa_mask || (address & ifa->ifa_mask) != (ifa->ifa_local & ifa->ifa_mask))
++			continue;
++		/* Do not guess between overlapping interface prefixes. */
++		if (found && (*mask != ifa->ifa_mask || *base != (ifa->ifa_local & ifa->ifa_mask)))
++			goto out;
++		*mask = ifa->ifa_mask; *base = ifa->ifa_local & ifa->ifa_mask; found = true;
++	}
++	if (found) ret = 0;
++out:
++	in_dev_put(in_dev); return ret;
++}
++int ssdk_flow_resolve_paths(void *ctx, const struct ssdk_flow_rule rules[2],
++			    struct ssdk_flow_path paths[2])
++{
++	struct ssdk_flow_resolver *resolver = ctx;
++	struct ssdk_flow_path result[2] = {};
++	struct device_path egress[2], action, ingress;
++	struct ssdk_flow_pair pair;
++	struct rtable *routes[2] = {};
++	struct neighbour *neighbour;
++	struct net_device *in;
++	struct net *net;
++	a_uint32_t max_frame;
++	__be32 base = 0, mask = 0;
++	unsigned int i, internal;
++	int ret;
++	ASSERT_RTNL();
++	if (!resolver || !rules || !paths || !resolver->gmac[0] || !resolver->gmac[1] ||
++	    !resolver->vlans || !resolver->prefix) return -EINVAL;
++	net = dev_net(resolver->gmac[0]);
++	if (!net_eq(net, dev_net(resolver->gmac[1]))) return -EOPNOTSUPP;
++	ret = ssdk_flow_pair(rules, &pair);
++	if (ret) return ret;
++	/* DESS has no usable L3-length ACL field. Only admit the normal MTU
++	 * while its global ingress frame limit excludes jumbo routed packets. */
++	if (fal_frame_max_size_get(resolver->dev, &max_frame) != SW_OK) return -EIO;
++	if (max_frame != 1518) return -EOPNOTSUPP;
++	for (i = 0; i < 2; i++) {
++		struct flowi4 flow = {
++			.daddr = rules[i].translated.dst, .saddr = rules[i].translated.src,
++			.flowi4_proto = rules[i].protocol, .flowi4_flags = FLOWI_FLAG_ANYSRC,
++			.fl4_sport = rules[i].translated.sport, .fl4_dport = rules[i].translated.dport,
++		};
++		if (!rules[i].egress || !net_eq(net, dev_net(rules[i].egress))) {
++			ret = -EOPNOTSUPP; goto out;
++		}
++		routes[i] = ip_route_output_key(net, &flow);
++		if (IS_ERR(routes[i])) { ret = PTR_ERR(routes[i]); routes[i] = NULL; goto out; }
++		if (routes[i]->rt_type != RTN_UNICAST || routes[i]->dst.lwtstate ||
++		    dst_mtu(&routes[i]->dst) != 1500 ||
++		    !ether_addr_equal(routes[i]->dst.dev->dev_addr, rules[i].source)) {
++			ret = -EOPNOTSUPP; goto out;
++		}
++		neighbour = dst_neigh_lookup(&routes[i]->dst, &flow.daddr);
++		if (!neighbour) { ret = -EAGAIN; goto out; }
++		ret = -EAGAIN;
++		read_lock_bh(&neighbour->lock);
++		if (neighbour->tbl == &arp_tbl && neighbour->dev == routes[i]->dst.dev &&
++		    (neighbour->nud_state & NUD_VALID) &&
++		    ether_addr_equal(neighbour->ha, rules[i].destination)) {
++			memcpy(&result[i].address, neighbour->primary_key, sizeof(result[i].address));
++			ether_addr_copy(result[i].neighbour, neighbour->ha); ret = 0;
++		}
++		read_unlock_bh(&neighbour->lock);
++		neigh_release(neighbour);
++		if (ret) goto out;
++		ether_addr_copy(result[i].router, rules[i].source);
++		ret = lower_path(resolver, routes[i]->dst.dev, result[i].neighbour, 0, &egress[i]);
++		if (ret) goto out;
++		ret = lower_path(resolver, rules[i].egress, result[i].neighbour,
++				 rules[i].vlan_push ? rules[i].egress_vid : 0, &action);
++		if (ret) goto out;
++		if (!same_device_path(&egress[i], &action)) { ret = -EOPNOTSUPP; goto out; }
++		result[i].vid = egress[i].vid;
++		ret = lookup_port(resolver->dev, resolver->vlans->members[result[i].vid], &result[i]);
++		if (ret) goto out;
++	}
++	for (i = 0; i < 2; i++) {
++		in = __dev_get_by_index(net, rules[i].ingress_ifindex);
++		ret = lower_path(resolver, in, result[1-i].neighbour,
++				 rules[i].vlan_match ? rules[i].ingress_vid : 0, &ingress);
++		if (ret) goto out;
++		if (!same_device_path(&ingress, &egress[1-i])) { ret = -EOPNOTSUPP; goto out; }
++	}
++	/* The private endpoint is reached by the canonical inbound direction.
++	 * Require a directly connected LAN prefix, not an inferred RFC1918 mask. */
++	internal = 1 - pair.outbound_direction;
++	if (result[internal].address != pair.outbound.src) { ret = -EOPNOTSUPP; goto out; }
++	ret = private_prefix(routes[internal]->dst.dev, pair.outbound.src, &base, &mask);
++	if (ret) goto out;
++	/* The same global classifier cannot regard the public/remote side as
++	 * private. Such overlapping/hairpin arrangements stay in software. */
++	if ((pair.translated.src & mask) == base || (pair.outbound.dst & mask) == base) {
++		ret = -EOPNOTSUPP; goto out;
++	}
++	ret = resolver->prefix(resolver->ctx, base, mask);
++	if (!ret) memcpy(paths, result, sizeof(result));
++out:
++	for (i = 0; i < 2; i++) if (routes[i]) ip_rt_put(routes[i]);
++	return ret;
++}
++
++int ssdk_flow_path_alive(unsigned int dev, const struct ssdk_flow_path *path)
++{
++	struct ssdk_flow_path probe;
++	a_uint32_t max_frame;
++	int ret;
++	if (!path || !path->port || path->port > 5) return -EINVAL;
++	if (fal_frame_max_size_get(dev, &max_frame) != SW_OK || max_frame != 1518) return -EIO;
++	probe = *path;
++	ret = lookup_port(dev, BIT(path->port), &probe);
++	if (ret) return ret;
++	return probe.port == path->port ? 0 : -ESTALE;
++}
+--- a/src/ref/ref_flow_profile.c
++++ b/src/ref/ref_flow_profile.c
+@@ -0,0 +1,180 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/err.h>
++#include <linux/in.h>
++#include <linux/slab.h>
++#include "sw.h"
++#include "fal_acl.h"
++#include "fal_ip.h"
++#include "fal_nat.h"
++#include "dess_acl.h"
++#include "ssdk_flow_profile.h"
++#define PROFILE_PORTS 6
++#define PROFILE_WINDOWS FAL_ACL_UDF_TYPE_BUTT
++struct ssdk_flow_profile {
++	unsigned int dev;
++	bool attempted, restored, ready, prefix_attempted, prefix_ready;
++	a_uint32_t original_base, original_mask, base, mask;
++	a_bool_t acl;
++	a_uint32_t learn[PROFILE_PORTS];
++	struct { a_uint32_t offset, length; } udf[PROFILE_PORTS][PROFILE_WINDOWS];
++	fal_napt_mode_t mode;
++	fal_fwd_cmd_t miss;
++};
++struct ssdk_flow_profile *ssdk_flow_profile_create(unsigned int dev)
++{
++	struct ssdk_flow_profile *p;
++	unsigned int port, window;
++	int error = -EIO;
++	sw_error_t rv;
++	if (dev >= SW_MAX_NR_DEV) return ERR_PTR(-EINVAL);
++	rv = dess_acl_native_empty(dev);
++	if (rv != SW_OK) return ERR_PTR(rv == SW_BUSY ? -EBUSY : -EIO);
++	p = kzalloc(sizeof(*p), GFP_KERNEL);
++	if (!p) return ERR_PTR(-ENOMEM);
++	p->dev = dev;
++	if (fal_acl_status_get(dev, &p->acl) != SW_OK ||
++	    fal_napt_mode_get(dev, &p->mode) != SW_OK ||
++	    fal_nat_unk_session_cmd_get(dev, &p->miss) != SW_OK ||
++	    fal_ip_vrf_base_addr_get(dev, 0, &p->original_base) != SW_OK ||
++	    fal_ip_vrf_base_mask_get(dev, 0, &p->original_mask) != SW_OK) goto fail;
++	for (port = 0; port < PROFILE_PORTS; port++) {
++		if (fal_ip_pt_arp_learn_get(dev, port, &p->learn[port]) != SW_OK) goto fail;
++		for (window = 0; window < PROFILE_WINDOWS; window++) {
++			if (fal_acl_port_udf_profile_get(dev, port, window,
++			    &p->udf[port][window].offset, &p->udf[port][window].length) != SW_OK) goto fail;
++			/* Do not change a profile potentially used by existing policy. */
++			if (p->udf[port][window].length) { error = -EBUSY; goto fail; }
++		}
++	}
++	return p;
++fail:
++	kfree(p); return ERR_PTR(error);
++}
++static int set_udf(struct ssdk_flow_profile *p, unsigned int port,
++		   unsigned int window, a_uint32_t offset, a_uint32_t length)
++{
++	a_uint32_t got_offset, got_length;
++	if (fal_acl_port_udf_profile_set(p->dev, port, window, offset, length) != SW_OK ||
++	    fal_acl_port_udf_profile_get(p->dev, port, window, &got_offset, &got_length) != SW_OK ||
++	    got_offset != offset || got_length != length) return -EIO;
++	return 0;
++}
++static int set_learn(struct ssdk_flow_profile *p, unsigned int port, a_uint32_t flags)
++{
++	a_uint32_t got;
++	if (fal_ip_pt_arp_learn_set(p->dev, port, flags) != SW_OK ||
++	    fal_ip_pt_arp_learn_get(p->dev, port, &got) != SW_OK || got != flags) return -EIO;
++	return 0;
++}
++static int set_mode(struct ssdk_flow_profile *p, fal_napt_mode_t mode)
++{
++	fal_napt_mode_t got;
++	/* DESS maps PORT_STRICT and SYNMETRIC to the same hardware value. */
++	if (fal_napt_mode_set(p->dev, mode) != SW_OK ||
++	    fal_napt_mode_get(p->dev, &got) != SW_OK) return -EIO;
++	if (mode == FAL_NAPT_SYNMETRIC) mode = FAL_NAPT_PORT_STRICT;
++	if (got == FAL_NAPT_SYNMETRIC) got = FAL_NAPT_PORT_STRICT;
++	return mode == got ? 0 : -EIO;
++}
++static int set_miss(struct ssdk_flow_profile *p, fal_fwd_cmd_t miss)
++{
++	fal_fwd_cmd_t got;
++	if (fal_nat_unk_session_cmd_set(p->dev, miss) != SW_OK ||
++	    fal_nat_unk_session_cmd_get(p->dev, &got) != SW_OK || got != miss) return -EIO;
++	return 0;
++}
++static int set_acl(struct ssdk_flow_profile *p, a_bool_t enable)
++{
++	a_bool_t got;
++	if (fal_acl_status_set(p->dev, enable) != SW_OK ||
++	    fal_acl_status_get(p->dev, &got) != SW_OK || got != enable) return -EIO;
++	return 0;
++}
++int ssdk_flow_profile_apply(struct ssdk_flow_profile *p)
++{
++	unsigned int port, window, length;
++	if (!p) return -EINVAL;
++	if (p->attempted) return -EBUSY;
++	p->attempted = true;
++	/* Suppress autonomous host insertion before creating any owned host. */
++	for (port = 0; port < PROFILE_PORTS; port++)
++		if (set_learn(p, port, 0)) return -EIO;
++	for (port = 0; port < PROFILE_PORTS; port++)
++		for (window = 0; window < PROFILE_WINDOWS; window++) {
++			length = window == FAL_ACL_UDF_TYPE_L3 ? 9 :
++				 window == FAL_ACL_UDF_TYPE_L4 ? 7 : 0;
++			if (set_udf(p, port, window, 0, length)) return -EIO;
++		}
++	if (set_mode(p, FAL_NAPT_SYNMETRIC) || set_miss(p, FAL_MAC_RDT_TO_CPU) ||
++	    set_acl(p, A_TRUE)) return -EIO;
++	p->ready = true;
++	return 0;
++}
++static int set_prefix(struct ssdk_flow_profile *p, a_uint32_t base, a_uint32_t mask)
++{
++	a_uint32_t got;
++	int ret = 0;
++	/* DESS classifies NAT through VRF 0 (0x484/0x488), not the older
++	 * PRVIP 0x470/0x474 registers. Keep the gate closed across both words. */
++	if (fal_ip_vrf_base_addr_set(p->dev, 0, base) != SW_OK ||
++	    fal_ip_vrf_base_addr_get(p->dev, 0, &got) != SW_OK || got != base) ret = -EIO;
++	if (fal_ip_vrf_base_mask_set(p->dev, 0, mask) != SW_OK ||
++	    fal_ip_vrf_base_mask_get(p->dev, 0, &got) != SW_OK || got != mask) ret = -EIO;
++	return ret;
++}
++int ssdk_flow_profile_prefix(void *ctx, __be32 base, __be32 mask)
++{
++	struct ssdk_flow_profile *p = ctx;
++	u32 address = ntohl(base), netmask = ntohl(mask), hostmask = ~netmask;
++	int ret;
++	if (!p || !p->ready || p->restored) return -ESHUTDOWN;
++	if (!netmask || (hostmask & (hostmask + 1)) || (address & hostmask)) return -EINVAL;
++	if (p->prefix_attempted) {
++		if (!p->prefix_ready) return -EIO;
++		return p->base == address && p->mask == netmask ? 0 : -EOPNOTSUPP;
++	}
++	p->prefix_attempted = true; p->base = address; p->mask = netmask;
++	ret = set_prefix(p, address, netmask);
++	if (!ret) p->prefix_ready = true;
++	return ret;
++}
++int ssdk_flow_profile_prefix_reset(struct ssdk_flow_profile *p)
++{
++	int ret;
++	if (!p) return -EINVAL;
++	if (!p->prefix_attempted) return 0;
++	p->prefix_ready = false;
++	ret = set_prefix(p, p->original_base, p->original_mask);
++	if (!ret) p->prefix_attempted = false;
++	return ret;
++}
++int ssdk_flow_profile_restore(struct ssdk_flow_profile *p)
++{
++	unsigned int port, window;
++	int error = 0;
++	if (!p) return -EINVAL;
++	if (!p->attempted || p->restored) return 0;
++	p->ready = false;
++	if (ssdk_flow_profile_prefix_reset(p)) error = -EIO;
++	/* Try every restoration even after an error. Keep the handle and gate
++	 * closed until the full snapshot has been written and read back. */
++	for (port = 0; port < PROFILE_PORTS; port++)
++		for (window = 0; window < PROFILE_WINDOWS; window++)
++			if (set_udf(p, port, window, p->udf[port][window].offset,
++			    p->udf[port][window].length)) error = -EIO;
++	if (set_mode(p, p->mode)) error = -EIO;
++	if (set_miss(p, p->miss)) error = -EIO;
++	for (port = 0; port < PROFILE_PORTS; port++)
++		if (set_learn(p, port, p->learn[port])) error = -EIO;
++	if (!error) p->restored = true;
++	return error;
++}
++int ssdk_flow_profile_destroy(struct ssdk_flow_profile *p)
++{
++	if (!p) return 0;
++	if (p->attempted) {
++		if (!p->restored) return -EBUSY;
++		if (set_acl(p, p->acl)) return -EIO;
++	}
++	kfree(p); return 0;
++}
+--- a/src/ref/ref_flow_state.c
++++ b/src/ref/ref_flow_state.c
+@@ -0,0 +1,265 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/errno.h>
++#include <linux/jiffies.h>
++#include <linux/mutex.h>
++#include <linux/netdevice.h>
++#include <linux/slab.h>
++#include "ssdk_flow_state.h"
++#define FLOW_ENTRIES (SSDK_FLOW_PENDING + 2 * SSDK_FLOW_COUNTERS)
++#define PENDING_LIFETIME (5 * HZ)
++struct ssdk_flow_entry {
++	bool used;
++	unsigned long cookie, expires;
++	int slot;
++	struct ssdk_flow_rule rule;
++};
++struct ssdk_flow_slot {
++	bool used, quarantine;
++	unsigned int entry[2], outbound;
++	struct ssdk_flow_counts previous;
++	struct ssdk_flow_pair pair;
++};
++struct ssdk_flow_state {
++	struct mutex lock;
++	const struct ssdk_flow_ops *ops;
++	void *ctx;
++	bool closed;
++	struct ssdk_flow_entry entries[FLOW_ENTRIES];
++	struct ssdk_flow_slot slots[SSDK_FLOW_COUNTERS];
++};
++static void drop_entry(struct ssdk_flow_entry *entry)
++{
++	dev_put(entry->rule.egress);
++	memset(entry, 0, sizeof(*entry));
++}
++static int remove_slot(struct ssdk_flow_state *state, unsigned int index)
++{
++	struct ssdk_flow_slot *slot = &state->slots[index];
++	int ret = state->ops->remove(state->ctx, index);
++	if (ret) {
++		slot->quarantine = true;
++		return ret;
++	}
++	drop_entry(&state->entries[slot->entry[0]]);
++	drop_entry(&state->entries[slot->entry[1]]);
++	memset(slot, 0, sizeof(*slot));
++	return 0;
++}
++static int find_cookie(struct ssdk_flow_state *state, unsigned long cookie)
++{
++	unsigned int i;
++	for (i = 0; i < FLOW_ENTRIES; i++)
++		if (state->entries[i].used && state->entries[i].cookie == cookie)
++			return i;
++	return -1;
++}
++static bool same_rule(const struct ssdk_flow_rule *a, const struct ssdk_flow_rule *b)
++{
++	return !memcmp(&a->match, &b->match, sizeof(a->match)) &&
++		!memcmp(&a->translated, &b->translated, sizeof(a->translated)) &&
++		a->ingress_ifindex == b->ingress_ifindex && a->egress == b->egress &&
++		a->protocol == b->protocol && a->tcp_mask == b->tcp_mask &&
++		!memcmp(a->source, b->source, ETH_ALEN) &&
++		!memcmp(a->destination, b->destination, ETH_ALEN) &&
++		a->ingress_vid == b->ingress_vid && a->egress_vid == b->egress_vid &&
++		a->vlan_match == b->vlan_match && a->vlan_pop == b->vlan_pop &&
++		a->vlan_push == b->vlan_push;
++}
++static int collect(struct ssdk_flow_state *state, unsigned long now)
++{
++	unsigned int i;
++	int ret = 0;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (state->slots[i].used && state->slots[i].quarantine && remove_slot(state, i))
++			ret = -EIO;
++	for (i = 0; i < FLOW_ENTRIES; i++)
++		if (state->entries[i].used && state->entries[i].slot < 0 &&
++		    time_after_eq(now, state->entries[i].expires))
++			drop_entry(&state->entries[i]);
++	return ret;
++}
++struct ssdk_flow_state *ssdk_flow_state_create(const struct ssdk_flow_ops *ops, void *ctx)
++{
++	struct ssdk_flow_state *state;
++	if (!ops || !ops->install || !ops->remove || !ops->read)
++		return NULL;
++	state = kzalloc(sizeof(*state), GFP_KERNEL);
++	if (!state)
++		return NULL;
++	mutex_init(&state->lock);
++	state->ops = ops; state->ctx = ctx;
++	return state;
++}
++int ssdk_flow_state_replace(struct ssdk_flow_state *state, unsigned long cookie,
++			    const struct ssdk_flow_rule *rule, unsigned long now)
++{
++	struct ssdk_flow_rule pair_rules[2];
++	struct ssdk_flow_pair pair;
++	struct ssdk_flow_slot *slot;
++	struct ssdk_flow_entry *entry;
++	unsigned int i, pending = 0;
++	int found, free_entry = -1, peer = -1, free_slot = -1, ret;
++	if (!cookie || !rule || !rule->egress)
++		return -EINVAL;
++	mutex_lock(&state->lock);
++	ret = -ESHUTDOWN;
++	if (state->closed)
++		goto out;
++	ret = collect(state, now);
++	if (ret)
++		goto out;
++	found = find_cookie(state, cookie);
++	if (found >= 0) {
++		entry = &state->entries[found];
++		if (same_rule(&entry->rule, rule)) {
++			ret = entry->slot >= 0 ? 0 : -EAGAIN;
++			goto out;
++		}
++		if (entry->slot >= 0) {
++			ret = remove_slot(state, entry->slot);
++			if (ret)
++				goto out;
++		} else {
++			drop_entry(entry);
++		}
++	}
++	for (i = 0; i < FLOW_ENTRIES; i++) {
++		entry = &state->entries[i];
++		if (!entry->used) {
++			if (free_entry < 0) free_entry = i;
++			continue;
++		}
++		if (entry->slot >= 0) continue;
++		pending++;
++		pair_rules[0] = entry->rule; pair_rules[1] = *rule;
++		if (!ssdk_flow_pair(pair_rules, &pair)) {
++			/* Ambiguous identical tuple pairs must not choose a route. */
++			if (peer >= 0) { ret = -EEXIST; goto out; }
++			peer = i;
++		}
++	}
++	ret = -ENOSPC;
++	if (free_entry < 0 || (peer < 0 && pending >= SSDK_FLOW_PENDING))
++		goto out;
++	if (peer >= 0) {
++		for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++			if (!state->slots[i].used) { free_slot = i; break; }
++		if (free_slot < 0) goto out;
++	}
++	entry = &state->entries[free_entry];
++	entry->used = true; entry->cookie = cookie; entry->rule = *rule;
++	entry->slot = -1; entry->expires = now + PENDING_LIFETIME;
++	dev_hold(rule->egress);
++	ret = -EAGAIN;
++	if (peer < 0) goto out;
++	pair_rules[0] = state->entries[peer].rule; pair_rules[1] = *rule;
++	ret = ssdk_flow_pair(pair_rules, &pair);
++	if (ret) { drop_entry(entry); goto out; }
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++) {
++		if (state->slots[i].used && state->slots[i].pair.protocol == pair.protocol &&
++		    !memcmp(&state->slots[i].pair.outbound, &pair.outbound, sizeof(pair.outbound))) {
++			drop_entry(entry); ret = -EEXIST; goto out;
++		}
++	}
++	slot = &state->slots[free_slot];
++	slot->pair = pair;
++	slot->used = true; slot->entry[0] = peer; slot->entry[1] = free_entry;
++	slot->outbound = pair.outbound_direction;
++	state->entries[peer].slot = entry->slot = free_slot;
++	ret = state->ops->install(state->ctx, free_slot, pair_rules, &pair, &slot->previous);
++	if (ret) {
++		/* The backend may have allocated resources before reporting error. */
++		if (remove_slot(state, free_slot)) ret = -EIO;
++	}
++out:
++	mutex_unlock(&state->lock);
++	return ret;
++}
++int ssdk_flow_state_delete(struct ssdk_flow_state *state, unsigned long cookie)
++{
++	int found, ret = 0;
++	mutex_lock(&state->lock);
++	found = find_cookie(state, cookie);
++	if (found >= 0) {
++		struct ssdk_flow_entry *entry = &state->entries[found];
++		if (entry->slot >= 0) ret = remove_slot(state, entry->slot);
++		else drop_entry(entry);
++	}
++	mutex_unlock(&state->lock);
++	return ret;
++}
++int ssdk_flow_state_stats(struct ssdk_flow_state *state, unsigned long cookie,
++			  struct ssdk_flow_delta *delta)
++{
++	struct ssdk_flow_counts counts;
++	struct ssdk_flow_slot *slot;
++	unsigned int direction;
++	int found, index, ret = -ENOENT;
++	if (!delta) return -EINVAL;
++	mutex_lock(&state->lock);
++	found = find_cookie(state, cookie);
++	if (found < 0 || state->entries[found].slot < 0) goto out;
++	index = state->entries[found].slot;
++	slot = &state->slots[index];
++	ret = -EIO;
++	if (slot->quarantine) goto out;
++	ret = state->ops->read(state->ctx, index, &counts);
++	if (ret) { remove_slot(state, index); goto out; }
++	direction = slot->entry[slot->outbound] == found ? 0 : 1;
++	delta->packets = (u32)(counts.packets[direction] - slot->previous.packets[direction]);
++	delta->bytes = (u32)(counts.bytes[direction] - slot->previous.bytes[direction]);
++	slot->previous.packets[direction] = counts.packets[direction];
++	slot->previous.bytes[direction] = counts.bytes[direction];
++out:
++	mutex_unlock(&state->lock);
++	return ret;
++}
++int ssdk_flow_state_gc(struct ssdk_flow_state *state, unsigned long now)
++{
++	struct ssdk_flow_counts counts;
++	unsigned int i;
++	int ret;
++	mutex_lock(&state->lock);
++	ret = collect(state, now);
++	/* Poll active paths too: physical FDB moves/aging and individual PHY
++	 * link changes need not generate a Linux neighbour/carrier event. Do
++	 * not consume the accounting baseline used by FLOW_CLS_STATS. */
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++) {
++		if (!state->slots[i].used || state->slots[i].quarantine) continue;
++		if (state->ops->read(state->ctx, i, &counts)) {
++			remove_slot(state, i); ret = -EIO;
++		}
++	}
++	mutex_unlock(&state->lock);
++	return ret;
++}
++static int flush_locked(struct ssdk_flow_state *state)
++{
++	unsigned int i;
++	int ret = 0;
++	for (i = 0; i < SSDK_FLOW_COUNTERS; i++)
++		if (state->slots[i].used && remove_slot(state, i)) ret = -EIO;
++	for (i = 0; i < FLOW_ENTRIES; i++)
++		if (state->entries[i].used && state->entries[i].slot < 0) drop_entry(&state->entries[i]);
++	return ret;
++}
++int ssdk_flow_state_flush(struct ssdk_flow_state *state)
++{
++	int ret;
++	if (!state) return 0;
++	mutex_lock(&state->lock);
++	ret = flush_locked(state);
++	mutex_unlock(&state->lock);
++	return ret;
++}
++int ssdk_flow_state_destroy(struct ssdk_flow_state *state)
++{
++	int ret;
++	if (!state) return 0;
++	mutex_lock(&state->lock);
++	state->closed = true;
++	ret = flush_locked(state);
++	mutex_unlock(&state->lock);
++	if (!ret) kfree(state);
++	return ret;
++}
+--- a/src/ref/ref_misc.c
++++ b/src/ref/ref_misc.c
+@@ -1,3 +1,4 @@
++#include "ssdk_edma.h"
+ /*
+  * Copyright (c) 2012, 2017, The Linux Foundation. All rights reserved.
+  * Permission to use, copy, modify, and/or distribute this software for
+@@ -83,17 +84,33 @@
+ 	return 0;
+ }
+ 
++extern ssdk_chip_type SSDK_CURRENT_CHIP_TYPE;
++
+ int
+ qca_ar8327_sw_reset_switch(struct switch_dev *dev)
+ {
+ 	struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+-	int rv = 0;
++	int rv = 0, port;
++	bool handoff = false;
+ 	a_uint32_t mac_mode;
+ 
+ 	mutex_lock(&priv->reg_mutex);
+ 
+-	/* flush all vlan translation unit entries */
+-	fal_vlan_flush(priv->device_id);
++	if (SSDK_CURRENT_CHIP_TYPE == CHIP_DESS && priv->device_id == 0) {
++		rv = ssdk_edma_vlan_begin(NULL);
++		if (rv) {
++			mutex_unlock(&priv->reg_mutex);
++			return rv;
++		}
++		handoff = true;
++	}
++
++	/* Isolate before flushing; preserve the shadow on failed reset. */
++	for (port = 0; port < dev->ports; port++)
++		if (fal_portvlan_member_update(priv->device_id, port, 0))
++			goto reset_error;
++	if (fal_vlan_flush(priv->device_id))
++		goto reset_error;
+ 
+ 	/* reset VLAN shadow */
+ 	priv->vlan = 0;
+@@ -102,11 +119,15 @@
+ 	memset(priv->vlan_tagged, 0, sizeof(a_uint8_t) * AR8327_MAX_VLANS);
+ 	memset(priv->pvid, 0, sizeof(a_uint16_t) * AR8327_NUM_PORTS);
+ 
++	if (handoff)
++		ssdk_edma_vlan_finish(true);
+ 	mutex_unlock(&priv->reg_mutex);
+ 
+ 	priv->init = true;
+ 	rv += qca_ar8327_sw_hw_apply(dev);
+ 	priv->init = false;
++	if (rv)
++		return rv;
+ 
+ 	mac_mode = ssdk_dt_global_get_mac_mode(priv->device_id, 0);
+ 	/* set mac5 flowcontol force for RGMII */
+@@ -129,5 +150,13 @@
+ 	}
+ 
+ 	return rv;
++
++reset_error:
++	if (handoff)
++		ssdk_edma_vlan_finish(false);
++	for (port = 0; port < dev->ports; port++)
++		fal_portvlan_member_update(priv->device_id, port, 0);
++	mutex_unlock(&priv->reg_mutex);
++	return -EIO;
+ }
+ 
+--- a/src/ref/ref_port_ctrl.c
++++ b/src/ref/ref_port_ctrl.c
+@@ -87,11 +87,11 @@
+ 			link->speed = SWITCH_PORT_SPEED_1000;
+ 		#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0))
+ 		} else if (speed == FAL_SPEED_2500) {
+-			link->speed = SWITCH_PORT_SPEED_2500;
++			link->speed = SWITCH_PORT_SPEED_UNKNOWN;
+ 		} else if (speed == FAL_SPEED_5000) {
+-			link->speed = SWITCH_PORT_SPEED_5000;
++			link->speed = SWITCH_PORT_SPEED_UNKNOWN;
+ 		} else if (speed == FAL_SPEED_10000) {
+-			link->speed = SWITCH_PORT_SPEED_10000;
++			link->speed = SWITCH_PORT_SPEED_UNKNOWN;
+ 		#endif
+ 		} else {
+ 			link->speed = SWITCH_PORT_SPEED_UNKNOWN;
+@@ -231,7 +231,8 @@
+ 
+ 	rgmii_mode = ssdk_dt_global_get_mac_mode(dev_id, 0);
+ 
+-	if(((rgmii_mode == PORT_WRAPPER_SGMII0_RGMII5) ||
++	if(((rgmii_mode == PORT_WRAPPER_PSGMII_RGMII5) ||
++		(rgmii_mode == PORT_WRAPPER_SGMII0_RGMII5) ||
+ 		(rgmii_mode == PORT_WRAPPER_SGMII1_RGMII5)) && (port_id == 5))
+ 		return A_TRUE;
+ 
+@@ -449,7 +450,9 @@
+ 
+ 	mac_mode = ssdk_dt_global_get_mac_mode(priv->device_id, 0);
+ 
+-	if( port_id >= AR8327_NUM_PORTS-1 || port_id < 1)
++	if (port_id >= AR8327_NUM_PORTS - 1 || port_id < 1)
++		return A_FALSE;
++	if (!(qca_ssdk_port_bmp_get(priv->device_id) & BIT(port_id)))
+ 		return A_FALSE;
+ 
+ 	if(((mac_mode == PORT_WRAPPER_SGMII0_RGMII5) ||
+@@ -470,10 +473,16 @@
+ 	a_uint32_t phy_addr;
+ 
+ 	phy_addr = qca_ssdk_port_to_phy_addr(dev_id, port_id);
+-	if (qca_ar8327_sw_rgmii_mode_valid(dev_id, port_id) == A_TRUE)
++	if (qca_ar8327_sw_rgmii_mode_valid(dev_id, port_id) == A_TRUE &&
++	    ssdk_dt_global_get_mac_mode(dev_id, 0) != PORT_WRAPPER_PSGMII_RGMII5)
+ 		phy_addr = 4;
+ 
+-	qca_ar8327_phy_read(dev_id, phy_addr, F1_PHY_SPEC_STATUS, &port_phy_status);
++	*speed_status = 0;
++	*link_status = 0;
++	*duplex_status = 0;
++	if (qca_ar8327_phy_read(dev_id, phy_addr, F1_PHY_SPEC_STATUS,
++				 &port_phy_status) != SW_OK)
++		return;
+ 	*speed_status = (a_uint32_t)((port_phy_status >> 14) & 0x03);
+ 	*link_status = (a_uint32_t)((port_phy_status & BIT(10)) >> 10);
+ 	*duplex_status = (a_uint32_t)((port_phy_status & BIT(13)) >> 13);
+--- a/src/ref/ref_uci.c
++++ b/src/ref/ref_uci.c
+@@ -11405,8 +11405,8 @@
+         }
+ 
+         if(i<len) {
+-		strlcpy(module, name, i+1);
+-		strlcpy(cmd, p, COMMAND_NAME_MAX_LEN);
++		strscpy(module, name, i+1);
++		strscpy(cmd, p, COMMAND_NAME_MAX_LEN);
+ 		return 0;
+         }
+ 	
+--- a/src/ref/ref_vlan.c
++++ b/src/ref/ref_vlan.c
+@@ -1,3 +1,4 @@
++#include "ssdk_edma.h"
+ /*
+  * Copyright (c) 2012, 2014, 2017, The Linux Foundation. All rights reserved.
+  * Permission to use, copy, modify, and/or distribute this software for
+@@ -118,6 +119,9 @@
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+ 
++    /* Dual GMAC demultiplexing requires a tagged CPU VLAN. */
++    if (SSDK_CURRENT_CHIP_TYPE == CHIP_DESS && !val->value.i)
++        return -EOPNOTSUPP;
+     priv->vlan = !!val->value.i;
+ 
+     #ifdef BOARD_AR71XX
+@@ -148,6 +152,9 @@
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+ 
++    if (val->port_vlan < 0 || val->port_vlan >= AR8327_MAX_VLANS ||
++        val->value.i < 0 || val->value.i > 4094)
++        return -EINVAL;
+     priv->vlan_id[val->port_vlan] = val->value.i;
+ 
+ #ifdef BOARD_AR71XX
+@@ -166,6 +173,8 @@
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+ 
++    if (val->port_vlan < 0 || val->port_vlan >= AR8327_MAX_VLANS)
++        return -EINVAL;
+     val->value.i = priv->vlan_id[val->port_vlan];
+ 
+     return 0;
+@@ -176,6 +185,8 @@
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+ 
++    if (port < 0 || port >= dev->ports)
++        return -EINVAL;
+     *vlan = priv->pvid[port];
+ 
+     return 0;
+@@ -187,8 +198,8 @@
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+ 
+     /* make sure no invalid PVIDs get set */
+-    if (vlan >= dev->vlans)
+-        return -1;
++    if (port < 0 || port >= dev->ports || vlan < 0 || vlan >= dev->vlans)
++        return -EINVAL;
+ 
+     priv->pvid[port] = vlan;
+ 
+@@ -205,9 +216,13 @@
+ qca_ar8327_sw_get_ports(struct switch_dev *dev, struct switch_val *val)
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+-    a_uint8_t ports = priv->vlan_table[val->port_vlan];
++    a_uint8_t ports;
+     int i;
+ 
++    if (val->port_vlan < 0 || val->port_vlan >= AR8327_MAX_VLANS)
++        return -EINVAL;
++    ports = priv->vlan_table[val->port_vlan];
++
+     val->len = 0;
+     for (i = 0; i < dev->ports; i++) {
+         struct switch_port *p;
+@@ -234,9 +249,18 @@
+ qca_ar8327_sw_set_ports(struct switch_dev *dev, struct switch_val *val)
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+-    a_uint8_t *vt = &priv->vlan_table[val->port_vlan];
++    a_uint8_t *vt;
+     int i;
+ 
++    if (val->port_vlan < 0 || val->port_vlan >= AR8327_MAX_VLANS ||
++        val->len < 0 || val->len > dev->ports)
++        return -EINVAL;
++    for (i = 0; i < val->len; i++)
++        if (val->value.ports[i].id >= dev->ports)
++            return -EINVAL;
++    vt = &priv->vlan_table[val->port_vlan];
++    priv->vlan_tagged[val->port_vlan] = 0;
++
+ #ifdef BOARD_AR71XX
+ 	if(SSDK_CURRENT_CHIP_TYPE == CHIP_SHIVA) {
+ 		ssdk_uci_sw_set_ports(val);
+@@ -276,97 +300,163 @@
+ qca_ar8327_sw_hw_apply(struct switch_dev *dev)
+ {
+     struct qca_phy_priv *priv = qca_phy_priv_get(dev);
+-    fal_pbmp_t *portmask = NULL;
+-    int i, j;
++    fal_pbmp_t *portmask;
++    u8 *seen;
++    int i, j, ret = 0;
++    struct ssdk_edma_vlan_config *edma = NULL;
++    bool handoff = false;
+ 
+-    if (priv->version == QCA_VER_HPPE) {
++    if (priv->version == QCA_VER_HPPE)
+         return 0;
+-    }
+-
+-    portmask = aos_mem_alloc(sizeof(fal_pbmp_t) * dev->ports);
+-    if (portmask == NULL) {
+-        SSDK_ERROR("%s: portmask malloc failed. \n", __func__);
+-        return -1;
++    if (SSDK_CURRENT_CHIP_TYPE == CHIP_DESS && !priv->init && !priv->vlan)
++        return -EOPNOTSUPP;
++    if (dev->ports <= 0 || dev->ports > 8)
++        return -EINVAL;
++    portmask = aos_mem_alloc(sizeof(*portmask) * dev->ports);
++    if (!portmask)
++        return -ENOMEM;
++    seen = aos_mem_alloc(4096);
++    if (!seen) {
++        aos_mem_free(portmask);
++        return -ENOMEM;
+     }
+ 
+     mutex_lock(&priv->reg_mutex);
++    memset(portmask, 0, sizeof(*portmask) * dev->ports);
++    memset(seen, 0, 4096);
+ 
+-    memset(portmask, 0, sizeof(*portmask));
++    /* Validate the complete shadow before touching hardware. Duplicate VIDs
++     * otherwise overwrite an earlier slot and leave misleading UCI state. */
+     if (!priv->init) {
+-        /*Handle VLAN 0 entry*/
+-        if (priv->vlan_id[0] == 0 && priv->vlan_table[0] == 0) {
+-            qca_ar8327_sw_enable_vlan0(priv->device_id, A_FALSE, 0);
+-        }
+-
+-        /* calculate the port destination masks and load vlans
+-         * into the vlan translation unit */
+         for (j = 0; j < AR8327_MAX_VLANS; j++) {
++            unsigned int vid = priv->vlan_id[j];
+             u8 vp = priv->vlan_table[j];
+ 
+-            if (!vp) {
+-                fal_vlan_delete(priv->device_id, priv->vlan_id[j]);
++            if (!vp)
+                 continue;
++            if (vid >= 4095 || seen[vid] ||
++                (vp & ~((1U << dev->ports) - 1)) ||
++                (priv->vlan_tagged[j] & ~vp)) {
++                ret = -EINVAL;
++                goto out;
+             }
+-            fal_vlan_delete(priv->device_id, priv->vlan_id[j]);
+-            fal_vlan_create(priv->device_id, priv->vlan_id[j]);
+-
+-            for (i = 0; i < dev->ports; i++) {
+-                u8 mask = (1 << i);
+-                if (vp & mask) {
+-                    fal_vlan_member_add(priv->device_id, priv->vlan_id[j], i,
+-                           (mask & priv->vlan_tagged[j])? FAL_EG_TAGGED : FAL_EG_UNTAGGED);
+-                    portmask[i] |= vp & ~mask;
+-                }
++            if (SSDK_CURRENT_CHIP_TYPE == CHIP_DESS &&
++                (!vid || ((vp & 1) && !(priv->vlan_tagged[j] & 1)))) {
++                ret = -EINVAL;
++                goto out;
+             }
+-	    	if (SSDK_CURRENT_CHIP_TYPE == CHIP_SHIVA)
+-				fal_vlan_member_update(priv->device_id,priv->vlan_id[j],vp,0);
+-        }
+-
+-        /*Hanlde VLAN 0 entry*/
+-        if (priv->vlan_id[0] == 0 && priv->vlan_table[0]) {
+-            qca_ar8327_sw_enable_vlan0(priv->device_id,A_TRUE, priv->vlan_table[0]);
++            seen[vid] = 1;
++            for (i = 0; i < dev->ports; i++)
++                if (vp & (1U << i))
++                    portmask[i] |= vp & ~(1U << i);
+         }
+-
+     } else {
+-        /* vlan disabled:
+-         * isolate all ports, but connect them to the cpu port */
+-        for (i = 0; i < dev->ports; i++) {
+-            if (i == AR8327_PORT_CPU)
+-                continue;
+-
++        for (i = 1; i < dev->ports; i++) {
+             portmask[i] = 1 << AR8327_PORT_CPU;
+-            portmask[AR8327_PORT_CPU] |= (1 << i);
++            portmask[AR8327_PORT_CPU] |= 1U << i;
++        }
++    }
++    if (priv->vlan) {
++        for (i = 0; i < dev->ports; i++) {
++            if ((unsigned int)priv->pvid[i] >= AR8327_MAX_VLANS ||
++                priv->vlan_id[priv->pvid[i]] >= 4095) {
++                ret = -EINVAL;
++                goto out;
++            }
+         }
+     }
+ 
+-    /* update the port destination mask registers and tag settings */
+-    for (i = 0; i < dev->ports; i++) {
+-        int pvid;
+-        fal_pt_1qmode_t ingressMode;
+-        fal_pt_1q_egmode_t egressMode;
+-
+-        if (priv->vlan) {
+-            pvid = priv->vlan_id[priv->pvid[i]];
+-            ingressMode = FAL_1Q_SECURE;
+-        } else {
+-            pvid = 0;
+-            ingressMode = FAL_1Q_DISABLE;
++    if (SSDK_CURRENT_CHIP_TYPE == CHIP_DESS && priv->device_id == 0) {
++        edma = aos_mem_alloc(sizeof(*edma));
++        if (!edma) {
++            ret = -ENOMEM;
++            goto out;
++        }
++        memset(edma, 0, sizeof(*edma));
++        if (!priv->init) {
++            edma->default_vid[0] = priv->vlan_id[2];
++            edma->default_vid[1] = priv->vlan_id[1];
++            for (j = 0; j < AR8327_MAX_VLANS; j++) {
++                if (!priv->vlan_table[j])
++                    continue;
++                edma->members[priv->vlan_id[j]] = priv->vlan_table[j];
++                edma->tagged[priv->vlan_id[j]] = priv->vlan_tagged[j];
++            }
+         }
+-        egressMode = FAL_EG_UNTOUCHED;
++        ret = ssdk_edma_vlan_begin(edma);
++        if (ret)
++            goto out;
++        handoff = true;
++    }
++
++    /* Block forwarding while rebuilding. Flushing removes old VIDs even if
++     * userspace changed a slot's VID without issuing a switch reset first. */
++    for (i = 0; i < dev->ports; i++)
++        if (fal_portvlan_member_update(priv->device_id, i, 0))
++            goto hardware_error;
++    if (!priv->init) {
++        if (fal_vlan_flush(priv->device_id))
++            goto hardware_error;
++        if (SSDK_CURRENT_CHIP_TYPE != CHIP_DESS &&
++            priv->vlan_id[0] == 0 && priv->vlan_table[0] == 0 &&
++            qca_ar8327_sw_enable_vlan0(priv->device_id, A_FALSE, 0))
++            goto hardware_error;
++        for (j = 0; j < AR8327_MAX_VLANS; j++) {
++            u8 vp = priv->vlan_table[j];
+ 
+-        fal_port_1qmode_set(priv->device_id, i, ingressMode);
+-        fal_port_egvlanmode_set(priv->device_id, i, egressMode);
+-        fal_port_default_cvid_set(priv->device_id, i, pvid);
+-        fal_portvlan_member_update(priv->device_id, i, portmask[i]);
++            if (!vp)
++                continue;
++            if (fal_vlan_create(priv->device_id, priv->vlan_id[j]))
++                goto hardware_error;
++            for (i = 0; i < dev->ports; i++) {
++                u8 mask = 1U << i;
++                if ((vp & mask) &&
++                    fal_vlan_member_add(priv->device_id, priv->vlan_id[j], i,
++                        (mask & priv->vlan_tagged[j]) ? FAL_EG_TAGGED : FAL_EG_UNTAGGED))
++                    goto hardware_error;
++            }
++            if (SSDK_CURRENT_CHIP_TYPE == CHIP_SHIVA &&
++                fal_vlan_member_update(priv->device_id, priv->vlan_id[j], vp, 0))
++                goto hardware_error;
++        }
++        if (SSDK_CURRENT_CHIP_TYPE != CHIP_DESS &&
++            priv->vlan_id[0] == 0 && priv->vlan_table[0] &&
++            qca_ar8327_sw_enable_vlan0(priv->device_id, A_TRUE, priv->vlan_table[0]))
++            goto hardware_error;
+     }
+ 
+-    aos_mem_free(portmask);
+-    portmask = NULL;
++    for (i = 0; i < dev->ports; i++) {
++        int pvid = priv->vlan ? priv->vlan_id[priv->pvid[i]] : 0;
++        fal_pt_1qmode_t ingress = priv->vlan ? FAL_1Q_SECURE : FAL_1Q_DISABLE;
+ 
++        if (fal_port_1qmode_set(priv->device_id, i, ingress) ||
++            fal_port_egvlanmode_set(priv->device_id, i, FAL_EG_UNTOUCHED) ||
++            fal_port_default_cvid_set(priv->device_id, i, pvid))
++            goto hardware_error;
++    }
++    /* Publish memberships only after all VLAN and PVID writes succeeded. */
++    for (i = 0; i < dev->ports; i++)
++        if (fal_portvlan_member_update(priv->device_id, i, portmask[i]))
++            goto hardware_error;
++    goto out;
++
++hardware_error:
++    /* Do not report partial programming as success. Best-effort isolation
++     * also covers failures during the final membership publication. */
++    for (i = 0; i < dev->ports; i++)
++        fal_portvlan_member_update(priv->device_id, i, 0);
++    SSDK_ERROR("VLAN hardware programming failed; requesting port isolation\n");
++    ret = -EIO;
++out:
++    if (handoff)
++        ssdk_edma_vlan_finish(!ret);
++    aos_mem_free(edma);
+     mutex_unlock(&priv->reg_mutex);
+-
+-    return 0;
++    aos_mem_free(seen);
++    aos_mem_free(portmask);
++    return ret;
+ }
++
+ #endif
+ 
+ 
+--- a/src/sal/sd/linux/uk_interface/sw_api_ks_ioctl.c
++++ b/src/sal/sd/linux/uk_interface/sw_api_ks_ioctl.c
+@@ -13,6 +13,7 @@
+  */
+ 
+ 
++#include "ssdk_flow_control.h"
+ #include "sw.h"
+ #include "sw_api.h"
+ 
+@@ -235,7 +236,8 @@
+     }
+ 
+     mutex_lock(&api_ioctl_lock);
+-    rv = sw_api_cmd(args);
++    if (ssdk_flow_user_begin(false)) rv = SW_BUSY;
++    else { rv = sw_api_cmd(args); ssdk_flow_user_end(); }
+     mutex_unlock(&api_ioctl_lock);
+ 
+     /* return API result to user */
+--- a/src/shell_lib/shell_config.c
++++ b/src/shell_lib/shell_config.c
+@@ -486,7 +486,7 @@
+             {"routestatus", "set", "set ip route status", "<enable|disable>", SW_API_IP_ROUTE_STATUS_SET, NULL},
+             {"intfentry", "set", "add interface mac address", "", SW_API_IP_INTF_ENTRY_ADD, NULL},
+             {"intfentry", "add", "add interface mac address", "", SW_API_IP_INTF_ENTRY_ADD, NULL},
+-            {"intfentry", "del", "del interface mac address", "", SW_API_IP_INTF_ENTRY_DEL, NULL},
++            {"intfentry", "del", "del interface mac address", "", SW_API_IP_INTF_ENTRY_DEL, NULL},
+             {"ipunksrc", "set", "set ip unkown source command", "<forward|drop|cpycpu|rdtcpu>", SW_API_IP_UNK_SOURCE_CMD_SET, NULL},
+             {"arpunksrc", "set", "set arp unkown source command", "<forward|drop|cpycpu|rdtcpu>", SW_API_ARP_UNK_SOURCE_CMD_SET, NULL},
+             {"ipagetime", "set", "set dynamic ip entry age time", "<time>", SW_API_IP_AGE_TIME_SET, NULL},
+@@ -906,7 +906,7 @@
+ 	{"ptEgress", "set", SW_API_RATE_PT_EGRL_SET, NULL},
+ 	{"ptIngress", "set", SW_API_RATE_PT_INRL_SET, NULL},
+ 	{"stormCtrl", "set", SW_API_STORM_CTRL_FRAME_SET, NULL},
+-	{"stormCtrlRate", SW_API_STORM_CTRL_RATE_SET, NULL},
++	{"stormCtrlRate", "set", SW_API_STORM_CTRL_RATE_SET, NULL},
+ #endif
+ 	{"portpolicer", "set", SW_API_RATE_PORT_POLICER_SET, NULL},
+ 	{"portshaper", "set", SW_API_RATE_PORT_SHAPER_SET, NULL},

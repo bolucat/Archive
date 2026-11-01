@@ -1,0 +1,26 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] PCI: dwc: skip eDMA detection when its driver is unreachable
+
+The DesignWare host probes eDMA registers and validates DMA interrupts even
+when dw_edma_probe() is a stub returning -ENODEV. On IPQ4019 this reports
+"Invalid eDMA IRQs found" despite CONFIG_DW_EDMA being disabled.
+
+Use the same IS_REACHABLE condition as linux/dma/edma.h before probing the
+optional DMA engine. Keep normal detection and IRQ validation when the
+DMA driver is reachable; PCIe enumeration and endpoint DMA are unaffected.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/pci/controller/dwc/pcie-designware.c
++++ b/drivers/pci/controller/dwc/pcie-designware.c
+@@ -1099,6 +1099,10 @@
+ {
+ 	int ret;
+ 
++	/* Match the availability of dw_edma_probe() in linux/dma/edma.h. */
++	if (!IS_REACHABLE(CONFIG_DW_EDMA))
++		return 0;
++
+ 	/* Don't fail if no eDMA was found (for the backward compatibility) */
+ 	ret = dw_pcie_edma_find_chip(pci);
+ 	if (ret)

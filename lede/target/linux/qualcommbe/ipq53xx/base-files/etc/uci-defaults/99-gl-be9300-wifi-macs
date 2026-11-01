@@ -1,0 +1,36 @@
+#!/bin/sh
+# ath12k takes its MAC from firmware board data and has no DT/nvmem support,
+# so without this every boot invents a new base address and all BSSIDs move.
+# Pin each BSS to an address derived from the factory ART value (offset 0x04,
+# what stock uses for wlan0). Sections that already set macaddr are left alone.
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+[ "$(board_name)" = "gl.inet,gl-be9300" ] || exit 0
+
+base=$(mmc_get_mac_binary 0:ART 0x4)
+[ -n "$base" ] || exit 0
+
+n=0
+set_wifi_mac() {
+	local section="$1"
+	config_get mac "$section" macaddr
+	[ -n "$mac" ] && return 0		# explicitly pinned already
+	config_get mode "$section" mode
+	[ "$mode" = "ap" ] || return 0		# leave sta/mesh alone
+
+	local addr
+	if [ "$n" = 0 ]; then
+		addr="$base"
+	else
+		addr=$(macaddr_setbit_la "$(macaddr_add "$base" $n)")
+	fi
+	uci set "wireless.$section.macaddr=$addr"
+	n=$((n + 1))
+}
+
+config_load wireless
+config_foreach set_wifi_mac wifi-iface
+uci commit wireless
+
+exit 0

@@ -1,0 +1,23 @@
+Subject: [PATCH] arc: use the ARC700 memory barrier instruction
+
+ARC700 implements SYNC rather than the ARCv2 DMB instruction. Match
+the architecture split used by Linux arch/arc/include/asm/barrier.h
+so that atomic_full_barrier builds for both ARC700 and HS38.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/sysdeps/arc/atomic-machine.h
++++ b/sysdeps/arc/atomic-machine.h
+@@ -52,6 +52,11 @@
+   __atomic_val_bysize (__arch_compare_and_exchange_val, int,		\
+ 		       mem, new, old, __ATOMIC_ACQUIRE)
+ 
+-#define atomic_full_barrier()  ({ asm volatile ("dmb 3":::"memory"); })
++/* ARC700 has SYNC, while ARCv2 provides DMB.  */
++#ifdef __ARC700__
++# define atomic_full_barrier()  ({ asm volatile ("sync":::"memory"); })
++#else
++# define atomic_full_barrier()  ({ asm volatile ("dmb 3":::"memory"); })
++#endif
+ 
+ #endif /* _ARC_BITS_ATOMIC_H */

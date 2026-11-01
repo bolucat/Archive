@@ -14,7 +14,8 @@
 	compatible = "google,wifi", "google,gale-v2", "qcom,ipq4019";
 
 	aliases {
-		ethernet0 = &gmac0;
+		// TODO: Verify if the ethernet0 alias is needed
+		ethernet0 = &gmac;
 		label-mac-device = &gmac0;
 		led-boot = &led0_blue;
 		led-failsafe = &led0_red;
@@ -41,16 +42,22 @@
 	};
 
 	soc {
-		ess-switch@c000000 {
-			status = "okay";
-		};
-
 		edma@c080000 {
-			status = "okay";
-		};
+			/*
+			 * Factory bootloader (depthcharge) will fail to boot
+			 * if this exact path (soc/edma@c080000/gmac0) doesn't
+			 * exist.
+			 */
+			gmac0: gmac0 {
+			};
 
-		ess-psgmii@98000 {
-			status = "okay";
+			/*
+			 * Factory bootloader (depthcharge) will fail to boot
+			 * if this exact path (soc/edma@c080000/gmac1) doesn't
+			 * exist.
+			 */
+			gmac1 {
+			};
 		};
 	};
 
@@ -434,18 +441,8 @@
 	status = "okay";
 };
 
-&gmac0 {
-	qcom,phy_mdio_addr = <4>;
-	qcom,poll_required = <1>;
-	qcom,forced_speed = <1000>;
-	qcom,forced_duplex = <1>;
-	vlan_tag = <2 0x20>;
-};
-
-&gmac1 {
-	qcom,phy_mdio_addr = <3>;
-	qcom,forced_duplex = <1>;
-	vlan_tag = <1 0x10>;
+&gmac {
+	status = "okay";
 };
 
 &mdio {
@@ -465,6 +462,20 @@
 	clock-frequency = <192000000>;
 	vqmmc-supply = <&vqmmc>;
 	non-removable;
+};
+
+&switch {
+	status = "okay";
+};
+
+&swport4 {
+	status = "okay";
+
+	label = "lan";
+};
+
+&swport5 {
+	status = "okay";
 };
 
 &usb2 {
@@ -505,4 +516,22 @@
 	pinctrl-0 = <&wifi1_1_pins>;
 	pinctrl-names = "default";
 	qcom,ath10k-calibration-variant = "GO_GALE";
+};
+
+/* QSDK 10: retain this board's physical LAN/WAN port assignment. */
+#define QSDK_LAN_BMP 0x10
+#define QSDK_WAN_BMP 0x20
+#define QSDK_WAN_PHY 4
+#define QSDK_WAN_POLL 1
+#include "qcom-ipq40xx-qsdk-10.dtsi"
+
+&switch {
+	qcom,port_phyinfo {
+		port4 { port_id = <4>; phy_address = <3>; };
+		port5 { port_id = <5>; phy_address = <4>; };
+	};
+};
+
+&qsdk_gmac0 {
+	qcom,mac-source = <&swport5>;
 };

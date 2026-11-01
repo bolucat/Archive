@@ -69,7 +69,7 @@ fn wireguard_check_validates_outer_udp_without_dns_or_listeners() {
     let occupied = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     let server = wireguard_support::server(occupied.local_addr().unwrap().port());
     let mut endpoint = wireguard_support::client(51820);
-    endpoint["client_proxies"][0]["address"] = json!("unresolvable.invalid:51820");
+    endpoint["client_chains"][0]["address"] = json!("unresolvable.invalid:51820");
     for mode in ["check", "--dry-run"] {
         for (protocol, valid) in [
             (json!({"type": "socks"}), false),
@@ -80,7 +80,7 @@ fn wireguard_check_validates_outer_udp_without_dns_or_listeners() {
             ),
             (wireguard_support::vless_protocol(), true),
         ] {
-            endpoint["client_proxies"][0]["protocol"]["peer_client_chain"] = json!([{
+            endpoint["client_chains"][0]["protocol"]["peer_client_chain"] = json!([{
                 "address": "unresolvable.invalid:443", "protocol": protocol,
                 "transport": "quic",
             }]);
@@ -89,7 +89,7 @@ fn wireguard_check_validates_outer_udp_without_dns_or_listeners() {
                 target_os = "fuchsia",
                 target_os = "linux"
             )) {
-                endpoint["client_proxies"][0]["protocol"]["peer_client_chain"][0]["bind_interface"] =
+                endpoint["client_chains"][0]["protocol"]["peer_client_chain"][0]["bind_interface"] =
                     json!("shoes-missing-interface");
             }
             let config = json!([server, endpoint]);
@@ -149,7 +149,7 @@ async fn wireguard_conflicting_shared_client_reload_retains_live_flows() {
     roundtrip(&mut tcp).await;
     assert_eq!(udp.send_to(echo.udp(), b"before").await.unwrap(), b"before");
 
-    configs[2]["client_proxies"][0]["protocol"]["pre_shared_key"] =
+    configs[2]["client_chains"][0]["protocol"]["pre_shared_key"] =
         json!(wireguard_support::key(44));
     std::fs::write(&path, serde_yaml::to_string(&configs).unwrap()).unwrap();
     process.signal(libc::SIGHUP);
@@ -181,8 +181,8 @@ async fn wireguard_reload(detour: bool) {
     if detour {
         let (_, outer_port) = ports.get_localhost_listener_port();
         let protocol = wireguard_support::vless_protocol();
-        endpoint["client_proxies"][0]["address"] = json!(format!("192.0.2.200:{port}"));
-        endpoint["client_proxies"][0]["protocol"]["peer_client_chain"] =
+        endpoint["client_chains"][0]["address"] = json!(format!("192.0.2.200:{port}"));
+        endpoint["client_chains"][0]["protocol"]["peer_client_chain"] =
             json!([{"address": format!("127.0.0.1:{outer_port}"), "protocol": protocol}]);
         servers.push(json!({
             "address": format!("0.0.0.0:{outer_port}"), "protocol": protocol,
@@ -207,7 +207,7 @@ async fn wireguard_reload(detour: bool) {
         .unwrap();
     roundtrip(&mut active).await;
     if detour {
-        client_configs[0]["client_proxies"][0]["protocol"]["peer_client_chain"][0]["protocol"]["udp_enabled"] =
+        client_configs[0]["client_chains"][0]["protocol"]["peer_client_chain"][0]["protocol"]["udp_enabled"] =
             json!(false);
     } else {
         client_configs[1]["rules"][0]["client_chain"] = json!("missing");
@@ -321,7 +321,7 @@ async fn wireguard_reload(detour: bool) {
         Ok(Ok(_))
     ));
     let mut rotated: serde_json::Value = serde_yaml::from_str(&client_config).unwrap();
-    rotated[0]["client_proxies"][0]["protocol"]["private_key"] = json!(wireguard_support::key(44));
+    rotated[0]["client_chains"][0]["protocol"]["private_key"] = json!(wireguard_support::key(44));
     std::fs::write(&client_path, serde_yaml::to_string(&rotated).unwrap()).unwrap();
     client.signal(libc::SIGHUP);
     client.wait_for("Servers ready").await;
@@ -352,6 +352,77 @@ async fn wireguard_partial_startup_releases_previously_started_endpoint() {
     let mut child = Process::start(&path, &["--no-reload"]);
     assert_eq!(child.exit().await.code(), Some(1));
     std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap();
+}
+
+#[test]
+fn tendns_generator_uses_only_the_environment_key_and_prints_one_txt_value() {
+    use tendns::{
+        names::canonical_name,
+        protocol::{self, Secret, Value},
+        resolver::{Clock, SystemClock},
+    };
+
+    let key = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
+    let args = [
+        "generate-tendns-txt",
+        "--name",
+        "example.com",
+        "--entry",
+        "nas:A:192.0.2.7",
+    ];
+    let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+        .args(args)
+        .env("TENDNS_KEY", key)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    let publication = protocol::decrypt(
+        stdout.trim().as_bytes(),
+        &Secret::decode(key).unwrap(),
+        &canonical_name("example.com").unwrap(),
+        SystemClock.now().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(publication.entries.len(), 1);
+    assert_eq!(publication.entries[0].subdomain, "nas");
+    assert_eq!(
+        publication.entries[0].value,
+        Value::A("192.0.2.7".parse().unwrap())
+    );
+    assert!(!stdout.contains(key));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(key));
+    for secret in [None, Some("invalid-key-must-not-appear")] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_shoes"));
+        command.args(args).env_remove("TENDNS_KEY");
+        if let Some(secret) = secret {
+            command.env("TENDNS_KEY", secret);
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("TENDNS_KEY"));
+        if let Some(secret) = secret {
+            assert!(!stderr.contains(secret));
+        }
+    }
+    for invalid in [["--key", key], ["--entry", ":A:192.0.2.7"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_shoes"))
+            .args(args)
+            .args(invalid)
+            .env("TENDNS_KEY", key)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{invalid:?}");
+        assert!(output.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains(key));
+    }
 }
 
 #[test]
@@ -956,7 +1027,7 @@ async fn handshake_chains_expand_groups_and_load_certificates() {
     for chain in [json!("fallback"), client.clone()] {
         for protocol in handshake_protocols(chain) {
             let config = json!([
-                {"client_group": "fallback", "client_proxies": [client.clone(), client.clone()]},
+                {"client_group": "fallback", "client_chains": [{"chain": [client.clone()]}, {"chain": [client.clone()]}]},
                 {"address": available_address().to_string(), "protocol": protocol}
             ]);
             std::fs::write(&path, serde_yaml::to_string(&config).unwrap()).unwrap();
@@ -1078,7 +1149,7 @@ async fn unsupported_quic_allowlists_fail_validation_and_start() {
         json!([direct, {"pool": ["guarded"]}]),
     ] {
         let config = json!([
-            {"client_group": "guarded", "client_proxies": [guarded_proxy]},
+            {"client_group": "guarded", "client_chains": [guarded_proxy]},
             {"address": "0.0.0.0:0", "protocol": {"type": "http"}, "rules": [{"mask": "0.0.0.0/0", "action": "allow", "client_chain": chain}]}
         ]);
         let config_file = tempfile::NamedTempFile::new().unwrap();

@@ -1,0 +1,47 @@
+Subject: [PATCH] edma: resume RX rings from the hardware consumer index
+
+Stopping RX does not clear the consumer index. Starting fresh buffers at
+zero on driver reload reads unwritten memory as return descriptors. Match
+software indices to hardware before publishing the replacement RX ring.
+Also make progress on a corrupt zero-length descriptor chain.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/edma.c
++++ b/edma.c
+@@ -652,6 +652,17 @@
+ 			/* Get the number of RFDs from RRD */
+ 			num_rfds = rd->rrd1 & EDMA_RRD_NUM_RFD_MASK;
+ 
++			/* A corrupt zero count must not spin forever on this RFD. */
++			if (!num_rfds) {
++				edma_clean_rfd(pdev, erdr, sw_next_to_clean, 0);
++				sw_next_to_clean = (sw_next_to_clean + 1) &
++					(erdr->count - 1);
++				cleaned_count++;
++				work_to_do--;
++				(*work_done)++;
++				continue;
++			}
++
+ 			/* Get Rx port ID from switch */
+ 			port_id = (rd->rrd1 >> EDMA_PORT_ID_SHIFT) & EDMA_PORT_ID_MASK;
+ 			if ((!port_id) || (port_id > EDMA_MAX_PORTID_SUPPORTED)) {
+@@ -2109,6 +2120,17 @@
+ 	/* Allocate the RX buffer */
+ 	for (i = 0, j = 0; i < edma_cinfo->num_rx_queues; i++) {
+ 		struct edma_rfd_desc_ring *ring = edma_cinfo->rfd_ring[j];
++		u32 index;
++
++		/* Stopping queues does not reset the hardware consumer index.
++		 * Start the new software ring there, as we do for TX rings.
++		 */
++		edma_read_reg(EDMA_REG_RFD_IDX_Q(j), &index);
++		index = (index >> EDMA_RFD_CONS_IDX_SHIFT) &
++			EDMA_RFD_CONS_IDX_MASK;
++		ring->sw_next_to_fill = index;
++		ring->sw_next_to_clean = index;
++		edma_write_reg(EDMA_REG_RX_SW_CONS_IDX_Q(j), index);
+ 		ret_count = edma_alloc_rx_buf(edma_cinfo, ring, ring->count, j);
+ 		if (ret_count)
+ 			dev_dbg(&edma_cinfo->pdev->dev, "not all rx buffers allocated\n");

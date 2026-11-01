@@ -356,3 +356,5 @@ define KernelPackage/wdt-sp805/description
 endef
 
 $(eval $(call KernelPackage,wdt-sp805))
+
+include $(TOPDIR)/target/linux/armsr/modules-qcom.mk

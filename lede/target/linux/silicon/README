@@ -1,0 +1,25 @@
+Apple Silicon (Linux 6.18)
+==========================
+
+This target builds an ARM64 kernel with 16 KiB pages, the mainline Apple
+SoC drivers and the Apple device trees included in Linux 6.18. The previous
+6.1 default is recorded as KERNEL_TESTING_PATCHVER.
+
+The EFI images use an existing, compatible Asahi m1n1/U-Boot environment.
+GRUB uses the device tree supplied by that firmware: it must retain the
+runtime memory reservations, hardware identity and firmware information
+added by m1n1. Do not replace it with an unmodified build-time DTB.
+
+The combined image is a boot/root filesystem payload for external media.
+It is not an Apple internal-disk installer and does not install or update
+m1n1, U-Boot, the Apple boot policy, or paired vendor firmware. Its EFI
+loader is installed at the removable-media path EFI/BOOT/BOOTAA64.EFI.
+Keep the existing Asahi System ESP and its vendor firmware intact.
+
+Only features supplied by mainline Linux 6.18 are enabled; building this
+target does not establish full Asahi hardware support, Wi-Fi, GPU, audio,
+USB-C/Thunderbolt, or physical boot acceptance.
+
+Platform boot and firmware references:
+https://asahilinux.org/docs/platform/quirks/
+https://asahilinux.org/docs/platform/open-os-interop/

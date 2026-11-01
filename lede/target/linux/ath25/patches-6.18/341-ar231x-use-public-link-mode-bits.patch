@@ -1,0 +1,24 @@
+Subject: [PATCH] net: ar231x: use public link-mode bits for the MAC mask
+
+phy_10_100_features_array is now private to phylib. Set the four public
+10/100 link-mode bits directly, retaining the existing autonegotiation
+and MII/TP mask without advertising additional MAC capabilities.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/net/ethernet/atheros/ar231x/ar231x.c
++++ b/drivers/net/ethernet/atheros/ar231x/ar231x.c
+@@ -1148,9 +1148,10 @@
+ 	}
+ 
+ 	/* mask with MAC supported features */
+-	linkmode_set_bit_array(phy_10_100_features_array,
+-			       ARRAY_SIZE(phy_10_100_features_array),
+-			       mask);
++	linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT, mask);
++	linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT, mask);
++	linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT, mask);
++	linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, mask);
+ 	linkmode_set_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, mask);
+ 	linkmode_set_bit(ETHTOOL_LINK_MODE_MII_BIT, mask);
+ 	linkmode_set_bit(ETHTOOL_LINK_MODE_TP_BIT, mask);

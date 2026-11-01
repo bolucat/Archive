@@ -1,0 +1,2633 @@
+{
+  "description": "Physical roles from pre-migration DTS and 02_network for 98 active profiles; 10 pre-existing disabled profiles retain disabled wired hardware with QSDK bindings. Not hardware acceptance.",
+  "boards": [
+    {
+      "board": "qcom-ipq4018-a42",
+      "compatible": "openmesh,a42",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan:2",
+        "5:wan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "ethernet2"
+        ],
+        "wan": [
+          "ethernet1"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ap120c-ac",
+      "compatible": "alfa-network,ap120c-ac",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ap4050dn",
+      "compatible": "huawei,ap4050dn",
+      "masks": {
+        "lan": 16,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan"
+      ],
+      "phys": {
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-cap-ac",
+      "compatible": "mikrotik,cap-ac",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-cs-w3-wd1200g-eup",
+      "compatible": "ezviz,cs-w3-wd1200g-eup",
+      "masks": {
+        "lan": 28,
+        "wan": 32
+      },
+      "ports": [
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-dap-2610",
+      "compatible": "dlink,dap-2610",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ea6350v3",
+      "compatible": "linksys,ea6350v3",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-eap1300",
+      "compatible": "engenius,eap1300",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ecw5211",
+      "compatible": "edgecore,ecw5211",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ex6100v2",
+      "compatible": "netgear,ex6100v2",
+      "masks": {
+        "lan": 16,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan"
+      ],
+      "phys": {
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-ex6150v2",
+      "compatible": "netgear,ex6150v2",
+      "masks": {
+        "lan": 16,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan"
+      ],
+      "phys": {
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-fritzbox-4040",
+      "compatible": "avm,fritzbox-4040",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-gl-a1300",
+      "compatible": "glinet,gl-a1300",
+      "masks": {
+        "lan": 24,
+        "wan": 32
+      },
+      "ports": [
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-gl-ap1300",
+      "compatible": "glinet,gl-ap1300",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-hap-ac2",
+      "compatible": "mikrotik,hap-ac2",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-jalapeno",
+      "compatible": "8dev,jalapeno",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-magic-2-wifi-next",
+      "compatible": "devolo,magic-2-wifi-next",
+      "masks": {
+        "lan": 56,
+        "wan": 0
+      },
+      "ports": [
+        "3:lan:2",
+        "4:lan",
+        "5:lan:1"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "ghn"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-map-ac1300",
+      "compatible": "asus,map-ac1300",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-meshpoint-one",
+      "compatible": "cilab,meshpoint-one",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-mf287",
+      "compatible": "zte,mf287",
+      "masks": {
+        "lan": 60,
+        "wan": 0
+      },
+      "ports": [
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3",
+        "5:lan:4"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "extra": [
+          "wan",
+          "device",
+          "/dev/cdc-wdm0",
+          "protocol",
+          "qmi"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-mf287plus",
+      "compatible": "zte,mf287plus",
+      "masks": {
+        "lan": 60,
+        "wan": 0
+      },
+      "ports": [
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3",
+        "5:lan:4"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "extra": [
+          "wan",
+          "device",
+          "/dev/cdc-wdm0",
+          "protocol",
+          "qmi"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-mf287pro",
+      "compatible": "zte,mf287pro",
+      "masks": {
+        "lan": 60,
+        "wan": 0
+      },
+      "ports": [
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3",
+        "5:lan:4"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "extra": [
+          "wan",
+          "device",
+          "/dev/cdc-wdm0",
+          "protocol",
+          "qmi"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-nbg6617",
+      "compatible": "zyxel,nbg6617",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-pa1200",
+      "compatible": "plasmacloud,pa1200",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan:2",
+        "5:lan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "ethernet1"
+        ],
+        "wan": [
+          "ethernet2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-rt-ac58u",
+      "compatible": "asus,rt-ac58u",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-rutx50",
+      "compatible": "teltonika,rutx50",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-utr",
+      "compatible": "ubnt,utr",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wac510",
+      "compatible": "netgear,wac510",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wap-ac-lte",
+      "compatible": "mikrotik,wap-ac-lte",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:2",
+        "5:lan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1",
+          "sw-eth2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wap-ac",
+      "compatible": "mikrotik,wap-ac",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:2",
+        "5:lan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1",
+          "sw-eth2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wap-r-ac",
+      "compatible": "mikrotik,wap-r-ac",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:2",
+        "5:lan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1",
+          "sw-eth2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-whw01",
+      "compatible": "linksys,whw01",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "eth1",
+          "eth2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wr-1",
+      "compatible": "pakedge,wr-1",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-wrtq-329acn",
+      "compatible": "luma,wrtq-329acn",
+      "masks": {
+        "lan": 8,
+        "wan": 32
+      },
+      "ports": [
+        "3:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "3": 2,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-a62",
+      "compatible": "openmesh,a62",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "ethernet2"
+        ],
+        "wan": [
+          "ethernet1"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-apx120",
+      "compatible": "sophos,apx120",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-cm520-79f",
+      "compatible": "mobipromo,cm520-79f",
+      "masks": {
+        "lan": 24,
+        "wan": 32
+      },
+      "ports": [
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-deco-m5-v1",
+      "compatible": "tplink,deco-m5-v1",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-deco-m5-v2",
+      "compatible": "tplink,deco-m5-v2",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-deco-m5-v3",
+      "compatible": "tplink,deco-m5-v3",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-e2600ac-c1",
+      "compatible": "qxwlan,e2600ac-c1",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan:1",
+        "5:wan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1"
+        ],
+        "wan": [
+          "sw-eth2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-e2600ac-c2",
+      "compatible": "qxwlan,e2600ac-c2",
+      "masks": {
+        "lan": 20,
+        "wan": 32
+      },
+      "ports": [
+        "2:lan:1",
+        "4:lan:2",
+        "5:wan:3"
+      ],
+      "phys": {
+        "2": 1,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1",
+          "sw-eth2"
+        ],
+        "wan": [
+          "sw-eth3"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-ea8300",
+      "compatible": "linksys,ea8300",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-fritzbox-7530",
+      "compatible": "avm,fritzbox-7530",
+      "masks": {
+        "lan": 30,
+        "wan": 0
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-fritzrepeater-3000",
+      "compatible": "avm,fritzrepeater-3000",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-gl-b2200",
+      "compatible": "glinet,gl-b2200",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-habanero-dvk",
+      "compatible": "8dev,habanero-dvk",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-hap-ac3-lte6-kit",
+      "compatible": "mikrotik,hap-ac3-lte6-kit",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-hap-ac3",
+      "compatible": "mikrotik,hap-ac3",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-lbr20",
+      "compatible": "netgear,lbr20",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ],
+        "extra": [
+          "wan",
+          "device",
+          "/dev/cdc-wdm0",
+          "protocol",
+          "qmi"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-le1",
+      "compatible": "yyets,le1",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-map-ac2200",
+      "compatible": "asus,map-ac2200",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mf18a",
+      "compatible": "zte,mf18a",
+      "masks": {
+        "lan": 8,
+        "wan": 4
+      },
+      "ports": [
+        "2:wan",
+        "3:lan"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mf282plus",
+      "compatible": "zte,mf282plus",
+      "masks": {
+        "lan": 16,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan"
+      ],
+      "phys": {
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mf286d",
+      "compatible": "zte,mf286d",
+      "masks": {
+        "lan": 28,
+        "wan": 32
+      },
+      "ports": [
+        "2:lan:4",
+        "3:lan:3",
+        "4:lan:2",
+        "5:wan"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mf289f",
+      "compatible": "zte,mf289f",
+      "masks": {
+        "lan": 32,
+        "wan": 4
+      },
+      "ports": [
+        "2:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "2": 1,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mr6350",
+      "compatible": "linksys,mr6350",
+      "masks": {
+        "lan": 60,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3",
+        "5:lan:4"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mr8300",
+      "compatible": "linksys,mr8300",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-mr9000",
+      "compatible": "linksys,mr9000",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-ncp-hg100-cellular",
+      "compatible": "sony,ncp-hg100-cellular",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-pa2200",
+      "compatible": "plasmacloud,pa2200",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan:1",
+        "5:wan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "ethernet1"
+        ],
+        "wan": [
+          "ethernet2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-r619ac-128m",
+      "compatible": "p2w,r619ac-128m",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-r619ac-64m",
+      "compatible": "p2w,r619ac-64m",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbr20",
+      "compatible": "netgear,rbr20",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbr40",
+      "compatible": "netgear,rbr40",
+      "masks": {
+        "lan": 28,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbr50",
+      "compatible": "netgear,rbr50",
+      "masks": {
+        "lan": 28,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbs20",
+      "compatible": "netgear,rbs20",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbs40",
+      "compatible": "netgear,rbs40",
+      "masks": {
+        "lan": 30,
+        "wan": 0
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rbs50",
+      "compatible": "netgear,rbs50",
+      "masks": {
+        "lan": 30,
+        "wan": 0
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rt-ac42u",
+      "compatible": "asus,rt-ac42u",
+      "masks": {
+        "lan": 30,
+        "wan": 32
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:wan"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-rtl30vw",
+      "compatible": "cellc,rtl30vw",
+      "masks": {
+        "lan": 24,
+        "wan": 0
+      },
+      "ports": [
+        "3:lan:1",
+        "4:lan:2"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-srr60",
+      "compatible": "netgear,srr60",
+      "masks": {
+        "lan": 28,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-srs60",
+      "compatible": "netgear,srs60",
+      "masks": {
+        "lan": 30,
+        "wan": 0
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-whw03",
+      "compatible": "linksys,whw03",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-whw03v2",
+      "compatible": "linksys,whw03v2",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 27,
+        "5": 28
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-wia3300-20",
+      "compatible": "skspruce,wia3300-20",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan:2",
+        "5:wan:1"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "ETH2"
+        ],
+        "wan": [
+          "ETH1"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-wifi",
+      "compatible": "google,wifi",
+      "masks": {
+        "lan": 16,
+        "wan": 32
+      },
+      "ports": [
+        "4:lan",
+        "5:wan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4019-wtr-m2133hp",
+      "compatible": "buffalo,wtr-m2133hp",
+      "masks": {
+        "lan": 28,
+        "wan": 32
+      },
+      "ports": [
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4028-wpj428",
+      "compatible": "compex,wpj428",
+      "masks": {
+        "lan": 48,
+        "wan": 0
+      },
+      "ports": [
+        "4:lan:1",
+        "5:lan:2"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-ap-303h",
+      "compatible": "aruba,ap-303h",
+      "masks": {
+        "lan": 28,
+        "wan": 32
+      },
+      "ports": [
+        "2:lan:1",
+        "3:lan:2",
+        "4:lan:3",
+        "5:wan"
+      ],
+      "phys": {
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-gl-b1300",
+      "compatible": "glinet,gl-b1300",
+      "masks": {
+        "lan": 24,
+        "wan": 32
+      },
+      "ports": [
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-gl-s1300",
+      "compatible": "glinet,gl-s1300",
+      "masks": {
+        "lan": 24,
+        "wan": 32
+      },
+      "ports": [
+        "3:lan:2",
+        "4:lan:1",
+        "5:wan"
+      ],
+      "phys": {
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-gx20",
+      "compatible": "meraki,gx20",
+      "masks": {
+        "lan": 60,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:lan:5"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan2",
+          "lan3",
+          "lan4",
+          "lan5"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-mr30h",
+      "compatible": "meraki,mr30h",
+      "masks": {
+        "lan": 62,
+        "wan": 0
+      },
+      "ports": [
+        "1:lan:4",
+        "2:lan:3",
+        "3:lan:2",
+        "4:lan:1",
+        "5:lan:5"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan1",
+          "lan2",
+          "lan3",
+          "lan4",
+          "lan5"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-ws-ap3915i",
+      "compatible": "extreme-networks,ws-ap3915i",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-ws-ap391x",
+      "compatible": "extreme-networks,ws-ap391x",
+      "masks": {
+        "lan": 46,
+        "wan": 16
+      },
+      "ports": [
+        "1:lan:1",
+        "2:lan:2",
+        "3:lan:3",
+        "4:wan:4",
+        "5:lan:5"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "sw-eth1",
+          "sw-eth2",
+          "sw-eth3",
+          "sw-eth5"
+        ],
+        "wan": [
+          "sw-eth4"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-z3",
+      "compatible": "meraki,z3",
+      "masks": {
+        "lan": 60,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:lan:5"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan2",
+          "lan3",
+          "lan4",
+          "lan5"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4029-z3c",
+      "compatible": "meraki,z3c",
+      "masks": {
+        "lan": 60,
+        "wan": 2
+      },
+      "ports": [
+        "1:wan",
+        "2:lan:2",
+        "3:lan:3",
+        "4:lan:4",
+        "5:lan:5"
+      ],
+      "phys": {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan2",
+          "lan3",
+          "lan4",
+          "lan5"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq40x9-dr40x9",
+      "compatible": "wallys,dr40x9",
+      "masks": {
+        "lan": 32,
+        "wan": 16
+      },
+      "ports": [
+        "4:wan",
+        "5:lan"
+      ],
+      "phys": {
+        "4": 3,
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ],
+        "wan": [
+          "wan"
+        ]
+      }
+    },
+    {
+      "board": "qcom-ipq4018-sxtsq-5-ac",
+      "compatible": "mikrotik,sxtsq-5-ac",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 4
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii"
+    },
+    {
+      "board": "qcom-ipq4019-fritzrepeater-1200",
+      "compatible": "avm,fritzrepeater-1200",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 0
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4019-lhgg-60ad",
+      "compatible": "mikrotik,lhgg-60ad",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 0
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4029-ap-303",
+      "compatible": "aruba,ap-303",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 5
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4029-ap-365",
+      "compatible": "aruba,ap-365",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 5
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4029-mr20",
+      "compatible": "meraki,mr20",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 0
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4029-mr33",
+      "compatible": "meraki,mr33",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 1
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-rxid"
+    },
+    {
+      "board": "qcom-ipq4029-mr70",
+      "compatible": "meraki,mr70",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 0
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-id"
+    },
+    {
+      "board": "qcom-ipq4029-mr74",
+      "compatible": "meraki,mr74",
+      "masks": {
+        "lan": 32,
+        "wan": 0
+      },
+      "ports": [
+        "5:lan"
+      ],
+      "phys": {
+        "5": 1
+      },
+      "network": {
+        "lan": [
+          "lan"
+        ]
+      },
+      "mac_mode": 1,
+      "phy_mode": "rgmii-rxid"
+    }
+  ],
+  "inactive_boards": [
+    {
+      "board": "qcom-ipq4018-emd1",
+      "compatible": "engenius,emd1"
+    },
+    {
+      "board": "qcom-ipq4018-emr3500",
+      "compatible": "engenius,emr3500"
+    },
+    {
+      "board": "qcom-ipq4018-ens620ext",
+      "compatible": "engenius,ens620ext"
+    },
+    {
+      "board": "qcom-ipq4018-rutx10",
+      "compatible": "teltonika,rutx10"
+    },
+    {
+      "board": "qcom-ipq4018-wre6606",
+      "compatible": "zyxel,wre6606"
+    },
+    {
+      "board": "qcom-ipq4019-eap2200",
+      "compatible": "engenius,eap2200"
+    },
+    {
+      "board": "qcom-ipq4019-oap100",
+      "compatible": "edgecore,oap100"
+    },
+    {
+      "board": "qcom-ipq4019-u4019-32m",
+      "compatible": "unielec,u4019-32m"
+    },
+    {
+      "board": "qcom-ipq4019-wpj419",
+      "compatible": "compex,wpj419"
+    },
+    {
+      "board": "qcom-ipq4019-x1pro",
+      "compatible": "tel,x1pro"
+    }
+  ]
+}

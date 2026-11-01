@@ -1,0 +1,15 @@
+Subject: [PATCH] ssdk: log normal ESS clock enable at information level
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/init/ssdk_plat.c
++++ b/src/init/ssdk_plat.c
+@@ -1255,7 +1255,7 @@
+ 		cmn_clk = ssdk_dts_cmnclk_get(dev_id);
+ 		if (!IS_ERR(ess_clk)) {
+ 			/* Enable ess clock here */
+-			SSDK_ERROR("enable ess clk\n");
++			SSDK_INFO("enable ess clk\n");
+ 			rv = clk_prepare_enable(ess_clk);
+ 			if (rv)
+ 				goto fail;

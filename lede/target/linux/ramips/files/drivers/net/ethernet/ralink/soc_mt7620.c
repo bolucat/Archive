@@ -28,11 +28,8 @@
 #define MT7620A_CDMA_CSG_CFG	0x400
 #define MT7620_DMA_VID		(MT7620A_CDMA_CSG_CFG | 0x30)
 #define MT7620_L4_VALID		BIT(23)
-#define MT7621_L4_VALID		BIT(24)
 
 #define MT7620_TX_DMA_UDF	BIT(15)
-#define MT7621_TX_DMA_UDF	BIT(19)
-#define TX_DMA_FP_BMAP		((0xff) << 19)
 
 #define CDMA_ICS_EN		BIT(2)
 #define CDMA_UCS_EN		BIT(1)
@@ -48,11 +45,6 @@
 #define MT7620_GDM1_TX_GBCNT	(MT7620_REG_MIB_OFFSET + 0x300)
 #define MT7620_GDM2_TX_GBCNT	(MT7620_GDM1_TX_GBCNT + 0x40)
 
-#define MT7621_REG_MIB_OFFSET	0x2000
-#define MT7621_PPE_AC_BCNT0	(MT7621_REG_MIB_OFFSET + 0x00)
-#define MT7621_GDM1_TX_GBCNT	(MT7621_REG_MIB_OFFSET + 0x400)
-#define MT7621_GDM2_TX_GBCNT	(MT7621_GDM1_TX_GBCNT + 0x40)
-
 #define GSW_REG_GDMA1_MAC_ADRL	0x508
 #define GSW_REG_GDMA1_MAC_ADRH	0x50C
 
@@ -63,8 +55,6 @@
  * but after test it should be BIT(13).
  */
 #define MT7620_FE_GDM1_AF	BIT(13)
-#define MT7621_FE_GDM1_AF	BIT(28)
-#define MT7621_FE_GDM2_AF	BIT(29)
 
 static const u16 mt7620_reg_table[FE_REG_COUNT] = {
 	[FE_REG_PDMA_GLO_CFG] = RT5350_PDMA_GLO_CFG,
@@ -91,6 +81,9 @@ static int mt7620_gsw_config(struct fe_priv *priv)
 	struct mt7620_gsw *gsw = (struct mt7620_gsw *) priv->soc->swpriv;
 	u32 val;
 
+	if (priv->dsa_switch)
+		return mt7620_gsw_dsa_device_register(gsw, priv->dev);
+
 	/* is the mt7530 internal or external */
 	if (priv->mii_bus && mdiobus_get_phy(priv->mii_bus, 0x1f)) {
 		mt7530_probe(priv->dev, gsw->base, NULL, 0);
@@ -116,7 +109,15 @@ static int mt7620_gsw_config(struct fe_priv *priv)
 	return 0;
 }
 
-static void mt7620_set_mac(struct fe_priv *priv, unsigned char *mac)
+static void mt7620_gsw_cleanup(struct fe_priv *priv)
+{
+	struct mt7620_gsw *gsw = (struct mt7620_gsw *)priv->soc->swpriv;
+
+	if (gsw)
+		mt7620_gsw_dsa_device_unregister(gsw);
+}
+
+static void mt7620_set_mac(struct fe_priv *priv, const unsigned char *mac)
 {
 	struct mt7620_gsw *gsw = (struct mt7620_gsw *)priv->soc->swpriv;
 	unsigned long flags;
@@ -153,11 +154,7 @@ static void mt7620_port_init(struct fe_priv *priv, struct device_node *np)
 	struct mt7620_gsw *gsw = (struct mt7620_gsw *)priv->soc->swpriv;
 	const __be32 *_id = of_get_property(np, "reg", NULL);
 	const __be32 *phy_addr;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	int phy_mode;
-#else
 	phy_interface_t phy_mode = PHY_INTERFACE_MODE_NA;
-#endif
 	int size, id;
 	int shift = 12;
 	u32 val, mask = 0;
@@ -187,11 +184,7 @@ static void mt7620_port_init(struct fe_priv *priv, struct device_node *np)
 		priv->phy->phy_fixed[id] = NULL;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	phy_mode = of_get_phy_mode(np);
-#else
 	of_get_phy_mode(np, &phy_mode);
-#endif
 	switch (phy_mode) {
 	case PHY_INTERFACE_MODE_RGMII:
 		mask = 0;
@@ -303,11 +296,6 @@ static void mt7620_port_init(struct fe_priv *priv, struct device_node *np)
 	}
 }
 
-static void mt7620_fe_reset(struct fe_priv *priv)
-{
-	fe_reset(MT7620A_RESET_FE | MT7620A_RESET_ESW);
-}
-
 static void mt7620_rxcsum_config(bool enable)
 {
 	if (enable)
@@ -354,7 +342,8 @@ static void mt7620_init_data(struct fe_soc_data *data,
 	struct fe_priv *priv = netdev_priv(netdev);
 
 	priv->flags = FE_FLAG_PADDING_64B | FE_FLAG_RX_2B_OFFSET |
-		FE_FLAG_RX_SG_DMA | FE_FLAG_HAS_SWITCH;
+		FE_FLAG_RX_SG_DMA | FE_FLAG_HAS_SWITCH |
+		FE_FLAG_JUMBO_FRAME;
 
 	netdev->hw_features = NETIF_F_IP_CSUM | NETIF_F_RXCSUM |
 		NETIF_F_HW_VLAN_CTAG_TX;
@@ -365,12 +354,12 @@ static void mt7620_init_data(struct fe_soc_data *data,
 
 static struct fe_soc_data mt7620_data = {
 	.init_data = mt7620_init_data,
-	.reset_fe = mt7620_fe_reset,
 	.set_mac = mt7620_set_mac,
 	.fwd_config = mt7620_fwd_config,
 	.tx_dma = mt7620_tx_dma,
 	.switch_init = mtk_gsw_init,
 	.switch_config = mt7620_gsw_config,
+	.switch_cleanup = mt7620_gsw_cleanup,
 	.port_init = mt7620_port_init,
 	.reg_table = mt7620_reg_table,
 	.pdma_glo_cfg = FE_PDMA_SIZE_16DWORDS,

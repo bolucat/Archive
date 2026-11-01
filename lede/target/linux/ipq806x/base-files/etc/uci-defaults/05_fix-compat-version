@@ -1,4 +1,7 @@
 . /lib/functions.sh
+. /lib/functions/system.sh
+
+[ "$(get_linux_version)" -ge "618000" ] && exit 0
 
 case "$(board_name)" in
 	linksys,ea7500-v1|\

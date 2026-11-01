@@ -1,0 +1,51 @@
+Subject: [PATCH] ssdk: identify the failing native Flow initialization stage
+
+Report bounded diagnostics when the native owner cannot claim its hardware
+resources, distinguishing register ownership from occupied policy tables.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/ref/ref_flow_engine.c
++++ b/src/ref/ref_flow_engine.c
+@@ -51,6 +51,11 @@
+ 	engine->acknowledged = generation;
+ 	return 0;
+ }
++static int create_error(const char *stage, int error)
++{
++	pr_warn_ratelimited("ssdk_flow: initialization failed at %s: %d\n", stage, error);
++	return error;
++}
+ int ssdk_flow_engine_create(unsigned int dev, void __iomem *base, size_t size,
+ 	const struct ssdk_flow_resolver *resolver, struct ssdk_flow_engine **out)
+ {
+@@ -70,24 +75,24 @@
+ 	/* EIO can mean that claim's own restoration failed and ownership is
+ 	 * retained. EBUSY belongs to somebody else and must never be released. */
+ 	if (!ret || ret == -EIO) WRITE_ONCE(engine->gate_owned, true);
+-	if (ret) return ret;
++	if (ret) return create_error("gate claim", ret);
+ 	engine->profile = ssdk_flow_profile_create(dev);
+ 	if (IS_ERR(engine->profile)) {
+-		ret = PTR_ERR(engine->profile); engine->profile = NULL; return ret;
++		ret = PTR_ERR(engine->profile); engine->profile = NULL; return create_error("profile snapshot", ret);
+ 	}
+ 	ret = ssdk_flow_profile_apply(engine->profile);
+-	if (ret) return ret;
++	if (ret) return create_error("profile apply", ret);
+ 	engine->resolver.prefix = ssdk_flow_profile_prefix;
+ 	engine->resolver.ctx = engine->profile;
+ 	engine->acl = ssdk_flow_acl_owner_create(dev);
+ 	if (!engine->acl) return -ENOMEM;
+ 	engine->hosts = ssdk_flow_host_create(dev);
+ 	if (IS_ERR(engine->hosts)) {
+-		ret = PTR_ERR(engine->hosts); engine->hosts = NULL; return ret;
++		ret = PTR_ERR(engine->hosts); engine->hosts = NULL; return create_error("host tables", ret);
+ 	}
+ 	engine->napt = ssdk_flow_napt_create(dev);
+ 	if (IS_ERR(engine->napt)) {
+-		ret = PTR_ERR(engine->napt); engine->napt = NULL; return ret;
++		ret = PTR_ERR(engine->napt); engine->napt = NULL; return create_error("NAPT tables", ret);
+ 	}
+ 	engine->hw = ssdk_flow_hw_create(dev, engine->acl, engine->hosts, engine->napt,
+ 				       ssdk_flow_resolve_paths, &engine->resolver);

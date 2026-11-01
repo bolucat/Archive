@@ -1,0 +1,25 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
+Subject: [PATCH] backports: disable automatic NLS selection
+
+Do not select NLS automatically from the backports configuration; let
+the OpenWrt kernel and package dependencies select it.
+
+Original author was not recorded in the imported patch.
+[viking.yfy@qq.com: complete imported patch metadata]
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+---
+--- a/kconf/Makefile
++++ b/kconf/Makefile
+@@ -1,9 +1,9 @@
+-CFLAGS=-Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
++CFLAGS=-Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -DKBUILD_NO_NLS
+ 
+ LXDIALOG := lxdialog/checklist.o lxdialog/inputbox.o lxdialog/menubox.o lxdialog/textbox.o lxdialog/util.o lxdialog/yesno.o
+ 
+ conf: conf.o zconf.tab.o
+-mconf_CFLAGS := $(shell ./lxdialog/check-lxdialog.sh -ccflags) -DLOCALE
++mconf_CFLAGS := $(shell ./lxdialog/check-lxdialog.sh -ccflags)
+ mconf_LDFLAGS := $(shell ./lxdialog/check-lxdialog.sh -ldflags $(CC))
+ mconf: CFLAGS += $(mconf_CFLAGS)
+ 

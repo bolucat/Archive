@@ -1,0 +1,38 @@
+Subject: [PATCH] ssdk: clear public offload validity during NAT reset
+
+The public address table and its offload validity bitmap are separate.
+Reset cleared table valid words but left the bitmap untouched. Hardware
+can retain nonzero SRAM bits there, causing native ownership to fail with
+EBUSY. Clear its 16 valid bits while preserving unrelated upper bits and
+propagate register access failures.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/src/hsl/dess/dess_nat.c
++++ b/src/hsl/dess/dess_nat.c
+@@ -2444,13 +2444,24 @@
+ dess_nat_reset(a_uint32_t dev_id)
+ {
+     sw_error_t rv;
+-    a_uint32_t index, addr, data = 0;
++    a_uint32_t index, addr, bitmap, data = 0;
+ 
+     HSL_DEV_ID_CHECK(dev_id);
+ 
+     rv = _dess_nat_feature_check(dev_id);
+     SW_RTN_ON_ERROR(rv);
+ 
++    /* Public offload validity is separate from the searchable public table.
++     * Reset both so stale SRAM bits cannot retain ownership across reset.
++     */
++    HSL_REG_ENTRY_GEN_GET(rv, dev_id, DESS_PUB_ADDR_VALID_ADDR,
++                         sizeof(bitmap), (a_uint8_t *)&bitmap, sizeof(bitmap));
++    SW_RTN_ON_ERROR(rv);
++    bitmap &= ~0xffffU;
++    HSL_REG_ENTRY_GEN_SET(rv, dev_id, DESS_PUB_ADDR_VALID_ADDR,
++                         sizeof(bitmap), (a_uint8_t *)&bitmap, sizeof(bitmap));
++    SW_RTN_ON_ERROR(rv);
++
+     dess_nat_snap[dev_id] = 0;
+ 
+     HSL_REG_ENTRY_SET(rv, dev_id, HOST_ENTRY7, 0, (a_uint8_t *) (&data),

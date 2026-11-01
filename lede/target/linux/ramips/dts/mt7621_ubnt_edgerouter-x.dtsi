@@ -20,45 +20,56 @@
 };
 
 &gmac0 {
-	mtd-mac-address = <&factory 0x22>;
-	label = "dsa";
+	nvmem-cells = <&macaddr_factory_22 0>;
+	nvmem-cell-names = "mac-address";
+	openwrt,netdev-name = "dsa";
 };
 
-&switch0 {
-	ports {
+&gsw {
+
 		port@0 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
-			label = "eth0";
+			openwrt,netdev-name = "eth0";
+			/delete-property/ label;
 		};
 
 		port@1 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
-			label = "eth1";
-			mtd-mac-address = <&factory 0x22>;
-			mtd-mac-address-increment = <1>;
+			openwrt,netdev-name = "eth1";
+			nvmem-cells = <&macaddr_factory_22 1>;
+			nvmem-cell-names = "mac-address";
+			/delete-property/ label;
 		};
 
 		port@2 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
-			label = "eth2";
-			mtd-mac-address = <&factory 0x22>;
-			mtd-mac-address-increment = <2>;
+			openwrt,netdev-name = "eth2";
+			nvmem-cells = <&macaddr_factory_22 2>;
+			nvmem-cell-names = "mac-address";
+			/delete-property/ label;
 		};
 
 		port@3 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
-			label = "eth3";
-			mtd-mac-address = <&factory 0x22>;
-			mtd-mac-address-increment = <3>;
+			openwrt,netdev-name = "eth3";
+			nvmem-cells = <&macaddr_factory_22 3>;
+			nvmem-cell-names = "mac-address";
+			/delete-property/ label;
 		};
 
 		port@4 {
+		compatible = "mediatek,mt753x-port";
 			status = "okay";
-			label = "eth4";
-			mtd-mac-address = <&factory 0x22>;
-			mtd-mac-address-increment = <4>;
+			openwrt,netdev-name = "eth4";
+			nvmem-cells = <&macaddr_factory_22 4>;
+			nvmem-cell-names = "mac-address";
+			/delete-property/ label;
 		};
-	};
+
 };
 
 &nand {
@@ -81,19 +92,26 @@
 			read-only;
 		};
 
-		factory: partition@e0000 {
+		partition@e0000 {
 			label = "factory";
 			reg = <0xe0000 0x60000>;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				macaddr_factory_22: macaddr@22 {
+					compatible = "mac-base";
+					reg = <0x22 0x6>;
+					#nvmem-cell-cells = <1>;
+				};
+			};
 		};
 
 		partition@140000 {
-			label = "kernel1";
-			reg = <0x140000 0x300000>;
-		};
-
-		partition@440000 {
-			label = "kernel2";
-			reg = <0x440000 0x300000>;
+			label = "kernel";
+			reg = <0x140000 0x600000>;
 		};
 
 		partition@740000 {
@@ -136,6 +154,10 @@
 			};
 		};
 	};
+};
+
+&usb_phy {
+	status = "disabled";
 };
 
 &xhci {

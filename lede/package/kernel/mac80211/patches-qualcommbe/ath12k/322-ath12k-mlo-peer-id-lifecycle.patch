@@ -1,0 +1,819 @@
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
+Subject: [PATCH] wifi: ath12k: honor firmware peer limits and own pending MLO peer IDs
+
+The valid ML peer ID range is platform dependent and is reported by
+firmware in the MLO setup complete event. The upstream driver ignores this
+field and allocates IDs from the compile-time maximum, starting at zero.
+Current Qualcomm firmware reserves ID zero and expects the host to stay
+inside the advertised range. Sending an invalid ID can leave the cross-chip
+peer mapping inconsistent.
+
+Qualcomm firmware can reject a peer association when the ML peer ID is
+still present in its peer table. The peer assoc confirmation includes a
+status for this case, but ath12k currently ignores it and continues
+configuring the peer as though association succeeded. TIP carries a stop-
+gap fix which parses this status and fails the station transition.
+
+An ML peer ID is safe to reuse only after every link peer has been deleted
+from firmware. ath12k currently discards the result of the MLO peer delete
+operation and unconditionally releases a host-allocated ID. It also loses
+cleanup failures while rolling back peer creation. A late or missing peer
+unmap can therefore allow a new station to reuse an ID which firmware still
+owns, matching the duplicate-ID firmware failure described by Qualcomm's
+peer assoc status fix.
+
+Validate both link maps and the current mac80211 link address before
+reporting low ACK. Cross-check a datapath peer, when present, against the
+control-plane station, vdev and link. Keep legacy address checks and the
+existing reason-specific event handling.
+
+Merged from:
+  322-ath12k-honor-firmware-ml-peer-id-limit.patch
+  323-wifi-ath12k-handle-peer-assoc-status.patch
+  324-wifi-ath12k-quarantine-unconfirmed-ml-peer-ids.patch
+  325-wifi-ath12k-validate-mlo-peer-kickout-events.patch
+
+Based on work by:
+  JiaY-shi <shi05275@163.com>
+
+Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -70,7 +70,8 @@
+ #define ATH12K_INVALID_GROUP_ID  0xFF
+ #define ATH12K_INVALID_DEVICE_ID 0xFF
+ 
+-#define ATH12K_MAX_MLO_PEERS            256
++#define ATH12K_MAX_MLO_PEERS            1024
++#define ATH12K_DEFAULT_MAX_MLO_PEER_IDS 256
+ #define ATH12K_MLO_PEER_ID_INVALID      0xFFFF
+ #define ATH12K_MLO_PEER_ID_PENDING      0xFFFE
+ 
+@@ -805,6 +806,9 @@ struct ath12k_hw {
+ 	u8 num_radio;
+ 
+ 	DECLARE_BITMAP(free_ml_peer_id_map, ATH12K_MAX_MLO_PEERS);
++	DECLARE_BITMAP(quarantined_ml_peer_id_map, ATH12K_MAX_MLO_PEERS);
++	u16 max_ml_peer_ids;
++	u16 last_ml_peer_id;
+ 
+ 	struct ath12k_dp_hw dp_hw;
+ 
+--- a/drivers/net/wireless/ath/ath12k/dp_cmn.h
++++ b/drivers/net/wireless/ath/ath12k/dp_cmn.h
+@@ -98,7 +98,7 @@ int ath12k_dp_link_peer_assign(struct at
+ 			       u8 vdev_id, struct ieee80211_sta *sta, u8 *addr,
+ 			       u8 link_id, u32 hw_link_id);
+ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+-				  u8 vdev_id, u8 *addr, u32 hw_link_id);
++				  u8 vdev_id, const u8 *addr, u32 hw_link_id);
+ void
+ ath12k_dp_link_peer_get_sta_rate_info_stats(struct ath12k_dp *dp, const u8 *addr,
+ 					    struct ath12k_dp_link_peer_rate_info *info);
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -622,7 +622,7 @@ err_peer:
+ }
+ 
+ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+-				  u8 vdev_id, u8 *addr, u32 hw_link_id)
++				  u8 vdev_id, const u8 *addr, u32 hw_link_id)
+ {
+ 	struct ath12k_dp_peer *dp_peer;
+ 	struct ath12k_dp_link_peer *peer, *temp_peer;
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -114,6 +114,8 @@ struct ath12k_dp_link_peer {
+ 	struct ath12k_dp_peer_stats peer_stats;
+ 	u32 tx_retry_failed;
+ 	u32 tx_retry_count;
++	/* Status from the most recent WMI peer assoc confirmation. */
++	u32 assoc_status;
+ };
+ 
+ void ath12k_dp_link_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -1300,6 +1300,11 @@ void ath12k_mac_dp_peer_cleanup(struct a
+ 
+ 	spin_unlock_bh(&dp_hw->peer_lock);
+ 
++	/* Firmware restart drops every peer, including quarantined IDs. */
++	bitmap_andnot(ah->free_ml_peer_id_map, ah->free_ml_peer_id_map,
++		      ah->quarantined_ml_peer_id_map, ATH12K_MAX_MLO_PEERS);
++	bitmap_zero(ah->quarantined_ml_peer_id_map, ATH12K_MAX_MLO_PEERS);
++
+ 	synchronize_rcu();
+ 
+ 	list_for_each_entry_safe(dp_peer, tmp, &peers, list) {
+@@ -3648,6 +3653,51 @@ static void ath12k_peer_assoc_prepare(st
+ 	/* TODO: amsdu_disable req? */
+ }
+ 
++static int ath12k_mac_peer_assoc_status(struct ath12k *ar,
++						u32 vdev_id,
++						const u8 *addr)
++{
++	struct ath12k_dp_link_peer *peer;
++	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
++	struct ath12k_sta *ahsta = NULL;
++	u32 status;
++
++	spin_lock_bh(&dp->dp_lock);
++	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, vdev_id,
++								 addr);
++	if (!peer) {
++		spin_unlock_bh(&dp->dp_lock);
++		ath12k_warn(ar->ab,
++			    "failed to find peer %pM after assoc confirmation on vdev %u\n",
++				    addr, vdev_id);
++		return -ENOENT;
++	}
++
++	status = peer->assoc_status;
++	if (peer->sta)
++		ahsta = ath12k_sta_to_ahsta(peer->sta);
++	spin_unlock_bh(&dp->dp_lock);
++
++	if (status == U32_MAX) {
++		ath12k_warn(ar->ab,
++			    "peer assoc confirmation did not match %pM on vdev %u\n",
++				    addr, vdev_id);
++		return -EPROTO;
++	}
++
++	if (status) {
++		ath12k_warn(ar->ab,
++			    "firmware rejected peer assoc for %pM on vdev %u status %u\n",
++				    addr, vdev_id, status);
++		if (ahsta)
++			ath12k_peer_ml_quarantine(ath12k_ar_to_ah(ar), ahsta,
++						  status);
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
+ static int ath12k_setup_peer_smps(struct ath12k *ar, struct ath12k_link_vif *arvif,
+ 				  const u8 *addr,
+ 				  const struct ieee80211_sta_ht_cap *ht_cap,
+@@ -3872,9 +3922,21 @@ static u32 ath12k_mac_ieee80211_sta_bw_t
+ static int ath12k_mac_peer_assoc(struct ath12k *ar,
+ 				 struct ath12k_wmi_peer_assoc_arg *peer_arg)
+ {
++	struct ath12k_dp_link_peer *peer;
++	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
+ 	struct ath12k_hw *ah = ath12k_ar_to_ah(ar);
+ 	int ret;
+ 
++	/* A completion is shared by the radio. Reset the target peer as well
++	 * so an unrelated or stale confirmation cannot look like success.
++	 */
++	spin_lock_bh(&dp->dp_lock);
++	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, peer_arg->vdev_id,
++								 peer_arg->peer_mac);
++	if (peer)
++		peer->assoc_status = U32_MAX;
++	spin_unlock_bh(&dp->dp_lock);
++
+ 	reinit_completion(&ar->peer_assoc_done);
+ 	reinit_completion(&ah->peer_ml_id_done);
+ 
+@@ -3891,6 +3953,11 @@ static int ath12k_mac_peer_assoc(struct
+ 		return -ETIMEDOUT;
+ 	}
+ 
++	ret = ath12k_mac_peer_assoc_status(ar, peer_arg->vdev_id,
++					   peer_arg->peer_mac);
++	if (ret)
++		return ret;
++
+ 	/*
+ 	 * For devices where the firmware allocates the MLD peer ID, the host
+ 	 * learns the real ID only from the MLO_RX_PEER_MAP HTT event, which is
+@@ -7169,7 +7236,7 @@ static int ath12k_mac_station_add(struct
+ 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
+ 	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(arsta->ahsta);
+ 	struct ath12k_wmi_peer_create_arg peer_param = {};
+-	int ret;
++	int ret, delete_ret;
+ 	struct ath12k_link_sta *temp_arsta;
+ 
+ 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+@@ -7210,7 +7277,7 @@ static int ath12k_mac_station_add(struct
+ 	if (ret) {
+ 		ath12k_warn(ab, "Failed to add peer: %pM for VDEV: %d\n",
+ 			    arsta->addr, arvif->vdev_id);
+-		goto free_peer;
++		goto free_rhash;
+ 	}
+ 
+ 	ath12k_dbg(ab, ATH12K_DBG_MAC, "Added peer: %pM for VDEV: %d\n",
+@@ -7247,7 +7314,13 @@ static int ath12k_mac_station_add(struct
+ 	return 0;
+ 
+ free_peer:
+-	ath12k_peer_delete(ar, arvif->vdev_id, arsta->addr, false);
++	delete_ret = ath12k_peer_delete(ar, arvif->vdev_id, arsta->addr, false);
++	if (delete_ret && sta->mlo &&
++	    !test_bit(ATH12K_FLAG_RECOVERY, &ar->ab->dev_flags) &&
++	    !test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags))
++		ath12k_peer_ml_quarantine(ath12k_ar_to_ah(ar), arsta->ahsta,
++					  delete_ret);
++free_rhash:
+ 	spin_lock_bh(&ab->base_lock);
+ 	ath12k_link_sta_rhash_delete(ab, arsta);
+ 	spin_unlock_bh(&ab->base_lock);
+@@ -7312,17 +7385,30 @@ static int ath12k_mac_assign_link_sta(st
+ static void ath12k_mac_ml_station_remove(struct ath12k_vif *ahvif,
+ 					 struct ath12k_sta *ahsta)
+ {
+-	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(ahsta);
+ 	struct ath12k_hw *ah = ahvif->ah;
+ 	struct ath12k_link_vif *arvif;
+ 	struct ath12k_link_sta *arsta;
++	bool is_recovery = false;
+ 	unsigned long links;
+ 	struct ath12k *ar;
++	int ret;
+ 	u8 link_id;
+ 
+ 	lockdep_assert_wiphy(ah->hw->wiphy);
+ 
+-	ath12k_peer_mlo_link_peers_delete(ahvif, ahsta);
++	links = ahsta->links_map;
++	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
++		arvif = wiphy_dereference(ah->hw->wiphy, ahvif->link[link_id]);
++		if (arvif && arvif->ar &&
++		    (test_bit(ATH12K_FLAG_RECOVERY, &arvif->ar->ab->dev_flags) ||
++		     test_bit(ATH12K_FLAG_CRASH_FLUSH,
++			      &arvif->ar->ab->dev_flags))) {
++			is_recovery = true;
++			break;
++		}
++	}
++
++	ret = ath12k_peer_mlo_link_peers_delete(ahvif, ahsta);
+ 
+ 	/* validate link station removal and clear arsta links */
+ 	links = ahsta->links_map;
+@@ -7343,8 +7429,10 @@ static void ath12k_mac_ml_station_remove
+ 		ath12k_mac_free_unassign_link_sta(ah, ahsta, link_id);
+ 	}
+ 
+-	if (sta->mlo)
+-		ath12k_peer_ml_free(ah, ahsta);
++	if (ret && !is_recovery)
++		ath12k_peer_ml_quarantine(ah, ahsta, ret);
++
++	ath12k_peer_ml_free(ah, ahsta);
+ }
+ 
+ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
+@@ -15488,6 +15576,7 @@ static struct ath12k_hw *ath12k_mac_hw_a
+ 	ah = ath12k_hw_to_ah(hw);
+ 	ah->hw = hw;
+ 	ah->num_radio = num_pdev_map;
++	ah->max_ml_peer_ids = ATH12K_MAX_MLO_PEERS;
+ 
+ 	mutex_init(&ah->hw_mutex);
+ 	init_completion(&ah->peer_ml_id_done);
+--- a/drivers/net/wireless/ath/ath12k/peer.c
++++ b/drivers/net/wireless/ath/ath12k/peer.c
+@@ -150,7 +150,7 @@ static int ath12k_peer_delete_send(struc
+ 	return 0;
+ }
+ 
+-int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, u8 *addr,
++int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, const u8 *addr,
+ 		       bool skip_fw_delete)
+ {
+ 	struct ath12k_peer_delete_wait wait;
+@@ -195,6 +195,22 @@ static int ath12k_wait_for_peer_created(
+ 	return ath12k_wait_for_dp_link_peer_common(ar->ab, vdev_id, addr, true);
+ }
+ 
++static int ath12k_peer_create_cleanup(struct ath12k *ar, u32 vdev_id,
++				      const u8 *addr)
++{
++	struct ath12k_peer_delete_wait wait;
++	int ret;
++
++	ath12k_peer_delete_wait_register(ar, &wait, vdev_id, addr);
++
++	ret = ath12k_peer_delete_send(ar, vdev_id, addr);
++	if (!ret)
++		ret = ath12k_wait_for_peer_delete_done(ar, &wait);
++
++	ath12k_peer_delete_wait_unregister(ar, &wait);
++	return ret;
++}
++
+ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
+ 		       struct ieee80211_sta *sta,
+ 		       struct ath12k_wmi_peer_create_arg *arg)
+@@ -207,7 +223,7 @@ int ath12k_peer_create(struct ath12k *ar
+ 	struct ath12k_dp_link_peer *peer;
+ 	struct ath12k_sta *ahsta;
+ 	u16 ml_peer_id;
+-	int ret;
++	int ret, cleanup_ret;
+ 	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
+ 
+ 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+@@ -239,37 +255,43 @@ int ath12k_peer_create(struct ath12k *ar
+ 
+ 	ret = ath12k_wait_for_peer_created(ar, arg->vdev_id,
+ 					   arg->peer_addr);
+-	if (ret)
++	if (ret) {
++		cleanup_ret = ath12k_peer_create_cleanup(ar, arg->vdev_id,
++							 arg->peer_addr);
++		if (cleanup_ret && sta && sta->mlo &&
++		    !test_bit(ATH12K_FLAG_RECOVERY, &ar->ab->dev_flags) &&
++		    !test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)) {
++			ahsta = ath12k_sta_to_ahsta(sta);
++			ath12k_peer_ml_quarantine(ath12k_ar_to_ah(ar),
++						  ahsta, cleanup_ret);
++		}
+ 		return ret;
++	}
+ 
+ 	spin_lock_bh(&dp->dp_lock);
+ 
+ 	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, arg->vdev_id,
+ 							 arg->peer_addr);
+ 	if (!peer) {
+-		struct ath12k_peer_delete_wait wait;
+-
+ 		spin_unlock_bh(&dp->dp_lock);
+ 		ath12k_warn(ar->ab, "failed to find peer %pM on vdev %i after creation\n",
+ 			    arg->peer_addr, arg->vdev_id);
+ 
+-		ath12k_peer_delete_wait_register(ar, &wait, arg->vdev_id,
++		ret = ath12k_peer_create_cleanup(ar, arg->vdev_id,
+ 						 arg->peer_addr);
+-
+-		ret = ath12k_wmi_send_peer_delete_cmd(ar, arg->peer_addr,
+-						      arg->vdev_id);
+ 		if (ret) {
+ 			ath12k_warn(ar->ab, "failed to delete peer vdev_id %d addr %pM\n",
+ 				    arg->vdev_id, arg->peer_addr);
+-			ath12k_peer_delete_wait_unregister(ar, &wait);
++			if (sta && sta->mlo &&
++			    !test_bit(ATH12K_FLAG_RECOVERY, &ar->ab->dev_flags) &&
++			    !test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)) {
++				ahsta = ath12k_sta_to_ahsta(sta);
++				ath12k_peer_ml_quarantine(ath12k_ar_to_ah(ar),
++							  ahsta, ret);
++			}
+ 			return ret;
+ 		}
+ 
+-		ret = ath12k_wait_for_peer_delete_done(ar, &wait);
+-		ath12k_peer_delete_wait_unregister(ar, &wait);
+-		if (ret)
+-			return ret;
+-
+ 		return -ENOENT;
+ 	}
+ 
+@@ -330,6 +352,18 @@ int ath12k_peer_create(struct ath12k *ar
+ 						 (u8 *)arg->peer_addr, link_id,
+ 						 ar->hw_link_id);
+ 	}
++	if (ret) {
++		cleanup_ret = ath12k_peer_delete(ar, arvif->vdev_id,
++						 arg->peer_addr, false);
++		if (cleanup_ret && sta && sta->mlo &&
++		    !test_bit(ATH12K_FLAG_RECOVERY, &ar->ab->dev_flags) &&
++		    !test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)) {
++			ahsta = ath12k_sta_to_ahsta(sta);
++			ath12k_peer_ml_quarantine(ath12k_ar_to_ah(ar),
++						  ahsta, cleanup_ret);
++		}
++		return ret;
++	}
+ 
+ 	if (vif->type == NL80211_IFTYPE_AP && peer->dp_peer)
+ 		peer->dp_peer->ucast_ra_only = true;
+@@ -339,26 +373,35 @@ int ath12k_peer_create(struct ath12k *ar
+ 
+ u16 ath12k_peer_ml_alloc(struct ath12k_hw *ah)
+ {
+-	u16 ml_peer_id;
++	u16 ml_peer_id = ah->last_ml_peer_id;
++	int i;
+ 
+ 	lockdep_assert_wiphy(ah->hw->wiphy);
+ 
+-	for (ml_peer_id = 0; ml_peer_id < ATH12K_MAX_MLO_PEERS; ml_peer_id++) {
+-		if (test_bit(ml_peer_id, ah->free_ml_peer_id_map))
++	for (i = 0; i < ah->max_ml_peer_ids; i++) {
++		ml_peer_id = (ml_peer_id + 1) % ah->max_ml_peer_ids;
++
++		/* ML peer ID zero is reserved by current firmware. */
++		if (!ml_peer_id)
++			continue;
++
++		if (test_bit(ml_peer_id, ah->free_ml_peer_id_map) ||
++		    test_bit(ml_peer_id, ah->quarantined_ml_peer_id_map))
+ 			continue;
+ 
+ 		set_bit(ml_peer_id, ah->free_ml_peer_id_map);
+-		break;
++		ah->last_ml_peer_id = ml_peer_id;
++		return ml_peer_id | ATH12K_PEER_ML_ID_VALID;
+ 	}
+ 
+-	if (ml_peer_id == ATH12K_MAX_MLO_PEERS)
+-		return ATH12K_MLO_PEER_ID_INVALID;
+-
+-	return ml_peer_id | ATH12K_PEER_ML_ID_VALID;
++	return ATH12K_MLO_PEER_ID_INVALID;
+ }
+ 
+ void ath12k_peer_ml_free(struct ath12k_hw *ah, struct ath12k_sta *ahsta)
+ {
++	u16 ml_peer_id = ahsta->ml_peer_id;
++	u16 id;
++
+ 	lockdep_assert_wiphy(ah->hw->wiphy);
+ 
+ 	/*
+@@ -366,13 +409,45 @@ void ath12k_peer_ml_free(struct ath12k_h
+ 	 * free_ml_peer_id_map.
+ 	 */
+ 	if (ah->host_alloc_ml_id &&
+-	    (ahsta->ml_peer_id <
+-	     (ATH12K_MAX_MLO_PEERS | ATH12K_PEER_ML_ID_VALID)))
+-		clear_bit(ahsta->ml_peer_id & ~ATH12K_PEER_ML_ID_VALID,
+-			  ah->free_ml_peer_id_map);
++	    ml_peer_id != ATH12K_MLO_PEER_ID_INVALID &&
++	    ml_peer_id != ATH12K_MLO_PEER_ID_PENDING &&
++	    (ml_peer_id & ATH12K_PEER_ML_ID_VALID)) {
++		id = ml_peer_id & ~ATH12K_PEER_ML_ID_VALID;
++		if (!WARN_ON_ONCE(id >= ATH12K_MAX_MLO_PEERS) &&
++		    !test_bit(id, ah->quarantined_ml_peer_id_map))
++			clear_bit(id, ah->free_ml_peer_id_map);
++	}
+ 	ahsta->ml_peer_id = ATH12K_MLO_PEER_ID_INVALID;
+ }
+ 
++void ath12k_peer_ml_quarantine(struct ath12k_hw *ah,
++			       struct ath12k_sta *ahsta, int reason)
++{
++	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(ahsta);
++	u16 ml_peer_id = ahsta->ml_peer_id;
++	u16 id;
++
++	lockdep_assert_wiphy(ah->hw->wiphy);
++
++	if (!ah->host_alloc_ml_id || !sta->mlo ||
++	    ml_peer_id == ATH12K_MLO_PEER_ID_INVALID ||
++	    ml_peer_id == ATH12K_MLO_PEER_ID_PENDING ||
++	    !(ml_peer_id & ATH12K_PEER_ML_ID_VALID))
++		return;
++
++	id = ml_peer_id & ~ATH12K_PEER_ML_ID_VALID;
++	if (id >= ah->max_ml_peer_ids || id >= ATH12K_MAX_MLO_PEERS)
++		return;
++
++	set_bit(id, ah->free_ml_peer_id_map);
++	if (!test_and_set_bit(id, ah->quarantined_ml_peer_id_map))
++		ath12k_hw_warn(ah,
++			       "quarantine host ML peer id %u for %pM after firmware state was not confirmed: %d (total %u)\n",
++			       id, sta->addr, reason,
++			       bitmap_weight(ah->quarantined_ml_peer_id_map,
++					     ah->max_ml_peer_ids));
++}
++
+ int ath12k_peer_mlo_link_peers_delete(struct ath12k_vif *ahvif, struct ath12k_sta *ahsta)
+ {
+ 	DECLARE_BITMAP(registered, IEEE80211_MLD_MAX_NUM_LINKS);
+@@ -408,12 +483,22 @@ int ath12k_peer_mlo_link_peers_delete(st
+ 	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+ 		arvif = wiphy_dereference(ah->hw->wiphy, ahvif->link[link_id]);
+ 		arsta = wiphy_dereference(ah->hw->wiphy, ahsta->link[link_id]);
+-		if (!arvif || !arsta)
++		if (!arvif || !arsta) {
++			ath12k_hw_warn(ah,
++				       "missing link state %u while deleting ML peer %pM\n",
++				       link_id, sta->addr);
++			err_ret = -ENOENT;
+ 			continue;
++		}
+ 
+ 		ar = arvif->ar;
+-		if (!ar)
++		if (!ar) {
++			ath12k_hw_warn(ah,
++				       "missing radio for link %u while deleting ML peer %pM\n",
++				       link_id, sta->addr);
++			err_ret = -ENODEV;
+ 			continue;
++		}
+ 
+ 		ath12k_dp_peer_cleanup(ar, arvif->vdev_id, arsta->addr);
+ 
+--- a/drivers/net/wireless/ath/ath12k/peer.h
++++ b/drivers/net/wireless/ath/ath12k/peer.h
+@@ -20,7 +20,7 @@ void ath12k_peer_delete_resp_signal(stru
+ void ath12k_peer_delete_wait_flush(struct ath12k *ar);
+ 
+ void ath12k_peer_cleanup(struct ath12k *ar, u32 vdev_id);
+-int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, u8 *addr,
++int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, const u8 *addr,
+ 		       bool skip_fw_delete);
+ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
+ 		       struct ieee80211_sta *sta,
+@@ -38,4 +38,6 @@ struct ath12k_link_sta *ath12k_link_sta_
+ 						     const u8 *addr);
+ u16 ath12k_peer_ml_alloc(struct ath12k_hw *ah);
+ void ath12k_peer_ml_free(struct ath12k_hw *ah, struct ath12k_sta *ahsta);
++void ath12k_peer_ml_quarantine(struct ath12k_hw *ah,
++			       struct ath12k_sta *ahsta, int reason);
+ #endif /* _PEER_H_ */
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -6884,21 +6884,46 @@ ath12k_pull_vdev_install_key_compl_ev(st
+ 	return 0;
+ }
+ 
++struct ath12k_wmi_peer_assoc_conf_event_v2 {
++	struct wmi_peer_assoc_conf_event base;
++	__le32 status;
++} __packed;
++
++struct ath12k_wmi_peer_assoc_conf_parse {
++	const struct wmi_peer_assoc_conf_event *ev;
++	u16 len;
++};
++
++static int
++ath12k_wmi_peer_assoc_conf_parse(struct ath12k_base *ab, u16 tag, u16 len,
++				 const void *ptr, void *data)
++{
++	struct ath12k_wmi_peer_assoc_conf_parse *parse = data;
++
++	if (tag == WMI_TAG_PEER_ASSOC_CONF_EVENT) {
++		parse->ev = ptr;
++		parse->len = len;
++	}
++
++	return 0;
++}
++
+ static int ath12k_pull_peer_assoc_conf_ev(struct ath12k_base *ab, struct sk_buff *skb,
+ 					  struct wmi_peer_assoc_conf_arg *peer_assoc_conf)
+ {
+-	const void **tb;
+ 	const struct wmi_peer_assoc_conf_event *ev;
++	const struct ath12k_wmi_peer_assoc_conf_event_v2 *ev_v2;
++	struct ath12k_wmi_peer_assoc_conf_parse parse = {};
+ 	int ret;
+ 
+-	tb = ath12k_wmi_tlv_parse(ab, skb);
+-	if (IS_ERR(tb)) {
+-		ret = PTR_ERR(tb);
++	ret = ath12k_wmi_tlv_iter(ab, skb->data, skb->len,
++				  ath12k_wmi_peer_assoc_conf_parse, &parse);
++	if (ret) {
+ 		ath12k_warn(ab, "failed to parse tlv: %d\n", ret);
+ 		return ret;
+ 	}
+ 
+-	ev = tb[WMI_TAG_PEER_ASSOC_CONF_EVENT];
++	ev = parse.ev;
+ 	if (!ev) {
+ 		ath12k_warn(ab, "failed to fetch peer assoc conf ev");
+ 		return -EPROTO;
+@@ -6906,6 +6931,13 @@ static int ath12k_pull_peer_assoc_conf_e
+ 
+ 	peer_assoc_conf->vdev_id = le32_to_cpu(ev->vdev_id);
+ 	peer_assoc_conf->macaddr = ev->peer_macaddr.addr;
++	peer_assoc_conf->status = 0;
++
++	/* Legacy firmware ends the event after peer_macaddr. */
++	if (parse.len >= sizeof(*ev_v2)) {
++		ev_v2 = (const void *)ev;
++		peer_assoc_conf->status = le32_to_cpu(ev_v2->status);
++	}
+ 
+ 	return 0;
+ }
+@@ -7580,9 +7612,16 @@ static void ath12k_peer_sta_kickout_even
+ 	struct wmi_peer_sta_kickout_arg arg = {};
+ 	struct ath12k_link_vif *arvif;
+ 	struct ieee80211_sta *sta;
++	struct ieee80211_link_sta *link_sta;
++	struct ieee80211_sta *dp_sta = NULL;
++	struct ath12k_dp_link_peer *dp_peer;
++	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+ 	struct ath12k_sta *ahsta;
+ 	struct ath12k_link_sta *arsta;
+ 	struct ath12k *ar;
++	int dp_vdev_id = -1, dp_peer_id = -1;
++	u8 dp_link_id = ATH12K_INVALID_LINK_ID;
++	bool dp_mlo = false, dp_peer_valid = false;
+ 
+ 	if (ath12k_pull_peer_sta_kickout_ev(ab, skb, &arg) != 0) {
+ 		ath12k_warn(ab, "failed to extract peer sta kickout event");
+@@ -7591,6 +7630,18 @@ static void ath12k_peer_sta_kickout_even
+ 
+ 	rcu_read_lock();
+ 
++	spin_lock_bh(&dp->dp_lock);
++	dp_peer = ath12k_dp_link_peer_find_by_addr(dp, arg.mac_addr);
++	if (dp_peer) {
++		dp_sta = dp_peer->sta;
++		dp_vdev_id = dp_peer->vdev_id;
++		dp_peer_id = dp_peer->peer_id;
++		dp_link_id = dp_peer->link_id;
++		dp_mlo = dp_peer->mlo;
++		dp_peer_valid = true;
++	}
++	spin_unlock_bh(&dp->dp_lock);
++
+ 	spin_lock_bh(&ab->base_lock);
+ 
+ 	arsta = ath12k_link_sta_find_by_addr(ab, arg.mac_addr);
+@@ -7612,6 +7663,42 @@ static void ath12k_peer_sta_kickout_even
+ 	ahsta = arsta->ahsta;
+ 	sta = ath12k_ahsta_to_sta(ahsta);
+ 
++	if (sta->mlo) {
++		if (arsta->link_id >= IEEE80211_MLD_MAX_NUM_LINKS ||
++		    !(sta->valid_links & BIT(arsta->link_id)) ||
++		    !(ahsta->links_map & BIT(arsta->link_id))) {
++			ath12k_warn(ab,
++				    "ignore stale peer sta kickout %pM for invalid MLO link %u (sta links 0x%x driver links 0x%x)\n",
++				    arg.mac_addr, arsta->link_id, sta->valid_links,
++				    ahsta->links_map);
++			goto exit;
++		}
++
++		link_sta = rcu_dereference(sta->link[arsta->link_id]);
++		if (!link_sta ||
++		    !ether_addr_equal(link_sta->addr, arg.mac_addr)) {
++			ath12k_warn(ab,
++				    "ignore stale peer sta kickout %pM for mismatched MLO link %u\n",
++				    arg.mac_addr, arsta->link_id);
++			goto exit;
++		}
++	} else if (!ether_addr_equal(sta->addr, arg.mac_addr)) {
++		ath12k_warn(ab, "ignore stale peer sta kickout %pM for STA %pM\n",
++			    arg.mac_addr, sta->addr);
++		goto exit;
++	}
++
++	if (dp_peer_valid &&
++	    (dp_sta != sta || dp_vdev_id != arvif->vdev_id ||
++	     dp_mlo != sta->mlo ||
++	     (sta->mlo && dp_link_id != arsta->link_id))) {
++		ath12k_warn(ab,
++			    "ignore stale peer sta kickout %pM for mismatched datapath peer %d vdev %d link %u mlo %d\n",
++			    arg.mac_addr, dp_peer_id, dp_vdev_id, dp_link_id,
++			    dp_mlo);
++		goto exit;
++	}
++
+ 	ath12k_dbg(ab, ATH12K_DBG_WMI,
+ 		   "peer sta kickout event %pM reason: %d rssi: %d\n",
+ 		   arg.mac_addr, arg.reason, arg.rssi);
+@@ -7948,6 +8035,8 @@ static int ath12k_service_available_even
+ static void ath12k_peer_assoc_conf_event(struct ath12k_base *ab, struct sk_buff *skb)
+ {
+ 	struct wmi_peer_assoc_conf_arg peer_assoc_conf = {};
++	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
++	struct ath12k_dp_link_peer *peer;
+ 	struct ath12k *ar;
+ 
+ 	if (ath12k_pull_peer_assoc_conf_ev(ab, skb, &peer_assoc_conf) != 0) {
+@@ -7956,8 +8045,9 @@ static void ath12k_peer_assoc_conf_event
+ 	}
+ 
+ 	ath12k_dbg(ab, ATH12K_DBG_WMI,
+-		   "peer assoc conf ev vdev id %d macaddr %pM\n",
+-		   peer_assoc_conf.vdev_id, peer_assoc_conf.macaddr);
++		   "peer assoc conf ev vdev id %d macaddr %pM status %u\n",
++		   peer_assoc_conf.vdev_id, peer_assoc_conf.macaddr,
++		   peer_assoc_conf.status);
+ 
+ 	rcu_read_lock();
+ 	ar = ath12k_mac_get_ar_by_vdev_id(ab, peer_assoc_conf.vdev_id);
+@@ -7969,6 +8059,14 @@ static void ath12k_peer_assoc_conf_event
+ 		return;
+ 	}
+ 
++	spin_lock_bh(&dp->dp_lock);
++	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp,
++							 peer_assoc_conf.vdev_id,
++							 peer_assoc_conf.macaddr);
++	if (peer)
++		peer->assoc_status = peer_assoc_conf.status;
++	spin_unlock_bh(&dp->dp_lock);
++
+ 	complete(&ar->peer_assoc_done);
+ 	rcu_read_unlock();
+ }
+@@ -9657,24 +9755,51 @@ static void ath12k_wmi_gtk_offload_statu
+ 	rcu_read_unlock();
+ }
+ 
++struct ath12k_wmi_mlo_setup_complete_event_v2 {
++	struct wmi_mlo_setup_complete_event base;
++	__le32 max_ml_peer_ids;
++} __packed;
++
++struct ath12k_wmi_mlo_setup_complete_parse {
++	const struct wmi_mlo_setup_complete_event *ev;
++	u16 len;
++};
++
++static int
++ath12k_wmi_mlo_setup_complete_parse(struct ath12k_base *ab, u16 tag, u16 len,
++				    const void *ptr, void *data)
++{
++	struct ath12k_wmi_mlo_setup_complete_parse *parse = data;
++
++	if (tag == WMI_TAG_MLO_SETUP_COMPLETE_EVENT) {
++		parse->ev = ptr;
++		parse->len = len;
++	}
++
++	return 0;
++}
++
+ static void ath12k_wmi_event_mlo_setup_complete(struct ath12k_base *ab,
+ 						struct sk_buff *skb)
+ {
+ 	const struct wmi_mlo_setup_complete_event *ev;
++	const struct ath12k_wmi_mlo_setup_complete_event_v2 *ev_v2;
++	struct ath12k_wmi_mlo_setup_complete_parse parse = {};
+ 	struct ath12k *ar = NULL;
+ 	struct ath12k_pdev *pdev;
+-	const void **tb;
++	u32 max_ml_peer_ids;
+ 	int ret, i;
+ 
+-	tb = ath12k_wmi_tlv_parse(ab, skb);
+-	if (IS_ERR(tb)) {
+-		ret = PTR_ERR(tb);
++	ret = ath12k_wmi_tlv_iter(ab, skb->data, skb->len,
++				  ath12k_wmi_mlo_setup_complete_parse,
++				  &parse);
++	if (ret) {
+ 		ath12k_warn(ab, "failed to parse mlo setup complete event tlv: %d\n",
+ 			    ret);
+ 		return;
+ 	}
+ 
+-	ev = tb[WMI_TAG_MLO_SETUP_COMPLETE_EVENT];
++	ev = parse.ev;
+ 	if (!ev) {
+ 		ath12k_warn(ab, "failed to fetch mlo setup complete event\n");
+ 		return;
+@@ -9699,6 +9824,28 @@ skip_lookup:
+ 	}
+ 
+ 	ar->mlo_setup_status = le32_to_cpu(ev->status);
++	max_ml_peer_ids = ATH12K_DEFAULT_MAX_MLO_PEER_IDS;
++	if (parse.len >= sizeof(*ev_v2)) {
++		ev_v2 = (const void *)ev;
++		max_ml_peer_ids = le32_to_cpu(ev_v2->max_ml_peer_ids);
++		if (max_ml_peer_ids < 2) {
++			ath12k_warn(ab, "invalid ML peer ID limit %u, using legacy limit %u\n",
++				    max_ml_peer_ids,
++				    ATH12K_DEFAULT_MAX_MLO_PEER_IDS);
++			max_ml_peer_ids = ATH12K_DEFAULT_MAX_MLO_PEER_IDS;
++		} else if (max_ml_peer_ids > ATH12K_MAX_MLO_PEERS) {
++			ath12k_warn(ab, "firmware ML peer ID limit %u exceeds host capacity %u, capping\n",
++				    max_ml_peer_ids, ATH12K_MAX_MLO_PEERS);
++			max_ml_peer_ids = ATH12K_MAX_MLO_PEERS;
++		}
++	}
++
++	ar->ah->max_ml_peer_ids = min_t(u16, ar->ah->max_ml_peer_ids,
++					max_ml_peer_ids);
++	if (ar->ah->last_ml_peer_id >= ar->ah->max_ml_peer_ids)
++		ar->ah->last_ml_peer_id = 0;
++	ath12k_info(ab, "firmware supports %u ML peer IDs, group limit %u\n",
++		    max_ml_peer_ids, ar->ah->max_ml_peer_ids);
+ 	complete(&ar->mlo_setup_done);
+ }
+ 
+--- a/drivers/net/wireless/ath/ath12k/wmi.h
++++ b/drivers/net/wireless/ath/ath12k/wmi.h
+@@ -4545,6 +4545,7 @@ struct wmi_peer_assoc_conf_event {
+ struct wmi_peer_assoc_conf_arg {
+ 	u32 vdev_id;
+ 	const u8 *macaddr;
++	u32 status;
+ };
+ 
+ struct wmi_fils_discovery_event {

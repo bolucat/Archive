@@ -35,10 +35,7 @@ fn incompatible_table_preserves_table_source() {
         .expect("wrong table type must fail");
     assert!(matches!(
         &error,
-        Error::JournalTable {
-            source: redb::TableError::TableTypeMismatch { .. },
-            ..
-        }
+        Error::JournalTable(redb::TableError::TableTypeMismatch { .. })
     ));
     assert!(error.source().unwrap().is::<redb::TableError>());
 }

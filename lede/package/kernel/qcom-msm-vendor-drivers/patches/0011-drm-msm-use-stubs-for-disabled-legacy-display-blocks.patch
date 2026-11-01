@@ -1,0 +1,39 @@
+diff --git a/drivers/gpu/drm/msm/msm_drv.h b/drivers/gpu/drm/msm/msm_drv.h
+--- a/drivers/gpu/drm/msm/msm_drv.h
++++ b/drivers/gpu/drm/msm/msm_drv.h
+@@ -276,7 +276,7 @@
+ #endif
+ 
+ struct hdmi;
+-#ifdef CONFIG_DRM_MSM_HDMI
++#if defined(CONFIG_DRM_MSM_HDMI) && !defined(QCOM_MSM_VENDOR_NO_DSI_HDMI_MDP)
+ int msm_hdmi_modeset_init(struct hdmi *hdmi, struct drm_device *dev,
+ 		struct drm_encoder *encoder);
+ void __init msm_hdmi_register(void);
+@@ -292,7 +292,7 @@
+ #endif
+ 
+ struct msm_dsi;
+-#ifdef CONFIG_DRM_MSM_DSI
++#if defined(CONFIG_DRM_MSM_DSI) && !defined(QCOM_MSM_VENDOR_NO_DSI_HDMI_MDP)
+ int dsi_dev_attach(struct platform_device *pdev);
+ void dsi_dev_detach(struct platform_device *pdev);
+ void __init msm_dsi_register(void);
+@@ -418,7 +418,7 @@
+ 
+ #endif
+ 
+-#ifdef CONFIG_DRM_MSM_MDP4
++#if defined(CONFIG_DRM_MSM_MDP4) && !defined(QCOM_MSM_VENDOR_NO_DSI_HDMI_MDP)
+ void msm_mdp4_register(void);
+ void msm_mdp4_unregister(void);
+ #else
+@@ -426,7 +426,7 @@
+ static inline void msm_mdp4_unregister(void) {}
+ #endif
+ 
+-#ifdef CONFIG_DRM_MSM_MDP5
++#if defined(CONFIG_DRM_MSM_MDP5) && !defined(QCOM_MSM_VENDOR_NO_DSI_HDMI_MDP)
+ void msm_mdp_register(void);
+ void msm_mdp_unregister(void);
+ #else

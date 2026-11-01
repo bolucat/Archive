@@ -151,7 +151,11 @@ async fn peer(auth: bool, mixed: bool, resolver: Arc<dyn Resolver>, blocked: boo
     let selector = Arc::new(if blocked {
         ClientProxySelector::new(vec![])
     } else {
-        create_test_selector(vec![crate::config::RuleConfig::default()], resolver.clone()).unwrap()
+        create_test_selector(
+            vec![crate::config::ResolvedRuleConfig::default()],
+            resolver.clone(),
+        )
+        .unwrap()
     });
     let credentials = auth.then(|| ("user".into(), "pass".into()));
     let handler: Box<dyn TcpServerHandler> = if mixed {
@@ -239,7 +243,11 @@ async fn accepted_tunnel_survives_graceful_shutdown(auth: bool) {
     let (mut client, transport) = tokio::io::duplex(8192);
     let resolver = Arc::new(NativeResolver::new());
     let selector = Arc::new(
-        create_test_selector(vec![crate::config::RuleConfig::default()], resolver.clone()).unwrap(),
+        create_test_selector(
+            vec![crate::config::ResolvedRuleConfig::default()],
+            resolver.clone(),
+        )
+        .unwrap(),
     );
     let server = tokio::spawn(serve(
         Box::new(transport),
@@ -387,8 +395,11 @@ async fn final_upload_data_survives_graceful_goaway() {
         let (mut client, transport) = tokio::io::duplex(8192);
         let resolver = Arc::new(NativeResolver::new());
         let selector = Arc::new(
-            create_test_selector(vec![crate::config::RuleConfig::default()], resolver.clone())
-                .unwrap(),
+            create_test_selector(
+                vec![crate::config::ResolvedRuleConfig::default()],
+                resolver.clone(),
+            )
+            .unwrap(),
         );
         let server = tokio::spawn(serve(Box::new(transport), None, selector, resolver));
         // Literal HPACK :method CONNECT and :authority, followed by END_HEADERS.
@@ -477,7 +488,11 @@ async fn unread_upload_does_not_exhaust_connection_credit() {
         dropped: Arc::new(tokio::sync::Notify::new()),
     });
     let selector = Arc::new(
-        create_test_selector(vec![crate::config::RuleConfig::default()], resolver.clone()).unwrap(),
+        create_test_selector(
+            vec![crate::config::ResolvedRuleConfig::default()],
+            resolver.clone(),
+        )
+        .unwrap(),
     );
     let (client, transport) = tokio::io::duplex(8192);
     let server = tokio::spawn(serve(Box::new(transport), None, selector, resolver.clone()));
@@ -645,16 +660,11 @@ fn connect_authority_and_method_validation() {
 async fn admission_permits_are_released_on_reset_and_owner_drop() {
     const CHILD: &str = "SHOES_HTTP2_ADMISSION_TEST_CHILD";
     if std::env::var_os(CHILD).is_none() {
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "http2::server::tests::admission_permits_are_released_on_reset_and_owner_drop",
-                "--nocapture",
-            ])
-            .env(CHILD, "1")
-            .status()
-            .unwrap();
-        assert!(status.success());
+        shoes_test_support::isolated::run_isolated(
+            "http2::server::tests::admission_permits_are_released_on_reset_and_owner_drop",
+            CHILD,
+            "1",
+        );
         return;
     }
     resources::configure(crate::config::GlobalLimits {
@@ -864,7 +874,7 @@ async fn reset_cancels_both_sniff_probe_and_post_sniff_dial() {
                 started: Arc::new(tokio::sync::Notify::new()),
                 dropped: Arc::new(tokio::sync::Notify::new()),
             });
-            let rule = serde_yaml::from_str(
+            let rule = crate::config::test_support::from_yaml(
                 "masks: sniff.example\naction: allow\noverride_address: pending.test:443",
             )
             .unwrap();
@@ -940,7 +950,7 @@ async fn concurrent_streams_keep_independent_http_host_routes() {
         for name in ["a.invalid", "b.invalid"] {
             let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
             rules.push(
-                serde_yaml::from_str(&format!(
+                crate::config::test_support::from_yaml(&format!(
                     "masks: {name}\naction: allow\noverride_address: 127.0.0.1:{}",
                     listener.local_addr().unwrap().port(),
                 ))
