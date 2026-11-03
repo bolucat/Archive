@@ -3,6 +3,9 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
+# Target metadata scans do not load the board's kernel version.
+KERNEL_PATCHVER ?= 6.18
+
 KERNEL_LOADADDR = 0x80100000
 
 define Build/hasivo-stock-patch

@@ -81,7 +81,7 @@ define Device/jdcloud_re-cs-06
 	$(call Device/FitImage)
 	$(call Device/EmmcImage)
 	DEVICE_VENDOR := JDCloud
-	DEVICE_MODEL := RE-CS-06
+	DEVICE_MODEL := BE6500
 	DEVICE_DTS_CONFIG := config@mi01.6
 	KERNEL_SIZE := 7168k
 	SOC := ipq5322
@@ -95,7 +95,7 @@ define Device/jdcloud_re-cs-08
 	$(call Device/FitImage)
 	$(call Device/EmmcImage)
 	DEVICE_VENDOR := JDCloud
-	DEVICE_MODEL := RE-CS-08
+	DEVICE_MODEL := ER2
 	DEVICE_DTS_CONFIG := config@mi01.6
 	KERNEL_SIZE := 7168k
 	SOC := ipq5322

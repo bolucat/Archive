@@ -1,0 +1,20 @@
+From: lean <chenlin@fnnas.com>
+Subject: [PATCH] iommu: sun55i: update attach_dev callback for Linux 6.18
+
+Accept the previous domain argument introduced by the IOMMU core.
+The existing no-op attachment callback does not need to use it.
+
+Signed-off-by: lean <chenlin@fnnas.com>
+
+--- a/drivers/iommu/sun55i-iommu.c
++++ b/drivers/iommu/sun55i-iommu.c
+@@ -711,7 +711,8 @@
+ }
+ 
+ static int sun55i_iommu_attach_dev(struct iommu_domain *domain,
+-				   struct device *dev)
++				   struct device *dev,
++				   struct iommu_domain *old)
+ {
+ 	return 0;
+ }
