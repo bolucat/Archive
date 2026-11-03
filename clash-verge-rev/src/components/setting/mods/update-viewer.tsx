@@ -72,12 +72,10 @@ const LazyReactMarkdown = lazy(async () => {
     { default: ReactMarkdown },
     { default: rehypeRaw },
     { default: rehypeSanitize, defaultSchema },
-    { default: remarkGfm },
   ] = await Promise.all([
     import('react-markdown'),
     import('rehype-raw'),
     import('rehype-sanitize'),
-    import('remark-gfm'),
   ])
 
   const sanitizeSchema = {
@@ -104,7 +102,6 @@ const LazyReactMarkdown = lazy(async () => {
     default: (props: ReactMarkdownOptions) => (
       <ReactMarkdown
         {...props}
-        remarkPlugins={[remarkGfm, ...(props.remarkPlugins ?? [])]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
       />
     ),
