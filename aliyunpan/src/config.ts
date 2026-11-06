@@ -1,12 +1,9 @@
-import { BOXPLAYER_AI_API_URL, BOXPLAYER_API_URL } from './secrets.generated'
-
-import { BOXPLAYER_API_ORIGIN } from '@shared/boxplayerApi'
+import { BOXPLAYER_API_ORIGIN } from '../shared/boxplayerApi'
 
 export default class Config {
-  // BoxPlayer Cloud AI API
-  static BOXPLAYER_AI_API_URL = BOXPLAYER_AI_API_URL || BOXPLAYER_API_ORIGIN
-  // Resource and AI routes share the unified Worker; explicit build overrides remain independent.
-  static BOXPLAYER_API_URL = BOXPLAYER_API_URL || BOXPLAYER_API_ORIGIN
+  // The unified Worker serves both AI and resource API routes.
+  static BOXPLAYER_AI_API_URL = BOXPLAYER_API_ORIGIN
+  static BOXPLAYER_API_URL = BOXPLAYER_API_ORIGIN
 
   // 网络请求配置
   static referer = 'https://www.aliyundrive.com/drive'

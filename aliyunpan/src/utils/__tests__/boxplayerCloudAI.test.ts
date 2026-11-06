@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../boxplayerAuth', () => ({ getBoxPlayerAccessToken: vi.fn(async () => 'test-token') }))
 
-vi.mock('../../secrets.generated', () => ({ BOXPLAYER_API_URL: '', BOXPLAYER_AI_API_URL: '' }))
 
 import Config from '../../config'
 import { getBoxPlayerMediaScrapeUrl, mapBoxPlayerCloudAIError, scrapeMediaWithBoxPlayerCloud } from '../boxplayerCloudAI'

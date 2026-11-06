@@ -75,7 +75,7 @@ impl Expression {
             Value::String(_) => decode(value).map(Self::Legacy),
             Value::Array(values) => {
                 if values.is_empty() {
-                    return Err(invalid("masks cannot be empty"));
+                    return Err(invalid("rule expression list cannot be empty"));
                 }
                 if values.iter().all(Value::is_string) {
                     return decode(Value::Array(values)).map(Self::Legacy);
@@ -88,11 +88,23 @@ impl Expression {
             Value::Object(fields) => {
                 if fields.len() != 1 {
                     return Err(invalid(
-                        "a masks object requires exactly one predicate or a path",
+                        "a rule expression object requires exactly one predicate or a source",
                     ));
                 }
                 let (field, value) = fields.into_iter().next().unwrap();
                 match field.as_str() {
+                    "masks" => {
+                        let valid = value.is_string()
+                            || value.as_array().is_some_and(|values| {
+                                !values.is_empty() && values.iter().all(Value::is_string)
+                            });
+                        if !valid {
+                            return Err(invalid(
+                                "a masks leaf requires a mask string or a nonempty list of mask strings; combine other predicates with all/any/not",
+                            ));
+                        }
+                        decode(value).map(Self::Legacy)
+                    }
                     "any_destination" => decode(value).map(Self::AnyDestination),
                     "domain" => decode(value).map(Self::Domain),
                     "domain_suffix" => decode(value).map(Self::DomainSuffix),
@@ -103,18 +115,20 @@ impl Expression {
                     "ip_cidr" => decode(value).map(Self::IpCidr),
                     "destination_port" => decode(value).map(Self::DestinationPort),
                     "destination_port_range" => decode(value).map(Self::DestinationPortRange),
+                    "network" => decode_alternatives(value).map(Self::Network),
+                    "protocol" => decode_alternatives(value).map(Self::Protocol),
                     "rule_source_group" => decode(value).map(Self::RuleSourceGroup),
                     "rule_group" => Err(invalid(
-                        "masks rule_group was renamed; use masks: {rule_source_group: name} and declare the group with rule_source_group",
+                        "rule_group predicate was renamed; use {rule_source_group: name} and declare the group with rule_source_group",
                     )),
                     "all" => Self::parse_children(decode(value)?, depth).map(Self::All),
                     "any" => Self::parse_children(decode(value)?, depth).map(Self::Any),
                     "not" => Self::parse_config(value, depth + 1).map(|p| Self::Not(Box::new(p))),
-                    _ => Err(invalid(format!("unknown masks field: {field}"))),
+                    _ => Err(invalid(format!("unknown rule predicate: {field}"))),
                 }
             }
             _ => Err(invalid(
-                "masks requires a mask string, predicate object, or nonempty list",
+                "a rule expression requires a mask string, predicate object, or nonempty list",
             )),
         }
     }
@@ -151,15 +165,91 @@ fn decode<T: serde::de::DeserializeOwned>(value: Value) -> io::Result<T> {
     serde_json::from_value(value).map_err(|e| invalid(e.to_string()))
 }
 
+fn decode_alternatives<T: serde::de::DeserializeOwned>(value: Value) -> io::Result<Vec<T>> {
+    if value.is_string() {
+        decode(value).map(|value| vec![value])
+    } else {
+        decode(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     #[test]
+    fn traffic_conditions_parse_compose_and_round_trip() {
+        use crate::rules::{Compiler, Network, Outcome, Protocol, Traffic};
+        for field in ["conditions", "masks"] {
+            let rule: crate::config::RuleConfig = serde_json::from_value(json!({
+                field: {"all": [{"network": "udp"}, {"protocol": ["stun", "dtls"]}]}
+            }))
+            .unwrap();
+            let encoded = serde_json::to_value(&rule).unwrap();
+            let mut restored: crate::config::RuleConfig = serde_json::from_value(encoded).unwrap();
+            assert_eq!(
+                serde_json::to_value(&rule).unwrap(),
+                serde_json::to_value(&restored).unwrap()
+            );
+            restored.compile(&mut Compiler::default()).unwrap();
+            let predicate = restored.criteria.compiled.unwrap();
+            assert!(predicate.dependencies.network && predicate.dependencies.protocol);
+            for (traffic, expected) in [
+                (Traffic::TCP, Outcome::Miss),
+                (Traffic::UDP, Outcome::Miss),
+                (
+                    Traffic {
+                        network: Network::Udp,
+                        protocol: Some(Protocol::Stun),
+                    },
+                    Outcome::Match,
+                ),
+                (
+                    Traffic {
+                        network: Network::Udp,
+                        protocol: Some(Protocol::Dtls),
+                    },
+                    Outcome::Match,
+                ),
+            ] {
+                assert_eq!(
+                    predicate.evaluate_with_traffic(None, None, 443, Some(traffic)),
+                    expected
+                );
+            }
+        }
+        let mut compiler = Compiler::default();
+        let predicate = compiler
+            .compile(Expression::from_config(json!({"not": {"protocol": "stun"}})).unwrap())
+            .unwrap();
+        assert_eq!(
+            predicate.evaluate_with_traffic(None, None, 1, Some(Traffic::UDP)),
+            Outcome::Match
+        );
+        for value in [
+            json!({"network": "quic"}),
+            json!({"protocol": "webrtc"}),
+            json!({"protocol": ["stun", "typo"]}),
+            json!({"network": null}),
+            json!({"protocol": false}),
+        ] {
+            assert!(Expression::from_config(value).is_err());
+        }
+        for value in [json!({"network": []}), json!({"protocol": []})] {
+            let expression = Expression::from_config(value).unwrap();
+            let predicate = compiler.compile(expression).unwrap();
+            assert_eq!(
+                predicate.evaluate_with_traffic(None, None, 1, Some(Traffic::UDP)),
+                Outcome::Miss
+            );
+        }
+    }
+
+    #[test]
     fn composite_errors_preserve_list_context_and_child_order() {
         for (value, message) in [
-            (json!([]), "masks cannot be empty"),
+            (json!([]), "rule expression list cannot be empty"),
             (
                 json!({"all": []}),
                 "all/any requires at least one predicate",
@@ -178,12 +268,50 @@ mod tests {
             ),
             (
                 json!({"any": [{"unknown": true}, false]}),
-                "unknown masks field: unknown",
+                "unknown rule predicate: unknown",
             ),
         ] {
             let error = Expression::from_config(value).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
             assert_eq!(error.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn mask_leaf_diagnostics_describe_the_accepted_shapes() {
+        for value in [
+            json!([]),
+            json!(null),
+            json!(false),
+            json!(5),
+            json!({"domain": ["example.com"]}),
+            json!(["example.com", {"destination_port": [443]}]),
+            json!(["example.com", 5]),
+        ] {
+            let error = Expression::from_config(json!({"all": [{"masks": value}]})).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(
+                error.to_string(),
+                "a masks leaf requires a mask string or a nonempty list of mask strings; combine other predicates with all/any/not"
+            );
+        }
+    }
+
+    #[test]
+    fn renamed_rule_group_hint_works_in_every_expression_position() {
+        for form in ["direct", "list", "all", "any", "not"] {
+            let wrap = |predicate| match form {
+                "direct" => predicate,
+                "list" => json!([predicate]),
+                "not" => json!({"not": predicate}),
+                operator => json!({operator: [predicate]}),
+            };
+            let error = Expression::from_config(wrap(json!({"rule_group": "other"}))).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "rule_group predicate was renamed; use {rule_source_group: name} and declare the group with rule_source_group"
+            );
+            Expression::from_config(wrap(json!({"rule_source_group": "other"}))).unwrap();
         }
     }
 
