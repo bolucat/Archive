@@ -19,7 +19,8 @@ The workspace patches in `Cargo.toml` are required by checkout/release builds:
   oversized buffered frames from their declared lengths and skips unknown-frame
   payloads incrementally. The fork also defaults the local decoded-header limit
   to 64 KiB. Used by both Shoes and Hickory through h3/h3-quinn.
-- `cfal/hickory-dns`: connection-close recovery and healthy-upstream failover.
+- `cfal/hickory-dns`: connection-close recovery, healthy-upstream failover and
+  bounded TCP/DoT receive progress.
 - `cfal/smoltcp`: TUN/WireGuard TCP retransmission ACK sequencing.
 
 Preserve each repository and full revision unless explicitly updating that fork.
@@ -27,24 +28,98 @@ Check every resolved consumer, especially Quinn, tokio-rustls, hyper-rustls,
 rustls-platform-verifier, Hickory and Shoes; absence of unused-patch warnings is
 not sufficient. Keep `publish = false` while workspace patches remain.
 
+### Hickory
+
+The stable base remains [v0.26.3](https://github.com/hickory-dns/hickory-dns/releases/tag/v0.26.3),
+[`bd37cafbdd86112a6da32878f8c9bab22e14377e`](https://github.com/hickory-dns/hickory-dns/commit/bd37cafbdd86112a6da32878f8c9bab22e14377e).
+As of November 7, 2026, this is the latest non-yanked stable release of
+`hickory-net`, `hickory-proto` and `hickory-resolver`; all three published crate
+archives identify that exact source commit. The release branch has newer,
+unreleased commits despite still declaring 0.26.3; main is 0.27.0-alpha.1.
+Neither is a published stable upgrade.
+
+The maintained series is pinned at
+[`14df4ec4d6c501e23d7815cecd7f556b1cece4a1`](https://github.com/cfal/hickory-dns/commit/14df4ec4d6c501e23d7815cecd7f556b1cece4a1)
+on `shoes/0.26.3-multiplexer-wakeup-20261107-1794067200053000`.
+It retains both original commits from `fix/0.26-closed-transport-failover`,
+including the previous Shoes pin
+[`3fa0a0e3ebd9df778256f18e9264f70d284d31c0`](https://github.com/cfal/hickory-dns/commit/3fa0a0e3ebd9df778256f18e9264f70d284d31c0)
+as an ancestor. Existing published branches and tags remain intact. The fork's
+default branch does not carry the complete series; discover published refs
+before choosing a maintenance source.
+
+The additional patch backports upstream
+[`a14d6027eca8a1cdcc3ef1d5d2deeafed21175b0`](https://github.com/hickory-dns/hickory-dns/commit/a14d6027eca8a1cdcc3ef1d5d2deeafed21175b0):
+count received messages rather than their zero-based index, so consuming the
+100-message receive budget schedules another poll. The budget itself is
+unchanged. Shoes retains the 32-request per-connection limit, so this is not a
+normal high-concurrency lookup failure. A buffered burst of unsolicited or stale
+responses can nevertheless hide a valid answer behind that limit. Local,
+certificate-verified DoT regressions reproduce timeouts in both hostname lookup
+and raw exchange with 100 unsolicited responses, while 0 and 99 are controls.
+The backport lets both paths finish without another query, reconnect or retry.
+
+The original series backports upstream #3861's typed `ConnectionClosed` design
+and adds narrowly scoped H3 recovery. Disconnected exchange channels are not
+`Busy`; genuine queue pressure still is. H3 body errors retain their type,
+remote whole-connection `ApplicationClose` is recognized alongside existing
+clean-close handling, and stream-level `H3_REQUEST_CANCELLED` remains distinct.
+The pool preserves healthy pending siblings and meaningful exhausted-pool
+errors. The existing reused/fresh/repeated-close reconnect budgets remain
+unchanged. Upstream merging #3861 does not supersede the complete H3 additions.
+Neither this work nor external DNS successes establish the cause of Cloudflare's
+original application close.
+
+The multiplexer backport leaves package versions, public APIs, features,
+Rust 1.88 minimum, platform support, server scoring and negative-response policy
+unchanged. In particular, the
+unreleased SERVFAIL retry change and connection-setup SRTT changes are not
+included. Keep the resolver/net/proto pins together and verify tendns also uses
+the fork proto, with no split registry/git types. Preserve the shared rustls and
+h3/h3-quinn fork graph and the publishing guard.
+
+Future refreshes must retain the closed-exchange, H3 body/classification,
+pool-failover, error-precedence and exact reconnect-count regressions. Run the
+standalone production check `cargo check -p hickory-net --locked --features
+h3-aws-lc-rs` as well as tests: H3's test-only backend feature can hide production
+compilation errors. Test Shoes' high-level hostname resolver and separate raw
+exchange path, including buffered-response progress, deadlines, configured
+routing and H3 socket-memory teardown.
+
 ### smoltcp
 
-The October 2026 refresh rebases the two TCP recovery commits from published
-`cfal/smoltcp` main (`a80fa50dce926117669ef061f55f4d6bdad0904a`) onto upstream
-[`24bda3b4f982625d8453d4360172557d24921c76`](https://github.com/smoltcp-rs/smoltcp/commit/24bda3b4f982625d8453d4360172557d24921c76).
-Their previous upstream base was `72a0d7892d696620541b1147c7cac471d421e554`,
-not the older release-based `fix/tcp-ack-sequence` branch. The new series lives
-on `shoes/tcp-recovery-20261028-GsfiI8`, pinned at
-[`042e568bfa39d0f111a23a4718ec257e474fd1e7`](https://github.com/cfal/smoltcp/commit/042e568bfa39d0f111a23a4718ec257e474fd1e7);
-existing branches and old pins remain intact.
+The maintained TCP recovery series originates on published `cfal/smoltcp` main
+(`a80fa50dce926117669ef061f55f4d6bdad0904a`), based on upstream
+`72a0d7892d696620541b1147c7cac471d421e554`, not the older release-based
+`fix/tcp-ack-sequence` branch. The October refresh added regression coverage and
+rebased it onto `24bda3b4f982625d8453d4360172557d24921c76`, producing the previous
+pin [`042e568bfa39d0f111a23a4718ec257e474fd1e7`](https://github.com/cfal/smoltcp/commit/042e568bfa39d0f111a23a4718ec257e474fd1e7).
 
-The package version and latest registry release are still **0.14.0**. The new
-upstream change is unreleased [smoltcp #1223](https://github.com/smoltcp-rs/smoltcp/pull/1223):
-defensively clamp the remaining advertised receive window after FIN consumes
-sequence space at a full window. Earlier post-release RTO bounds, zero-window
-timer recovery, failed-fast-retransmission retry and no-std CUBIC fixes were
-already in our pin and remain included. This refresh changes no public API, features, dependencies,
-Rust minimum or platform support.
+The November 2026 refresh retains all three October commits on upstream
+[`8b0e5c8598647fe92e2a1b87932d1932354fee0b`](https://github.com/smoltcp-rs/smoltcp/commit/8b0e5c8598647fe92e2a1b87932d1932354fee0b).
+The series lives on `shoes/tcp-recovery-20261107-000034`, pinned at
+[`7ef43e497f575cb0340a43e4f414f0f0b8760bf6`](https://github.com/cfal/smoltcp/commit/7ef43e497f575cb0340a43e4f414f0f0b8760bf6);
+existing branches, tags and old pins remain intact.
+
+The package version and latest stable registry release remain **0.14.0**.
+The new upstream changes are unreleased: [#1242](https://github.com/smoltcp-rs/smoltcp/pull/1242)
+cancels an armed idle keepalive deadline when `set_keep_alive(None)` is called,
+without cancelling retransmission, persist or closing timers. Shoes uses this
+when draining orphaned connections. [#1238](https://github.com/smoltcp-rs/smoltcp/pull/1238)
+ends SLAAC polling after router solicitations are exhausted, and
+[#1240](https://github.com/smoltcp-rs/smoltcp/pull/1240) adds `Interface::reset_slaac()`.
+SLAAC remains disabled in Shoes. Features, dependencies, Rust minimum and
+platform requirements are unchanged; no Shoes adapter changes are required.
+Earlier RTO bounds, zero-window timer recovery, failed-fast-retransmission retry,
+no-std CUBIC and full-window FIN clamping fixes remain included.
+
+The refresh also fixes upstream's optional-deadline combination: an exhausted
+SLAAC timer must not erase a pending socket deadline, and an idle socket set must
+not erase a pending solicitation. An interface regression exercises exhaustion,
+a pending TCP SYN, restarted solicitation scheduling and competing deadlines.
+The keepalive sequence regression adds an open-window case that distinguishes
+SND.UNA from the frontier, alongside the existing closed-window case. Both check
+that probes leave the retransmission cursor and send frontier unchanged.
 
 Preserve the complete recovery patch, not only its persistent send frontier:
 

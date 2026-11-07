@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, shallowRef } from 'vue'
 import { Button, Input, Modal, Option as AOption, Select } from '@arco-design/web-vue'
 import {
   formatSubtitleDownloadCount,
@@ -8,9 +8,17 @@ import {
 } from '../utils/subtitleApi'
 import type { SubtitleSearchResult } from '../utils/subtitleApi'
 import message from '../utils/message'
+import { toSimplified, toTraditional } from 'chinese-simple2traditional'
+import type { CSSProperties } from 'vue'
+import PlaybackDanmakuSettings from './PlaybackDanmakuSettings.vue'
+import { formatDanmakuText, danmakuMatchTitle } from '../utils/danmakuPreferences'
+import PlaybackSubtitleNumberRow from './PlaybackSubtitleNumberRow.vue'
+import useSettingStore from '../setting/settingstore'
+import { autoMatchDanmaku, loadDanmakuComments, createDanmakuFilter } from '../utils/danmakuApi'
+import type { Danmu } from 'artplayer-plugin-danmuku'
 import { MpvPlaybackSession } from '../utils/mpvPlaybackSession'
-import { getAutoSubtitleTrackId, subtitleSelectionCommands, bilingualSubtitlePositions } from '../utils/mpvSubtitleTrack'
-import { Captions, Flag, ListVideo, Pause, Play, Settings2, SkipBack, SkipForward } from 'lucide-vue-next'
+import { getAutoSubtitleTrackId, subtitleSelectionCommands } from '../utils/mpvSubtitleTrack'
+import { Captions, MessageSquare, Search, Flag, ListVideo, Pause, Play, Settings2, SkipBack, SkipForward } from 'lucide-vue-next'
 
 const props = defineProps<{
   url: string
@@ -37,8 +45,8 @@ const emit = defineEmits<{
   playlistPrev: []
 }>()
 
-const canvasRef = ref<HTMLCanvasElement | null>(null)
-const fallbackCanvasRef = ref<HTMLCanvasElement | null>(null)
+const canvasRef = shallowRef<HTMLCanvasElement | null>(null)
+const fallbackCanvasRef = shallowRef<HTMLCanvasElement | null>(null)
 const loading = ref(false)
 const loaded = ref(false)
 const errorText = ref('')
@@ -50,6 +58,7 @@ const position = ref(0)
 const duration = ref(0)
 const volume = ref(100)
 const speed = ref(1)
+const bufferedPosition = ref(0)
 const seeking = ref(false)
 const controlsVisible = ref(true)
 const controlsHover = ref(false)
@@ -65,19 +74,75 @@ let autoSelectedSubtitleTrackId: number | undefined
 const secondarySubtitleTrackId = ref(-1)
 const secondarySubtitleLines = ref(0)
 const dualSubtitles = computed(() => subtitleTrackId.value >= 0 && secondarySubtitleTrackId.value >= 0)
-const subtitleDelay = ref(0)
-const subtitleScale = ref(1)
-const subtitleBorderSize = ref(3)
-const subtitleBorderColor = ref('#000000')
-const subtitleBackgroundColor = ref('#000000')
+type SubtitleStyle = {
+  delay: number; scale: number; opacity: number; custom: boolean; font: string;
+  fontSize: number; color: string; background: string; border: string; borderSize: number;
+  shadow: string; shadowSize: number; bold: boolean; italic: boolean; position: number; conversion: number
+}
+const defaultSubtitleStyle = (secondary = false): SubtitleStyle => ({
+  delay: 0, scale: 1, opacity: 1, custom: false, font: 'sans-serif', fontSize: 44,
+  color: '#ffffff', background: '#00000000', border: '#000000', borderSize: 1,
+  shadow: '#000000', shadowSize: 0, bold: false, italic: false, position: secondary ? 84 : 96, conversion: 0
+})
+const loadSubtitleStyles = (): SubtitleStyle[] => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('playbackSubtitleStyles') || 'null')
+    if (Array.isArray(raw) && raw.length === 2) return raw.map((value, index) => ({ ...defaultSubtitleStyle(index === 1), ...value }))
+  } catch { /* Use defaults when an older preference cannot be decoded. */ }
+  return [defaultSubtitleStyle(), defaultSubtitleStyle(true)]
+}
+const subtitleStyles = ref(loadSubtitleStyles())
+subtitleStyles.value[1].custom = subtitleStyles.value[0].custom
+const subtitleStyleIndex = ref(0)
+const selectedSubtitleStyle = computed(() => subtitleStyles.value[subtitleStyleIndex.value])
+const primarySubtitleStyle = computed(() => subtitleStyles.value[0])
+const customSubtitleEnabled = computed({
+  get: () => subtitleStyles.value[0].custom,
+  set: (enabled: boolean) => { for (const style of subtitleStyles.value) style.custom = enabled }
+})
+const subtitleText = ref('')
+const secondarySubtitleText = ref('')
+const pgsAspectCorrection = ref(localStorage.getItem('playbackPgsAspectCorrection') !== 'false')
+const styleField = <K extends keyof SubtitleStyle>(key: K, primary = false) => computed({
+  get: () => subtitleStyles.value[primary ? 0 : subtitleStyleIndex.value][key],
+  set: (value: SubtitleStyle[K]) => { subtitleStyles.value[primary ? 0 : subtitleStyleIndex.value][key] = value }
+})
+const subtitleDelay = styleField('delay', true)
+const subtitleScale = styleField('scale', true)
+const subtitleBackgroundColor = styleField('background')
 const audioDelay = ref(0)
 const equalizerBands = ref([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 const equalizerFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
-const subtitleFontSize = ref(44)
-const subtitleColor = ref('#ffffff')
-const subtitlePosition = ref(96)
-const subtitleBold = ref(false)
-const subtitleItalic = ref(false)
+const subtitlePosition = styleField('position', true)
+const isBitmapSubtitle = (index: number) => {
+  const id = index === 0 ? subtitleTrackId.value : secondarySubtitleTrackId.value
+  const codec = subtitleTracks.value.find(track => track.id === id)?.codec || ''
+  return /pgs|dvd|dvb|vobsub/i.test(codec)
+}
+const usesTextOverlay = (index: number) => !isBitmapSubtitle(index) &&
+  (subtitleStyles.value[index].custom || subtitleStyles.value[index].conversion !== 0 || subtitleStyles.value[index].opacity !== 1)
+const displaySubtitleText = (index: number) => {
+  if ((index === 0 ? subtitleTrackId.value : secondarySubtitleTrackId.value) < 0) return ''
+  const text = index === 0 ? subtitleText.value : secondarySubtitleText.value
+  const mode = subtitleStyles.value[index].conversion
+  return mode === 1 ? toSimplified(text) : mode === 2 ? toTraditional(text) : text
+}
+const overlaySubtitleStyle = (index: number): CSSProperties => {
+  const style = subtitleStyles.value[index]
+  const outline = style.custom ? style.borderSize : 1
+  return {
+    bottom: `${100 - style.position}%`, opacity: style.opacity,
+    fontFamily: style.custom ? style.font : 'sans-serif',
+    fontSize: `clamp(12px, ${style.fontSize * style.scale / 10.8}cqh, 160px)`,
+    fontWeight: style.custom && style.bold ? 'bold' : 'normal',
+    fontStyle: style.custom && style.italic ? 'italic' : 'normal',
+    color: style.custom ? style.color : '#ffffff',
+    backgroundColor: style.custom ? style.background : 'transparent',
+    WebkitTextStroke: `${outline}px ${style.custom ? style.border : '#000000'}`,
+    paintOrder: 'stroke fill',
+    textShadow: style.custom && style.shadowSize > 0 ? `${style.shadowSize}px ${style.shadowSize}px ${style.shadowSize}px ${style.shadow}` : 'none'
+  }
+}
 const introSkipSeconds = ref(0)
 const outroSkipSeconds = ref(0)
 const aspectRatio = ref('no')
@@ -97,6 +162,64 @@ const tracks = ref<Array<{ id: number; type: string; title?: string; language?: 
 const nativeBuffering = ref(false)
 const isBuffering = computed(() => !errorText.value && (loading.value || nativeBuffering.value || frameCount.value === 0))
 const shouldShowControls = computed(() => controlsVisible.value || controlsHover.value || paused.value || loading.value || Boolean(errorText.value) || seeking.value || settingsOpen.value || playlistOpen.value)
+
+const danmakuPreferences = useSettingStore()
+const danmakuComments = shallowRef<Danmu[]>([])
+const danmakuLoading = ref(false)
+const danmakuTime = ref(0)
+let danmakuFrame = 0
+let nativeClockPosition = 0
+let nativeClockTimestamp = performance.now()
+const tickDanmaku = () => {
+  if (danmakuComments.value.length && danmakuPreferences.danmakuVisible) danmakuTime.value = nativeClockPosition + (paused.value || loading.value || nativeBuffering.value ? 0 : (performance.now() - nativeClockTimestamp) / 1000 * speed.value)
+  danmakuFrame = requestAnimationFrame(tickDanmaku)
+}
+const matchPlaybackDanmaku = async () => {
+  const sequence = loadSequence
+  danmakuLoading.value = true
+  try {
+    if (!danmakuPreferences.danmakuEnabled) return
+    const apis = danmakuPreferences.danmakuApis.filter(api => api.url.trim() && api.name.trim())
+    const match = await autoMatchDanmaku(danmakuMatchTitle(props.title || '', danmakuPreferences.danmakuMatchYear), apis)
+    const episode = match?.response.matches?.[0]
+    if (!match || !episode) { showNotice('未找到匹配弹幕'); return }
+    const comments = await loadDanmakuComments(episode.episodeId, match.api)
+    if (sequence !== loadSequence) return
+    danmakuComments.value = comments.sort((a, b) => (a.time || 0) - (b.time || 0))
+    danmakuPreferences.updateStore({ danmakuVisible: true })
+  } catch { showNotice('弹幕加载失败') }
+  finally { danmakuLoading.value = false }
+}
+const activeDanmaku = computed(() => {
+  if (!danmakuPreferences.danmakuEnabled || !danmakuPreferences.danmakuVisible) return []
+  const comments = danmakuComments.value
+  const time = danmakuTime.value - danmakuPreferences.danmakuDelay
+  const lifetime = danmakuPreferences.danmakuSpeed
+  // Binary search keeps the per-frame work bounded for large comment files.
+  const lowerBound = (target: number) => {
+    let low = 0, high = comments.length
+    while (low < high) { const middle = (low + high) >>> 1; if ((comments[middle].time || 0) < target) low = middle + 1; else high = middle }
+    return low
+  }
+  const start = lowerBound(time - lifetime)
+  const end = lowerBound(time + 0.001)
+  const rows = Math.max(1, Math.floor((100 - parseFloat(danmakuPreferences.danmakuMarginBottom || '0')) / 6))
+  return comments.slice(start, Math.min(end, start + 60)).filter(createDanmakuFilter(danmakuPreferences.danmakuFilterText)).map((comment, offset) => {
+    const progress = Math.min(1, Math.max(0, (time - (comment.time || 0)) / lifetime))
+    const mode = danmakuPreferences.danmakuFixedToScroll ? 0 : comment.mode || 0
+    return {
+      id: start + offset, text: formatDanmakuText(comment.text, danmakuPreferences),
+      style: {
+        color: comment.color || danmakuPreferences.danmakuColor,
+        fontFamily: danmakuPreferences.danmakuFontFamily, fontSize: `${danmakuPreferences.danmakuFontSize}px`, opacity: danmakuPreferences.danmakuOpacity,
+        top: mode === 2 ? `${(rows - 1 - (start + offset) % rows) * 6}%` : `${(start + offset) % rows * 6}%`,
+        left: mode ? '50%' : '0',
+        transform: mode ? 'translateX(-50%)' : `translateX(calc((100cqw + 100%) * ${1 - progress} - 100%))`,
+        WebkitTextStroke: `${danmakuPreferences.danmakuBorderSize}px #000`, paintOrder: 'stroke fill'
+      } as CSSProperties
+    }
+  })
+})
 
 type WebGLVideoState = {
   gl: WebGL2RenderingContext
@@ -190,11 +313,12 @@ const currentChapterIndex = computed(() => {
 })
 const playButtonLabel = computed(() => paused.value ? '播放' : '暂停')
 const qualityLabel = computed(() => props.qualityLabel || '自动')
+const bufferedPercent = computed(() => duration.value > 0 ? `${Math.max(0, Math.min(100, Math.max(position.value, bufferedPosition.value) / duration.value * 100))}%` : '0%')
 const progressPercent = computed(() => duration.value > 0 ? `${Math.max(0, Math.min(100, (position.value / duration.value) * 100))}%` : '0%')
 const volumePercent = computed(() => `${Math.max(0, Math.min(100, volume.value))}%`)
 const subtitleSelectValue = computed(() => `track:${subtitleTrackId.value}`)
 const secondarySubtitleSelectValue = computed(() => `track:${secondarySubtitleTrackId.value}`)
-const settingsTab = ref<'video' | 'audio' | 'subtitle'>('video')
+const settingsTab = ref<'video' | 'audio' | 'subtitle' | 'danmaku'>('video')
 
 const createShader = (gl: WebGL2RenderingContext, type: number, source: string) => {
   const shader = gl.createShader(type)
@@ -552,12 +676,17 @@ const addAutomaticSubtitles = async (sequence: number) => {
 }
 
 const applyStatusResult = (result: any) => {
+  bufferedPosition.value = Number.isFinite(result.status?.bufferedPosition) ? Number(result.status?.bufferedPosition) : 0
+  nativeClockPosition = Number(result.status?.position || 0)
+  nativeClockTimestamp = performance.now()
   nativeBuffering.value = Boolean(result.status?.buffering)
   paused.value = Boolean(result.status?.paused)
   if (!seeking.value) position.value = typeof result.status?.position === 'number' ? result.status.position : 0
   duration.value = typeof result.status?.duration === 'number' ? result.status.duration : 0
   volume.value = typeof result.status?.volume === 'number' ? result.status.volume : volume.value
   speed.value = typeof result.status?.speed === 'number' ? result.status.speed : speed.value
+  subtitleText.value = result.trackStatus?.subtitleText || ''
+  secondarySubtitleText.value = result.trackStatus?.secondarySubtitleText || ''
   if (Array.isArray(result.trackStatus?.tracks)) tracks.value = result.trackStatus.tracks
   if (typeof result.trackStatus?.audioId === 'number') audioTrackId.value = result.trackStatus.audioId
   if (typeof result.trackStatus?.subtitleId === 'number') subtitleTrackId.value = result.trackStatus.subtitleId
@@ -595,6 +724,9 @@ const load = async () => {
   nativeBuffering.value = false
   loaded.value = false
   autoSelectedSubtitleTrackId = undefined
+  danmakuComments.value = []
+  subtitleText.value = ''
+  secondarySubtitleText.value = ''
   introSkipped.value = false
   outroTriggered.value = false
   errorText.value = ''
@@ -845,30 +977,7 @@ const handleSubtitleSelection = async (event: Event, secondary: boolean) => {
 const handleSubtitleTrackChange = (event: Event) => handleSubtitleSelection(event, false)
 const handleSecondarySubtitleTrackChange = (event: Event) => handleSubtitleSelection(event, true)
 
-const handleSubtitleDelayChange = async (event: Event) => {
-  subtitleDelay.value = Number((event.target as HTMLInputElement).value || 0)
-  await setVideoProperty('sub-delay', subtitleDelay.value)
-}
-
-const handleSubtitleScaleChange = async (event: Event) => {
-  subtitleScale.value = Number((event.target as HTMLInputElement).value || 1)
-  await setVideoProperty('sub-scale', subtitleScale.value)
-}
-
-const handleSubtitleBorderSizeChange = async (event: Event) => {
-  subtitleBorderSize.value = Number((event.target as HTMLInputElement).value || 0)
-  await setVideoProperty('sub-border-size', subtitleBorderSize.value)
-}
-
-const handleSubtitleBorderColorChange = async (event: Event) => {
-  subtitleBorderColor.value = String((event.target as HTMLInputElement).value || '#000000')
-  await setVideoProperty('sub-border-color', subtitleBorderColor.value)
-}
-
-const handleSubtitleBackgroundColorChange = async (event: Event) => {
-  subtitleBackgroundColor.value = String((event.target as HTMLInputElement).value || '#000000')
-  await setVideoProperty('sub-back-color', `${subtitleBackgroundColor.value}00`)
-}
+const handleSubtitleBackgroundColorChange = (event: Event) => { subtitleBackgroundColor.value = (event.target as HTMLInputElement).value }
 
 const handleAddExternalSubtitle = () => {
   window.WebShowOpenDialogSync?.({
@@ -882,7 +991,7 @@ const handleAddExternalSubtitle = () => {
   })
 }
 
-const subtitlePositions = () => bilingualSubtitlePositions(subtitlePosition.value, subtitleFontSize.value, subtitleScale.value, dualSubtitles.value, secondarySubtitleLines.value)
+const subtitlePositions = () => ({ primary: subtitleStyles.value[0].position, secondary: subtitleStyles.value[1].position })
 
 const applySubtitleLayout = async () => {
   const sequence = loadSequence
@@ -893,45 +1002,15 @@ const applySubtitleLayout = async () => {
 }
 
 const applySubtitleStyle = async () => {
-  await control('setSubtitleStyle', undefined, {
-    style: {
-      fontSize: subtitleFontSize.value,
-      color: subtitleColor.value,
-      position: subtitlePositions().primary,
-      bold: subtitleBold.value,
-      italic: subtitleItalic.value
-    }
-  })
-}
-
-const handleSubtitleSizeChange = async (event: Event) => {
-  revealControls()
-  subtitleFontSize.value = Number((event.target as HTMLInputElement).value || 44)
-  await applySubtitleStyle()
-}
-
-const handleSubtitleColorChange = async (event: Event) => {
-  revealControls()
-  subtitleColor.value = String((event.target as HTMLInputElement).value || '#ffffff')
-  await applySubtitleStyle()
-}
-
-const handleSubtitlePositionChange = async (event: Event) => {
-  revealControls()
-  subtitlePosition.value = Number((event.target as HTMLInputElement).value || 96)
-  await applySubtitleStyle()
-}
-
-const handleSubtitleBoldChange = async (event: Event) => {
-  revealControls()
-  subtitleBold.value = Boolean((event.target as HTMLInputElement).checked)
-  await applySubtitleStyle()
-}
-
-const handleSubtitleItalicChange = async (event: Event) => {
-  revealControls()
-  subtitleItalic.value = Boolean((event.target as HTMLInputElement).checked)
-  await applySubtitleStyle()
+  for (const index of [0, 1]) {
+    const style = subtitleStyles.value[index]
+    const prefix = index === 0 ? 'sub' : 'secondary-sub'
+    await setVideoProperty(`${prefix}-delay`, style.delay)
+    await setVideoProperty(`${prefix}-pos`, style.position)
+    await setVideoProperty(`${prefix}-scale`, style.scale)
+    await setVideoProperty(`${prefix}-visibility`, usesTextOverlay(index) ? 'no' : 'yes')
+  }
+  await setVideoProperty('stretch-image-subs-to-screen', pgsAspectCorrection.value ? 'no' : 'yes')
 }
 
 const handleIntroSkipToggle = () => {
@@ -1106,6 +1185,7 @@ const handleQualityChange = (event: Event) => {
 }
 
 onMounted(async () => {
+  danmakuFrame = requestAnimationFrame(tickDanmaku)
   window.WebMpvSharedTexture?.onFrame?.(drawFrame)
   window.WebMpvSharedTexture?.onSoftwareFrame?.(drawSoftwareFrame)
   window.WebMpvSharedTexture?.onClear?.(clearFrame)
@@ -1117,6 +1197,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(danmakuFrame)
   disposed = true
   loadSequence = playbackSession.begin()
   window.WebMpvSharedTexture?.removeStatusListener?.()
@@ -1143,9 +1224,16 @@ watch([paused, loading, errorText, seeking], () => {
   if (isControlsPinned()) controlsVisible.value = true
 })
 
-watch([dualSubtitles, secondarySubtitleLines, subtitlePosition, subtitleFontSize, subtitleScale], () => {
+watch([dualSubtitles, secondarySubtitleLines, subtitlePosition, subtitleScale], () => {
   if (props.url && !disposed) void applySubtitleLayout()
 })
+
+watch([subtitleStyles, pgsAspectCorrection], () => {
+  localStorage.setItem('playbackSubtitleStyles', JSON.stringify(subtitleStyles.value))
+  localStorage.setItem('playbackPgsAspectCorrection', String(pgsAspectCorrection.value))
+  void applySubtitleStyle()
+}, { deep: true })
+watch([subtitleTrackId, secondarySubtitleTrackId], () => { void applySubtitleStyle() })
 
 watch(() => props.subtitleSources, () => {
   if (!props.url || !loaded.value || disposed) return
@@ -1161,6 +1249,8 @@ watch(chapters, (nextChapters) => {
   <div class="mpv-embedded-surface" :class="{ 'controls-hidden': !shouldShowControls, 'panel-open': playlistOpen || settingsOpen }" tabindex="0" @keydown="revealControls" @mousedown="revealControls" @mouseleave="handleSurfacePointerLeave" @mousemove="handleSurfacePointerMove" @touchstart="revealControls">
     <canvas ref="canvasRef" class="mpv-embedded-canvas" :class="{ 'mpv-render-hidden': renderMode === 'fallback' }" />
     <canvas ref="fallbackCanvasRef" class="mpv-embedded-canvas mpv-fallback-canvas" :class="{ 'mpv-render-visible': renderMode === 'fallback' }" />
+    <div class="mpv-live-danmaku" aria-hidden="true"><span v-for="comment in activeDanmaku" :key="comment.id" :style="comment.style">{{ comment.text }}</span></div>
+    <div v-for="index in [0, 1]" v-show="usesTextOverlay(index) && displaySubtitleText(index)" :key="`text-sub-${index}`" class="mpv-live-subtitle" :style="overlaySubtitleStyle(index)">{{ displaySubtitleText(index) }}</div>
     <div v-if="isBuffering || errorText" class="mpv-embedded-overlay">
       <div v-if="isBuffering" class="mpv-embedded-loading">
         <span class="mpv-embedded-spinner"></span>
@@ -1181,6 +1271,8 @@ watch(chapters, (nextChapters) => {
             </button>
             <button class="mpv-icon-btn" :disabled="!canPlayNext" title="下一曲" aria-label="下一曲" type="button" @click="emit('playlistNext')"><SkipForward :size="21" /></button>
             <button class="mpv-icon-btn" :class="{ active: playlistOpen }" title="播放列表" aria-label="播放列表" type="button" @click="togglePlaylist"><ListVideo :size="19" /></button>
+            <button v-if="danmakuPreferences.danmakuEnabled" class="mpv-icon-btn" :class="{ active: danmakuPreferences.danmakuVisible }" title="显示/隐藏弹幕" aria-label="显示/隐藏弹幕" type="button" @click="danmakuPreferences.updateStore({ danmakuVisible: !danmakuPreferences.danmakuVisible })"><MessageSquare :size="19" /></button>
+            <button v-if="danmakuPreferences.danmakuEnabled" class="mpv-icon-btn" title="匹配当前视频弹幕" aria-label="匹配当前视频弹幕" type="button" :disabled="danmakuLoading" @click="matchPlaybackDanmaku"><Search :size="19" /></button>
             <button class="mpv-icon-btn" :class="{ active: settingsOpen }" title="设置" aria-label="设置" type="button" @click="toggleSettings"><Settings2 :size="19" /></button>
             <button class="mpv-icon-btn mpv-marker-btn" :class="{ active: introSkipSeconds > 0 }" title="设置片头" aria-label="设置片头" type="button" @click="handleIntroSkipToggle"><Flag :size="18" /></button>
             <button class="mpv-icon-btn mpv-marker-btn" :class="{ active: outroSkipSeconds > 0 }" title="设置片尾" aria-label="设置片尾" type="button" @click="handleOutroSkipToggle"><Flag :size="18" /></button>
@@ -1193,7 +1285,7 @@ watch(chapters, (nextChapters) => {
 
         <div class="mpv-progress-row">
           <span class="mpv-time mpv-time-current">{{ formatTime(position) }}</span>
-          <input class="mpv-embedded-progress" aria-label="播放进度" type="range" min="0" :max="Math.max(duration, 1)" step="0.1" :style="{ '--mpv-progress': progressPercent }" :value="position" @change="handleSeekChange" @input="handleSeekInput" />
+          <input class="mpv-embedded-progress" aria-label="播放进度" type="range" min="0" :max="Math.max(duration, 1)" step="0.1" :style="{ '--mpv-progress': progressPercent, '--mpv-buffered': bufferedPercent }" :value="position" @change="handleSeekChange" @input="handleSeekInput" />
           <span class="mpv-time">{{ formatTime(duration) }}</span>
         </div>
       </div>
@@ -1251,14 +1343,15 @@ watch(chapters, (nextChapters) => {
           <div class="mpv-side-panel-header">
             <div>
               <span class="mpv-side-panel-kicker">VIDEO SETTINGS</span>
-              <strong>播放设置</strong>
+              <strong>{{ settingsTab === 'danmaku' ? '弹幕设置' : settingsTab === 'subtitle' ? '字幕设置' : '播放设置' }}</strong>
             </div>
             <button class="mpv-side-close" type="button" aria-label="关闭设置" @click="settingsOpen = false">×</button>
           </div>
-          <div class="mpv-settings-tabs">
+          <div v-if="settingsTab !== 'danmaku' && settingsTab !== 'subtitle'" class="mpv-settings-tabs">
             <button :class="{ active: settingsTab === 'video' }" type="button" @click="settingsTab = 'video'">视频</button>
             <button :class="{ active: settingsTab === 'audio' }" type="button" @click="settingsTab = 'audio'">音频</button>
-            <button :class="{ active: settingsTab === 'subtitle' }" type="button" @click="settingsTab = 'subtitle'">字幕</button>
+            <button type="button" @click="settingsTab = 'subtitle'">字幕</button>
+            <button v-if="danmakuPreferences.danmakuEnabled" type="button" @click="settingsTab = 'danmaku'">弹幕</button>
           </div>
 
           <div v-if="settingsTab === 'video'" class="mpv-side-settings-content">
@@ -1338,7 +1431,36 @@ watch(chapters, (nextChapters) => {
             </section>
           </div>
 
-          <div v-else class="mpv-side-settings-content">
+          <div v-else-if="settingsTab === 'subtitle'" class="mpv-side-settings-content">
+            <section class="mpv-side-section">
+              <span class="mpv-side-label">播放调整</span>
+              <PlaybackSubtitleNumberRow label="延迟显示[主]" :value="subtitleDelay" :min="-100" :max="100" :step="0.1" :digits="1" unit="s" editable @change="subtitleDelay = $event" />
+              <PlaybackSubtitleNumberRow label="垂直偏移" :value="100 - subtitlePosition" :min="0" :max="100" :step="1" @change="subtitlePosition = 100 - $event" />
+              <PlaybackSubtitleNumberRow label="大小缩放[主]" :value="subtitleScale * 100" :min="25" :max="300" :step="5" unit="%" @change="subtitleScale = $event / 100" />
+              <PlaybackSubtitleNumberRow label="不透明度" :disabled="isBitmapSubtitle(0)" :value="primarySubtitleStyle.opacity * 100" :min="0" :max="100" :step="5" unit="%" @change="primarySubtitleStyle.opacity = $event / 100" />
+              <label class="mpv-side-select-row"><span>简繁中文转换</span><select :disabled="isBitmapSubtitle(0)" v-model.number="primarySubtitleStyle.conversion"><option :value="0">禁用</option><option :value="1">转为简体</option><option :value="2">转为繁体</option></select></label>
+              <label class="mpv-side-select-row"><span>PGS 字幕比例修正</span><input v-model="pgsAspectCorrection" type="checkbox" /></label>
+            </section>
+            <section class="mpv-side-section">
+              <span class="mpv-side-label">自定义样式</span>
+              <label class="mpv-side-select-row"><span>使用自定义样式</span><input v-model="customSubtitleEnabled" type="checkbox" /></label>
+              <template v-if="customSubtitleEnabled">
+                <div class="mpv-subtitle-mode-tabs"><button :class="{ active: subtitleStyleIndex === 0 }" type="button" @click="subtitleStyleIndex = 0">主字幕</button><button :class="{ active: subtitleStyleIndex === 1 }" type="button" @click="subtitleStyleIndex = 1">副字幕</button></div>
+                <fieldset :disabled="isBitmapSubtitle(subtitleStyleIndex)" class="mpv-subtitle-custom-fields">
+                  <label class="mpv-side-select-row"><span>字体</span><select v-model="selectedSubtitleStyle.font"><option value="sans-serif">系统字体</option><option value="serif">衬线</option><option value="monospace">等宽</option></select></label>
+                  <label class="mpv-side-select-row"><span>加粗</span><input v-model="selectedSubtitleStyle.bold" type="checkbox" /></label>
+                  <label class="mpv-side-select-row"><span>斜体</span><input v-model="selectedSubtitleStyle.italic" type="checkbox" /></label>
+                  <label class="mpv-side-select-row"><span>字体颜色</span><input v-model="selectedSubtitleStyle.color" type="color" /></label>
+                  <label class="mpv-side-select-row"><span>背景颜色</span><input :value="selectedSubtitleStyle.background.slice(0, 7)" type="color" @change="handleSubtitleBackgroundColorChange" /></label>
+                  <label class="mpv-side-select-row"><span>描边颜色</span><input v-model="selectedSubtitleStyle.border" type="color" /></label>
+                  <PlaybackSubtitleNumberRow label="描边大小" :value="selectedSubtitleStyle.borderSize" :min="0" :max="10" :step="0.1" :digits="1" @change="selectedSubtitleStyle.borderSize = $event" />
+                  <label class="mpv-side-select-row"><span>阴影颜色</span><input v-model="selectedSubtitleStyle.shadow" type="color" /></label>
+                  <PlaybackSubtitleNumberRow label="阴影大小" :value="selectedSubtitleStyle.shadowSize" :min="0" :max="10" :step="0.1" :digits="1" @change="selectedSubtitleStyle.shadowSize = $event" />
+                </fieldset>
+                <p v-if="isBitmapSubtitle(subtitleStyleIndex)" class="mpv-side-empty">位图字幕保留原始图像，无法更改文字样式。</p>
+                <button class="mpv-side-action" type="button" @click="subtitleStyles[subtitleStyleIndex] = { ...defaultSubtitleStyle(subtitleStyleIndex === 1), custom: true, delay: selectedSubtitleStyle.delay, position: selectedSubtitleStyle.position, scale: selectedSubtitleStyle.scale, opacity: selectedSubtitleStyle.opacity, conversion: selectedSubtitleStyle.conversion }">恢复默认样式</button>
+              </template>
+            </section>
             <section class="mpv-side-section">
               <span class="mpv-side-label">字幕轨道</span>
               <label class="mpv-side-select-row"><span>字幕</span><select :disabled="subtitleFileLoading" :value="subtitleSelectValue" title="字幕" @change="handleSubtitleTrackChange"><option value="track:-1">关闭字幕</option><option v-for="track in subtitleTracks" :key="`sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option><optgroup v-if="unloadedSubtitleFiles.length" label="网盘字幕"><option v-for="file in unloadedSubtitleFiles" :key="file.id" :value="`file:${file.id}`">{{ file.title }}</option></optgroup></select></label>
@@ -1346,19 +1468,11 @@ watch(chapters, (nextChapters) => {
               <div v-if="subtitleFileLoading" class="mpv-side-empty" role="status">正在加载字幕…</div>
               <div class="mpv-side-action-row"><button class="mpv-side-action" type="button" @click="handleAddExternalSubtitle">加载字幕…</button><button class="mpv-side-action" type="button" @click="openSubtitleSearchModal"><Captions :size="15" /> 在线查找</button></div>
             </section>
-            <section class="mpv-side-section">
-              <div class="mpv-subtitle-mode-tabs"><button class="active" type="button">主字幕</button><button type="button">二级字幕</button></div>
-              <label class="mpv-side-slider"><span>字幕延迟 <b>{{ subtitleDelay.toFixed(1) }}s</b></span><input :value="subtitleDelay" max="5" min="-5" step="0.1" type="range" @change="handleSubtitleDelayChange" /></label>
-              <label class="mpv-side-slider"><span>{{ dualSubtitles ? '双语位置' : '位置' }} <b>{{ subtitlePosition }}</b></span><input :value="subtitlePosition" max="100" min="0" step="1" type="range" @change="handleSubtitlePositionChange" /></label>
-              <label class="mpv-side-slider"><span>缩放 <b>{{ subtitleScale.toFixed(2) }}</b></span><input :value="subtitleScale" max="3" min="0.25" step="0.05" type="range" @change="handleSubtitleScaleChange" /></label>
-            </section>
-            <section class="mpv-side-section">
-              <span class="mpv-side-label">文字样式</span>
-              <label class="mpv-side-slider"><span>字号 <b>{{ subtitleFontSize }}</b></span><input :value="subtitleFontSize" max="80" min="20" step="1" type="range" @change="handleSubtitleSizeChange" /></label>
-              <label class="mpv-side-slider"><span>描边 <b>{{ subtitleBorderSize }}</b></span><input :value="subtitleBorderSize" max="10" min="0" step="1" type="range" @change="handleSubtitleBorderSizeChange" /></label>
-              <div class="mpv-side-style-row"><label><input :checked="subtitleBold" type="checkbox" @change="handleSubtitleBoldChange" /> 粗体</label><label><input :checked="subtitleItalic" type="checkbox" @change="handleSubtitleItalicChange" /> 斜体</label><label>颜色 <input :value="subtitleColor" type="color" aria-label="字幕颜色" @change="handleSubtitleColorChange" /></label></div>
-              <div class="mpv-side-style-row"><label>描边色 <input :value="subtitleBorderColor" type="color" aria-label="描边颜色" @change="handleSubtitleBorderColorChange" /></label><label>背景 <input :value="subtitleBackgroundColor" type="color" aria-label="背景颜色" @change="handleSubtitleBackgroundColorChange" /></label></div>
-            </section>
+
+          </div>
+          <div v-else class="mpv-side-section">
+            <PlaybackDanmakuSettings />
+
           </div>
         </template>
       </aside>
@@ -1366,7 +1480,17 @@ watch(chapters, (nextChapters) => {
 </template>
 
 <style scoped lang="less">
+.mpv-live-danmaku { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.mpv-live-danmaku span { position: absolute; white-space: nowrap; line-height: 1.4; font-weight: 600; }
+
+.mpv-subtitle-custom-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+.mpv-live-subtitle {
+  position: absolute; left: 5%; width: 90%; z-index: 3;
+  white-space: pre-wrap; text-align: center; pointer-events: none; line-height: 1.25;
+}
+
 .mpv-embedded-surface {
+  container-type: size;
   position: relative;
   width: 100%;
   height: 100%;
@@ -1691,7 +1815,7 @@ watch(chapters, (nextChapters) => {
   height: 6px;
   border: 1px solid rgba(255, 255, 255, .08);
   border-radius: 999px;
-  background: linear-gradient(to right, rgba(113, 255, 161, .92) var(--mpv-progress, 0%), rgba(255, 255, 255, .16) var(--mpv-progress, 0%));
+  background: linear-gradient(to right, #fff 0 var(--mpv-progress, 0%), #8d8d8d var(--mpv-progress, 0%) var(--mpv-buffered, 0%), rgba(57,57,57,.8) var(--mpv-buffered, 0%) 100%);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, .8);
 }
 
@@ -3219,5 +3343,22 @@ watch(chapters, (nextChapters) => {
   .mpv-control-panel {
     width: min(430px, calc(100% - 12px));
   }
+}
+</style>
+
+<style scoped>
+.mpv-embedded-progress::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 1px solid rgba(255,255,255,.35);
+  background: linear-gradient(180deg, rgba(255,255,255,.22), transparent 45%, rgba(0,0,0,.12)), linear-gradient(to right, #fff 0 var(--mpv-progress), #8d8d8d var(--mpv-progress) var(--mpv-buffered), rgba(57,57,57,.8) var(--mpv-buffered) 100%);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.3), 0 1px 4px rgba(0,0,0,.3);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+.mpv-embedded-progress::-webkit-slider-thumb {
+  width: 4px;
+  height: 8px;
+  margin-top: -1px;
+  border-radius: 6px;
+  background: rgba(245,245,245,.95);
 }
 </style>

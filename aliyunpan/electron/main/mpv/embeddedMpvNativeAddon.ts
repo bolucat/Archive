@@ -22,6 +22,7 @@ export interface EmbeddedMpvStatus {
   ended?: boolean
   playing?: boolean
   paused?: boolean
+  bufferedPosition?: number
   position?: number
   duration?: number
   volume?: number
@@ -44,6 +45,8 @@ export interface EmbeddedMpvTrackStatus {
   audioId?: number
   secondarySubtitleId?: number
   secondarySubtitleLines?: number
+  subtitleText?: string
+  secondarySubtitleText?: string
   subtitleId?: number
   tracks?: EmbeddedMpvTrack[]
 }

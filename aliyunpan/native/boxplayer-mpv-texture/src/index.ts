@@ -87,6 +87,8 @@ export interface MpvStatus {
   position: number;
   /** Total duration in seconds */
   duration: number;
+  /** End timestamp of the demuxer cache in seconds. */
+  bufferedPosition?: number;
   /** Video width in pixels */
   width: number;
   /** Video height in pixels */
@@ -108,6 +110,8 @@ export interface MpvTrackStatus {
   subtitleId: number;
   secondarySubtitleId: number;
   secondarySubtitleLines: number;
+  subtitleText?: string
+  secondarySubtitleText?: string
   tracks: MpvTrack[];
 }
 

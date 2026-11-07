@@ -147,7 +147,7 @@ func recvICMP(workResultLock *sync.WaitGroup, exit *atomic.Bool, conn icmpPacket
 			}
 		}
 
-		if n <= 0 {
+		if n < 8 {
 			continue
 		}
 
@@ -215,6 +215,11 @@ type icmpPacketConn interface {
 	Close() error
 }
 
-// icmpListen obtains the ICMP underlay conn. Package-level so tests can swap
-// it for a fake; production always uses listenICMP.
+// icmpListen obtains the ICMP underlay conn used by the client. Package-level
+// so tests can swap it for a fake; production always uses listenICMP.
 var icmpListen = func(addr string) (icmpPacketConn, error) { return listenICMP(addr) }
+
+// icmpListenServer obtains the ICMP underlay conn used by the server. It is a
+// separate seam because Windows needs SIO_RCVALL to receive inbound Echo
+// Requests on the server, while the client's normal raw socket is sufficient.
+var icmpListenServer = func(addr string) (icmpPacketConn, error) { return listenICMPServer(addr) }

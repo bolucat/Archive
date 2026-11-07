@@ -81,6 +81,7 @@ Napi::Object StatusToJS(Napi::Env env, const MpvStatus& status) {
     obj.Set("volume", Napi::Number::New(env, status.volume));
     obj.Set("speed", Napi::Number::New(env, status.speed));
     obj.Set("muted", Napi::Boolean::New(env, status.muted));
+    obj.Set("bufferedPosition", Napi::Number::New(env, status.bufferedPosition));
     obj.Set("position", Napi::Number::New(env, status.position));
     obj.Set("duration", Napi::Number::New(env, status.duration));
     obj.Set("width", Napi::Number::New(env, status.width));
@@ -94,6 +95,8 @@ Napi::Object TrackStatusToJS(Napi::Env env, const MpvTrackStatus& status) {
     obj.Set("subtitleId", Napi::Number::New(env, status.subtitleId));
     obj.Set("secondarySubtitleId", Napi::Number::New(env, status.secondarySubtitleId));
     obj.Set("secondarySubtitleLines", Napi::Number::New(env, status.secondarySubtitleLines));
+    obj.Set("subtitleText", Napi::String::New(env, status.subtitleText));
+    obj.Set("secondarySubtitleText", Napi::String::New(env, status.secondarySubtitleText));
     auto tracks = Napi::Array::New(env, status.tracks.size());
     for (size_t i = 0; i < status.tracks.size(); ++i) {
         const auto& track = status.tracks[i];
