@@ -5,6 +5,7 @@ import { EmbeddedMpvCapability, getEmbeddedMpvCapability } from './embeddedMpvCa
 import { EmbeddedMpvNativeAddonLoadResult, EmbeddedMpvNativeInstance, EmbeddedMpvNativeResourceStatus, EmbeddedMpvStatus, EmbeddedMpvTextureInfo, getEmbeddedMpvNativeResourceStatus, loadEmbeddedMpvNativeAddon } from './embeddedMpvNativeAddon'
 import type { EmbeddedMpvControlRequest, EmbeddedMpvControlResult, EmbeddedMpvLoadRequest, EmbeddedMpvLoadResult } from './embeddedMpvBridge'
 import { buildMpvLoadOptions } from './embeddedMpvLoadOptions'
+import { sanitizeMpvDiagnostic } from '../../../shared/mpvDiagnostics'
 
 export interface EmbeddedMpvTextureBridgeOptions {
   nativeAddonAvailable?: boolean
@@ -30,6 +31,7 @@ export class EmbeddedMpvTextureBridge {
   private mpv: EmbeddedMpvNativeInstance | null = null
   private latestStatus: EmbeddedMpvStatus | null = null
   private lastNativeError = ''
+  private nativeErrorDetails: string[] = []
   private consecutiveFrameErrors = 0
   private frameStats = { received: 0, dropped: 0, sent: 0, errors: 0, importMs: 0, sendMs: 0, sendCount: 0 }
   private frameStatsTimer: ReturnType<typeof setInterval> | null = null
@@ -140,9 +142,21 @@ export class EmbeddedMpvTextureBridge {
     })
     this.mpv.onError((error) => {
       if (generation !== this.generation) return
-      this.lastNativeError = String(error || 'MPV native error')
+      const raw = String(error || '')
+      const isDiagnostic = raw.startsWith('MPV diagnostic: ')
+      const diagnostic = sanitizeMpvDiagnostic(isDiagnostic ? raw.slice('MPV diagnostic: '.length) : raw) || 'MPV native error'
+      if (isDiagnostic) {
+        // MPV may recover from decoder/track diagnostics while video continues.
+        // Keep their context for END_FILE errors without poisoning live status.
+        this.nativeErrorDetails = [...this.nativeErrorDetails, diagnostic].slice(-4)
+        console.error('[mpv] native diagnostic:', diagnostic)
+        return
+      }
+      this.lastNativeError = diagnostic.startsWith('Playback error:')
+        ? [diagnostic, ...this.nativeErrorDetails].join('\n')
+        : diagnostic
       this.publishStatus()
-      console.error('[mpv] native addon error:', error)
+      console.error('[mpv] native addon error:', this.lastNativeError)
     })
     this.initialized = true
     console.error('[mpv] initialize: callbacks installed')
@@ -213,6 +227,7 @@ export class EmbeddedMpvTextureBridge {
     this.softwareAck = null
     this.latestStatus = null
     this.lastNativeError = ''
+    this.nativeErrorDetails = []
     try {
       console.error('[mpv] load: invoking native load')
       console.info('[播放][MPV] native 加载链接', {
@@ -272,7 +287,7 @@ export class EmbeddedMpvTextureBridge {
           await mpv.setVolume(request.value)
           break
         case 'setSpeed':
-          if (typeof request.value !== 'number' || !Number.isFinite(request.value) || request.value < 0.25 || request.value > 4) return { ok: false, capability, error: '倍速必须在 0.25–4 倍之间。' }
+          if (typeof request.value !== 'number' || !Number.isFinite(request.value) || request.value < 0.25 || request.value > 10) return { ok: false, capability, error: '倍速必须在 0.25–10 倍之间。' }
           if (!mpv.setSpeed) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露倍速控制。')
           await mpv.setSpeed(request.value)
           break

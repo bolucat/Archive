@@ -112,7 +112,11 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
       window.WebShowOpenDialogSync = (options, callback) => callback([String(options?.title || '').includes('音频') ? externalAudioPath : externalSubtitlePath])
     }, { externalAudioPath: audioPath, externalSubtitlePath: subtitlePath })
     const surface = player.locator('#mpvEmbeddedPlayer')
-    await surface.hover()
+    const surfaceBounds = await surface.boundingBox()
+    if (!surfaceBounds) throw new Error('MPV surface has no visible bounds')
+    // Reveal the auto-hiding transport through the same bottom pointer zone
+    // used by real viewers, before Playwright waits for a stable play button.
+    await player.mouse.move(surfaceBounds.x + surfaceBounds.width / 2, surfaceBounds.y + surfaceBounds.height - 40)
 
     markStage('play, pause and seek controls')
     const playButton = player.locator('.mpv-play-btn')
@@ -126,22 +130,25 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     await expect.poll(() => player.evaluate(() => (window as any).__mpvControlLog.findLast((entry: any) => entry.request.action === 'play')?.result?.ok), { message: '播放按钮必须成功调用 MPV play', timeout: 15_000 }).toBe(true)
     await expect.poll(async () => Boolean((await player.evaluate(() => window.WebMpvEmbeddedStatus())).status?.paused), { message: 'MPV 必须实际恢复播放', timeout: 15_000 }).toBe(false)
     await setRange(player, player.getByRole('slider', { name: '播放进度' }), 1)
+    await player.getByRole('button', { name: '音量', exact: true }).click()
     await setRange(player, player.getByRole('slider', { name: '音量' }), 35)
+    await player.getByRole('button', { name: '音量', exact: true }).click()
 
     markStage('playlist controls')
-    const playlistToggle = player.locator('.mpv-transport-buttons button[aria-label="播放列表"]')
-    if (!(await playlistToggle.getAttribute('class'))?.includes('active')) await playlistToggle.click()
+    const optionsToggle = player.getByRole('button', { name: '播放选项', exact: true })
+    await optionsToggle.click()
+    await player.getByRole('button', { name: '播放列表与章节', exact: true }).click()
     const playlistTabs = player.locator('.mpv-playlist-tabs')
     await expect(playlistTabs.getByRole('button', { name: '章节' })).toBeVisible()
     await playlistTabs.getByRole('button', { name: '章节' }).click()
     await playlistTabs.getByRole('button', { name: '播放列表' }).click()
-    await playlistToggle.click()
 
     markStage('video settings controls')
-    await player.getByRole('button', { name: '设置', exact: true }).click()
+    await optionsToggle.click()
+    await player.getByRole('button', { name: '播放设置', exact: true }).click()
     const originalFrame = await player.locator('.mpv-fallback-canvas').evaluate((canvas: HTMLCanvasElement) => ({ width: canvas.width, height: canvas.height }))
-    await player.getByRole('button', { name: '16:9' }).first().click()
-    await player.getByRole('button', { name: '16:10' }).nth(1).click()
+    await player.getByRole('combobox', { name: '画面比例', exact: true }).selectOption('1.7778')
+    await player.getByRole('combobox', { name: '裁剪', exact: true }).selectOption('16:10')
     await player.getByRole('button', { name: '90°' }).click()
     if (process.platform !== 'darwin') {
       await expect.poll(async () => player.locator('.mpv-fallback-canvas').evaluate((canvas: HTMLCanvasElement) => ({ width: canvas.width, height: canvas.height })), {
@@ -151,6 +158,16 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     // The short fixture must not reach EOF while exercising settings and tracks.
     // Pause only after checking the transformed frames and retain all control checks.
     await player.evaluate(() => window.WebMpvEmbeddedControl({ action: 'pause' }))
+    await player.getByRole('button', { name: '关闭设置', exact: true }).click()
+    await optionsToggle.click()
+    await player.getByRole('button', { name: '播放速度', exact: true }).click()
+    const speedMenu = player.getByRole('menu', { name: '播放速度', exact: true })
+    await expect(speedMenu.getByRole('menuitemradio')).toHaveCount(39)
+    expect(await speedMenu.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+    await speedMenu.getByRole('menuitemradio', { name: '10×', exact: true }).click()
+    await expect.poll(async () => (await player.evaluate(() => window.WebMpvEmbeddedStatus())).status?.speed).toBe(10)
+    await optionsToggle.click()
+    await player.getByRole('button', { name: '播放设置', exact: true }).click()
     await player.getByRole('combobox', { name: '倍速' }).selectOption('1.5')
     for (const label of ['硬件解码', '反交错', 'HDR 色调映射']) await player.getByText(label, { exact: true }).locator('..').getByRole('checkbox').click()
     const videoSection = player.locator('.mpv-side-settings-content').filter({ hasText: '均衡器' })
@@ -173,7 +190,15 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     await setRange(player, audioContent.locator('.mpv-equalizer-band input').first(), 2)
 
     markStage('subtitle settings controls')
-    await player.getByRole('button', { name: '字幕', exact: true }).click()
+    await player.getByRole('button', { name: '关闭设置', exact: true }).click()
+    await optionsToggle.click()
+    await player.locator('.mpv-options-menu').getByRole('button', { name: '字幕', exact: true }).click()
+    const settingsTabs = player.locator('.mpv-settings-tabs')
+    await expect(settingsTabs.getByRole('button', { name: '字幕', exact: true })).toHaveClass(/active/)
+    await settingsTabs.getByRole('button', { name: '弹幕', exact: true }).click()
+    await expect(settingsTabs.getByRole('button', { name: '弹幕', exact: true })).toHaveClass(/active/)
+    await settingsTabs.getByRole('button', { name: '字幕', exact: true }).click()
+    await expect(settingsTabs.getByRole('button', { name: '视频', exact: true })).toBeVisible()
     await player.getByRole('button', { name: '加载字幕…' }).click()
     const subtitleSelect = player.locator('select[title="字幕"]')
     await expect.poll(() => subtitleSelect.locator('option').count()).toBeGreaterThan(1)
@@ -194,7 +219,9 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
     }
     await subtitleContent.getByRole('button', { name: '减少不透明度', exact: true }).click()
     await subtitleContent.getByLabel('使用自定义样式', { exact: true }).check()
-    await subtitleContent.getByLabel('字体', { exact: true }).selectOption('serif')
+    const subtitleFont = subtitleContent.getByRole('combobox', { name: '字体', exact: true })
+    await subtitleFont.selectOption('serif')
+    await expect(subtitleFont).toHaveValue('serif')
     await subtitleContent.getByLabel('加粗', { exact: true }).check()
     await subtitleContent.getByLabel('斜体', { exact: true }).check()
     await subtitleContent.getByRole('button', { name: '增加描边大小', exact: true }).click()
@@ -203,31 +230,54 @@ test('all visible MPV player controls execute successfully', async ({}, testInfo
       await subtitleContent.getByLabel(label).evaluate((element, nextValue) => {
         const input = element as HTMLInputElement
         input.value = nextValue
+        input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
       }, value)
+    }
+    // Custom text styling now renders in Vue; placement/timing still go to
+    // MPV. Verify both effects rather than requiring the removed command path.
+    const primarySubtitleOverlay = player.locator('.mpv-live-subtitle').first()
+    await expect(primarySubtitleOverlay).toHaveCSS('font-family', 'serif')
+    await expect(primarySubtitleOverlay).toHaveCSS('font-weight', '700')
+    await expect(primarySubtitleOverlay).toHaveCSS('font-style', 'italic')
+    await expect(primarySubtitleOverlay).toHaveCSS('color', 'rgb(255, 255, 0)')
+    await expect(primarySubtitleOverlay).toHaveCSS('background-color', 'rgb(34, 34, 34)')
+    await expect(primarySubtitleOverlay).toHaveCSS('opacity', '0.95')
+    for (const [property, propertyValue] of [['sub-delay', 0.2], ['sub-pos', 95], ['sub-scale', 1.05], ['sub-visibility', 'no']] as const) {
+      await expect.poll(() => player.evaluate(({ property, propertyValue }) =>
+        (window as any).__mpvControlLog.some((entry: any) => entry.request.action === 'setVideoProperty'
+          && entry.request.property === property && entry.request.propertyValue === propertyValue && entry.result?.ok),
+      { property, propertyValue }), { message: `MPV must accept ${property}=${propertyValue}`, timeout: 10_000 }).toBe(true)
     }
     await subtitleContent.getByRole('button', { name: '在线查找' }).click()
     await expect(player.getByText('在线字幕搜索')).toBeVisible()
     await player.locator('.mpv-subtitle-modal-close').click()
 
-    // Marker buttons are destructive at the current position while playback
-    // is running: setting the outro to "now" correctly stops/advances. Test
-    // their local toggle state last, after all native track controls have run.
-    if (await playButton.getAttribute('aria-label') === '暂停') await playButton.click()
-    await expect(playButton).toHaveAttribute('aria-label', '播放')
-    markStage('intro and outro controls')
-    const introMarker = player.getByRole('button', { name: '设置片头' })
-    const outroMarker = player.getByRole('button', { name: '设置片尾' })
-    await introMarker.click()
-    await expect(introMarker).toHaveClass(/active/)
-    await outroMarker.click()
-    await expect(outroMarker).toHaveClass(/active/)
-    await outroMarker.click()
-    await expect(outroMarker).not.toHaveClass(/active/)
+    markStage('intro and outro dialog controls')
+    await player.getByRole('button', { name: '关闭设置', exact: true }).click()
+    await optionsToggle.click()
+    await player.getByRole('button', { name: '跳过片头片尾', exact: true }).click()
+    const skipDialog = player.getByRole('dialog', { name: '播放', exact: true })
+    const autoSkip = skipDialog.getByRole('switch', { name: '自动跳过片头片尾', exact: true })
+    const introSwitch = skipDialog.getByRole('switch', { name: '自定义跳过片头', exact: true })
+    const outroSwitch = skipDialog.getByRole('switch', { name: '自定义跳过片尾', exact: true })
+    await autoSkip.click()
+    await expect(introSwitch).toHaveAttribute('aria-checked', 'true')
+    await expect(outroSwitch).toHaveAttribute('aria-checked', 'true')
+    await skipDialog.getByRole('button', { name: '自定义跳过片头增加一秒', exact: true }).click()
+    await expect(skipDialog.getByRole('group', { name: '自定义跳过片头时长', exact: true }).locator('output')).toHaveText('00:01')
+    await skipDialog.getByRole('button', { name: '使用当前位置', exact: true }).nth(1).click()
+    await expect(outroSwitch).toHaveAttribute('aria-checked', 'true')
+    await autoSkip.click()
+    await expect(introSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(outroSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(skipDialog.getByRole('group', { name: '自定义跳过片头时长', exact: true }).locator('output')).toHaveText('00:01')
+    await skipDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(skipDialog).toHaveCount(0)
 
     const log = await player.evaluate(() => (window as any).__mpvControlLog)
     const actions = log.map((entry: any) => entry.request.action)
-    for (const action of ['pause', 'play', 'seek', 'setVolume', 'setSpeed', 'addAudio', 'setAudioTrack', 'addSubtitle', 'setSubtitleTrack', 'setSubtitleStyle', 'setVideoProperty']) expect(actions).toContain(action)
+    for (const action of ['pause', 'play', 'seek', 'setVolume', 'setSpeed', 'addAudio', 'setAudioTrack', 'addSubtitle', 'setSubtitleTrack', 'setVideoProperty']) expect(actions).toContain(action)
     const failures = log.filter((entry: any) => !entry.result?.ok)
     expect(failures, JSON.stringify(failures, null, 2)).toEqual([])
     await expect(surface.locator('.mpv-embedded-error')).toHaveCount(0)

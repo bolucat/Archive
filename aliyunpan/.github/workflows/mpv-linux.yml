@@ -13,6 +13,9 @@ on:
       - 'src/utils/__tests__/mpvRuntime.integration.test.ts'
       - '.github/workflows/mpv-linux.yml'
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   mpv-integration:
     name: Real MPV Playback
@@ -36,7 +39,7 @@ jobs:
           cache: pnpm
 
       - name: Install project dependencies
-        run: pnpm install --frozen-lockfile
+        run: node scripts/install-ci-dependencies.mjs
 
       - name: Install MPV and FFmpeg
         run: |

@@ -67,18 +67,7 @@ system_config_readonly() {
 }
 
 no_honk_resources() {
-	# honk-core removes dae0/dae0peer and the daens netns when it exits cleanly. A
-	# crash or SIGKILL leaves them behind, and preflight then refuses every later
-	# start, so the service can never come back without hand surgery. Reclaim them
-	# here, but only when no core is running to own them.
-	if ! pidof honk-core >/dev/null 2>&1; then
-		for stale_link in dae0 dae0peer; do
-			ip link show "$stale_link" >/dev/null 2>&1 && ip link del "$stale_link" >/dev/null 2>&1
-		done
-		if ip netns list 2>/dev/null | awk '{print $1}' | grep -qx daens; then
-			ip netns del daens >/dev/null 2>&1
-		fi
-	fi
+	honk_lifecycle_reclaim_resources || :
 	for link in dae0 dae0peer; do
 		ip link show "$link" >/dev/null 2>&1 && { fail "$link 已存在（上次没有正常退出），请先停止服务或执行系统恢复"; return 1; }
 	done
@@ -178,7 +167,15 @@ check_kernel() {
 	kernel=$(uname -r | cut -d- -f1)
 	major=$(printf '%s' "$kernel" | cut -d. -f1)
 	minor=$(printf '%s' "$kernel" | cut -d. -f2)
-	[ "$major" -gt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -ge 12 ]; } || { kernel_error=kernel_too_old; fail "内核版本过低，需要 Linux 6.12 或更新"; return 1; }
+	if [ "$(jsonfilter -i /usr/share/honk/core-capabilities.json -e '@.lane' 2>/dev/null)" = linux66 ]; then
+		expected_hash=$(jsonfilter -i /usr/share/honk/core-capabilities.json -e '@.core_sha256' 2>/dev/null)
+		actual_hash=$(sha256sum "$HONK_CORE" 2>/dev/null | cut -d' ' -f1)
+		[ -n "$expected_hash" ] && [ "$expected_hash" = "$actual_hash" ] || { kernel_error=core_capabilities_mismatch; fail "核心与兼容信息不匹配，请重新安装 honk"; return 1; }
+		patch=$(printf '%s' "$kernel" | cut -d. -f3 | sed 's/[^0-9].*//')
+		[ "$major" -gt 6 ] || { [ "$major" -eq 6 ] && { [ "$minor" -gt 6 ] || { [ "$minor" -eq 6 ] && [ "${patch:-0}" -ge 40 ]; }; }; } || { kernel_error=kernel_compat_too_old; fail "兼容核心需要 Linux 6.6.40 或更新"; return 1; }
+	else
+		[ "$major" -gt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -ge 12 ]; } || { kernel_error=kernel_too_old; fail "内核版本过低，需要 Linux 6.12 或更新"; return 1; }
+	fi
 	if ! kernel_btf_path >/dev/null; then
 		if [ -n "${HONK_VMLINUX_BTF:-}" ]; then
 			kernel_error=kernel_btf_override_invalid
@@ -1229,6 +1226,7 @@ recover() {
 			return 1
 		fi
 	fi
+	honk_lifecycle_reclaim_resources || :
 	echo '{"ok":true,"message":"transaction_recovered"}'
 }
 

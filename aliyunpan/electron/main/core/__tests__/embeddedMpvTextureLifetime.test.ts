@@ -15,21 +15,55 @@ import { EmbeddedMpvTextureBridge } from '../../mpv/embeddedMpvTextureBridge'
 
 function fixture() {
   let onFrame!: (frame: any) => void
+  let onError!: (error: string) => void
   mock.native = {
     create: vi.fn(async () => {}), destroy: vi.fn(async () => {}), load: vi.fn(async () => {}),
     getStatus: () => ({}), getTrackStatus: () => ({ tracks: [] }),
-    onFrame: (callback: any) => { onFrame = callback }, onStatus: () => {}, onError: () => {},
+    onFrame: (callback: any) => { onFrame = callback }, onStatus: () => {}, onError: (callback: any) => { onError = callback },
     addSubtitle: vi.fn(async () => {})
   }
   mock.send.mockReset().mockResolvedValue(undefined)
   mock.imports.length = 0
   const window = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents: { send: vi.fn(), mainFrame: {} } })
   const bridge = new EmbeddedMpvTextureBridge()
-  return { bridge, window, frame: (release = vi.fn()) => onFrame({ handle: 1n, width: 1280, height: 720, format: 'bgra', release }) }
+  return { bridge, window, error: (value: string) => onError(value), frame: (release = vi.fn()) => onFrame({ handle: 1n, width: 1280, height: 720, format: 'bgra', release }) }
 }
 afterEach(() => vi.useRealTimers())
 
 describe('MPV shared texture ownership', () => {
+  it('keeps recoverable native diagnostics out of live status but includes them in terminal playback errors', async () => {
+    const { bridge, window, error } = fixture()
+    try {
+      await bridge.load(window as any, { url: 'test' })
+      error('MPV diagnostic: ffmpeg: HTTP 403 at https://example.test/video?token=private')
+      expect((await bridge.getStatus()).error).toBeUndefined()
+      error('Playback error: loading failed')
+      expect((await bridge.getStatus()).error).toBe('Playback error: loading failed\nffmpeg: HTTP 403 at [media URL]')
+      await bridge.load(window as any, { url: 'next' })
+      expect((await bridge.getStatus()).error).toBeUndefined()
+      error('MPV diagnostic: ffmpeg: https://example.test/video?access_token=private')
+      error('MPV diagnostic: Authorization: Bearer private')
+      expect((await bridge.getStatus()).error).toBeUndefined()
+      error('Playback error: loading failed')
+      expect((await bridge.getStatus()).error).toContain('[redacted source diagnostic]')
+      expect((await bridge.getStatus()).error).not.toContain('private')
+    } finally { bridge.destroy() }
+  })
+
+  it('passes 10x speed through the main-process bridge and rejects out-of-range values', async () => {
+    const { bridge, window } = fixture()
+    mock.native.setSpeed = vi.fn(async () => {})
+    try {
+      await bridge.load(window as any, { url: 'test', sessionId: 'speed' })
+      expect(await bridge.control({ action: 'setSpeed', value: 10 })).toMatchObject({ ok: true })
+      expect(mock.native.setSpeed).toHaveBeenCalledWith(10)
+      for (const value of [10.25, 0, NaN, Infinity]) {
+        expect(await bridge.control({ action: 'setSpeed', value })).toMatchObject({ ok: false })
+      }
+      expect(mock.native.setSpeed).toHaveBeenCalledOnce()
+    } finally { bridge.destroy() }
+  })
+
   it('retains native texture until all Electron references are released', async () => {
     const { bridge, window, frame } = fixture()
     await bridge.load(window as any, { url: 'test', sessionId: 'one' })

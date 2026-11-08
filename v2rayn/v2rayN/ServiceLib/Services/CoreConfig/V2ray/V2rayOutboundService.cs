@@ -394,17 +394,6 @@ public partial class CoreConfigV2rayService
                     };
 
                     var kcpFinalmask = new Finalmask4Ray();
-                    if (Global.KcpHeaderMaskMap.TryGetValue(headerType, out var header))
-                    {
-                        kcpFinalmask.udp =
-                        [
-                            new Mask4Ray
-                            {
-                                type = "mkcp-legacy",
-                                settings = new MaskSettings4Ray { header = header },
-                            }
-                        ];
-                    }
                     kcpFinalmask.udp ??= [];
                     if (kcpSeed.IsNullOrEmpty())
                     {
@@ -421,7 +410,17 @@ public partial class CoreConfigV2rayService
                             settings = new MaskSettings4Ray { value = kcpSeed },
                         });
                     }
-                    kcpFinalmask.udp?.Reverse();
+                    if (Global.KcpHeaderMaskMap.TryGetValue(headerType, out var header))
+                    {
+                        kcpFinalmask.udp =
+                        [
+                            new Mask4Ray
+                            {
+                                type = "mkcp-legacy",
+                                settings = new MaskSettings4Ray { header = header },
+                            },
+                        ];
+                    }
                     streamSettings.kcpSettings = kcpSettings;
                     streamSettings.finalmask = (JsonObject)JsonUtils.SerializeToNode(kcpFinalmask);
                     break;
@@ -507,6 +506,81 @@ public partial class CoreConfigV2rayService
                     streamSettings.grpcSettings = grpcSettings;
                     break;
 
+                case nameof(ETransport.xdrive):
+                    streamSettings.network = nameof(ETransport.xdrive);
+                    var xdriveSettings = new XdriveSettings4Ray
+                    {
+                        service = transport.XdriveService,
+                        remoteFolder = transport.XdriveRemoteFolder,
+                        secrets = transport.XdriveSecrets.IsNotEmpty() ? Utils.String2List(transport.XdriveSecrets) : null,
+                    };
+
+                    if (string.Equals(transport.XdriveService, "s3", StringComparison.OrdinalIgnoreCase)
+                        || transport.XdriveS3Endpoint.IsNotEmpty()
+                        || transport.XdriveS3Bucket.IsNotEmpty())
+                    {
+                        xdriveSettings.s3 = new S3Settings4Ray
+                        {
+                            endpoint = transport.XdriveS3Endpoint,
+                            region = transport.XdriveS3Region,
+                            bucket = transport.XdriveS3Bucket,
+                            pathStyle = transport.XdriveS3PathStyle,
+                        };
+                    }
+
+                    if (transport.XdriveExtra.IsNotEmpty())
+                    {
+                        try
+                        {
+                            var extraNode = JsonUtils.ParseJson(transport.XdriveExtra);
+                            if (extraNode is JsonObject extraObj)
+                            {
+                                if (int.TryParse(extraObj["segmentBytes"]?.ToString(), out var segmentBytes))
+                                {
+                                    xdriveSettings.segmentBytes = segmentBytes;
+                                }
+                                if (int.TryParse(extraObj["flushIntervalMs"]?.ToString(), out var flushIntervalMs))
+                                {
+                                    xdriveSettings.flushIntervalMs = flushIntervalMs;
+                                }
+                                if (int.TryParse(extraObj["pollIntervalMs"]?.ToString(), out var pollIntervalMs))
+                                {
+                                    xdriveSettings.pollIntervalMs = pollIntervalMs;
+                                }
+                                if (int.TryParse(extraObj["maxPollIntervalMs"]?.ToString(), out var maxPollIntervalMs))
+                                {
+                                    xdriveSettings.maxPollIntervalMs = maxPollIntervalMs;
+                                }
+                                if (int.TryParse(extraObj["eagerWindowMs"]?.ToString(), out var eagerWindowMs))
+                                {
+                                    xdriveSettings.eagerWindowMs = eagerWindowMs;
+                                }
+                                if (int.TryParse(extraObj["concurrency"]?.ToString(), out var concurrency))
+                                {
+                                    xdriveSettings.concurrency = concurrency;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // ignore extra json parse errors
+                        }
+                    }
+
+                    if (string.Equals(transport.XdriveService, "google-drive", StringComparison.OrdinalIgnoreCase))
+                    {
+                        xdriveSettings.segmentBytes ??= 524288;
+                        xdriveSettings.flushIntervalMs ??= 10;
+                        xdriveSettings.pollIntervalMs ??= 50;
+                        xdriveSettings.maxPollIntervalMs ??= 200;
+                        xdriveSettings.eagerWindowMs ??= 10000;
+                        xdriveSettings.concurrency ??= 64;
+                    }
+
+                    streamSettings.xdriveSettings = xdriveSettings;
+                    FillOutboundMux(outbound, true, true);
+                    break;
+
                 case "hysteria":
                     var ports = protocolExtra?.Ports;
                     int? upMbps = protocolExtra?.UpMbps is { } su and >= 0
@@ -522,16 +596,6 @@ public partial class CoreConfigV2rayService
                             : Global.Hysteria2DefaultHopInt).ToString();
                     var hy2Finalmask = new Finalmask4Ray();
                     var quicParams = new QuicParams4Ray();
-                    if (!ports.IsNullOrEmpty() &&
-                        (ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
-                    {
-                        var udpHop = new UdpHop4Ray
-                        {
-                            ports = ports.Replace(':', '-'),
-                            interval = hopInterval,
-                        };
-                        quicParams.udpHop = udpHop;
-                    }
                     if (upMbps > 0 || downMbps > 0)
                     {
                         quicParams.congestion = "brutal";
@@ -544,15 +608,6 @@ public partial class CoreConfigV2rayService
                     }
                     hy2Finalmask.quicParams = quicParams;
                     hy2Finalmask.udp ??= [];
-                    if (HyRealm.TryParse(protocolExtra.Hy2RealmUrl, out var realm)
-                        && realm is not null)
-                    {
-                        hy2Finalmask.udp.Add(new Mask4Ray
-                        {
-                            type = "realm",
-                            settings = new MaskSettings4Ray { url = realm.ToUriForFinalmask(), stunServers = realm.StunList },
-                        });
-                    }
                     if (!protocolExtra.SalamanderPass.IsNullOrEmpty())
                     {
                         var isGecko = !protocolExtra.GeckoMinPacketSize.IsNullOrEmpty() || !protocolExtra.GeckoMaxPacketSize.IsNullOrEmpty();
@@ -570,12 +625,35 @@ public partial class CoreConfigV2rayService
                             settings = salamanderSettings,
                         });
                     }
+                    if (HyRealm.TryParse(protocolExtra.Hy2RealmUrl, out var realm)
+                        && realm is not null)
+                    {
+                        hy2Finalmask.udp.Add(new Mask4Ray
+                        {
+                            type = "realm",
+                            settings = new MaskSettings4Ray { url = realm.ToUriForFinalmask(), stunServers = realm.StunList },
+                        });
+                    }
+                    else if (!ports.IsNullOrEmpty()
+                             && (ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
+                    {
+                        var udpHopFinalmask = new Mask4Ray
+                        {
+                            type = "udphop",
+                            settings = new MaskSettings4Ray
+                            {
+                                mode = "intervallocal,intervalremote",
+                                interval = hopInterval,
+                                remotePorts = ports.Replace(':', '-'),
+                            },
+                        };
+                        hy2Finalmask.udp.Add(udpHopFinalmask);
+                    }
                     streamSettings.hysteriaSettings = new()
                     {
                         version = 2,
                         auth = _node.Password,
                     };
-                    hy2Finalmask.udp?.Reverse();
                     streamSettings.finalmask = (JsonObject)JsonUtils.SerializeToNode(hy2Finalmask);
                     break;
 

@@ -9,6 +9,9 @@ concurrency:
   # prevents a failed or stalled Windows provider test from blocking retries.
   cancel-in-progress: true
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   media-regressions:
     name: Verify media library regressions
@@ -23,7 +26,7 @@ jobs:
         with:
           node-version: 22.12.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: node scripts/install-ci-dependencies.mjs
       - run: node scripts/generate-secrets.mjs --mode=local
       - name: Verify scraping, source membership and library UI
         run: |
@@ -34,13 +37,19 @@ jobs:
             src/utils/__tests__/startupTask.test.ts \
             src/utils/__tests__/startupDiagnostics.test.ts \
             electron/main/core/__tests__/embeddedMpvHostLifecycle.test.ts \
+            electron/main/core/__tests__/embeddedMpvCapability.test.ts \
+            electron/main/core/__tests__/embeddedMpvTextureLifetime.test.ts \
+            electron/main/core/__tests__/mpvDiagnostics.test.ts \
+            electron/main/core/__tests__/seekThumbnail.test.ts \
             electron/main/core/__tests__/embeddedMpvLoadOptions.test.ts \
             scripts/__tests__/real-cloud-e2e-config.test.mjs \
             scripts/__tests__/checkPackagedMpv.test.mjs \
             scripts/__tests__/packagedDownloadRuntime.test.mjs \
             scripts/__tests__/releaseDraftPolicy.test.mjs \
+            scripts/__tests__/installCiDependencies.test.mjs \
             electron/main/core/__tests__/embeddedMpvPreloadSession.test.ts \
             src/utils/__tests__/cloud123TokenRetry.test.ts \
+            src/quark/__tests__/dirfilelist.test.ts \
             src/utils/__tests__/mediaScrapePersistence.test.ts \
             src/utils/__tests__/mediaScrapeMerge.test.ts \
             src/utils/__tests__/mediaFileNormalizer.test.ts \
@@ -149,7 +158,7 @@ jobs:
           run_install: false
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: node scripts/install-ci-dependencies.mjs
 
       - name: Verify file renderer in Electron
         run: |
@@ -275,7 +284,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pnpm install --frozen-lockfile
+          node scripts/install-ci-dependencies.mjs --all-platform-architectures
 
       - name: Download verified Windows x64 embedded MPV runtime
         if: matrix.os == 'windows-latest'

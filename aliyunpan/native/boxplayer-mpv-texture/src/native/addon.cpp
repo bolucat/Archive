@@ -6,6 +6,7 @@
 #include <cmath>
 #include "mpv_context.h"
 #include "audio_deck.h"
+#include "seek_thumbnail.h"
 
 using namespace mpv_texture;
 
@@ -298,8 +299,8 @@ Napi::Value SetSpeed(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
     const double speed = info[0].As<Napi::Number>().DoubleValue();
-    if (!std::isfinite(speed) || speed < 0.25 || speed > 4.0) {
-        Napi::RangeError::New(env, "Speed must be between 0.25 and 4.0").ThrowAsJavaScriptException();
+    if (!std::isfinite(speed) || speed < 0.25 || speed > 10.0) {
+        Napi::RangeError::New(env, "Speed must be between 0.25 and 10.0").ThrowAsJavaScriptException();
         return env.Undefined();
     }
     g_context->setSpeed(speed);
@@ -605,6 +606,7 @@ Napi::Value IsInitialized(const Napi::CallbackInfo& info) {
 
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+    exports.Set("beginSeekThumbnail", Napi::Function::New(env, BeginSeekThumbnail));
     exports.Set("createAudioDeck", Napi::Function::New(env, CreateAudioDeck));
     exports.Set("useSoftwareReadback", Napi::Function::New(env, [](const Napi::CallbackInfo&) {
         if (g_context) g_context->useSoftwareReadback();

@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=honk
-PKG_VERSION:=2026.11.08.1
+PKG_VERSION:=2026.11.08.4
 PKG_RELEASE:=1
 
 # Pinned honk-core revision (upstream daeuniverse/honk main), cross-compiled by
@@ -54,6 +54,10 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
+ifeq ($(HONK_CORE_LANE),linux66)
+  RSTRIP:=:
+endif
+
 define Package/honk
   SECTION:=net
   CATEGORY:=Network
@@ -89,6 +93,10 @@ endef
 define Package/honk/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/honk-core $(1)/usr/bin/honk-core
+	if [ -f $(PKG_BUILD_DIR)/core-capabilities.json ]; then \
+		$(INSTALL_DIR) $(1)/usr/share/honk; \
+		$(INSTALL_DATA) $(PKG_BUILD_DIR)/core-capabilities.json $(1)/usr/share/honk/core-capabilities.json; \
+	fi
 
 	$(INSTALL_DIR) $(1)/usr/share/licenses/honk
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/LICENSE $(1)/usr/share/licenses/honk/LICENSE

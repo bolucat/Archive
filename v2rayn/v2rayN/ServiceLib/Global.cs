@@ -48,6 +48,7 @@ public class Global
     public const string MozillaRootProvider = "mozilla";
 
     public const string DefaultSecurity = "auto";
+    public const string BindInterfaceAuto = "AUTO";
     public const string DefaultNetwork = "raw";
     public const string RawHeaderHttp = "http";
     public const string None = "none";
@@ -336,7 +337,8 @@ public class Global
         "kcp",
         "grpc",
         "ws",
-        "httpupgrade"
+        "httpupgrade",
+        "xdrive"
     ];
 
     public static readonly List<string> KcpHeaderTypes =
@@ -452,6 +454,18 @@ public class Global
         "packet-up",
         "stream-up",
         "stream-one"
+    ];
+
+    public static readonly List<string> XdriveServices = ["google-drive", "s3", "local"];
+
+    public static readonly List<string> XdriveProviders =
+    [
+        "Cloudflare R2",
+        "Google Drive",
+        "AWS S3 (Global)",
+        "Yandex Cloud S3",
+        "ArvanCloud S3",
+        "Custom S3"
     ];
 
     public static readonly List<string> DomainStrategy =

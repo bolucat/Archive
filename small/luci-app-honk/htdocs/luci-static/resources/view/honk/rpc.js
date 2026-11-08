@@ -91,10 +91,12 @@ const callLogs = rpc.declare({
 const callUpdateCheck = rpc.declare({ object: 'honk', method: 'update_check', expect: { '': {} } });
 const callUpdateApply = rpc.declare({ object: 'honk', method: 'update_apply', expect: { '': {} } });
 
+if (!L.env.rpctimeout || L.env.rpctimeout < 180)
+	L.env.rpctimeout = 180;
+
 let pageStylesInstalled = false;
 let switchStylesInstalled = false;
 
-/* 开关样式随 JS 注入：CSS 与 JS 分开缓存，主题又各改各的 checkbox/button。 */
 const SWITCH_CSS = [
 	'.honk-page .honk-switch-wrap{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;vertical-align:middle;line-height:1}',
 	'.honk-page .honk-switch-label{font-size:11px;font-weight:600;letter-spacing:.3px;opacity:.62}',
@@ -103,7 +105,6 @@ const SWITCH_CSS = [
 	'.honk-page .honk-switch.is-on{background:rgba(74,160,101,.65)!important}',
 	'.honk-page .honk-switch:disabled{opacity:.45;cursor:not-allowed}',
 	'.honk-page .honk-switch:focus-visible{outline:2px solid rgba(74,160,101,.75);outline-offset:2px}',
-	/* 0,3,1 才压得过 honk.css 里那颗 46px !important 的 checkbox。 */
 	'.honk-page .honk-switch-wrap>input.honk-switch-input{position:absolute!important;width:1px!important;height:1px!important;margin:0!important;padding:0!important;border:0!important;opacity:0!important;pointer-events:none!important;appearance:none!important;-webkit-appearance:none!important;box-shadow:none!important;background:none!important}'
 ].join('\n');
 
@@ -434,8 +435,10 @@ function tokenMessage(token) {
 		settings_write_failed: _('Could not save Honk settings.'),
 		curl_missing: _('The curl command is missing. Install the curl package and try again.'),
 		kernel_too_old: _('内核版本过低，honk 需要 Linux 6.12 及以上，请升级固件。'),
+		kernel_compat_too_old: _('The compatibility core requires Linux 6.6.40 or newer.'),
+		core_capabilities_mismatch: _('The core does not match its compatibility metadata. Reinstall Honk.'),
 		kernel_btf_override_invalid: _('HONK_VMLINUX_BTF 指向的 BTF 文件读不到。核心设了这个变量就只认它、不会回退默认路径，请改正路径或取消该变量。'),
-		kernel_btf_missing: _('内核缺少 BTF（/sys/kernel/btf/vmlinux 和 /usr/lib/debug/boot/vmlinux 都没有）。装 vmlinux-btf（apk add vmlinux-btf）或换用自带 BTF 的固件；自编译或快照内核需用同一份内核源码生成 BTF。'),
+		kernel_btf_missing: _('Kernel BTF is missing. Install vmlinux-btf matching your firmware, or use firmware with built-in BTF.'),
 		bpffs_not_mounted: _('bpffs 没有挂到 /sys/fs/bpf，请检查固件是否完整，或手工挂载后重试。'),
 		ip_full_missing: _('缺少 ip 命令，请安装 ip-full 包。'),
 		kmod_missing: _('缺少 modprobe 命令，请安装 kmod 包。'),
