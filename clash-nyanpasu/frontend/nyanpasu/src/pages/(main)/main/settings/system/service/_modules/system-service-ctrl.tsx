@@ -17,7 +17,7 @@ import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isWindows } from '@nyanpasu/platform'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
@@ -140,7 +140,6 @@ const ServiceDetailRawJson = ({ code }: { code: string }) => {
       className={cn(
         'bg-surface-variant/30 rounded-xl p-3 text-xs select-text',
         '[&_.shiki]:bg-transparent! [&_.shiki_span]:bg-transparent!',
-        'dark:[&_.shiki]:text-(--shiki-dark)! dark:[&_.shiki_span]:text-(--shiki-dark)!',
         '[&_pre]:font-mono [&_pre]:leading-relaxed [&_pre]:wrap-anywhere [&_pre]:whitespace-pre-wrap',
       )}
       data-slot="service-detail-raw-json"
@@ -388,19 +387,9 @@ const ServicePromptCode = ({ code }: { code: string }) => {
   useEffect(() => {
     let cancelled = false
     import('@/utils/shiki')
-      .then(({ getShikiSingleton }) => getShikiSingleton())
-      .then((shiki) => {
-        if (cancelled) return
-        setHighlighted({
-          code,
-          html: shiki.codeToHtml(code, {
-            lang: 'shell',
-            themes: {
-              dark: 'nord',
-              light: 'min-light',
-            },
-          }),
-        })
+      .then(({ highlightShell }) => highlightShell(code))
+      .then((html) => {
+        if (!cancelled) setHighlighted({ code, html })
       })
     return () => {
       cancelled = true
@@ -437,6 +426,9 @@ const ServicePromptCode = ({ code }: { code: string }) => {
 //   operation: 'uninstall' | 'install' | 'start' | 'stop' | null
 // }
 const ServicePromptButton = () => {
+  const platform = usePlatform()
+  const isWindows =
+    platform.surface === 'desktop' && platform.clientOs === 'windows'
   const {
     query: { data: systemService },
   } = useSystemService()
@@ -446,6 +438,8 @@ const ServicePromptButton = () => {
   const { data: coreDir } = useCoreDir()
 
   const userOperationCommands = useMemo(() => {
+    if (platform.surface !== 'desktop' || platform.clientOs === 'unknown')
+      return ''
     if (systemService?.status === 'not_installed' && serviceInstallPrompt) {
       return `cd "${coreDir}"\n${serviceInstallPrompt}`
     } else if (systemService?.status) {
@@ -454,7 +448,7 @@ const ServicePromptButton = () => {
       return `cd "${coreDir}"\n${!isWindows ? 'sudo ' : ''}./nyanpasu-service ${operation}`
     }
     return ''
-  }, [systemService?.status, serviceInstallPrompt, coreDir])
+  }, [systemService?.status, serviceInstallPrompt, coreDir, platform])
 
   const handleCopyToClipboard = useLockFn(async () => {
     if (!userOperationCommands) {
