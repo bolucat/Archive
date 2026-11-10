@@ -30,7 +30,14 @@ use super::{
         },
     },
     log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT, LogsResBody},
-    network::set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq},
+    network::{
+        set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq},
+        transparent_proxy::{
+            NETWORK_TRANSPARENT_PROXY_RECONCILE_ENDPOINT,
+            NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT, NetworkTransparentProxyRequest,
+            NetworkTransparentProxyStatus,
+        },
+    },
     status::{STATUS_ENDPOINT, StatusResBody},
 };
 
@@ -199,6 +206,26 @@ impl IpcOperation for NetworkSetDns {
     type Data = ();
 }
 
+/// `POST /network/transparent-proxy/reconcile`
+pub struct NetworkTransparentProxyReconcile;
+
+impl IpcOperation for NetworkTransparentProxyReconcile {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = NETWORK_TRANSPARENT_PROXY_RECONCILE_ENDPOINT;
+    type Req<'a> = NetworkTransparentProxyRequest;
+    type Data = NetworkTransparentProxyStatus;
+}
+
+/// `GET /network/transparent-proxy/status`
+pub struct NetworkTransparentProxyStatusQuery;
+
+impl IpcOperation for NetworkTransparentProxyStatusQuery {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT;
+    type Req<'a> = ();
+    type Data = NetworkTransparentProxyStatus;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +255,20 @@ mod tests {
         assert_eq!(
             (NetworkSetDns::METHOD, NetworkSetDns::PATH),
             (Method::POST, "/network/set_dns")
+        );
+        assert_eq!(
+            (
+                NetworkTransparentProxyReconcile::METHOD,
+                NetworkTransparentProxyReconcile::PATH
+            ),
+            (Method::POST, "/network/transparent-proxy/reconcile")
+        );
+        assert_eq!(
+            (
+                NetworkTransparentProxyStatusQuery::METHOD,
+                NetworkTransparentProxyStatusQuery::PATH
+            ),
+            (Method::GET, "/network/transparent-proxy/status")
         );
         assert_eq!(
             (CoreCheck::METHOD, CoreCheck::PATH),

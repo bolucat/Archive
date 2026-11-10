@@ -419,6 +419,18 @@ impl CoreManagerService {
         )
     }
 
+    pub(crate) fn runtime_status(&self) -> CoreStatus {
+        self.inner.manager.status()
+    }
+
+    pub(crate) fn runtime_core_type(&self) -> Option<CoreType> {
+        self.inner.requested_core.borrow().clone()
+    }
+
+    pub(crate) fn subscribe_runtime_status(&self) -> watch::Receiver<CoreStatus> {
+        self.inner.manager.subscribe()
+    }
+
     /// Where the manager archives core logs, or `None` when its sink is off.
     /// Constant for the manager's lifetime, so it is read on demand rather than
     /// carried in the status snapshot.

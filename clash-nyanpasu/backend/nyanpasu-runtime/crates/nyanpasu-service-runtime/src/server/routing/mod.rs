@@ -3,13 +3,16 @@ use std::sync::Arc;
 use axum::Router;
 use tracing_attributes::instrument;
 
-use super::{CoreManager, EventHub, Logger, consts::RuntimeInfos};
+use super::{
+    CoreManager, EventHub, Logger, consts::RuntimeInfos, transparent_proxy::TransparentProxy,
+};
 
 pub mod core;
 pub mod logs;
 mod middleware;
 pub mod network;
 pub mod status;
+mod transparent_proxy;
 pub mod ws;
 
 #[cfg(test)]
@@ -22,6 +25,7 @@ pub struct AppState {
     pub runtime: Arc<RuntimeInfos>,
     pub logger: Logger<'static>,
     pub logs: nyanpasu_logging::LogsClient,
+    pub transparent_proxy: TransparentProxy,
 }
 
 #[instrument(skip(state))]
@@ -36,6 +40,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(core::setup())
         .merge(logs::setup())
         .merge(network::setup())
+        .merge(transparent_proxy::setup())
         .layer(axum::middleware::from_fn(middleware::enforce_timeout));
     Router::new()
         .merge(operations)

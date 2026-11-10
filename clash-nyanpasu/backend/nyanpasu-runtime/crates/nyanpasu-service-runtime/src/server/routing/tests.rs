@@ -34,7 +34,9 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::{AppState, create_router};
-use crate::server::{CoreManager, EventHub, Logger, consts::RuntimeInfos};
+use crate::server::{
+    CoreManager, EventHub, Logger, consts::RuntimeInfos, transparent_proxy::TransparentProxy,
+};
 
 struct TestEnv {
     state: AppState,
@@ -63,6 +65,7 @@ impl TestEnv {
             nyanpasu_data_dir: root.join("nyanpasu-data"),
             nyanpasu_app_dir: root.join("nyanpasu-app"),
         });
+        let transparent_proxy = TransparentProxy::new(core_manager.clone());
         let state = AppState {
             core_manager,
             hub: EventHub::new(),
@@ -77,6 +80,7 @@ impl TestEnv {
             )
             .await
             .unwrap(),
+            transparent_proxy,
         };
         Self { state, _dir: dir }
     }

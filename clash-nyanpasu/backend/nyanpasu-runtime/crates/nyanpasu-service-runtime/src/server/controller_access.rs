@@ -28,12 +28,18 @@ pub struct UnixControllerAccess {
     root: std::path::PathBuf,
     gid: u32,
     uid: u32,
+    #[cfg(target_os = "linux")]
+    desktop_uid: Option<u32>,
 }
 
 #[cfg(unix)]
 impl UnixControllerAccess {
-    pub fn prepare(root: &std::path::Path, gid: u32) -> std::io::Result<Self> {
-        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    pub fn prepare(
+        root: &std::path::Path,
+        gid: u32,
+        #[cfg(target_os = "linux")] desktop_uid: Option<u32>,
+    ) -> std::io::Result<Self> {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
         let uid = unsafe { libc::geteuid() };
         match std::fs::DirBuilder::new().mode(0o700).create(root) {
             Ok(()) => {}
@@ -49,12 +55,89 @@ impl UnixControllerAccess {
             return Err(std::io::Error::other("unsafe controller directory"));
         }
         std::os::unix::fs::chown(root, Some(uid), Some(gid))?;
-        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o750))?;
-        Ok(Self {
+        let access = Self {
             root: root.canonicalize()?,
             gid,
             uid,
-        })
+            #[cfg(target_os = "linux")]
+            desktop_uid: desktop_uid.filter(|&desktop_uid| desktop_uid != uid),
+        };
+        access.set_access(&access.root, 0o750, 0o1)?;
+        Ok(access)
+    }
+
+    fn set_access(
+        &self,
+        path: &std::path::Path,
+        mode: u32,
+        desktop_permissions: u16,
+    ) -> std::io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        #[cfg(target_os = "linux")]
+        match set_linux_access_acl(path, mode, self.desktop_uid, desktop_permissions) {
+            // An unbound installation only needs the original mode bits.
+            Err(error)
+                if self.desktop_uid.is_none() && error.raw_os_error() == Some(libc::EOPNOTSUPP) => {
+            }
+            result => return result,
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = desktop_permissions;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn set_linux_access_acl(
+    path: &std::path::Path,
+    mode: u32,
+    desktop_uid: Option<u32>,
+    desktop_permissions: u16,
+) -> std::io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+    // Linux POSIX ACL xattr v2: little-endian header and ordered entries.
+    const USER_OBJ: u16 = 0x01;
+    const USER: u16 = 0x02;
+    const GROUP_OBJ: u16 = 0x04;
+    const MASK: u16 = 0x10;
+    const OTHER: u16 = 0x20;
+    const UNDEFINED_ID: u32 = u32::MAX;
+    let owner_permissions = ((mode >> 6) & 7) as u16;
+    let group_permissions = ((mode >> 3) & 7) as u16;
+    let mut acl = Vec::with_capacity(44);
+    acl.extend_from_slice(&2u32.to_le_bytes());
+    let mut entry = |tag: u16, permissions: u16, id: u32| {
+        acl.extend_from_slice(&tag.to_le_bytes());
+        acl.extend_from_slice(&permissions.to_le_bytes());
+        acl.extend_from_slice(&id.to_le_bytes());
+    };
+    entry(USER_OBJ, owner_permissions, UNDEFINED_ID);
+    if let Some(uid) = desktop_uid {
+        entry(USER, desktop_permissions, uid);
+    }
+    entry(GROUP_OBJ, group_permissions, UNDEFINED_ID);
+    if desktop_uid.is_some() {
+        entry(MASK, group_permissions | desktop_permissions, UNDEFINED_ID);
+    }
+    entry(OTHER, (mode & 7) as u16, UNDEFINED_ID);
+
+    let path = CString::new(path.as_os_str().as_bytes())?;
+    // SAFETY: the path and attribute name are NUL-terminated; the value
+    // points to `acl.len()` initialized bytes. Symlinks are not followed.
+    let result = unsafe {
+        libc::lsetxattr(
+            path.as_ptr(),
+            c"system.posix_acl_access".as_ptr(),
+            acl.as_ptr().cast(),
+            acl.len(),
+            0,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
 
@@ -69,7 +152,7 @@ impl ControllerAccess for UnixControllerAccess {
         _pid: u32,
         _mode: ControllerAuthorization,
     ) -> std::io::Result<()> {
-        use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
         let Host::UnixSocket(path) = host else {
             return Ok(());
         };
@@ -83,7 +166,7 @@ impl ControllerAccess for UnixControllerAccess {
             ));
         }
         std::os::unix::fs::chown(path, Some(self.uid), Some(self.gid))?;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o660))
+        self.set_access(path, 0o660, 0o6)
     }
 }
 
@@ -100,7 +183,13 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let dir = temp.path().join("controllers");
         let gid = unsafe { libc::getegid() };
-        let access = UnixControllerAccess::prepare(&dir, gid).unwrap();
+        let access = UnixControllerAccess::prepare(
+            &dir,
+            gid,
+            #[cfg(target_os = "linux")]
+            None,
+        )
+        .unwrap();
         let dir = dir.canonicalize().unwrap();
         assert_eq!(
             std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
@@ -153,10 +242,18 @@ mod tests {
         let dir = temp.path().join("controllers");
         std::fs::create_dir(&dir).unwrap();
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
-        assert!(UnixControllerAccess::prepare(&dir, unsafe { libc::getegid() }).is_err());
+        let prepare = |path: &std::path::Path| {
+            UnixControllerAccess::prepare(
+                path,
+                unsafe { libc::getegid() },
+                #[cfg(target_os = "linux")]
+                None,
+            )
+        };
+        assert!(prepare(&dir).is_err());
         let link = temp.path().join("link");
         symlink(&dir, &link).unwrap();
-        assert!(UnixControllerAccess::prepare(&link, unsafe { libc::getegid() }).is_err());
+        assert!(prepare(&link).is_err());
     }
 }
 

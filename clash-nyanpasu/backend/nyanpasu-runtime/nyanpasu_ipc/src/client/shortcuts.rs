@@ -11,7 +11,8 @@ use crate::api::{
     self,
     contract::{
         CoreCheck, CoreStart, CoreStop, CoreV2Operation, CoreV2Status, CoreV2Submit, LogsInspect,
-        LogsRetrieve, NetworkSetDns, Status,
+        LogsRetrieve, NetworkSetDns, NetworkTransparentProxyReconcile,
+        NetworkTransparentProxyStatusQuery, Status,
     },
     core::v2::{
         CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT, OperationInfo,
@@ -160,6 +161,31 @@ impl Client {
         payload: &api::network::set_dns::NetworkSetDnsReq<'_>,
     ) -> Result<()> {
         self.call::<NetworkSetDns>(Some(payload)).await.map(|_| ())
+    }
+
+    pub async fn reconcile_transparent_proxy(
+        &self,
+        payload: &api::network::transparent_proxy::NetworkTransparentProxyRequest,
+    ) -> Result<api::network::transparent_proxy::NetworkTransparentProxyStatus> {
+        self.call::<NetworkTransparentProxyReconcile>(Some(payload))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation:
+                    api::network::transparent_proxy::NETWORK_TRANSPARENT_PROXY_RECONCILE_ENDPOINT,
+            })
+    }
+
+    pub async fn transparent_proxy_status(
+        &self,
+    ) -> Result<api::network::transparent_proxy::NetworkTransparentProxyStatus> {
+        self.call::<NetworkTransparentProxyStatusQuery>(None)
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation:
+                    api::network::transparent_proxy::NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT,
+            })
     }
 
     /// Subscribe to the events pushed by the service over `/ws/events`.

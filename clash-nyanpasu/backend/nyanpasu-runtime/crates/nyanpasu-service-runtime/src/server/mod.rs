@@ -4,6 +4,7 @@ mod events;
 mod logger;
 mod manager_bridge;
 mod routing;
+mod transparent_proxy;
 
 use std::sync::Arc;
 
@@ -33,9 +34,19 @@ pub async fn run(
     let runtime_dir =
         camino::Utf8PathBuf::from_path_buf(crate::utils::dirs::service_core_runtime_dir())
             .map_err(|path| anyhow::anyhow!("core runtime dir is not UTF-8: {}", path.display()))?;
+    #[cfg(unix)]
+    let socket_owner_uid = crate::utils::native_store_owner::FsOwnerBindingStore::new(
+        &runtime.service_config_dir,
+        &runtime.nyanpasu_data_dir,
+    )
+    .load()?
+    .map(|owner| owner.uid);
     let native_store = Arc::new(native_store_for_host(&runtime)?);
-    let (controller_dir, access): (_, Arc<dyn nyanpasu_core_manager::ControllerAccess>) =
-        controller_access_for_host(sids)?;
+    let (controller_dir, access) = controller_access_for_host(
+        sids,
+        #[cfg(target_os = "linux")]
+        socket_owner_uid,
+    )?;
     let core_manager = CoreManager::with_controller_access(
         runtime_dir,
         local_ipc_policy,
@@ -46,6 +57,40 @@ pub async fn run(
     .await?;
     let hub = EventHub::new();
     core_manager.spawn_bridges(hub.clone());
+    let transparent_proxy = transparent_proxy::TransparentProxy::new(core_manager.clone());
+    if let Err(error) = transparent_proxy.recover().await {
+        tracing::error!("failed to recover transparent proxy state: {error}");
+    }
+    let mut core_status = core_manager.subscribe_runtime_status();
+    let proxy_lifecycle = transparent_proxy.clone();
+    let proxy_shutdown = transparent_proxy.clone();
+    let lifecycle_token = token.clone();
+    let lifecycle_shutdown = token.clone();
+    let lifecycle_task = tokio::spawn(async move {
+        let mut retry = tokio::time::interval(std::time::Duration::from_secs(5));
+        retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                _ = lifecycle_token.cancelled() => break,
+                _ = retry.tick() => {
+                    if let Err(error) = proxy_lifecycle.cleanup_if_stale().await {
+                        tracing::error!("failed to retry transparent proxy cleanup: {error}");
+                    }
+                }
+                changed = core_status.changed() => {
+                    if changed.is_err() { break; }
+                    core_status.borrow_and_update();
+                    if let Err(error) = proxy_lifecycle.cleanup_if_stale().await {
+                        tracing::error!("failed to remove stale transparent proxy rules: {error}");
+                    }
+                }
+            }
+        }
+        proxy_lifecycle.begin_shutdown();
+        if let Err(error) = proxy_lifecycle.cleanup().await {
+            tracing::error!("failed to clean transparent proxy rules on shutdown: {error}");
+        }
+    });
 
     // The tracing writer was bound to the global logger before `run`; share that
     // instance so the `/logs` routes read the buffer that is actually being fed.
@@ -67,6 +112,7 @@ pub async fn run(
         runtime: Arc::new(runtime),
         logger,
         logs: logs.clone(),
+        transparent_proxy,
     };
     let app = create_router(state);
     tracing::info!("Starting server...");
@@ -77,16 +123,34 @@ pub async fn run(
         Some(async move {
             shutdown_token.cancelled().await;
         }),
+        #[cfg(windows)]
         sids,
+        #[cfg(not(windows))]
+        socket_owner_uid,
     );
     tokio::pin!(server);
-    tokio::select! {
-        result = &mut server => {
+    enum ServerExit<E> {
+        Server(Result<(), E>),
+        Cancelled,
+        Control(ExecutorExit),
+    }
+    let exit = tokio::select! {
+        result = &mut server => ServerExit::Server(result),
+        _ = token.cancelled() => ServerExit::Cancelled,
+        exit = core_manager.until_control_closed() => ServerExit::Control(exit),
+    };
+    proxy_shutdown.begin_shutdown();
+    lifecycle_shutdown.cancel();
+    if let Err(error) = lifecycle_task.await {
+        tracing::error!("transparent proxy lifecycle task failed: {error}");
+    }
+    match exit {
+        ServerExit::Server(result) => {
             let _ = logs.shutdown().await;
             core_manager.shutdown().await;
             result?;
         }
-        _ = token.cancelled() => {
+        ServerExit::Cancelled => {
             let _ = logs.shutdown().await;
             core_manager.shutdown().await;
             drain(&mut server).await?;
@@ -94,7 +158,7 @@ pub async fn run(
         // The control plane owns every core transaction. If its executor is
         // gone the daemon cannot serve `/v2/core/*` truthfully, so it stops
         // rather than answering with a control plane that is not there.
-        exit = core_manager.until_control_closed() => {
+        ServerExit::Control(exit) => {
             let _ = logs.shutdown().await;
             if exit == ExecutorExit::Died {
                 tracing::error!("the core control executor died; shutting the service down");
@@ -154,6 +218,7 @@ async fn drain<E: std::error::Error + Send + Sync + 'static>(
 fn controller_access_for_host(
     #[cfg(windows)] sids: &[&str],
     #[cfg(not(windows))] _sids: (),
+    #[cfg(target_os = "linux")] desktop_uid: Option<u32>,
 ) -> anyhow::Result<(
     Option<camino::Utf8PathBuf>,
     Arc<dyn nyanpasu_core_manager::ControllerAccess>,
@@ -183,7 +248,12 @@ fn controller_access_for_host(
         if error == 0 && !result.is_null() {
             let gid = unsafe { group.assume_init().gr_gid };
             let root = std::path::Path::new("/var/run/nyanpasu-core");
-            match controller_access::UnixControllerAccess::prepare(root, gid) {
+            match controller_access::UnixControllerAccess::prepare(
+                root,
+                gid,
+                #[cfg(target_os = "linux")]
+                desktop_uid,
+            ) {
                 Ok(access) => {
                     let path = root
                         .canonicalize()

@@ -56,6 +56,10 @@ authors = ['zzzgydi', 'keiko233']
 # last version bump still reports the old crate version, so `prepare:check`
 # fetches a daemon older than the protocol these crates compile against, and
 # the compat gate cannot see the difference from a version string alone.
+# Development exception: the transparent-proxy MVP pins an unreleased source
+# commit. Build its service locally to use capture; prepare:check still downloads
+# the last release, whose missing optional endpoint is reported as unsupported.
+# Restore a released-tag pin before distributing this feature.
 nyanpasu-utils = { path = 'nyanpasu-runtime/crates/nyanpasu-utils', features = [
   'specta',
 ] }
@@ -115,6 +119,15 @@ panic = 'unwind'
 codegen-units = 1
 lto = true
 opt-level = 's'
+
+# Keep source-level backtraces without emitting full variable and type DWARF.
+# Full debug info makes the app test binaries exceed 1 GiB and dominates app
+# relinks with linker and filesystem work.
+[profile.dev]
+debug = 'line-tables-only'
+
+[profile.test]
+debug = 'line-tables-only'
 
 # Release code with line tables, so heap profilers can resolve allocation
 # stacks to source lines. Codegen units only change inlining and layout, not

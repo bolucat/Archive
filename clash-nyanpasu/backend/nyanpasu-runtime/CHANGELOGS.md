@@ -1,4 +1,49 @@
 
+## [2.0.3] - 2026-11-09
+
+
+### ✅ Testing
+
+- **core-manager:** Set the unreadable record mode with an octal literal by @greenhat616 
+
+
+### ✨ Features
+
+- **core-manager:** Share a host stop strategy with core supervisors (#475) by @4o3F  in [#475](https://github.com/libnyanpasu/nyanpasu-runtime/pull/475)
+
+- Manage Linux transparent proxy capture in the service (#486) by @keiko233  in [#486](https://github.com/libnyanpasu/nyanpasu-runtime/pull/486)
+
+
+### 🐛 Bug Fixes
+
+- **core-manager:** Start despite unusable or unprovable pid records by @greenhat616 
+
+- **jobs:** Keep typed sources for journal storage failures by @greenhat616 
+
+
+### 🔨 Refactor
+
+- **core-manager:** Retry log sink IO with the shared utils policy by @greenhat616 
+
+
+### 🛡️ Security
+
+- Drop dependencies nothing uses by @greenhat616 
+
+
+### 🧹 Miscellaneous Tasks
+
+- **clippy:** Resolve the remaining lint warnings by @greenhat616 
+
+-----------------
+
+
+
+**Full Changelog**: https://github.com/libnyanpasu/nyanpasu-runtime/compare/v2.0.2...v2.0.3
+
+
+
+
 ## [2.0.2] - 2026-10-28
 
 
