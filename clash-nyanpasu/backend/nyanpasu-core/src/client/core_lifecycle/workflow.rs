@@ -1,39 +1,44 @@
 use std::sync::Arc;
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::core_install::{
     BinaryInstaller, CoreBinaryCompanionPaths, CoreBinaryInstallRequest,
 };
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, CoreKind};
+use nyanpasu_state_engine::StateSnapshot;
 use nyanpasu_updater::PreparedCoreBinary;
 use snafu::{ResultExt, ensure};
 
 use super::{
-    super::{
-        SessionPortResolver,
-        runtime::{self, PublishRuntimeError},
-        runtime_error::{
-            ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, PublishRuntimeSnafu,
-            RecoverRuntimeSnafu, RecoverServiceEndpointSnafu, RefreshStatusSnafu,
-            ResolveCoreBinarySnafu, RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu,
-            StartServiceSnafu, StopCoreSnafu, StopServiceSnafu, UninstallServiceSnafu,
-        },
-    },
+    super::{SessionPortResolver, runtime},
     Command, Output,
     ports::{PreparedRuntime, RuntimePreparationPort},
 };
 use crate::{
     actor_v2::{
-        EndpointConnectivity, HandoffReport,
-        endpoint::{ExecutionHost, wire_core_type_to_kind},
+        HandoffReport,
+        endpoint::wire_core_type_to_kind,
         facade::{
             CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
             StopReport, UncertainReconcile,
         },
-        service_actor::ServicePhase,
     },
-    client::runtime_recovery::{ObservedRuntime, verify_recovery_target},
+    client::{
+        runtime_error,
+        runtime_recovery::{ObservedRuntime, verify_recovery_target},
+    },
+    state::mutation::runtime_apply::RuntimeApplyReceipt,
+};
+use nyanpasu_runtime_values::{
+    core_status::{EndpointConnectivity, ServicePhase},
+    execution_host::ExecutionHost,
+    publish::PublishRuntimeError,
+    runtime_error::{
+        ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, PublishRuntimeSnafu,
+        RecoverRuntimeSnafu, RecoverServiceEndpointSnafu, RefreshStatusSnafu,
+        ResolveCoreBinarySnafu, RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu,
+        StartServiceSnafu, StopCoreSnafu, StopServiceSnafu, UninstallServiceSnafu,
+    },
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -178,7 +183,7 @@ pub(in crate::client) enum RuntimeSubmission {
         product: Arc<runtime::RuntimeSnapshot>,
         report: ReconcileReport,
         /// The recovery baseline this apply established.
-        receipt: Arc<runtime::RuntimeApplyReceipt>,
+        receipt: Arc<RuntimeApplyReceipt>,
     },
     RolledBack(RolledBackReport),
     Unknown(UncertainReconcile),
@@ -201,6 +206,7 @@ impl CoreLifecycleWorkflow {
                 self.move_execution_host(host, true)
                     .await
                     .map_err(|failure| failure.error)
+                    .map_err(runtime_error::core_failure)
                     .context(ApplyRuntimeSnafu)?,
             )),
             Command::ReplaceCoreBinary(artifact) => {
@@ -216,7 +222,12 @@ impl CoreLifecycleWorkflow {
                 // Running when the endpoint degrades a moment later, and
                 // recovery must not read that as a reason to start the core.
                 self.recovery.intent = CoreIntent::Stopped;
-                let report = self.core.stop().await.context(StopCoreSnafu)?;
+                let report = self
+                    .core
+                    .stop()
+                    .await
+                    .map_err(runtime_error::core_failure)
+                    .context(StopCoreSnafu)?;
                 // Nothing holds those ports any more. A later reader must get
                 // "unavailable", never the endpoint the stopped core used.
                 self.ports.invalidate();
@@ -226,27 +237,38 @@ impl CoreLifecycleWorkflow {
                 self.core
                     .install_service()
                     .await
+                    .map_err(runtime_error::core_failure)
                     .context(InstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::StartService => {
-                self.core.start_service().await.context(StartServiceSnafu)?;
+                self.core
+                    .start_service()
+                    .await
+                    .map_err(runtime_error::core_failure)
+                    .context(StartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::StopService => {
                 self.recovery.suppress();
-                self.core.stop_service().await.context(StopServiceSnafu)?;
+                self.core
+                    .stop_service()
+                    .await
+                    .map_err(runtime_error::core_failure)
+                    .context(StopServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::RestartService => {
                 self.core
                     .stop_service()
                     .await
+                    .map_err(runtime_error::core_failure)
                     .context(RestartServiceSnafu)?;
                 self.core
                     .start_service()
                     .await
+                    .map_err(runtime_error::core_failure)
                     .context(RestartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
@@ -263,6 +285,7 @@ impl CoreLifecycleWorkflow {
                 self.core
                     .uninstall_service()
                     .await
+                    .map_err(runtime_error::core_failure)
                     .context(UninstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
@@ -451,6 +474,7 @@ impl CoreLifecycleWorkflow {
                 .core
                 .recover_service_endpoint(&self.closing)
                 .await
+                .map_err(runtime_error::core_failure)
                 .context(RecoverServiceEndpointSnafu)?;
             self.note_interrupted_core(report.interrupted_running());
         }
@@ -463,6 +487,7 @@ impl CoreLifecycleWorkflow {
             .core
             .refresh_status()
             .await
+            .map_err(runtime_error::core_failure)
             .context(RefreshStatusSnafu)?
             .snapshot
             .and_then(|s| s.state)
@@ -547,6 +572,7 @@ impl CoreLifecycleWorkflow {
             .core
             .refresh_status()
             .await
+            .map_err(runtime_error::core_failure)
             .context(RefreshStatusSnafu)?;
         match self
             .submit_runtime(prepared, preparation, &expected)
@@ -554,13 +580,17 @@ impl CoreLifecycleWorkflow {
         {
             RuntimeSubmission::Applied { report, .. } => Ok(report),
             RuntimeSubmission::NotSubmitted(error) | RuntimeSubmission::Unchanged(error) => {
-                Err(error).context(ApplyRuntimeSnafu)
+                Err(error)
+                    .map_err(runtime_error::core_failure)
+                    .context(ApplyRuntimeSnafu)
             }
             RuntimeSubmission::RolledBack(report) => ReconcileResult::RolledBack(report)
                 .into_applied()
+                .map_err(runtime_error::core_failure)
                 .context(ApplyRuntimeSnafu),
             RuntimeSubmission::Unknown(uncertain) => ReconcileResult::Unknown(uncertain)
                 .into_applied()
+                .map_err(runtime_error::core_failure)
                 .context(ApplyRuntimeSnafu),
         }
     }
@@ -593,6 +623,7 @@ impl CoreLifecycleWorkflow {
             .core
             .reconcile(&intent, spec.clone(), expected)
             .await
+            .map_err(runtime_error::core_failure)
             .context(ApplyRuntimeSnafu)?;
         // An unobserved outcome may still have applied: the core can already
         // be listening on the candidate's ports. The previously confirmed
@@ -628,14 +659,14 @@ impl CoreLifecycleWorkflow {
         // restores and the only thing that may promote a candidate port
         // binding, and it advances here rather than below: the effective-config
         // inspection is diagnostic and may never arrive (C3).
-        let receipt = Arc::new(runtime::RuntimeApplyReceipt {
+        let receipt = Arc::new(RuntimeApplyReceipt {
             revision: snapshot.revision,
             config_text: intent.config_text.clone(),
             config_digest: intent.digest.clone(),
             target_core: snapshot.target_core,
             core_spec: spec,
             host: report.applied.host,
-            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: intent.local_ipc,
             binding: report.applied.clone(),
             ports,
@@ -717,6 +748,7 @@ impl CoreLifecycleWorkflow {
             .core
             .refresh_status()
             .await
+            .map_err(runtime_error::core_failure)
             .context(RefreshStatusSnafu)?;
         let (state, applied_kind) = {
             let snapshot = status.snapshot.as_ref();
@@ -739,12 +771,20 @@ impl CoreLifecycleWorkflow {
             match self.core.stop().await {
                 Ok(_) => {}
                 Err(error) if error.kind == Some(CoreErrorKind::NotStarted) => {}
-                Err(error) => return Err(error).context(StopCoreSnafu),
+                Err(error) => {
+                    return Err(error)
+                        .map_err(runtime_error::core_failure)
+                        .context(StopCoreSnafu);
+                }
             }
             self.ports.invalidate();
         }
         // Stopped/NotStarted alone cannot prove quarantined processes are dead.
-        self.core.recover().await.context(RecoverRuntimeSnafu)?;
+        self.core
+            .recover()
+            .await
+            .map_err(runtime_error::core_failure)
+            .context(RecoverRuntimeSnafu)?;
         let request = CoreBinaryInstallRequest {
             target: artifact.target,
             source: artifact.source.clone(),

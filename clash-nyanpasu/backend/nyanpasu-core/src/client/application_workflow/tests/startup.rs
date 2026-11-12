@@ -9,6 +9,9 @@
 //! the instants taken around the call that set it; nothing sleeps.
 
 use nyanpasu_contracts::service::ServiceProcessControl;
+use nyanpasu_runtime_values::{
+    configuration::ConvergenceHealth, core_status::ServicePhase, execution_host::ExecutionHost,
+};
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -19,10 +22,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    client::test_support::workflow::Installer,
-    state::{PersistentStateManager, ReplaceIfVersionResult},
-};
+use crate::client::test_support::workflow::Installer;
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::ClashConfig,
@@ -37,17 +37,14 @@ use nyanpasu_ipc::{
     types::{ServiceStatus, StatusInfo},
 };
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult};
 use nyanpasu_updater::PreparedCoreBinary;
 use tokio::{sync::Notify, time::Instant};
 
 use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, adapters,
-        mutation::{
-            DEFERRED_RETRY_BUDGET, DeferredTarget, MutationOutcomeKind, ReestablishCause,
-            TargetOrigin,
-        },
-        policy::CommandClass,
+        mutation::{DEFERRED_RETRY_BUDGET, DeferredTarget, ReestablishCause, TargetOrigin},
         startup::{ServiceEvidence, StartupOutcome, StartupReport},
     },
     Progress, RecordingNotifications,
@@ -62,17 +59,17 @@ use crate::{
         CoreClient,
         endpoint::{
             ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-            CoreSubmission, EndpointHandle, ExecutionHost,
+            CoreSubmission, EndpointHandle,
         },
-        service_actor::{ServiceClient, ServicePhase},
+        service_actor::ServiceClient,
     },
     client::{
         SessionPortResolver,
-        convergence::ConvergenceHealth,
         core_lifecycle::Ownership,
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
+    state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -1205,7 +1202,7 @@ async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error.to_string().contains("core operation"),
@@ -1549,7 +1546,7 @@ async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
     assert!(
         matches!(
             error,
-            crate::client::RuntimeError::CoreNotStarted {
+            nyanpasu_runtime_values::runtime_error::RuntimeError::CoreNotStarted {
                 retryable: true,
                 ..
             }

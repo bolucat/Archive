@@ -2,7 +2,6 @@
 
 use crate::{
     client::{
-        convergence::ConvergenceHealth,
         profiles::ProfilesClient,
         test_support::{
             profiles::{
@@ -12,18 +11,13 @@ use crate::{
             startup_recovery::{evidence, migrate},
         },
     },
-    state::{
-        mutation::CommitAborted,
-        profiles::{
-            NewProfileRequest, ProfilesActorMessage, ProfilesError,
-            sources::{SourceOrigin, SourceOutcome, SourceStatus},
-        },
-    },
+    state::profiles::ProfilesActorMessage,
 };
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
-    ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,
-    ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, TransformDefinition,
+    ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, NewProfileRequest,
+    ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, ProfileValidationError, Profiles,
+    TransformDefinition,
 };
 use nyanpasu_contracts::{
     net::SelfProxyPortSource,
@@ -40,6 +34,11 @@ use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_net::{device_headers::DeviceHeaders, subscription_http::SubscriptionHttpFetcher};
 use nyanpasu_persistence::write;
 use nyanpasu_profile_io::fs_service::ProfileFileService;
+use nyanpasu_runtime_values::{
+    configuration::{ConvergenceHealth, SourceOrigin, SourceOutcome, SourceStatus},
+    mutation::CommitAborted,
+    profiles::ProfilesError,
+};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},

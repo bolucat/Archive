@@ -13,7 +13,8 @@ use nyanpasu_config::{
     application::{ClashCore, TrayMenuMode},
     clash::config::overrides::Mode,
 };
-use nyanpasu_core::client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction};
+use nyanpasu_core::client::{NyanpasuClient, effects::plan::TrayView};
+use nyanpasu_runtime_values::hotkey::HotkeyAction;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
@@ -359,7 +360,7 @@ impl Tray {
                 {
                     builder = builder.icon(tauri::image::Image::from_bytes(&icon::get_icon(
                         &app_handle.state::<nyanpasu_paths::PathResolver>(),
-                        &icon::TrayIcon::Normal,
+                        &nyanpasu_rpc_protocol::values::TrayIcon::Normal,
                     ))?);
                 }
                 #[cfg(target_os = "macos")]
@@ -483,7 +484,7 @@ impl Tray {
 
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
-            use icon::TrayIcon;
+            use nyanpasu_rpc_protocol::values::TrayIcon;
 
             let mode = if tun_mode {
                 TrayIcon::Tun

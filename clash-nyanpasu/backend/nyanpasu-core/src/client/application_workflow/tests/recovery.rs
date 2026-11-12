@@ -13,6 +13,7 @@ use crate::{
         },
         test_support::TestControlEndpoint,
     },
+    state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 
 /// The audited scenario: the app was running A, applied B, then asked to be
@@ -148,8 +149,8 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
 // the explicit retry, reading what the two slots kept. The interruptions are
 // scripted fakes and barriers; nothing here sleeps for an ordering.
 
-use crate::state::{ReplaceIfVersionError, ReplaceIfVersionResult};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{ReplaceIfVersionError, ReplaceIfVersionResult};
 
 use std::sync::atomic::Ordering;
 
@@ -160,11 +161,14 @@ use super::{
         parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate,
     },
 };
-use crate::client::application_workflow::{
-    ApplicationWorkflowClient, Command,
-    attempt::RecoveryView,
-    mutation::{DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind},
-    policy::CommandClass,
+use crate::{
+    client::application_workflow::{
+        ApplicationWorkflowClient, Command, attempt::RecoveryView, mutation::DEFERRED_RETRY_BUDGET,
+    },
+    state::mutation::{
+        intent::CommandClass,
+        value::{MutationConclusion, MutationOutcomeKind},
+    },
 };
 
 fn recovery(client: &ApplicationWorkflowClient) -> RecoveryView {
@@ -203,7 +207,7 @@ fn pending_submission(scripted: &ScriptedWaitEndpoint) -> OperationId {
 }
 
 /// A baseline the next mutation's Cancel can put back, applied for real.
-async fn prime(f: &mut Fixture) -> Arc<runtime::RuntimeApplyReceipt> {
+async fn prime(f: &mut Fixture) -> Arc<RuntimeApplyReceipt> {
     let (id, primed) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -381,7 +385,7 @@ async fn an_accepted_submission_still_running_is_waited_out_before_recovery() {
     let error = f.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error
@@ -436,7 +440,7 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     assert!(
         matches!(
             super::aftermath(&aborted),
-            crate::state::mutation::RuntimeAftermath::Unknown { .. }
+            nyanpasu_runtime_values::mutation::RuntimeAftermath::Unknown { .. }
         ),
         "{aborted:?}"
     );
@@ -548,7 +552,7 @@ async fn an_automatic_retry_never_recovers() {
         .err();
     assert!(matches!(
         refused,
-        Some(crate::client::RuntimeError::Isolated)
+        Some(nyanpasu_runtime_values::runtime_error::RuntimeError::Isolated)
     ));
     assert!(isolated(&f.client));
 
@@ -652,7 +656,7 @@ impl crate::actor_v2::service_actor::ServiceEndpointFactory for ParkedStop {
 /// Confirm owed without stopping the daemon a second time.
 #[tokio::test]
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use crate::actor_v2::endpoint::ExecutionHost;
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
         delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
@@ -803,7 +807,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let daemon = Arc::new(ParkedInstall {
         delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
-                crate::actor_v2::endpoint::ExecutionHost::Service,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Service,
             ),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -846,13 +850,13 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     daemon.parked.notified().await;
     assert_eq!(
         service.probe().await.unwrap().phase,
-        crate::actor_v2::service_actor::ServicePhase::Ready,
+        nyanpasu_runtime_values::core_status::ServicePhase::Ready,
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
     assert!(matches!(
         client.start_service().await.unwrap_err(),
-        crate::client::RuntimeError::Isolated
+        nyanpasu_runtime_values::runtime_error::RuntimeError::Isolated
     ));
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
@@ -911,7 +915,7 @@ async fn a_lost_handoff() -> super::startup::Graph {
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error.to_string().contains("handoff to Local"),
@@ -950,7 +954,9 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// domain.
 #[tokio::test]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
+    use nyanpasu_runtime_values::{
+        core_status::EndpointConnectivity, execution_host::ExecutionHost,
+    };
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
@@ -986,7 +992,7 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
         .expect("the runtime still waits for a proven owner");
     assert_eq!(
         target.health,
-        crate::client::convergence::ConvergenceHealth::RecoveryRequired
+        nyanpasu_runtime_values::configuration::ConvergenceHealth::RecoveryRequired
     );
     assert_eq!(
         g.log(),
@@ -1017,7 +1023,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
 
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(isolated(&f.client));
     let view = recovery(&f.client);

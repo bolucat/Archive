@@ -1,22 +1,19 @@
-use crate::{
-    client::application_workflow::{
-        impact,
+use crate::state::{
+    config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
+    mutation::{
+        MutationCoordinator, impact,
         impact::{MutationHints, RequestedRuntimeFields},
-        mutation::ConfigDomain,
-        policy::CommandClass,
-    },
-    state::{
-        config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-        mutation::MutationCoordinator,
+        intent::CommandClass,
     },
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
 use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
+use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 use tokio_util::sync::CancellationToken;
@@ -26,13 +23,14 @@ use tokio_util::sync::CancellationToken;
 pub struct ClashConfigSnapshot {
     pub state: ClashConfig,
     pub version: u64,
-    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: Option<nyanpasu_runtime_values::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
 }
 
 impl ClashConfigSnapshot {
-    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
-        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+    pub(crate) fn outcome(self) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let outcome =
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
         match self.receipt {
             Some(receipt) => outcome.with_commit(receipt),
             None => outcome,
@@ -50,14 +48,14 @@ impl ClashConfigSnapshot {
 }
 
 pub struct ClashConfigActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<ClashConfig>,
     pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<ClashConfig>,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }

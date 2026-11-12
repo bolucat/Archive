@@ -40,7 +40,7 @@ impl Drop for RestoreDirMode {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn logs_facade_reads_app_files_and_degrades_service_independently() {
-    use crate::client::logs::LogSource;
+    use nyanpasu_contracts::logs::LogSource;
     use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
     let dir = tempdir().unwrap();
     let paths = test_paths(dir.path(), dir.path().join("data"));
@@ -276,7 +276,7 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             matches!(
                 outcome,
-                crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { .. }
             ),
             "auto-activation hard failure after commit must be CommittedDegraded"
         );
@@ -284,14 +284,14 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             outcome.degradations().iter().any(|item| matches!(
                 item.reason,
-                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                nyanpasu_runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
             )),
             "expected ProfileAutoActivationFailed, got {:?}",
             outcome.degradations()
         );
         assert!(
             outcome.degradations().iter().any(|item| {
-                item.phase == crate::client::runtime::DegradationPhase::SystemEffect
+                item.phase == nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect
                     && item.retryable
             }),
             "H2 degradation must be retryable SystemEffect"

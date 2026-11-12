@@ -1,6 +1,414 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
 import { test } from 'node:test'
-import { dependencyViolations } from './backend-boundaries.ts'
+import {
+  checkServerProductionFeatures,
+  dependencyViolations,
+  serverProductionFeatureViolations,
+} from './backend-boundaries.ts'
+import { createLexState, stripCommentsAndLiterals } from './lexer.ts'
+
+test('server production probe retains workspace patches with relative paths', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'server-patched-policy-'))
+  for (const name of ['nyanpasu-server', 'patched-os']) {
+    mkdirSync(path.join(directory, name))
+    writeFileSync(path.join(directory, name, 'lib.rs'), '')
+  }
+  writeFileSync(
+    path.join(directory, 'Cargo.toml'),
+    '[workspace]\nmembers = ["nyanpasu-server"]\nresolver = "2"\n' +
+      '[patch.crates-io]\nnyanpasu-os = { path = "patched-os" }\n',
+  )
+  writeFileSync(
+    path.join(directory, 'nyanpasu-server/Cargo.toml'),
+    '[package]\nname = "nyanpasu-server"\nversion = "0.0.0"\nedition = "2024"\n' +
+      '[lib]\npath = "lib.rs"\n[dependencies]\nnyanpasu-os = "=99.98.97"\n',
+  )
+  writeFileSync(
+    path.join(directory, 'patched-os/Cargo.toml'),
+    '[package]\nname = "nyanpasu-os"\nversion = "99.98.97"\nedition = "2024"\n' +
+      '[lib]\npath = "lib.rs"\n[features]\ndefault = ["test-support"]\ntest-support = []\n',
+  )
+  execFileSync(
+    'cargo',
+    [
+      'metadata',
+      '--offline',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      path.join(directory, 'Cargo.toml'),
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  assert.deepStrictEqual(await checkServerProductionFeatures([], directory), [
+    'nyanpasu-server production closure must not enable nyanpasu-os/test-support',
+  ])
+})
+
+test('server shell accepts core and implementation dependencies but rejects transitive GUI dependencies', () => {
+  const allowed =
+    'nyanpasu-server v0.1.0\nnyanpasu-core v0.1.0\nnyanpasu-os v0.1.0\nnyanpasu-net v0.1.0'
+  assert.deepStrictEqual(dependencyViolations('nyanpasu-server', allowed), [])
+  for (const dependency of [
+    'tauri',
+    'tauri-runtime',
+    'clash-nyanpasu',
+    'egui',
+    'slint',
+    'i-slint-core',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-server',
+        `${allowed}\n${dependency} v1.0.0`,
+      ),
+      [`nyanpasu-server must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('server_production_closure_excludes_os_test_support', () => {
+  // Resolve real Cargo fixtures: dev unification is different from production resolution.
+  for (const kind of [
+    'dev-dependencies',
+    'dependencies',
+    'build-dependencies',
+  ]) {
+    for (const transitive of [false, true]) {
+      const directory = mkdtempSync(
+        path.join(tmpdir(), 'server-feature-policy-'),
+      )
+      const manifest = (name: string, extra: string) => {
+        const dir = path.join(directory, name)
+        mkdirSync(dir)
+        writeFileSync(
+          path.join(dir, 'Cargo.toml'),
+          `[package]\nname = "${name}"\nversion = "0.0.0"\nedition = "2024"\n[lib]\npath = "lib.rs"\n${extra}`,
+        )
+        writeFileSync(path.join(dir, 'lib.rs'), '')
+      }
+      manifest('nyanpasu-os', '[features]\ntest-support = []\n')
+      manifest(
+        'middle',
+        '[dependencies]\nnyanpasu-os = { path = "../nyanpasu-os", features = ["test-support"] }\n',
+      )
+      const enabling = transitive
+        ? 'middle = { path = "../middle" }'
+        : 'nyanpasu-os = { path = "../nyanpasu-os", features = ["test-support"] }'
+      manifest('nyanpasu-server', `[${kind}]\n${enabling}\n`)
+      manifest(
+        'consumer',
+        '[workspace]\nresolver = "2"\n[dependencies]\nnyanpasu-server = { path = "../nyanpasu-server" }\n',
+      )
+      const output = execFileSync(
+        'cargo',
+        [
+          'metadata',
+          '--offline',
+          '--format-version',
+          '1',
+          '--manifest-path',
+          path.join(directory, 'consumer/Cargo.toml'),
+        ],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+      const violations = serverProductionFeatureViolations(JSON.parse(output))
+      assert.equal(
+        violations.length,
+        kind === 'dev-dependencies' ? 0 : 1,
+        `${kind}, transitive=${transitive}`,
+      )
+    }
+  }
+})
+
+test('server composition retains refusal, concrete effects and all server musl targets', () => {
+  const root = new URL('../../../', import.meta.url)
+  const source = readFileSync(
+    new URL('backend/nyanpasu-server/src/compose.rs', root),
+    'utf8',
+  )
+  assert.doesNotMatch(
+    source,
+    /InteractiveElevationConsent|UnsupportedEffects|NoopApplicationEffects|nyanpasu_core::logs::UnavailableCoreLogStore/,
+  )
+  assert.match(source, /Arc::new\(RefuseElevation\)/)
+  for (const constructor of [
+    'OsServiceProcessControl',
+    'OsSystemDnsCache',
+    'FsBinaryInstaller',
+  ]) {
+    assert.match(source, new RegExp(`${constructor}::new\\([^;]*?consent`, 's'))
+  }
+  assert.match(
+    source,
+    /ApplicationEffectExecutor::new\(system_proxy, logger, None\)/,
+  )
+  const manifest = readFileSync(
+    new URL('backend/nyanpasu-server/Cargo.toml', root),
+    'utf8',
+  )
+  assert.doesNotMatch(manifest.split('[dev-dependencies]')[0], /test-support/)
+  assert.match(manifest, /\[\[bin\]\]\s*name = 'nyanpasu-server'/)
+  const musl = readFileSync(
+    new URL('scripts/src/testing/test-backend-musl.ts', root),
+    'utf8',
+  )
+  assert.match(musl, /-p nyanpasu-server/)
+  assert.match(musl, /lib:nyanpasu_server/)
+  assert.match(musl, /bin:nyanpasu-server/)
+  assert.match(musl, /test:panic_process/)
+  assert.match(musl, /nyanpasu-os\/test-support/)
+  const tests = readFileSync(
+    new URL('backend/nyanpasu-server/src/compose/tests.rs', root),
+    'utf8',
+  )
+  for (const suffix of [
+    'config_on',
+    'config_off',
+    'retry',
+    'compensation',
+    'copy_fallback',
+  ]) {
+    assert.ok(
+      tests.includes(
+        `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_${suffix}`,
+      ),
+    )
+  }
+})
+
+test('RPC local endpoints are opt-in without widening protocol dependencies', () => {
+  const manifest = readFileSync(
+    new URL('../../../backend/nyanpasu-rpc/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  const defaults = manifest.match(/^default = (.+)$/m)?.[1]
+  assert.ok(defaults)
+  assert.doesNotMatch(defaults, /local-server/)
+  const local = manifest.match(/local-server = \[([^\]]+)\]/)?.[1]
+  assert.ok(local)
+  assert.match(local, /'nyanpasu-rpc-protocol\/frame-io'/)
+  for (const dependency of [
+    'interprocess',
+    'nyanpasu-single-instance',
+    'tokio-util',
+    'uuid',
+  ]) {
+    assert.ok(local.includes(`'dep:${dependency}'`))
+    assert.match(
+      manifest,
+      new RegExp(`${dependency} = \\{[^\\n]*optional = true`),
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc',
+      'nyanpasu-rpc v0.1.0\ninterprocess v2.4.7\nnyanpasu-rpc-protocol v0.1.0\ntokio v1.0\n',
+    ),
+    [],
+  )
+})
+
+test('protocol frame IO remains opt-in with foundation values', () => {
+  const manifest = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(manifest, /default = \[\]/)
+  assert.match(manifest, /frame-io = \['dep:tokio'\]/)
+  assert.match(manifest, /tokio = \{[^\n]*optional = true/)
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-rpc-protocol v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\nsnafu v0.8\n',
+    ),
+    [],
+  )
+})
+
+test('local client remains protocol-only and musl does not rely on desktop features', () => {
+  const protocol = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(protocol, /default = \[\]/)
+  assert.match(protocol, /local-client = \[\s*'frame-io'/)
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-rpc-protocol v0.1.0\ntokio v1.0\nsnafu v0.8\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-rpc',
+    'nyanpasu-server',
+    'nyanpasu-core',
+    'nyanpasu-os',
+    'tauri',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-rpc-protocol',
+        `nyanpasu-rpc-protocol v0.1.0\n${dependency} v0.1.0\n`,
+      ),
+      [`nyanpasu-rpc-protocol must not depend on ${dependency}`],
+    )
+  }
+  const desktop = readFileSync(
+    new URL('../../../backend/tauri/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    desktop,
+    /nyanpasu-rpc = \{[^}]*default-features = false[^}]*'local-server'/,
+  )
+})
+
+test('protocol accepts direct and transitive foundation values and libraries', () => {
+  for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-rpc-protocol',
+        `nyanpasu-rpc-protocol v0.1.0\n${intermediate}nyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\nnyanpasu-ipc v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\n`,
+      ),
+      [],
+    )
+  }
+})
+
+for (const dependency of [
+  'nyanpasu-server',
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'nyanpasu-egui',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'slint',
+  'slint-build',
+  'i-slint-core',
+  'winit',
+  'eframe',
+  'egui',
+  'gtk',
+  'webkit2gtk',
+  'tauri',
+  'tauri-runtime',
+]) {
+  test(`protocol rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-rpc-protocol',
+          `nyanpasu-rpc-protocol v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-rpc-protocol must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+test('runtime values are available to core and the desktop shell', () => {
+  for (const owner of ['nyanpasu-core', 'clash-nyanpasu']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        owner,
+        `${owner} v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\n`,
+      ),
+      [],
+    )
+  }
+})
+
+test('runtime values consume only the approved foundation closure', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-runtime-values',
+      'nyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\nserde v1.0\nspecta v2.0\n',
+    ),
+    [],
+  )
+})
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'nyanpasu-egui',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'slint',
+  'slint-build',
+  'i-slint-core',
+  'winit',
+  'eframe',
+  'egui',
+  'gtk',
+  'webkit2gtk',
+  'tauri',
+  'tauri-runtime',
+  'nyanpasu-core-manager',
+]) {
+  test(`runtime values reject direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-runtime-values',
+          `nyanpasu-runtime-values v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-runtime-values must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+]) {
+  test(`${owner} rejects direct and transitive runtime values`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          owner,
+          `${owner} v0.1.0\n${intermediate}nyanpasu-runtime-values v0.1.0\n`,
+        ),
+        [`${owner} must not depend on nyanpasu-runtime-values`],
+      )
+    }
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  })
+}
 
 test('the desktop shell constructs OS implementations over foundation contracts', () => {
   assert.deepStrictEqual(
@@ -21,6 +429,7 @@ test('the desktop shell constructs OS implementations over foundation contracts'
 
 for (const owner of [
   'nyanpasu-core',
+  'nyanpasu-state-engine',
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',
@@ -51,6 +460,138 @@ for (const owner of [
       assert.deepStrictEqual(dependencyViolations(owner, path), [
         `${owner} must not depend on runas`,
       ])
+    }
+  })
+}
+
+test('state engine is a core-family leaf over persistence and its neutral runtime dependencies', () => {
+  const workspaceMembers = [
+    'nyanpasu-state-engine',
+    'nyanpasu-persistence',
+    'nyanpasu-core',
+  ]
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-state-engine',
+      'nyanpasu-state-engine v0.1.0\nnyanpasu-persistence v0.1.0\nnyanpasu-utils v0.1.1\nserde v1.0\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-core',
+      'nyanpasu-core v0.1.0\nnyanpasu-state-engine v0.1.0\nnyanpasu-persistence v0.1.0\nnyanpasu-utils v0.1.1\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+})
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-profile-transform',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'boa_utils',
+  'nyanpasu-macro',
+  'nyanpasu-paths',
+  'nyanpasu-helper',
+  'nyanpasu-traffic',
+  'nyanpasu-tsdb',
+  'nyanpasu-geodata',
+  'nyanpasu-panics',
+  'nyanpasu-local-channel',
+  'nyanpasu-widget-protocol',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'nyanpasu-diagnose',
+  'fake-core',
+  'future-workspace-member',
+]) {
+  test(`state engine rejects direct and transitive workspace dependency ${dependency}`, () => {
+    for (const prefix of ['', 'nyanpasu-persistence v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-state-engine',
+          `nyanpasu-state-engine v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+          undefined,
+          ['nyanpasu-state-engine', 'nyanpasu-persistence', dependency],
+        ),
+        [`nyanpasu-state-engine must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+test('single instance stands on libraries only, with no workspace or GUI package', () => {
+  const workspaceMembers = [
+    'nyanpasu-single-instance',
+    'nyanpasu-owner-support',
+    'nyanpasu-local-channel',
+  ]
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-single-instance',
+      'nyanpasu-single-instance v0.1.0\ninterprocess v2.4.8\nsha2 v0.11\ntokio v1.54.1\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-owner-support',
+    'nyanpasu-local-channel',
+  ]) {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-single-instance',
+          `nyanpasu-single-instance v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+          undefined,
+          workspaceMembers,
+        ),
+        [`nyanpasu-single-instance must not depend on ${dependency}`],
+      )
+    }
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-single-instance',
+      'nyanpasu-single-instance v0.1.0\ntauri v2.0\n',
+    ),
+    ['nyanpasu-single-instance must not depend on tauri'],
+  )
+})
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-owner-support',
+]) {
+  test(`${owner} rejects direct and transitive state engine dependencies`, () => {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(owner, `${prefix}nyanpasu-state-engine v0.1.0\n`),
+        [`${owner} must not depend on nyanpasu-state-engine`],
+      )
     }
   })
 }
@@ -679,3 +1220,152 @@ for (const owner of [
     assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
   })
 }
+
+test('Boa helper accepts neutral dependencies without a host or implementation edge', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'boa_utils',
+      'boa_engine v0.22\nnyanpasu-log-preview v0.1.0\nurl v2\n',
+    ),
+    [],
+  )
+})
+
+for (const dependency of ['nyanpasu-core', 'tauri', 'nyanpasu-net']) {
+  test(`Boa helper rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-helper v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'boa_utils',
+          `boa_utils v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`boa_utils must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+for (const owner of ['nyanpasu-rpc', 'clash-nyanpasu']) {
+  test(`${owner} accepts RPC above core and foundation values`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        owner,
+        `${owner} v0.1.0\nnyanpasu-rpc v0.1.0\nnyanpasu-core v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\n`,
+      ),
+      [],
+    )
+  })
+}
+for (const dependency of [
+  'tauri',
+  'tauri-runtime',
+  'clash-nyanpasu',
+  'slint',
+  'egui',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+]) {
+  test(`RPC rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-rpc',
+          `nyanpasu-rpc v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-rpc must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-rpc-protocol',
+]) {
+  test(`${owner} rejects direct and transitive RPC adapters`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          owner,
+          `${owner} v0.1.0\n${intermediate}nyanpasu-rpc v0.1.0\n`,
+        ),
+        [`${owner} must not depend on nyanpasu-rpc`],
+      )
+    }
+  })
+}
+
+test('server production closure rejects panic injection while its own tests enable it', () => {
+  const metadata = (features: string[]) => ({
+    packages: [{ id: 'server', name: 'nyanpasu-server' }],
+    resolve: { nodes: [{ id: 'server', features }] },
+  })
+  assert.deepStrictEqual(serverProductionFeatureViolations(metadata([])), [])
+  assert.deepStrictEqual(
+    serverProductionFeatureViolations(metadata(['panic-injection'])),
+    [
+      'nyanpasu-server production closure must not enable nyanpasu-server/panic-injection',
+    ],
+  )
+  const root = new URL('../../../', import.meta.url)
+  const manifest = readFileSync(
+    new URL('backend/nyanpasu-server/Cargo.toml', root),
+    'utf8',
+  )
+  assert.match(
+    manifest.split('[dev-dependencies]')[1],
+    /nyanpasu-server = .*features = \[\s*['"]panic-injection['"]\s*\]/,
+  )
+  const tests = readFileSync(
+    new URL('backend/nyanpasu-server/tests/panic_process.rs', root),
+    'utf8',
+  )
+  assert.match(tests, /env!\("CARGO_BIN_EXE_nyanpasu-server"\)/)
+  assert.doesNotMatch(tests, /current_exe/)
+})
+
+test('rpc_module_dependencies_remain_acyclic', () => {
+  const root = new URL('../../../backend/nyanpasu-rpc/src/', import.meta.url)
+  for (const [file, forbidden] of [
+    ['audit.rs', ['registry', 'commands', 'http', 'local']],
+    ['ports.rs', ['commands', 'registry']],
+    ['registry.rs', ['commands']],
+  ] as const) {
+    const state = createLexState()
+    const source = readFileSync(new URL(file, root), 'utf8')
+      .split('\n')
+      .map((line) => stripCommentsAndLiterals(line, state))
+      .join('\n')
+    for (const module of forbidden) {
+      // Check qualified paths and grouped crate imports, including aliases.
+      const dependency = new RegExp(
+        `\\bcrate\\s*::\\s*(?:${module}\\b|\\{[^;]*?\\b${module}\\b)`,
+      )
+      assert.match(`use crate::${module}::Thing;`, dependency)
+      assert.match(
+        `use crate::{error::Result, ${module} as forbidden};`,
+        dependency,
+      )
+      assert.doesNotMatch(
+        source,
+        dependency,
+        `${file} must not depend on ${module}`,
+      )
+    }
+  }
+})

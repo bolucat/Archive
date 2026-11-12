@@ -41,6 +41,7 @@ pub mod service_endpoint_factory;
 
 use std::time::Duration;
 
+use nyanpasu_runtime_values::core_status::{CoreStatusInfo, EndpointConnectivity};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::sync::{broadcast, watch};
 
@@ -49,9 +50,8 @@ use nyanpasu_core_manager::{
 };
 use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
 
-use endpoint::{
-    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
-};
+use endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle};
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// Monotonic owner fence. Incremented exactly once per completed handoff;
 /// stale pump frames and stale down reports are dropped by comparing it.
@@ -132,35 +132,6 @@ pub struct CoreStatusProjection {
     pub connectivity: EndpointConnectivity,
     /// The host's latest published snapshot; `None` before the first read.
     pub snapshot: Option<CoreStatusSnapshot>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum EndpointConnectivity {
-    Connected,
-    ShutDown,
-    HandingOff {
-        from: ExecutionHost,
-        to: ExecutionHost,
-    },
-    /// The endpoint is unreachable. `desired` names the committed host; the
-    /// router never falls back on its own.
-    Degraded {
-        desired: ExecutionHost,
-        reason: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
-pub struct CoreStatusInfo {
-    pub controller: Option<nyanpasu_ipc::api::status::CoreControllerInfo>,
-    pub host: ExecutionHost,
-    pub connectivity: EndpointConnectivity,
-    pub generation: u64,
-    pub state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
-    pub state_changed_at: i64,
-    pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
-    pub healthy: Option<bool>,
 }
 
 impl From<CoreStatusProjection> for CoreStatusInfo {

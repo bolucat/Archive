@@ -13,6 +13,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getDebugHttpStatus', ...args],
         queryFn: () => commands.getDebugHttpStatus(...args),
       }),
+    getConfigurationStatus: (
+      ...args: Parameters<typeof commands.getConfigurationStatus>
+    ) =>
+      queryOptions({
+        queryKey: ['getConfigurationStatus', ...args],
+        queryFn: () => commands.getConfigurationStatus(...args),
+      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>
@@ -242,25 +249,10 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProxies', ...args],
         queryFn: () => commands.getProxies(...args),
       }),
-    getCachedIcon: (...args: Parameters<typeof commands.getCachedIcon>) =>
-      queryOptions({
-        queryKey: ['getCachedIcon', ...args],
-        queryFn: () => commands.getCachedIcon(...args),
-      }),
-    getTrayIcon: (...args: Parameters<typeof commands.getTrayIcon>) =>
-      queryOptions({
-        queryKey: ['getTrayIcon', ...args],
-        queryFn: () => commands.getTrayIcon(...args),
-      }),
     isTrayIconSet: (...args: Parameters<typeof commands.isTrayIconSet>) =>
       queryOptions({
         queryKey: ['isTrayIconSet', ...args],
         queryFn: () => commands.isTrayIconSet(...args),
-      }),
-    getWidgetIcon: (...args: Parameters<typeof commands.getWidgetIcon>) =>
-      queryOptions({
-        queryKey: ['getWidgetIcon', ...args],
-        queryFn: () => commands.getWidgetIcon(...args),
       }),
     isWidgetIconSet: (...args: Parameters<typeof commands.isWidgetIconSet>) =>
       queryOptions({
@@ -439,11 +431,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setDebugHttpEnabled'],
       mutationFn: (input: Parameters<typeof commands.setDebugHttpEnabled>) =>
         commands.setDebugHttpEnabled(...input),
-    }),
-    getConfigurationStatus: mutationOptions({
-      mutationKey: ['getConfigurationStatus'],
-      mutationFn: (input: Parameters<typeof commands.getConfigurationStatus>) =>
-        commands.getConfigurationStatus(...input),
     }),
     retryConfigurationRuntime: mutationOptions({
       mutationKey: ['retryConfigurationRuntime'],
@@ -774,6 +761,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['restartService'],
       mutationFn: (input: Parameters<typeof commands.restartService>) =>
         commands.restartService(...input),
+    }),
+    setServiceMode: mutationOptions({
+      mutationKey: ['setServiceMode'],
+      mutationFn: (input: Parameters<typeof commands.setServiceMode>) =>
+        commands.setServiceMode(...input),
     }),
     selectProxy: mutationOptions({
       mutationKey: ['selectProxy'],

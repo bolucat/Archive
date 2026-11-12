@@ -1,13 +1,17 @@
-use crate::client::{
-    UiEventSink,
-    test_support::workflow::{
-        Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
-        disable_mode_interruption, override_patch, start_replacement,
+use crate::{
+    client::{
+        UiEventSink,
+        test_support::workflow::{
+            Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
+            disable_mode_interruption, override_patch, start_replacement,
+        },
     },
+    state::mutation::value::MutationReceipt,
 };
 mod closing;
 mod connection_policy;
 mod mutations;
+mod participant_factory;
 mod recovery;
 mod service_recovery;
 mod startup;
@@ -32,25 +36,27 @@ use tokio::sync::Notify;
 /// What the source that hit `error` would classify it as, given the Runtime's
 /// receipt for the operation.
 fn classify(
-    error: crate::state::ReplaceIfVersionError,
-    receipt: &super::mutation::MutationReceipt,
-) -> crate::state::mutation::CommitAborted {
-    crate::state::mutation::CommitAborted::classify(error, Some(receipt))
+    error: nyanpasu_state_engine::ReplaceIfVersionError,
+    receipt: &MutationReceipt,
+) -> nyanpasu_runtime_values::mutation::CommitAborted {
+    crate::state::mutation::classify_commit_aborted(error, Some(receipt))
 }
 
 /// The errors a required participant gave for refusing a candidate.
 fn refusals(
-    aborted: &crate::state::mutation::CommitAborted,
-) -> Vec<std::sync::Arc<crate::client::runtime_error::RuntimeError>> {
+    aborted: &nyanpasu_runtime_values::mutation::CommitAborted,
+) -> Vec<std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
     match aborted {
-        crate::state::mutation::CommitAborted::RuntimeRefused { errors, .. } => errors.clone(),
+        nyanpasu_runtime_values::mutation::CommitAborted::RuntimeRefused { errors, .. } => {
+            errors.clone()
+        }
         other => panic!("expected a refusal, got {other:?}"),
     }
 }
 
 /// A publication that fails the way a full disk does.
-pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRuntimeError {
-    crate::client::runtime::PublishRuntimeError::CreateRuntimeDirectory {
+pub(super) fn scripted_publish_failure() -> nyanpasu_runtime_values::publish::PublishRuntimeError {
+    nyanpasu_runtime_values::publish::PublishRuntimeError::CreateRuntimeDirectory {
         path: std::path::PathBuf::from("runtime").into(),
         source: std::io::Error::other("scripted publish failure"),
     }
@@ -78,7 +84,8 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_runtime_values::core_spec::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -102,7 +109,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn publish(
         &self,
         snapshot: &runtime::RuntimeSnapshot,
-    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+    ) -> Result<(), nyanpasu_runtime_values::publish::PublishRuntimeError> {
         self.delegate.publish(snapshot).await
     }
 }
@@ -467,7 +474,7 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
     fn application_committed(
         &self,
         _: crate::client::effects::plan::ApplicationEffectFields,
-        _: Vec<crate::client::effects::plan::EffectKind>,
+        _: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     ) {
         unreachable!("only the application owner sends its slice")
     }
@@ -556,7 +563,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         endpoint.release.notify_one();
         assert!(matches!(
             switch.await.unwrap().unwrap(),
-            runtime::MutationOutcome::Committed { .. }
+            nyanpasu_runtime_values::runtime::MutationOutcome::Committed { .. }
         ));
         assert!(matches!(
             uninstall.await.unwrap_err(),
@@ -1046,7 +1053,8 @@ async fn until_notified(client: &NyanpasuClient) {
         std::time::Duration::from_secs(5),
         effects.wait_for(|snapshot| {
             snapshot.effects.iter().all(|progress| {
-                progress.health != crate::client::convergence::ConvergenceHealth::Pending
+                progress.health
+                    != nyanpasu_runtime_values::configuration::ConvergenceHealth::Pending
             })
         }),
     )

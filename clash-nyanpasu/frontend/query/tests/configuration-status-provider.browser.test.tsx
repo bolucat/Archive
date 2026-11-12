@@ -1,18 +1,21 @@
 import { afterEach, expect, test, vi, type TestContext } from 'vitest'
 import { render } from 'vitest-browser-react'
 import {
+  createIconTransport,
   createRpcClient,
   type RpcEventCallback,
   type RpcEventTransport,
 } from '@nyanpasu/rpc'
 import type { ConfigurationStatus } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationUnconfirmedError } from '../src/ipc/query-options'
 import {
   CONFIGURATION_STATUS_QUERY_KEY,
   ConfigurationStatusProvider,
   useConfigurationStatus,
 } from '../src/provider/configuration-status-provider'
 import { RpcProvider } from '../src/provider/rpc-provider'
+import { createQueryBindings } from '../src/query-bindings'
 
 const status = (event_seq: number): ConfigurationStatus => ({
   event_seq,
@@ -71,7 +74,11 @@ function mockRpc(initial: ConfigurationStatus) {
     dispose: vi.fn(),
   }
   return {
-    rpc: createRpcClient({ commands, events }),
+    rpc: createRpcClient({
+      icons: createIconTransport(false),
+      commands,
+      events,
+    }),
     invoke,
     emit(next: ConfigurationStatus) {
       sequence = next.event_seq
@@ -128,6 +135,29 @@ async function setup(
 
 afterEach(() => vi.restoreAllMocks())
 
+test('configuration status query keeps its method and result', async ({
+  onTestFinished,
+}) => {
+  const mock = mockRpc(status(7))
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  onTestFinished(() => {
+    mock.rpc.dispose()
+    queryClient.clear()
+  })
+  const { queries, mutations } = createQueryBindings(mock.rpc)
+  const options = queries.getConfigurationStatus()
+
+  expect(options.queryKey).toEqual(CONFIGURATION_STATUS_QUERY_KEY)
+  expect(mutations).not.toHaveProperty('getConfigurationStatus')
+  await expect(queryClient.fetchQuery(options)).resolves.toEqual(status(7))
+  expect(mock.invoke).toHaveBeenCalledExactlyOnceWith(
+    'get_configuration_status',
+    undefined,
+  )
+})
+
 test('shares one status listener and accepts events without letting older data win', async ({
   onTestFinished,
 }) => {
@@ -180,4 +210,23 @@ test('does not query or subscribe while disabled', async ({
   expect(disabled.invoke).not.toHaveBeenCalled()
   expect(disabled.eventListen).not.toHaveBeenCalled()
   expect(disabled.listenerCount()).toBe(0)
+})
+
+test('service mode mutations participate in configuration status', async ({
+  onTestFinished,
+}) => {
+  const { queryClient, values } = await setup(onTestFinished, false)
+  const mutation = queryClient.getMutationCache().build(queryClient, {
+    mutationKey: ['setServiceMode'],
+    mutationFn: async () => {
+      throw new MutationUnconfirmedError(new Error('lost reply'))
+    },
+  })
+
+  await expect(mutation.execute(undefined)).rejects.toBeInstanceOf(
+    MutationUnconfirmedError,
+  )
+  await expect
+    .poll(() => values.at(-1)?.isLatestOperationUnconfirmed)
+    .toBe(true)
 })

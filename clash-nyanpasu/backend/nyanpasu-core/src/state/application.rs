@@ -1,22 +1,19 @@
-use crate::{
-    client::application_workflow::{
-        impact,
-        impact::{MutationHints, RequestedRuntimeFields},
-        mutation::ConfigDomain,
-        policy::CommandClass,
+use crate::state::{
+    config_error::{
+        ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
     },
-    state::{
-        config_error::{
-            ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
-        },
-        mutation::MutationCoordinator,
+    mutation::{
+        MutationCoordinator, impact,
+        impact::{MutationHints, RequestedRuntimeFields},
+        intent::CommandClass,
     },
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::ensure;
 use struct_patch::Patch;
@@ -26,13 +23,14 @@ use tokio_util::sync::CancellationToken;
 pub struct ApplicationSnapshot {
     pub state: NyanpasuAppConfig,
     pub version: u64,
-    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: Option<nyanpasu_runtime_values::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
 }
 
 impl ApplicationSnapshot {
-    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
-        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+    pub(crate) fn outcome(self) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let outcome =
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
         match self.receipt {
             Some(receipt) => outcome.with_commit(receipt),
             None => outcome,
@@ -50,7 +48,7 @@ impl ApplicationSnapshot {
 }
 
 pub struct ApplicationActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<NyanpasuAppConfig>,
     pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
@@ -60,7 +58,7 @@ pub struct ApplicationActorArgs {
 }
 
 pub struct ApplicationActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<NyanpasuAppConfig>,
     manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,

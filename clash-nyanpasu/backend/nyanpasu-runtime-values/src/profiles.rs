@@ -1,0 +1,249 @@
+//! Typed failures of profile content validation and profile commands.
+
+use nyanpasu_config::profile::{
+    ExternalProfilePath, ManagedProfilePath, ProfileId, ProfileRevisionError,
+    ProfileValidationError,
+};
+use nyanpasu_contracts::profiles::error::{ErrorPath, ProfileFileError, SubscriptionFetchError};
+use serde::Serialize;
+use snafu::Snafu;
+
+use super::mutation::{CommitAborted, NotReady};
+
+/// Downloaded or read content that is not a valid profile document.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProfileContentError {
+    #[snafu(display("the document is not a YAML mapping"))]
+    NotYamlMapping {
+        #[serde(skip)]
+        source: serde_yaml_ng::Error,
+    },
+    #[snafu(display("could not reserialize the YAML mapping"))]
+    ReserializeYaml {
+        #[serde(skip)]
+        source: serde_yaml_ng::Error,
+    },
+    #[snafu(display("the subscription contains neither `proxies` nor `proxy-providers`"))]
+    MissingProxies,
+    #[snafu(display("the script is empty"))]
+    EmptyScript,
+}
+
+/// What the materialization port was doing when it failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MaterializationOperation {
+    PrepareFileFirst,
+    Compensate,
+    Complete,
+    PrepareCleanup,
+    ActivateCleanup,
+    CancelCleanup,
+    RetryCleanup,
+    Reconcile,
+}
+
+/// What a profile command failed with.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProfilesError {
+    #[snafu(display("profile not found: {uid}"))]
+    ProfileNotFound { uid: ProfileId },
+    #[snafu(display("profile {uid} has no file"))]
+    ProfileHasNoFile { uid: ProfileId },
+    #[snafu(display("profile {uid} is not a remote profile"))]
+    NotARemoteProfile { uid: ProfileId },
+    #[snafu(display(
+        "the file of profile {uid} is not writable (only managed local profiles are)"
+    ))]
+    ProfileFileNotWritable { uid: ProfileId },
+    #[snafu(display(
+        "profile {uid} is referenced and cannot be deleted (referrers: {referrers:?}, current: {current}, global_transforms: {global_transforms})"
+    ))]
+    ProfileInUse {
+        uid: ProfileId,
+        referrers: Vec<ProfileId>,
+        /// Referenced by the document-level `current` selection.
+        current: bool,
+        /// Referenced by the document-level `global_transforms` list.
+        global_transforms: bool,
+    },
+    #[snafu(display("profile id collision: {uid}"))]
+    ProfileIdCollision { uid: ProfileId },
+    #[snafu(display("profiles failed validation: {errors:?}"))]
+    ValidationFailed { errors: Vec<ProfileValidationError> },
+    #[snafu(display("the reorder list has {got} entries, expected {expected}"))]
+    ReorderListSizeMismatch { expected: usize, got: usize },
+    #[snafu(display("the reorder list repeats {uid}"))]
+    ReorderListDuplicate { uid: ProfileId },
+    #[snafu(context(false), display("profile revision overflow"))]
+    RevisionOverflow {
+        #[serde(skip)]
+        source: ProfileRevisionError,
+    },
+
+    #[snafu(display("invalid subscription url {url}"))]
+    InvalidSubscriptionUrl {
+        url: String,
+        #[serde(skip)]
+        source: url::ParseError,
+    },
+    #[snafu(display("remote profiles must be imported, not created"))]
+    RemoteProfileNeedsImport,
+    #[snafu(display("a refresh of {uid} is already in progress"))]
+    RefreshInProgress { uid: ProfileId },
+    #[snafu(display("could not fetch the subscription {url}"))]
+    FetchSubscription {
+        url: url::Url,
+        source: SubscriptionFetchError,
+    },
+    #[snafu(display("the downloaded content is not a valid profile"))]
+    ProfileContentRejected { source: ProfileContentError },
+    #[snafu(display("profile {uid} was deleted during the refresh"))]
+    ProfileDeletedDuringRefresh { uid: ProfileId },
+    #[snafu(display("profile {uid} changed during the refresh"))]
+    ProfileChangedDuringRefresh { uid: ProfileId },
+    #[snafu(display("could not fingerprint the definition of {uid}"))]
+    FingerprintDefinition {
+        uid: ProfileId,
+        #[serde(skip)]
+        source: serde_yaml_ng::Error,
+    },
+
+    #[snafu(display("could not read the file of profile {uid}"))]
+    ReadProfileFile {
+        uid: ProfileId,
+        source: ProfileFileError,
+    },
+    #[snafu(display("the file of profile {uid} is not a YAML mapping"))]
+    ProfileFileNotYaml {
+        uid: ProfileId,
+        source: ProfileContentError,
+    },
+    #[snafu(display("the file {path} of profile {uid} does not exist"))]
+    ProfileFileMissing { uid: ProfileId, path: ErrorPath },
+    #[snafu(display("could not read the external profile {target}"))]
+    ReadExternalProfile {
+        target: ExternalProfilePath,
+        source: ProfileFileError,
+    },
+    #[snafu(display("profile storage operation {operation:?} failed"))]
+    Materialization {
+        operation: MaterializationOperation,
+        source: ProfileFileError,
+    },
+
+    #[snafu(display(
+        "profiles changed concurrently (expected version {expected}, found {actual})"
+    ))]
+    VersionConflict {
+        expected: u64,
+        actual: u64,
+        /// Staging that could not be discarded after the conflict.
+        #[serde(skip)]
+        cleanup_failures: Vec<ProfilesError>,
+    },
+    #[snafu(display("the profiles change was not committed{}", commit_subject(uid, path)))]
+    Commit {
+        /// The profile the change was about, when it was about one.
+        uid: Option<ProfileId>,
+        /// That profile's file.
+        path: Option<ManagedProfilePath>,
+        source: CommitAborted,
+        /// Staging that could not be discarded after the abort.
+        #[serde(skip)]
+        cleanup_failures: Vec<ProfilesError>,
+    },
+    #[snafu(context(false), display("the application workflow is not ready"))]
+    WorkflowNotReady {
+        #[serde(skip)]
+        source: NotReady,
+    },
+
+    #[snafu(display("the profiles service stopped"))]
+    ProfilesActorStopped,
+    #[snafu(display("the profiles service dropped the reply"))]
+    ProfilesReplyDropped,
+    #[snafu(display("a blocking profile task was cancelled"))]
+    BlockingTaskCancelled {
+        #[serde(skip)]
+        source: tokio::task::JoinError,
+    },
+    #[snafu(display("the application is shutting down"))]
+    ShuttingDown,
+}
+
+/// Reads as the tail of a sentence: nothing when the change was about no
+/// single profile.
+fn commit_subject(uid: &Option<ProfileId>, path: &Option<ManagedProfilePath>) -> String {
+    match (uid, path) {
+        (Some(uid), Some(path)) => format!(" (profile {uid}, file {path})"),
+        (Some(uid), None) => format!(" (profile {uid})"),
+        (None, _) => String::new(),
+    }
+}
+
+impl ProfilesError {
+    /// The error and its causes as one line, for outcomes that stay text.
+    pub fn report(&self) -> String {
+        snafu::Report::from_error(self).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
+    use serde_json::json;
+
+    use super::{ProfileContentError, ProfilesError};
+    use crate::{
+        mutation::{CommitAborted, RuntimeAftermath},
+        runtime_error::RuntimeError,
+    };
+
+    #[test]
+    fn profile_commit_error_serialization_omits_operational_sources() {
+        let error = ProfilesError::Commit {
+            uid: Some(ProfileId("p1".into())),
+            path: Some(ManagedProfilePath::new("p1.yaml").unwrap()),
+            source: CommitAborted::WriteConfig {
+                runtime: RuntimeAftermath::RollbackFailed {
+                    detail: Arc::new(RuntimeError::OwnerUnresponsive {
+                        operation_id: "operation-1".into(),
+                    }),
+                },
+                source: Box::new(std::io::Error::other("private operational cause")),
+            },
+            cleanup_failures: vec![ProfilesError::ShuttingDown],
+        };
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            json!({
+                "kind": "commit", "uid": "p1", "path": "p1.yaml",
+                "source": { "kind": "write_config", "runtime": {
+                    "kind": "rollback_failed", "detail": { "kind": "owner_unresponsive", "operation_id": "operation-1" },
+                } },
+            })
+        );
+        let source = serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[").unwrap_err();
+        assert_eq!(
+            serde_json::to_value(ProfilesError::ProfileContentRejected {
+                source: ProfileContentError::NotYamlMapping { source },
+            })
+            .unwrap(),
+            json!({"kind": "profile_content_rejected", "source": {"kind": "not_yaml_mapping"}})
+        );
+        assert_eq!(
+            serde_json::to_value(CommitAborted::ValidateState {
+                source: Box::new(std::io::Error::other("private validation cause")),
+            })
+            .unwrap(),
+            json!({"kind": "validate_state"})
+        );
+    }
+}

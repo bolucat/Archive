@@ -16,6 +16,8 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
+    getConfigurationStatus: () =>
+      __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -209,15 +211,8 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    getCachedIcon: (url: string) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
-    getTrayIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
-    /**  The statistic widget's own icon for `mode`, or the bundled one. */
-    getWidgetIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_widget_icon', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(
         __RPC_INVOKE('is_widget_icon_set', { mode }),
@@ -374,8 +369,6 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('set_debug_http_enabled', { enabled }),
       ),
-    getConfigurationStatus: () =>
-      __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     retryConfigurationRuntime: () =>
       typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
     retryConfigurationEffect: (kind: EffectKind) =>
@@ -637,6 +630,10 @@ export function createRpcClient(
     stopService: () => typedError<null, IpcError>(__RPC_INVOKE('stop_service')),
     restartService: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_service')),
+    setServiceMode: (enabled: boolean) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_service_mode', { enabled }),
+      ),
     selectProxy: (group: string, name: string) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('select_proxy', { group, name }),
@@ -773,6 +770,7 @@ export function createRpcClient(
   return {
     ...commands,
     events,
+    icons: transport.icons,
     listenResync: transport.events.listenResync.bind(transport.events),
     dispose: () => transport.events.dispose(),
   }
@@ -1709,7 +1707,7 @@ export type CoreErrorKind =
   | 'internal'
 
 /**
- *  The wire mirror of a [`CoreError`], which is a foreign type without serde.
+ *  The wire mirror of a `CoreError`, which is a foreign type without serde.
  *  It is the only place a `CoreError` is unpacked for the frontend.
  */
 export type CoreFailure = {
@@ -2476,9 +2474,11 @@ export type I18nLanguage_Deserialize =
 export type I18nLanguage_Serialize =
   'en' | 'ja' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
 
-export type IconData = {
-  data_url: string
-}
+/**  Input to the icon URL transport; versions refresh mutable URLs only. */
+export type IconRequest =
+  | { kind: 'cached'; url: string }
+  | { kind: 'tray'; mode: TrayIcon; version: number | null }
+  | { kind: 'widget'; mode: TrayIcon; version: number | null }
 
 export type ImportClassification = {
   /**  None when the signals do not settle on a kind. */
@@ -2932,7 +2932,7 @@ export type NewProfileRequest_Serialize = {
   folder: FolderId | null
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig =
   NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
 
@@ -3042,7 +3042,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   use_legacy_ui?: boolean | null
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Deserialize = {
   /**  app listening port for app singleton */
   app_singleton_port: number
@@ -3062,7 +3062,12 @@ export type NyanpasuAppConfig_Deserialize = {
   enable_memory_usage: boolean
   /**  global ui framer motion effects */
   lighten_animation_effects: boolean
-  /**  service mode */
+  /**
+   *  Service mode, stored in the application domain.
+   *  RPC writes use only `set_service_mode`: this setting can request privileged
+   *  host state and must never be writable over HTTP. Core domain patches remain
+   *  supported.
+   */
   enable_service_mode: boolean
   /**  can the app auto startup */
   enable_auto_launch: boolean
@@ -3081,8 +3086,10 @@ export type NyanpasuAppConfig_Deserialize = {
   /**  clash core path */
   core: ClashCore_Deserialize
   /**
-   *  hotkey map
-   *  format: {func},{key}
+   *  Global shortcut bindings, stored in the application domain.
+   *  RPC writes use only `set_hotkeys`: these host-bound bindings must never be
+   *  writable over HTTP. Core domain patches remain supported.
+   *  Format: `{function},{key}`.
    */
   hotkeys: string[]
   /**  默认的延迟测试连接 */
@@ -3157,7 +3164,7 @@ export type NyanpasuAppConfig_Deserialize = {
   use_legacy_ui: boolean
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Serialize = {
   /**  app listening port for app singleton */
   app_singleton_port: number
@@ -3177,7 +3184,12 @@ export type NyanpasuAppConfig_Serialize = {
   enable_memory_usage: boolean
   /**  global ui framer motion effects */
   lighten_animation_effects: boolean
-  /**  service mode */
+  /**
+   *  Service mode, stored in the application domain.
+   *  RPC writes use only `set_service_mode`: this setting can request privileged
+   *  host state and must never be writable over HTTP. Core domain patches remain
+   *  supported.
+   */
   enable_service_mode: boolean
   /**  can the app auto startup */
   enable_auto_launch: boolean
@@ -3196,8 +3208,10 @@ export type NyanpasuAppConfig_Serialize = {
   /**  clash core path */
   core: ClashCore_Serialize
   /**
-   *  hotkey map
-   *  format: {func},{key}
+   *  Global shortcut bindings, stored in the application domain.
+   *  RPC writes use only `set_hotkeys`: these host-bound bindings must never be
+   *  writable over HTTP. Core domain patches remain supported.
+   *  Format: `{function},{key}`.
    */
   hotkeys: string[]
   /**  默认的延迟测试连接 */
@@ -5160,6 +5174,7 @@ export type RuntimeInspectionNode = {
  *  reach the user only through the error's `Debug` detail.
  */
 export type RuntimePipelineError =
+  | { kind: 'execute_script'; source: ScriptExecutionError }
   | { kind: 'selected_profile_not_found'; profile: ProfileId }
   | { kind: 'selected_profile_not_config'; profile: ProfileId }
   | {
@@ -5182,6 +5197,16 @@ export type RuntimePipelineError =
  *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
  */
 export type SchemeRequestReceivedEvent = null
+
+/**  A missing engine rejects the entire build, even when transforms are lenient. */
+export type ScriptExecutionError = {
+  kind: 'start_engine'
+  runtime: ScriptRuntime
+  operation: ScriptOperation
+}
+
+/**  The operation that requires a compiled script engine. */
+export type ScriptOperation = 'transform' | 'item_predicate' | 'item_expression'
 
 export type ScriptRuntime = 'javascript' | 'lua'
 

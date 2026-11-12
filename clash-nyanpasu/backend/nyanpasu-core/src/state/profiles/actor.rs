@@ -3,13 +3,9 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::state::{
-    PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
-    error::StateChangedError,
-};
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
-    ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
+    ManagedProfilePath, MaterializedFile, NewProfileRequest, OverlayTransform, ProfileDefinition,
     ProfileDependencyIndex, ProfileFolder, ProfileId, ProfileItem, ProfileLayout, ProfileMetadata,
     ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles, ProxyGroupFolder,
     ProxyGroupLayout, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
@@ -24,29 +20,41 @@ use nyanpasu_contracts::profiles::{
     },
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
+use nyanpasu_runtime_values::configuration::{SourceOrigin, SourceOutcome};
+use nyanpasu_state_engine::{
+    PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
+    error::StateChangedError,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
-use crate::{
-    client::application_workflow::{
-        impact,
-        impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
-            StagedResourceToken, TouchedContent,
-        },
-        policy::CommandClass,
+use crate::state::mutation::{
+    MutationCoordinator, impact,
+    impact::{
+        ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+        StagedResourceToken, TouchedContent,
     },
-    state::mutation::{CommitAborted, MutationCoordinator},
+    intent::CommandClass,
+    value::MutationReceipt,
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_runtime_values::profiles::{
+    BlockingTaskCancelledSnafu, CommitSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
+    FingerprintDefinitionSnafu, MaterializationOperation, MaterializationSnafu,
+    MissingProxiesSnafu, NotARemoteProfileSnafu, NotYamlMappingSnafu,
+    ProfileChangedDuringRefreshSnafu, ProfileContentError, ProfileContentRejectedSnafu,
+    ProfileDeletedDuringRefreshSnafu, ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu,
+    ProfileIdCollisionSnafu, ProfileInUseSnafu, ProfileNotFoundSnafu, ProfilesError,
+    ReadExternalProfileSnafu, RefreshInProgressSnafu, ReorderListDuplicateSnafu,
+    ReorderListSizeMismatchSnafu, ValidationFailedSnafu, VersionConflictSnafu,
+};
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    error::*,
     jobs::{ProfileJobs, ProfileSyncContext},
     scheduler::ExternalWatchers,
-    sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
+    sources::{SourceLedger, SourcesSnapshot},
 };
 
 #[derive(Debug, Clone)]
@@ -55,21 +63,11 @@ pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub degradations: Vec<ProfileDegradation>,
-    pub(crate) receipt: crate::client::runtime::CommitReceipt,
-    pub(crate) runtime_degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: nyanpasu_runtime_values::runtime::CommitReceipt,
+    pub(crate) runtime_degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, specta::Type)]
-pub struct NewProfileRequest {
-    pub metadata: ProfileMetadata,
-    /// Add rewrites the materialized path to `{uid}.{ext}`.
-    pub definition: ProfileDefinition,
-    /// Folder the new Config profile joins in the same commit.
-    #[serde(default)]
-    pub folder: Option<FolderId>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +77,7 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<Profiles>,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
@@ -91,7 +89,7 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<Profiles>,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
@@ -465,8 +463,8 @@ impl ProfilesActor {
         (
             Arc<Profiles>,
             (
-                crate::client::runtime::CommitReceipt,
-                Vec<crate::client::runtime::Degradation>,
+                nyanpasu_runtime_values::runtime::CommitReceipt,
+                Vec<nyanpasu_runtime_values::runtime::Degradation>,
             ),
         ),
         ProfilesError,
@@ -536,7 +534,7 @@ impl ProfilesActor {
     /// manager's own `Conflict` result.
     fn commit_failure(
         error: ReplaceIfVersionError,
-        settlement: Option<&crate::client::application_workflow::mutation::MutationReceipt>,
+        settlement: Option<&MutationReceipt>,
         (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
@@ -555,7 +553,9 @@ impl ProfilesActor {
                 path,
                 cleanup_failures,
             }
-            .into_error(CommitAborted::classify(error, settlement)),
+            .into_error(crate::state::mutation::classify_commit_aborted(
+                error, settlement,
+            )),
         }
     }
 
@@ -1321,8 +1321,8 @@ impl ProfilesActor {
                 let before_write = matches!(
                     &result,
                     Ok(ReplaceIfVersionResult::Conflict { .. })
-                        | Err(crate::state::ReplaceIfVersionError::State(
-                            crate::state::error::StateChangedError::PrepareAck(_)
+                        | Err(nyanpasu_state_engine::ReplaceIfVersionError::State(
+                            nyanpasu_state_engine::error::StateChangedError::PrepareAck(_)
                         ))
                 );
                 let mut failures = Vec::new();
@@ -2614,7 +2614,7 @@ mod tests {
     /// profile, whatever produced it.
     #[test]
     fn profiles_operations_reach_the_runtime_by_request_and_diff() {
-        use crate::client::application_workflow::impact::{RuntimeImpact, runtime_impact};
+        use crate::state::mutation::impact::{RuntimeImpact, runtime_impact};
         use nyanpasu_profile_transform::test_support::{file_config, metadata, overlay};
 
         // current -> `sel` with its scoped transform `scoped`; `global` is a

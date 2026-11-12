@@ -81,6 +81,11 @@ export const STATIC_ITEM_RE =
 export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-state-engine/src/',
+  'backend/nyanpasu-runtime-values/src/',
+  'backend/nyanpasu-rpc-protocol/src/',
+  'backend/nyanpasu-rpc/src/',
+  'backend/nyanpasu-server/src/',
   'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',
@@ -88,10 +93,12 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-os/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
+  'backend/boa_utils/src/',
   'backend/nyanpasu-profile-transform/src/',
   'backend/nyanpasu-persistence/src/',
   'backend/nyanpasu-profile-io/src/',
   'backend/nyanpasu-net/src/',
+  'backend/nyanpasu-single-instance/src/',
 ]
 
 /**
@@ -154,6 +161,12 @@ function migrationModuleStatics(
  */
 export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
   // -- immutable constants and lookup tables --------------------------------
+  {
+    path: 'backend/boa_utils/src/module/builtin.rs',
+    name: 'BUILTIN_MODULES',
+    category: 'immutable',
+    reason: 'immutable embedded JavaScript module lookup table',
+  },
   {
     path: 'backend/tauri/src/consts.rs',
     name: 'BUILD_INFO',

@@ -23,6 +23,8 @@ use nyanpasu_config::{
     application::{WindowCloseOverride, WindowCloseSettings},
     state::window::WindowState,
 };
+use nyanpasu_rpc::events::{DeliveryTarget, EventBus};
+use nyanpasu_rpc_protocol::EventName;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
@@ -261,7 +263,11 @@ pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEven
         .ok_or_else(|| anyhow::anyhow!("Window '{}' not found", message.to))?;
 
     let target = message.to.clone();
-    message.emit_to(app_handle, target)?;
+    app_handle.state::<EventBus>().publish_to(
+        EventName::WindowMessage.as_str(),
+        serde_json::to_value(message)?,
+        DeliveryTarget::Window(target),
+    )?;
     Ok(())
 }
 
@@ -283,7 +289,14 @@ pub fn broadcast_to_window_type(
         if app_handle.get_webview_window(&label).is_some() {
             let message = WindowMessageEvent::new(from, &label, event, payload.clone());
             trace_err!(
-                message.emit_to(app_handle, &label),
+                app_handle.state::<EventBus>().publish_to(
+                    EventName::WindowMessage.as_str(),
+                    serde_json::to_value(message)?,
+                    DeliveryTarget::WindowType {
+                        base_label: base_label.to_owned(),
+                        label
+                    },
+                ),
                 "failed to emit message"
             );
         }
@@ -299,7 +312,10 @@ pub fn broadcast_to_all_windows(
     event: &str,
     payload: serde_json::Value,
 ) -> Result<()> {
-    WindowMessageEvent::broadcast(from, event, payload).emit(app_handle)?;
+    app_handle.state::<EventBus>().publish_serialized(
+        EventName::WindowMessage,
+        &WindowMessageEvent::broadcast(from, event, payload),
+    )?;
     Ok(())
 }
 
@@ -309,6 +325,8 @@ pub trait WindowHooks: Send + Sync + 'static {
     fn on_dismissed(&self, window: &WebviewWindow);
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
+    fn queue_geometry_save(&self, window: &WebviewWindow) -> Result<()>;
+    fn geometry(&self, window: &WebviewWindow) -> Result<Option<(String, WindowState)>>;
 }
 
 impl<K: AppWindow> WindowHooks for K {
@@ -318,6 +336,19 @@ impl<K: AppWindow> WindowHooks for K {
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
         AppWindow::close_override(self, settings)
+    }
+
+    fn queue_geometry_save(&self, window: &WebviewWindow) -> Result<()> {
+        AppWindow::queue_geometry_save(self, window)
+    }
+
+    fn geometry(&self, window: &WebviewWindow) -> Result<Option<(String, WindowState)>> {
+        let Some(key) = self.geometry_key() else {
+            return Ok(None);
+        };
+        Ok(self
+            .capture_state(window)?
+            .map(|state| (key.to_owned(), state)))
     }
 }
 
@@ -343,8 +374,27 @@ pub trait AppWindow: Clone + Send + Sync + 'static {
         WindowConfig::default()
     }
 
-    /// The geometry to restore the window with, if it remembers one.
-    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState>;
+    /// Stable key for remembered geometry; None disables window state memory.
+    fn geometry_key(&self) -> Option<&str> {
+        None
+    }
+
+    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState> {
+        app_handle
+            .try_state::<nyanpasu_core::client::NyanpasuClient>()?
+            .window_geometry(self.geometry_key()?)
+    }
+
+    fn queue_geometry_save(&self, window: &WebviewWindow) -> Result<()> {
+        if let Some(key) = self.geometry_key() {
+            if let Some(geometry) = self.capture_state(window)? {
+                window
+                    .state::<nyanpasu_core::client::NyanpasuClient>()
+                    .queue_window_geometry_save(key, geometry)?;
+            }
+        }
+        Ok(())
+    }
 
     /// Which of the settings governs how this kind of window closes.
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
@@ -383,10 +433,7 @@ pub trait AppWindow: Clone + Send + Sync + 'static {
     }
 
     /// Reads geometry without changing any source or projection.
-    fn capture_state(&self, app_handle: &AppHandle) -> Result<Option<WindowState>> {
-        let win = app_handle
-            .get_webview_window(self.label())
-            .ok_or(anyhow::anyhow!("failed to get window"))?;
+    fn capture_state(&self, win: &WebviewWindow) -> Result<Option<WindowState>> {
         if win.is_minimized()? {
             return Ok(None);
         }

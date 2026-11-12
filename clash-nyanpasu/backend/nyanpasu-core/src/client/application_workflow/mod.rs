@@ -2,7 +2,6 @@
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
 mod attempt;
-pub(crate) mod impact;
 pub mod inputs;
 pub mod mutation;
 pub(crate) mod participant;
@@ -19,8 +18,8 @@ mod tests;
 
 use std::sync::Arc;
 
-use crate::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_updater::PreparedCoreBinary;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::OptionExt;
@@ -33,20 +32,29 @@ use super::{
         ServiceRecovery,
     },
     runtime,
-    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
+    runtime_error::ack_of,
 };
-use crate::actor_v2::{
-    CoreClient, CoreStatusProjection,
-    facade::{CoreFacade, ReconcileReport, StopReport},
-    service_actor::{ServiceClient, ServiceHostStatus},
+#[cfg(test)]
+use crate::actor_v2::HandoffReport;
+use crate::{
+    actor_v2::{
+        CoreClient, CoreStatusProjection,
+        facade::{CoreFacade, ReconcileReport, StopReport},
+        service_actor::ServiceClient,
+    },
+    state::mutation::value::MutationReceipt,
 };
 use mutation::{MutationJournal, MutationRequest};
 use nyanpasu_contracts::core_install::BinaryInstaller;
+#[cfg(test)]
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::{
+    core_status::ServiceHostStatus,
+    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError},
+};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
-#[cfg(test)]
-use {crate::actor_v2::HandoffReport, crate::actor_v2::endpoint::ExecutionHost};
 
 /// How many recent results the status and the journal keep.
 const HISTORY_LEN: usize = 32;
@@ -167,7 +175,7 @@ struct PublishedView {
     recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
-        crate::client::convergence::ConvergenceHealth,
+        nyanpasu_runtime_values::configuration::ConvergenceHealth,
         u32,
         u8,
         String,
@@ -315,7 +323,7 @@ impl ApplicationWorkflowState {
     }
 
     /// Records that the operation finished in the status and the journal.
-    fn record(&mut self, receipt: Option<mutation::MutationReceipt>) {
+    fn record(&mut self, receipt: Option<MutationReceipt>) {
         let uncertain = self.workflow.isolated();
         self.status.send_modify(|status| {
             status.active = None;
@@ -388,7 +396,7 @@ impl ApplicationWorkflowState {
         });
     }
 
-    fn publish_journal(&mut self, receipt: Option<mutation::MutationReceipt>) {
+    fn publish_journal(&mut self, receipt: Option<MutationReceipt>) {
         let workflow = &self.workflow;
         let view = {
             let status = self.status.borrow();

@@ -8,7 +8,7 @@ pub mod startup_recovery;
 pub mod workflow;
 
 #[cfg(test)]
-use super::{Result, runtime};
+use super::Result;
 #[cfg(test)]
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::{
@@ -23,7 +23,7 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, clash_strategy::PortStrategy},
     profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-        ProfileDefinition, ProfileMetadata, ProfileSource,
+        NewProfileRequest, ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
 use nyanpasu_paths::PathResolver;
@@ -37,25 +37,21 @@ use super::{
     host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
-    actor_v2::{
-        endpoint::ExecutionHost,
-        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
-    },
+    actor_v2::test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     client::test_support::workflow::{Installer, NoopSystemDnsCache},
-    state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
 };
-#[cfg(test)]
-use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
 use nyanpasu_contracts::{
     core_version,
     profiles::ports::{
         CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-        PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+        MockSubscriptionFetcher, PreparedCleanup, PreparedMaterialization,
+        ProfileMaterializationPort,
     },
     system_proxy::MockOsProxyPort,
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 pub struct TestControlEndpoint {
     /// Which host this endpoint claims to be. A graph that moves the
@@ -810,7 +806,7 @@ pub async fn test_client_args_with_endpoint(
 pub(crate) async fn set_service_mode(
     client: &NyanpasuClient,
     enabled: bool,
-) -> Result<runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     let mut patch = NyanpasuAppConfig::new_empty_patch();
     patch.enable_service_mode = Some(enabled);
     client.patch_app_config(patch).await
@@ -848,8 +844,10 @@ pub fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
 /// The fixed core spec tests inject in place of the on-disk lookup.
 pub fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> std::result::Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError>
-{
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    nyanpasu_runtime_values::core_spec::CoreSpecError,
+> {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
         nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
@@ -876,14 +874,14 @@ impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
     fn validate(
         &self,
         _accelerator: &str,
-    ) -> std::result::Result<(), hotkey::ports::HotkeyParseError> {
+    ) -> std::result::Result<(), nyanpasu_runtime_values::hotkey::HotkeyParseError> {
         Ok(())
     }
 
     fn canonical(
         &self,
         accelerator: &str,
-    ) -> std::result::Result<String, hotkey::ports::HotkeyParseError> {
+    ) -> std::result::Result<String, nyanpasu_runtime_values::hotkey::HotkeyParseError> {
         Ok(accelerator.to_owned())
     }
 }
@@ -955,8 +953,8 @@ pub(crate) fn unused_test_adapters(paths: &PathResolver) -> ClientHostAdapters {
     )
 }
 
-#[cfg(test)]
-pub(crate) fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
+/// In-memory profile ports and runtime builder for downstream application tests.
+pub fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
     let paths = test_paths(dir.path(), dir.path().join("data"));
     let ports =
         profile_files::scripted_profile_file_ports(Arc::new(MockSubscriptionFetcher::new()));

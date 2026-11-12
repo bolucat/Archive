@@ -1,27 +1,25 @@
 use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
-use crate::state::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
-};
 use camino::Utf8PathBuf;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
 use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
+use nyanpasu_state_engine::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    client::application_workflow::mutation::ConfigDomain,
-    state::{
-        clash_config::{
-            ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
-        },
-        config_error::{ConfigError, OwnerStoppedSnafu},
+use crate::state::{
+    clash_config::{
+        ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
     },
+    config_error::{ConfigError, OwnerStoppedSnafu},
 };
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -54,7 +52,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<ClashConfig>,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,

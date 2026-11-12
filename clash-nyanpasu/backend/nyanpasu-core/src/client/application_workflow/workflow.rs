@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::StateSnapshot;
 
 use super::{
     Command, Output,
@@ -14,8 +14,8 @@ use super::{
 use crate::client::{
     core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
     runtime,
-    runtime_error::RuntimeError,
 };
+use nyanpasu_runtime_values::runtime_error::RuntimeError;
 
 /// Applies already committed source config to the running core. The two state
 /// handles are read-only and are sampled only once the actor has admitted the
@@ -144,7 +144,8 @@ impl ApplicationWorkflow {
             && let Some(deferred) = &mut self.deferred
             && matches!(deferred.origin, TargetOrigin::Mutation)
         {
-            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+            deferred.health =
+                nyanpasu_runtime_values::configuration::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
         self.notify_bound(true);

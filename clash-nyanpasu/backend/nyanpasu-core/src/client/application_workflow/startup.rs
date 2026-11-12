@@ -26,28 +26,31 @@ use super::{
     Output,
     attempt::{AttemptOrigin, AttemptStage, LiveAttempt},
     mutation::{
-        ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
-        MutationStage, ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome,
-        TargetOrigin,
+        ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState, MutationStage,
+        ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome, TargetOrigin,
     },
-    policy::{CommandPolicy, CoreRunIntent, TryCauseKind},
+    policy::{CommandPolicy, TryCauseKind},
     tcc::{AttemptCharge, RestorableBaseline},
     workflow::ApplicationWorkflow,
 };
 use crate::{
     actor_v2::{
-        CoreStatusProjection, EndpointConnectivity,
-        endpoint::ExecutionHost,
+        CoreStatusProjection,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
-        service_actor::{ServiceHostStatus, ServicePhase},
     },
     client::{
-        convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
+        convergence::{OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
-        runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
+    state::mutation::{intent::CoreRunIntent, value::CheckRecord},
+};
+use nyanpasu_runtime_values::{
+    configuration::ConvergenceHealth,
+    core_status::{EndpointConnectivity, ServiceHostStatus, ServicePhase},
+    execution_host::ExecutionHost,
+    runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).
@@ -1048,7 +1051,7 @@ mod tests {
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, RuntimeInfos, StatusResBody};
 
     use super::*;
-    use crate::service::compat::ServiceCompat;
+    use nyanpasu_runtime_values::core_status::ServiceCompat;
 
     const INSTANCE_CONFIG_DIR: &str = "/nyanpasu/config";
 

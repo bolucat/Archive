@@ -24,6 +24,24 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
+  'http',
+  'local-server'
+] }
+boa_utils = { path = '../boa_utils', optional = true }
+boa_engine = { workspace = true, optional = true, features = ['annex-b'] }
+mlua = { version = '0.12', optional = true, features = [
+  'lua54',
+  'async',
+  'serialize',
+  'vendored',
+  'error-send'
+] }
+async-fs = '2.1.2'
+postcard = { version = '1.1.1', features = ['use-std'] }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
+nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
@@ -51,7 +69,7 @@ nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
-nyanpasu-scripts = { path = '../nyanpasu-scripts' }
+nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
@@ -110,8 +128,6 @@ rfd = { version = '0.17', default-features = false, features = [
 rust-i18n = '4'
 
 # Networking Libraries
-axum = { version = '0.8', features = ['ws'] }
-tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
@@ -150,7 +166,6 @@ nanoid = '0.5.0'
 # System Utilities
 dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
-single-instance = '0.3.3'
 which = '8'
 open = '5.0.1'
 sysinfo = '0.39'
@@ -197,7 +212,6 @@ tauri = { version = '2.4', features = [
   'rustls-tls',
   'specta',
 ] }
-tauri-plugin-deep-link = { path = '../tauri-plugin-deep-link', version = '0.1.2' }  # This should be migrated to official tauri plugin
 tauri-plugin-os = '2.2'
 tauri-plugin-clipboard-manager = '2.2'
 tauri-plugin-fs = '2.2'
@@ -268,6 +282,16 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
 ] }
@@ -284,8 +308,6 @@ nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features 
   'test-support'
 ] }
 http-body-util = '0.1'
-tower = { version = '0.5', features = ['util'] }
-axum = { version = '0.8', features = ['ws'] }
 mockall = '0.15'
 # Test-only protocol helpers + binary discovery for later process-lifecycle
 # matrix tests. A dev-dependency does NOT build the fake-core binary and does
@@ -296,11 +318,27 @@ mockall = '0.15'
 fake-core = { path = '../fake-core' }
 
 [features]
-default = ['custom-protocol', 'default-meta', 'nesting']
+default = [
+  'custom-protocol',
+  'default-meta',
+  'nesting',
+  'script-javascript',
+  'script-lua'
+]
+script-javascript = [
+  'nyanpasu-scripts/javascript',
+  'dep:boa_engine',
+  'dep:boa_utils'
+]
+script-lua = ['nyanpasu-scripts/lua', 'dep:mlua']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']
-default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
+default-meta = [
+  'nyanpasu-rpc/default-meta',
+  'nyanpasu-core/default-meta',
+  'nyanpasu-config/default-meta'
+]
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see
@@ -310,4 +348,11 @@ trace-chrome = ['dep:tracing-chrome']
 # logs directory.
 dhat-heap = ['dep:dhat']
 # Keep the configuration and application patch derives on the same feature.
-nesting = ['nyanpasu-config/nesting', 'nyanpasu-core/nesting']
+nesting = [
+  'nyanpasu-rpc/nesting',
+  'nyanpasu-config/nesting',
+  'nyanpasu-core/nesting'
+]
+
+# Expose shared neutral fixtures only to downstream host tests.
+test-support = ['nyanpasu-rpc/test-support']

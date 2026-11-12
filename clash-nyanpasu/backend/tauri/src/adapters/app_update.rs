@@ -5,19 +5,18 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
+use nyanpasu_runtime_values::app_update::AppUpdateRelease;
 use tauri_plugin_updater::{Update, UpdaterExt};
-use tauri_specta::Event as _;
 use tokio_util::sync::CancellationToken;
 
-use crate::adapters::events::AppUpdateStateChanged;
 use nyanpasu_config::application::UpdateSource;
 use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{SelfProxyPortSource, SystemProxySource},
 };
 use nyanpasu_core::client::app_update::{
-    AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-    AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
+    AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateSettings, PreparedAppUpdate,
+    VerifiedAppUpdate,
 };
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
@@ -229,20 +228,6 @@ where
         "All update package sources failed:\n{}",
         errors.join("\n")
     ))
-}
-
-pub(crate) struct TauriAppUpdateEventSink(tauri::AppHandle);
-
-impl TauriAppUpdateEventSink {
-    pub fn new(app: tauri::AppHandle) -> Self {
-        Self(app)
-    }
-}
-
-impl AppUpdateEventSink for TauriAppUpdateEventSink {
-    fn publish(&self, snapshot: AppUpdateSnapshot) {
-        crate::log_err!(AppUpdateStateChanged(snapshot).emit(&self.0));
-    }
 }
 
 #[cfg(test)]

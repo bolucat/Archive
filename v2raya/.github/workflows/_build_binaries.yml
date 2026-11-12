@@ -62,19 +62,14 @@ jobs:
             service/go.sum
           go-version: "1.27"
       # Zig supplies a C compiler for the cgo legs, so no distro cross-gcc is
-      # needed; it is pinned because older releases do not target loongarch64.
+      # needed; the version pinned in the action is one that targets loongarch64.
       - name: Install Zig
         if: matrix.CGO_ENABLED == 1
-        env:
-          ZIG_VERSION: 0.17.0
-        run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
-          brew install zig
-      - name: Build Binaries
+        uses: ./.github/actions/install-zig
+      - name: Build v2rayA Binary
         id: build_binary
         shell: bash
         run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
           [ -d v2raya_binaries ] || mkdir -p v2raya_binaries
           key="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}"
           filename=$(jq -r --arg key "$key" '.[$key].friendlyName' ./install/friendly-filenames.json)
@@ -92,7 +87,6 @@ jobs:
         id: build_core_binary
         shell: bash
         run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
           [ -d v2raya_binaries ] || mkdir -p v2raya_binaries
           key="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}"
           filename=$(jq -r --arg key "$key" '.[$key].friendlyName' ./install/friendly-filenames.json)

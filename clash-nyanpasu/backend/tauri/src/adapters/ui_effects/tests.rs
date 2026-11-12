@@ -17,13 +17,14 @@ use nyanpasu_config::application::{LoggingLevel, NetworkStatisticWidgetConfig, N
 use nyanpasu_contracts::system_proxy::{
     MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
 };
-use nyanpasu_core::client::{
-    effects::{
-        plan::{ApplicationEffectPlan, EffectKind},
-        ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, MockLoggerRefresher},
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::ports::{HotkeyAction, HotkeyParseError},
+use nyanpasu_core::client::effects::{
+    plan::ApplicationEffectPlan,
+    ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, MockLoggerRefresher},
+    status::{EffectHealth, EffectRevision, EffectStatus},
+};
+use nyanpasu_runtime_values::{
+    configuration::{EffectFailureCode, EffectKind},
+    hotkey::{HotkeyAction, HotkeyParseError},
 };
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use std::sync::{
@@ -76,7 +77,10 @@ async fn widget_logo_hands_the_resolved_icon_to_the_runtime() {
     let paths = nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
     let mascot = include_bytes!("../../../icons/tray/mascot/tun.png").to_vec();
     std::fs::write(
-        crate::core::widget_logo::widget_icon_path(&paths, crate::core::tray::icon::TrayIcon::Tun),
+        crate::core::widget_logo::widget_icon_path(
+            &paths,
+            nyanpasu_rpc_protocol::values::TrayIcon::Tun,
+        ),
         &mascot,
     )
     .unwrap();
@@ -341,13 +345,11 @@ impl PacPort for HeldPac {
 
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
-    use nyanpasu_core::client::{
-        convergence::ConvergenceHealth,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use nyanpasu_core::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
 
     let pac = Arc::new(HeldPac::default());
     let shutdown = Shutdown::new();

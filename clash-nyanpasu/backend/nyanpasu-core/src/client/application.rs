@@ -1,26 +1,24 @@
 use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
-use crate::state::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
-    error::{LoadError, UpsertError},
-};
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel};
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    error::{LoadError, UpsertError},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    client::application_workflow::mutation::ConfigDomain,
-    state::{
-        application::{
-            ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
-        },
-        config_error::{ConfigError, OwnerStoppedSnafu},
+use crate::state::{
+    application::{
+        ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
     },
+    config_error::{ConfigError, OwnerStoppedSnafu},
 };
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -60,7 +58,7 @@ struct ApplicationClientInner {
 #[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<NyanpasuAppConfig>,
         build_channel: ReleaseChannel,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
@@ -104,7 +102,7 @@ impl ApplicationClient {
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
     /// so a caller can register state subscribers before the actor claims it.
     pub(crate) async fn from_manager(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<NyanpasuAppConfig>,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
         build_channel: ReleaseChannel,
         shutdown: CancellationToken,

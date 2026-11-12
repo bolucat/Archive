@@ -11,32 +11,27 @@
 //! the source state, and the runtime revision orders published views. None of
 //! them substitutes for another.
 
+use nyanpasu_runtime_values::check::EvidenceGap;
 use std::sync::Arc;
 
-use crate::state::{Ack, DecisionHandle, StateChange};
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{Ack, DecisionHandle, StateChange};
 use tokio::sync::oneshot;
 
-use super::{
-    impact::{self, MutationHints, RuntimeImpact},
-    policy::{CommandClass, TryCauseKind},
+use super::policy::TryCauseKind;
+use crate::{
+    client::{runtime::RuntimeSnapshot, runtime_error::ack_of},
+    state::mutation::{
+        impact::{MutationHints, RuntimeImpact},
+        intent::CommandClass,
+        runtime_apply::RuntimeApplyReceipt,
+        value::{MutationOutcomeKind, MutationReceipt},
+    },
 };
-use crate::client::{
-    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
-    runtime_error::{RuntimeError, ack_of},
-};
-
-/// Which source domain a mutation belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ConfigDomain {
-    Application,
-    Clash,
-    Profiles,
-}
+use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError};
 
 /// The candidate of one mutation, and the committed value it replaces where
 /// the Runtime reads that.
@@ -100,31 +95,6 @@ impl From<StateChange<Profiles>> for DomainChange {
                 .map(|previous| Arc::new(previous.state.clone())),
             candidate: change.current,
         }
-    }
-}
-
-/// Lets a source classify its own candidate, whichever source-config type it
-/// owns.
-pub(crate) trait MutationDomain {
-    /// How far the candidate moves the runtime, read off the two documents.
-    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
-}
-
-impl MutationDomain for NyanpasuAppConfig {
-    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
-        impact::classify_application(previous, candidate)
-    }
-}
-
-impl MutationDomain for ClashConfig {
-    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
-        impact::classify_clash(previous, candidate)
-    }
-}
-
-impl MutationDomain for Profiles {
-    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
-        impact::classify_profiles(previous, candidate, hints)
     }
 }
 
@@ -192,31 +162,6 @@ pub(crate) enum KnownRuntimeState {
     /// Nothing has been applied in this session, so there is no runtime to put
     /// back — only one to take away.
     NeverApplied,
-}
-
-/// Evidence a mutation needed and did not have, before anything was tried.
-///
-/// Not a Try outcome. Nothing was submitted, so there is no result to classify
-/// and this attempt made nothing less certain than it already was — which is
-/// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
-/// never the isolated state §11.4 reserves for "结果可能已经执行".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum EvidenceGap {
-    /// The core is mid-transition — starting, restarting, switching or
-    /// stopping. That is an answer, but not one that says what a candidate
-    /// would be applied on top of.
-    CoreTransitioning,
-    /// The host published no runtime state, or the read failed, and no stop
-    /// this workflow recorded settles the question either.
-    BaselineUnconfirmed,
-    /// A core is running that this session never applied to, so no receipt
-    /// describes what it is running. The Try could be submitted, but its Cancel
-    /// would have nothing to put back — and a mutation that cannot be undone
-    /// must not be attempted (R10). The gap is known before anything is
-    /// submitted, which is what keeps it a refusal rather than the isolated
-    /// state a post-submission unknown earns.
-    NoRestorableBaseline,
 }
 
 /// Why a mutation was refused, keeping the two kinds of refusal apart.
@@ -317,70 +262,6 @@ impl RuntimePrepareOutcome {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MutationOutcomeKind {
-    Applied,
-    Deferred,
-    SavedInactive,
-    Rejected,
-    RecoveryRequired,
-}
-
-/// How a settled mutation ended, after its source decision was applied.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MutationConclusion {
-    /// Committed, and whatever the Try produced was accepted.
-    Confirmed,
-    /// Aborted, and the runtime baseline was verified back in place.
-    Cancelled,
-    /// Aborted, but the workflow could not withdraw it before the Try ran, or
-    /// the Try never ran at all.
-    Withdrawn,
-    /// The attempt left the execution domain isolated.
-    RecoveryRequired,
-}
-
-/// What the core's own validation contributed to this attempt.
-///
-/// An absent capability and a passing verdict are not the same fact, and the
-/// receipt is where the difference is recorded: a Try that ran without a check
-/// has only the apply as evidence, and whoever reads the operation later needs
-/// to know that (core-manager amendment A2: a check is never a precondition).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CheckRecord {
-    /// No check was owed: nothing critical was going to be applied.
-    NotOwed,
-    /// The core accepted the document.
-    Passed,
-    /// The host owning the runtime has no check capability at all, so the Try
-    /// was the only authority available.
-    Skipped(String),
-    /// The host owns a check and could not serve it. Different from both
-    /// [`CheckRecord::NotOwed`] and [`CheckRecord::Skipped`]: a check was owed,
-    /// it ran, and it produced no verdict — which is why the mutation went no
-    /// further.
-    Unserviceable(String),
-}
-
-/// The structured record of one attempt.
-///
-/// This is where the cause and the status live. Nothing reads them back out of
-/// an `Ack::Degraded` payload (v2 §4.4).
-#[derive(Debug, Clone)]
-pub struct MutationReceipt {
-    pub degradations: Vec<crate::client::runtime::Degradation>,
-    pub operation_id: OperationId,
-    pub domain: ConfigDomain,
-    pub check: CheckRecord,
-    pub outcome: MutationOutcomeKind,
-    pub conclusion: MutationConclusion,
-    /// Diagnostics for the operator, never an input to a decision.
-    pub detail: Option<String>,
-    /// What a deferral, an unknown outcome or a failed rollback was, for the
-    /// caller that reports it. `detail` is the same for the status surface.
-    pub cause: Option<Arc<RuntimeError>>,
-}
-
 /// A committed desired value the core is not running, with its automatic
 /// convergence budget (D11).
 ///
@@ -401,7 +282,7 @@ pub struct DeferredTarget {
     /// from the budget, which such attempts never spend, and reset only by an
     /// application result or a new identity (T10 §1.8).
     pub waits: u8,
-    pub health: crate::client::convergence::ConvergenceHealth,
+    pub health: nyanpasu_runtime_values::configuration::ConvergenceHealth,
     pub next_attempt: Option<tokio::time::Instant>,
 }
 

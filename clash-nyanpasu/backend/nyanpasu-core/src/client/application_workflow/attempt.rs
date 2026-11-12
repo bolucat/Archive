@@ -14,17 +14,17 @@
 
 use std::sync::Arc;
 
-use crate::state::{DecisionHandle, StateDecision};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{DecisionHandle, StateDecision};
 
 use super::{
     mutation::{AppliedCandidate, DeferredTarget, KnownRuntimeState},
     workflow::ApplicationWorkflow,
 };
-use crate::client::{
-    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
-    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+use crate::{
+    client::runtime::RuntimeSnapshot, state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
+use nyanpasu_runtime_values::runtime_error::{RecoveryUnresolvedSnafu, RuntimeError};
 
 pub(super) use super::tcc::RestorableBaseline;
 
