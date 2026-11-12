@@ -1,10 +1,8 @@
 import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
 import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import DeleteOutlineRounded from '~icons/material-symbols/delete-outline-rounded'
-import FormatListNumberedRounded from '~icons/material-symbols/format-list-numbered-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import { Button } from '@nyanpasu/ui/button'
-import { cardVariants } from '@nyanpasu/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,11 +22,18 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import type { StunServer } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
+import { SettingsLabel } from '../../../../_modules/settings-card'
 import {
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListActions,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
+import {
+  sortableItemVariants,
+  SortableOrder,
+  useSortableTransition,
+} from '../../../../_modules/sortable-item'
 import AddStunServerDialog from './add-stun-server-dialog'
 import StunCapabilities, { stunChipVariants } from './stun-capabilities'
 
@@ -56,45 +61,31 @@ function StunServerItem({
 }) {
   const address = serverKey(server)
 
-  const { ref, isDragging, isDropTarget } = useSortable({
+  const { ref, isDragging } = useSortable({
     id: address,
     index,
     disabled,
+    transition: useSortableTransition(),
   })
 
   return (
-    <div
+    <SettingsListItem
       ref={ref}
       tabIndex={disabled ? -1 : 0}
       aria-label={`${m.settings_public_ip_stun_reorder()} ${address}`}
-      className={cn(
-        cardVariants(),
-        'flex min-w-0 items-center gap-4 px-5 py-6 select-none',
-        // Only colours transition: dnd-kit animates the item's position itself.
-        'transition-colors motion-reduce:transition-none',
-        'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
-        !disabled &&
-          'hover:bg-surface-variant/60 cursor-grab touch-none active:cursor-grabbing',
-        isDragging && 'bg-secondary-container shadow-lg',
-        isDropTarget && 'ring-primary ring-2',
-      )}
+      className={sortableItemVariants({
+        draggable: !disabled,
+        dragging: isDragging,
+        disabled,
+      })}
       data-slot="stun-server-item"
       data-server={address}
       data-builtin={server.builtin}
       data-dragging={isDragging || undefined}
     >
-      <span
-        className={cn(
-          'grid size-6 shrink-0 place-items-center rounded-full',
-          'text-xs font-medium tabular-nums',
-          server.enabled
-            ? 'bg-primary text-on-primary'
-            : 'bg-surface-variant text-on-surface-variant',
-        )}
-        data-slot="stun-server-order"
-      >
+      <SortableOrder active={server.enabled} data-slot="stun-server-order">
         {index + 1}
-      </span>
+      </SortableOrder>
 
       <div className="min-w-0 flex-1">
         <p className="text-base font-medium [overflow-wrap:anywhere]">
@@ -164,7 +155,7 @@ function StunServerItem({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </SettingsListItem>
   )
 }
 
@@ -198,28 +189,8 @@ export default function StunServerList() {
   }
 
   return (
-    <section className="flex flex-col gap-3" data-slot="stun-server-list">
+    <SettingsList data-slot="stun-server-list">
       <SettingsLabel>{m.settings_public_ip_stun_label()}</SettingsLabel>
-
-      <div
-        className="flex items-center justify-between gap-3"
-        data-slot="stun-server-list-header"
-      >
-        <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
-          <FormatListNumberedRounded className="size-5" aria-hidden />
-          {m.settings_public_ip_stun_enabled_count({ count: enabledCount })}
-        </p>
-
-        {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
-        <PlatformDesktop>
-          {servers && (
-            <AddStunServerDialog
-              servers={servers}
-              onAdd={(server) => save([...servers, server])}
-            />
-          )}
-        </PlatformDesktop>
-      </div>
 
       <DragDropProvider
         sensors={WHOLE_ITEM_DRAG_SENSORS}
@@ -232,7 +203,25 @@ export default function StunServerList() {
           }
         }}
       >
-        <SettingsGroup data-slot="stun-server-items">
+        <SettingsListContent
+          data-slot="stun-server-items"
+          empty={servers?.length === 0}
+          description={
+            <>
+              <p data-slot="stun-server-list-header">
+                {m.settings_public_ip_stun_enabled_count({
+                  count: enabledCount,
+                })}
+              </p>
+              <p>
+                {m.settings_public_ip_stun_description()}
+                <PlatformDesktop
+                  fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
+                />
+              </p>
+            </>
+          }
+        >
           {servers?.map((server, index) => (
             <StunServerItem
               key={serverKey(server)}
@@ -253,15 +242,20 @@ export default function StunServerList() {
               }
             />
           ))}
-        </SettingsGroup>
+        </SettingsListContent>
       </DragDropProvider>
 
-      <p className="text-on-surface-variant px-3 text-xs">
-        {m.settings_public_ip_stun_description()}
-        <PlatformDesktop
-          fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
-        />
-      </p>
-    </section>
+      {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
+      <PlatformDesktop>
+        {servers && (
+          <SettingsListActions>
+            <AddStunServerDialog
+              servers={servers}
+              onAdd={(server) => save([...servers, server])}
+            />
+          </SettingsListActions>
+        )}
+      </PlatformDesktop>
+    </SettingsList>
   )
 }

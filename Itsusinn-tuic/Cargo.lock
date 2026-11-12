@@ -975,20 +975,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
-name = "crossfire"
-version = "3.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb5e5c51e448ac2309883593482db91a5549c528d08a36aaa87bba13e5a40ae"
-dependencies = [
- "crossbeam-utils",
- "futures-core",
- "parking_lot",
- "pointers",
- "smallvec",
- "tokio",
-]
-
-[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1128,8 +1114,8 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "datagram-socket"
-version = "0.8.0"
-source = "git+https://github.com/rust-proxy/quiche?rev=43c4d406c97dc7579c8b346f10a7c45f4d464b68#43c4d406c97dc7579c8b346f10a7c45f4d464b68"
+version = "0.8.1"
+source = "git+https://github.com/rust-proxy/quiche?rev=b25abcc4077ef03de1272832d6427ecfe761c09c#b25abcc4077ef03de1272832d6427ecfe761c09c"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1915,6 +1901,18 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
+dependencies = [
+ "hashbrown 0.17.1",
+]
 
 [[package]]
 name = "heck"
@@ -3278,12 +3276,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pointers"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dcdc93847ad24990939cce6e1804361e903efcb5f99daa5abd87943a9d6d7ba"
-
-[[package]]
 name = "polling"
 version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3565,9 +3557,9 @@ dependencies = [
 
 [[package]]
 name = "qlog"
-version = "0.18.0"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c65c0ae39cba4538fd935d376ba17f858046b386dc4597e3fa5c1aedb919ef30"
+checksum = "1a2a344e91e2b69996227f8cbc7c7a37b29498d8e7ea5fe394170a55fb31c381"
 dependencies = [
  "flate2",
  "foundations",
@@ -3595,9 +3587,8 @@ dependencies = [
 
 [[package]]
 name = "quiche"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52b35a721a2a56797347929745fa783fc99e680d9484b80324ce40106b75493a"
+version = "0.30.1"
+source = "git+https://github.com/rust-proxy/quiche?rev=b25abcc4077ef03de1272832d6427ecfe761c09c#b25abcc4077ef03de1272832d6427ecfe761c09c"
 dependencies = [
  "boring",
  "boring-sys",
@@ -5049,8 +5040,8 @@ dependencies = [
 
 [[package]]
 name = "tokio-quiche"
-version = "0.20.0"
-source = "git+https://github.com/rust-proxy/quiche?rev=43c4d406c97dc7579c8b346f10a7c45f4d464b68#43c4d406c97dc7579c8b346f10a7c45f4d464b68"
+version = "0.23.0"
+source = "git+https://github.com/rust-proxy/quiche?rev=b25abcc4077ef03de1272832d6427ecfe761c09c#b25abcc4077ef03de1272832d6427ecfe761c09c"
 dependencies = [
  "anyhow",
  "boring",
@@ -5058,9 +5049,11 @@ dependencies = [
  "bytes",
  "crossbeam",
  "datagram-socket",
+ "debug_panic",
  "foundations",
  "futures",
  "futures-util",
+ "hashlink",
  "ipnetwork",
  "libc",
  "log",
@@ -5882,7 +5875,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "wind-acl"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "async-trait",
  "derive_more",
@@ -5901,7 +5894,7 @@ dependencies = [
 [[package]]
 name = "wind-acme"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "async-trait",
  "axum",
@@ -5923,7 +5916,7 @@ dependencies = [
 [[package]]
 name = "wind-base"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5939,7 +5932,7 @@ dependencies = [
 [[package]]
 name = "wind-core"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5949,6 +5942,7 @@ dependencies = [
  "futures",
  "pin-project",
  "pin-project-lite",
+ "portable-atomic",
  "quinn 0.12.0",
  "rand 0.10.3",
  "serde",
@@ -5963,7 +5957,7 @@ dependencies = [
 [[package]]
 name = "wind-dns"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "educe",
  "eyre",
@@ -5977,7 +5971,7 @@ dependencies = [
 [[package]]
 name = "wind-geodata"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "geosite-rs",
  "memmap2",
@@ -5988,7 +5982,7 @@ dependencies = [
 [[package]]
 name = "wind-quic"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "arc-swap",
  "aws-lc-rs",
@@ -6018,7 +6012,7 @@ dependencies = [
 [[package]]
 name = "wind-rule"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "ipnet",
  "regex",
@@ -6027,7 +6021,7 @@ dependencies = [
 [[package]]
 name = "wind-socks"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -6047,13 +6041,12 @@ dependencies = [
 [[package]]
 name = "wind-tuic"
 version = "0.2.0"
-source = "git+https://github.com/rust-proxy/wind?rev=5e8096f852d069bfa96e2a2f95412246b2035ad9#5e8096f852d069bfa96e2a2f95412246b2035ad9"
+source = "git+https://github.com/rust-proxy/wind?rev=03d5406049af1c950b178829d24b4a67d6fad1f2#03d5406049af1c950b178829d24b4a67d6fad1f2"
 dependencies = [
  "arc-swap",
  "async-trait",
  "aws-lc-rs",
  "bytes",
- "crossfire",
  "dashmap",
  "enum_dispatch",
  "eyre",
@@ -6475,27 +6468,27 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zstd"
-version = "0.13.3"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
 dependencies = [
  "zstd-safe",
 ]
 
 [[package]]
 name = "zstd-safe"
-version = "7.3.0"
+version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+checksum = "ded520f16b29e1a9b771c722221b2b0a0398c2316d9bb3c42b458a5414d7434b"
 dependencies = [
  "zstd-sys",
 ]
 
 [[package]]
 name = "zstd-sys"
-version = "2.1.0+zstd.1.5.7"
+version = "2.1.2+zstd.1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
+checksum = "481ada9c543b2323cbb7bbdbb5249177fbf0188ed959ed2c15e4b22421c84ed3"
 dependencies = [
  "cc",
  "pkg-config",

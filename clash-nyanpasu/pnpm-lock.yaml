@@ -183,10 +183,10 @@ importers:
         version: 21.2.4
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0)
+        version: 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)(supports-color@7.2.0)
       '@inlang/paraglide-js':
         specifier: 2.29.3
-        version: 2.29.3(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 2.29.3(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@tanstack/react-query':
         specifier: 5.107.1
         version: 5.107.1(@types/react@19.3.0)(react@19.3.1)
@@ -207,16 +207,16 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 6.3.0
-        version: 6.3.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 6.3.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@vitest/browser-playwright':
         specifier: 5.1.0
-        version: 5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
+        version: 5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
       clsx:
         specifier: 2.1.1
         version: 2.1.1
       knip:
-        specifier: 6.44.2
-        version: 6.44.2
+        specifier: 6.45.1
+        version: 6.45.1
       lint-staged:
         specifier: 17.6.0
         version: 17.6.0
@@ -236,14 +236,14 @@ importers:
         specifier: 2.0.0
         version: 2.0.0(postcss@8.5.32)
       prettier:
-        specifier: 3.9.10
-        version: 3.9.10
+        specifier: 3.10.0
+        version: 3.10.0
       prettier-plugin-tailwindcss:
         specifier: 0.8.1
-        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)
+        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)
       prettier-plugin-toml:
         specifier: 4.1.0
-        version: 4.1.0(prettier@3.9.10)
+        version: 4.1.0(prettier@3.10.0)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -281,14 +281,14 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vite:
-        specifier: 8.3.7
-        version: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+        specifier: 8.3.8
+        version: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
       vite-plugin-svgr:
         specifier: 5.2.0
-        version: 5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       vitest:
         specifier: 5.1.0
-        version: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       vitest-browser-react:
         specifier: 2.3.0
         version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.1.0)
@@ -329,11 +329,11 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@hookform/resolvers':
-        specifier: 7.0.5
-        version: 7.0.5(ajv@8.17.1)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        specifier: 7.0.6
+        version: 7.0.6(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@inlang/paraglide-js':
         specifier: 2.29.3
-        version: 2.29.3(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 2.29.3(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -404,8 +404,8 @@ importers:
         specifier: 0.57.0
         version: 0.57.0
       motion:
-        specifier: 14.11.1
-        version: 14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 14.12.0
+        version: 14.12.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -413,8 +413,8 @@ importers:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
       react-hook-form:
-        specifier: 7.91.0
-        version: 7.91.0(@types/react@19.3.0)(react@19.3.1)
+        specifier: 7.92.0
+        version: 7.92.0(@types/react@19.3.0)(react@19.3.1)
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.3.0)(react@19.3.1)(supports-color@7.2.0)
@@ -438,14 +438,14 @@ importers:
         specifier: 12.1.1
         version: 12.1.1
       '@iconify/json':
-        specifier: 2.2.554
-        version: 2.2.554
+        specifier: 2.2.555
+        version: 2.2.555
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.57.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tailwindcss/vite':
         specifier: 4.3.5
-        version: 4.3.5(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 4.3.5(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@tanstack/react-query':
         specifier: 5.107.1
         version: 5.107.1(@types/react@19.3.0)(react@19.3.1)
@@ -457,7 +457,7 @@ importers:
         version: 1.167.3(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@tanstack/router-core@1.171.39)(csstype@3.2.3)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/router-plugin':
         specifier: 1.169.0
-        version: 1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(rolldown@1.2.18)(supports-color@7.2.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(rolldown@1.2.18)(supports-color@7.2.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -472,10 +472,10 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-legacy':
         specifier: 8.2.4
-        version: 8.2.4(supports-color@7.2.0)(terser@5.36.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 8.2.4(supports-color@7.2.0)(terser@5.36.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@vitejs/plugin-react':
         specifier: 6.3.0
-        version: 6.3.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 6.3.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       change-case:
         specifier: 5.4.4
         version: 5.4.4
@@ -505,19 +505,19 @@ importers:
         version: 4.6.0
       unplugin-auto-import:
         specifier: 21.1.0
-        version: 21.1.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 21.1.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       unplugin-icons:
         specifier: 24.0.0
-        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       vite:
-        specifier: 8.3.7
-        version: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+        specifier: 8.3.8
+        version: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
       vite-plugin-html:
         specifier: 3.2.2
-        version: 3.2.2(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 3.2.2(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       vite-plugin-svgr:
         specifier: 5.2.0
-        version: 5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -619,8 +619,8 @@ importers:
         specifier: 1.53.2
         version: 1.53.2
       motion:
-        specifier: 14.11.1
-        version: 14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 14.12.0
+        version: 14.12.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       radix-ui:
         specifier: 1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -635,8 +635,8 @@ importers:
         version: 19.3.1(react@19.3.1)
     devDependencies:
       '@iconify/json':
-        specifier: 2.2.554
-        version: 2.2.554
+        specifier: 2.2.555
+        version: 2.2.555
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -648,7 +648,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       unplugin-icons:
         specifier: 24.0.0
-        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
 
   frontend/utils:
     dependencies:
@@ -698,8 +698,8 @@ importers:
         specifier: 1.65.0
         version: 1.65.0
       prettier:
-        specifier: 3.9.10
-        version: 3.9.10
+        specifier: 3.10.0
+        version: 3.10.0
       semver:
         specifier: 7.8.6
         version: 7.8.6
@@ -1588,8 +1588,8 @@ packages:
   '@grammyjs/types@5.0.0':
     resolution: {integrity: sha512-iq1Qrq1iPKkB8yAa0qSuIURMZOCuqTY5pWy5gHpCeL1oQ+GPadGhw/cDTVE8waJwuCzacUzuIjRv1sESvk7u7A==}
 
-  '@hookform/resolvers@7.0.5':
-    resolution: {integrity: sha512-E7ca3tpIJxHPGhFOfXLlCCZh7up6EcnUTbgTt0SRUENXagq8DJnob9rK+VqsNCsfUuO6mMU5NYNm6BaL18flgQ==}
+  '@hookform/resolvers@7.0.6':
+    resolution: {integrity: sha512-LSTMwW4tmRWtM7pS5HkSqahi71USbhrmjc9pNHNa7UyYTbKIK/e0G1EAw6xsEnp9GahTjXhunxRJp0Bd8E6NZA==}
     peerDependencies:
       '@standard-schema/spec': ^1.0.0
       '@vinejs/vine': ^2.0.0 || ^3.0.0 || ^4.0.0
@@ -1681,8 +1681,8 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
-  '@iconify/json@2.2.554':
-    resolution: {integrity: sha512-HAiIOhC5LT1zCT3OXASrkISRGaWAECply3G8vFn6IycY3mUIDLlUXOI4JU7CBzQpr++yuM53aUyz9xjs/1WjiA==}
+  '@iconify/json@2.2.555':
+    resolution: {integrity: sha512-ZUDnGWRayaBwXW8YuzxWFrvbBy620zjWqMAp4aPwb3mwsjO9gyWiTX0knK3spKZCFOpOfuWc8KXlCmU27LogNw==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -5079,8 +5079,8 @@ packages:
     engines: {node: '>=18.14.0'}
     hasBin: true
 
-  framer-motion@14.11.1:
-    resolution: {integrity: sha512-kXs+RHzja034QumwdXJubF0az86ueiWtANLB7FbhM+WKNGrgmYHysRRWG+we2KEpWv1+8W4eoMtsKaUldf54nA==}
+  framer-motion@14.12.0:
+    resolution: {integrity: sha512-4m+10xYan0ic8nFI8zyB5hJkW5F8F4Rer617UecOs8esw0he9unDgXaEZ0rUX7oztz1w4iuvyPWhk4jltMX5iw==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -5383,8 +5383,8 @@ packages:
   khroma@2.1.0:
     resolution: {integrity: sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==}
 
-  knip@6.44.2:
-    resolution: {integrity: sha512-6URO7pnqtOnyvSsXfW6+8C9j1lfcicxUCysXO0RgMtHTZ96HqCXh29op8iabeQW5JeIc8dJWwzSdJVWDokeScQ==}
+  knip@6.45.1:
+    resolution: {integrity: sha512-zp3zXKy2cZWiIttdlWU5fisKxVQaLSU6471ej0KGz1GdHdaHxpzTAO/LIyFNc3gU3v1W7LJaqvYumoO3l/u+6A==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -5740,14 +5740,14 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.36'
 
-  motion-dom@14.11.1:
-    resolution: {integrity: sha512-H/12gSe24nuV19IR7jHLObI+5Tm34UA/S5JaUye802l19VoVsT1USE+Suv+G/XO1U+YmXI9Nnbs4Krd4FthSSg==}
+  motion-dom@14.12.0:
+    resolution: {integrity: sha512-YnAY17g8mXRVoXGZbH+v/O2SkNBJqz2TMuqL9yek9Omfhsdjw7gJwNgI5nsGZFpbbm3vINyOo+VtGPryIslatw==}
 
   motion-utils@14.7.0:
     resolution: {integrity: sha512-woO0/Nb7ys75f94fjvQi/6leiHGvZUYkeHUPEZ3vxsV+9OpEVhkxp01x8MlRwX0zt31EqgXsKDAoBoJLC148Tw==}
 
-  motion@14.11.1:
-    resolution: {integrity: sha512-V0AQPpbTlkhXYQGiO6X55KsFHz+fdYlZJVERFEjJpBWZlCggWOcbCA7zd24iYs1q/Le191tAV3J29xBfS5+tWA==}
+  motion@14.12.0:
+    resolution: {integrity: sha512-cxD0c0yGXo/mzPgveXMsXGl138UNsRit9XgInK8kThtDsrvIkhlAR9b6WYoAm7EmKWToMFx6v/G8i0Zjv+2uoA==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -6088,8 +6088,8 @@ packages:
     peerDependencies:
       prettier: ^3.0.3
 
-  prettier@3.9.10:
-    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
+  prettier@3.10.0:
+    resolution: {integrity: sha512-mBi4765LgjO1PFjlEs7pUeK0nb1bw71c+N4/ItfeUWNdY5cV2pRKaFpbbFRYmDJMO+5ZwzGxHRqHxFZna7iv5w==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -6144,8 +6144,8 @@ packages:
     peerDependencies:
       react: ^19.3.1
 
-  react-hook-form@7.91.0:
-    resolution: {integrity: sha512-5BEBUnCBwa28AFXYTYmOaB/+CSpJ/+CWVASHEvIGUzFdHyUiPHeRhG7r5hOZ8nZi0yP7pbHdFNXO/p31EKTJFQ==}
+  react-hook-form@7.92.0:
+    resolution: {integrity: sha512-O5ILyY5fYHN7N13Pfxpe55KboyNFsJdM03BHpshQkClJd8raugiAUGY7VjifITrfhVxyx81ko25azXCoayhf1w==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@types/react': '*'
@@ -6677,8 +6677,8 @@ packages:
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
 
-  unbash@6.0.1:
-    resolution: {integrity: sha512-0db9eS5iqybux41zLkX69nk90KTci7F7eZ+gXzEG/Q7E0tAqEBhRh5fkZvk1N7jT7QkGWqq34i8SFGPFEe1V8A==}
+  unbash@6.0.4:
+    resolution: {integrity: sha512-t3OptUArewg9OpYGDskTSlxhyLDahfmZ4d36hE44Efb1y3HRLLpzsVqwH+AwBVymP4t7pP71xN+nnduudn2awA==}
     engines: {node: '>=14'}
 
   undici-types@7.24.6:
@@ -6939,8 +6939,8 @@ packages:
     peerDependencies:
       vite: '>=3.0.0'
 
-  vite@8.3.7:
-    resolution: {integrity: sha512-oxh0dMxrayBr33ScJvvBJ2HBQ2jc1TBrXKR2NyL/MJ9WPuX19mN2DXWUmywKdyw5RFVQBo8hmtb2FMC0LHrnng==}
+  vite@8.3.8:
+    resolution: {integrity: sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -8202,30 +8202,30 @@ snapshots:
 
   '@grammyjs/types@5.0.0': {}
 
-  '@hookform/resolvers@7.0.5(ajv@8.17.1)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
+  '@hookform/resolvers@7.0.6(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
     dependencies:
       '@standard-schema/utils': 0.3.0
-      react-hook-form: 7.91.0(@types/react@19.3.0)(react@19.3.1)
+      react-hook-form: 7.92.0(@types/react@19.3.0)(react@19.3.1)
     optionalDependencies:
       ajv: 8.17.1
       valibot: 1.4.2(typescript@7.0.2)
       zod: 4.6.7
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)(supports-color@7.2.0)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
       '@babel/traverse': 7.29.0(supports-color@7.2.0)
       '@babel/types': 7.29.0
-      prettier: 3.9.10
+      prettier: 3.10.0
       semver: 7.8.6
     optionalDependencies:
       content-tag: 4.2.0
-      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.10)(supports-color@7.2.0)
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.10.0)(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.554':
+  '@iconify/json@2.2.555':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
@@ -8238,7 +8238,7 @@ snapshots:
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
 
-  '@inlang/paraglide-js@2.29.3(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@inlang/paraglide-js@2.29.3(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
       '@inlang/sdk': 4.0.4
@@ -8252,7 +8252,7 @@ snapshots:
       valibot: 1.4.2(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
   '@inlang/recommend-sherlock@0.2.1':
     dependencies:
@@ -9838,12 +9838,12 @@ snapshots:
       postcss: 8.5.32
       tailwindcss: 4.3.5
 
-  '@tailwindcss/vite@4.3.5(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@tailwindcss/vite@4.3.5(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@tailwindcss/node': 4.3.5
       '@tailwindcss/oxide': 4.3.5
       tailwindcss: 4.3.5
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
   '@tanstack/history@1.162.5': {}
 
@@ -9920,12 +9920,12 @@ snapshots:
       '@tanstack/virtual-file-routes': 1.162.0
       jiti: 2.7.0
       magic-string: 0.30.21
-      prettier: 3.9.10
+      prettier: 3.10.0
       zod: 4.6.7
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(rolldown@1.2.18)(supports-color@7.2.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@tanstack/router-plugin@1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(rolldown@1.2.18)(supports-color@7.2.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@7.2.0)
       '@babel/template': 7.29.7
@@ -9934,11 +9934,11 @@ snapshots:
       '@tanstack/router-generator': 1.168.0(supports-color@7.2.0)
       '@tanstack/router-utils': 1.163.0(supports-color@7.2.0)
       chokidar: 5.0.0
-      unplugin: 3.7.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.7.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       zod: 4.6.7
     optionalDependencies:
       '@tanstack/react-router': 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rspack/core'
@@ -10363,7 +10363,7 @@ snapshots:
       d3-selection: 3.0.1
       d3-transition: 3.0.2(d3-selection@3.0.1)
 
-  '@vitejs/plugin-legacy@8.2.4(supports-color@7.2.0)(terser@5.36.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@vitejs/plugin-legacy@8.2.4(supports-color@7.2.0)(terser@5.36.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@7.2.0)
       '@babel/plugin-transform-dynamic-import': 7.29.7(@babel/core@7.29.7(supports-color@7.2.0))
@@ -10378,39 +10378,39 @@ snapshots:
       regenerator-runtime: 0.14.1
       systemjs: 6.15.1
       terser: 5.36.0
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@6.3.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@vitejs/plugin-react@6.3.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
-  '@vitest/browser-playwright@5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)':
+  '@vitest/browser-playwright@5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)':
     dependencies:
-      '@vitest/browser': 5.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
-      '@vitest/mocker': 5.1.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      '@vitest/browser': 5.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
+      '@vitest/mocker': 5.1.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       playwright: 1.65.0
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@5.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)':
+  '@vitest/browser@5.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)':
     dependencies:
       '@blazediff/core': 1.10.0
-      '@vitest/mocker': 5.1.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      '@vitest/mocker': 5.1.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@vitest/ui': 5.1.0(vitest@5.1.0)
       '@vitest/utils': 5.1.0
       magic-string: 1.4.5
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       ws: 8.22.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - bufferutil
@@ -10418,14 +10418,14 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/mocker@5.1.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
+  '@vitest/mocker@5.1.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.1.0
       estree-walker: 3.0.3
       magic-string: 1.4.5
     optionalDependencies:
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
   '@vitest/pretty-format@5.1.0':
     dependencies:
@@ -10441,7 +10441,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
 
   '@vitest/utils@5.1.0':
     dependencies:
@@ -11268,9 +11268,9 @@ snapshots:
       fd-package-json: 2.0.0
       package-manager-detector: 1.8.0
 
-  framer-motion@14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  framer-motion@14.12.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      motion-dom: 14.11.1
+      motion-dom: 14.12.0
       motion-utils: 14.7.0
       tslib: 2.8.1
     optionalDependencies:
@@ -11555,7 +11555,7 @@ snapshots:
 
   khroma@2.1.0: {}
 
-  knip@6.44.2:
+  knip@6.45.1:
     dependencies:
       formatly: 0.11.4
       get-tsconfig: 4.14.3
@@ -11566,9 +11566,8 @@ snapshots:
       smol-toml: 1.9.1
       strip-json-comments: 5.0.3
       tinyglobby: 0.2.17
-      unbash: 6.0.1
+      unbash: 6.0.4
       yaml: 2.9.1
-      zod: 4.6.7
 
   koffi@3.3.7:
     optionalDependencies:
@@ -12161,22 +12160,22 @@ snapshots:
       monaco-types: 0.1.0
       monaco-worker-manager: 2.0.1(monaco-editor@0.57.0)
       path-browserify: 1.0.1
-      prettier: 3.9.10
+      prettier: 3.10.0
       proxy-disposable: 1.0.0
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.17.5
       vscode-uri: 3.0.8
       yaml: 2.9.1
 
-  motion-dom@14.11.1:
+  motion-dom@14.12.0:
     dependencies:
       motion-utils: 14.7.0
 
   motion-utils@14.7.0: {}
 
-  motion@14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  motion@14.12.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      framer-motion: 14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      framer-motion: 14.12.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       tslib: 2.8.1
     optionalDependencies:
       react: 19.3.1
@@ -12512,27 +12511,27 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
-  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0):
     dependencies:
       '@babel/traverse': 7.29.8(supports-color@7.2.0)
       content-tag: 4.2.0
-      prettier: 3.9.10
+      prettier: 3.10.0
     transitivePeerDependencies:
       - supports-color
     optional: true
 
-  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10):
+  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0):
     dependencies:
-      prettier: 3.9.10
+      prettier: 3.10.0
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0)
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.0)(supports-color@7.2.0))(prettier@3.10.0)(supports-color@7.2.0)
 
-  prettier-plugin-toml@4.1.0(prettier@3.9.10):
+  prettier-plugin-toml@4.1.0(prettier@3.10.0):
     dependencies:
-      prettier: 3.9.10
+      prettier: 3.10.0
       tombit: 0.1.3
 
-  prettier@3.9.10: {}
+  prettier@3.10.0: {}
 
   probe-image-size@7.3.0(supports-color@7.2.0):
     dependencies:
@@ -12651,7 +12650,7 @@ snapshots:
       react: 19.3.1
       scheduler: 0.28.0
 
-  react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1):
+  react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       react: 19.3.1
     optionalDependencies:
@@ -13256,7 +13255,7 @@ snapshots:
 
   ufo@1.6.4: {}
 
-  unbash@6.0.1: {}
+  unbash@6.0.4: {}
 
   undici-types@7.24.6: {}
 
@@ -13285,7 +13284,7 @@ snapshots:
       trough: 2.2.0
       vfile: 6.0.1
 
-  unimport@6.4.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  unimport@6.4.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       acorn: 8.18.0
       escape-string-regexp: 5.0.0
@@ -13299,7 +13298,7 @@ snapshots:
       scule: 1.3.0
       strip-literal: 4.0.0
       tinyglobby: 0.2.17
-      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       unplugin-utils: 0.3.2
     optionalDependencies:
       oxc-parser: 0.156.0
@@ -13348,13 +13347,13 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  unplugin-auto-import@21.1.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  unplugin-auto-import@21.1.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       local-pkg: 1.2.1
       magic-string: 1.1.0
       picomatch: 4.0.5
-      unimport: 6.4.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
-      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unimport: 6.4.0(oxc-parser@0.156.0)(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       unplugin-utils: 0.3.2
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -13368,13 +13367,13 @@ snapshots:
       - vite
       - webpack
 
-  unplugin-icons@24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  unplugin-icons@24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@antfu/install-pkg': 1.1.0
       '@iconify/utils': 3.1.7
       local-pkg: 1.2.1
       obug: 2.2.1
-      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.3.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
     optionalDependencies:
       '@svgr/core': 8.1.0(supports-color@7.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
@@ -13400,16 +13399,16 @@ snapshots:
       picomatch: 4.0.7
       webpack-virtual-modules: 0.6.2
 
-  unplugin@3.3.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  unplugin@3.3.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.7
       webpack-virtual-modules: 0.6.2
     optionalDependencies:
       rolldown: 1.2.18
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
-  unplugin@3.7.0(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  unplugin@3.7.0(rolldown@1.2.18)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       '@rolldown/pluginutils': 1.0.1
@@ -13417,7 +13416,7 @@ snapshots:
       webpack-virtual-modules: 0.6.2
     optionalDependencies:
       rolldown: 1.2.18
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
   update-browserslist-db@1.2.3(browserslist@4.28.7):
     dependencies:
@@ -13485,7 +13484,7 @@ snapshots:
       - rollup
       - supports-color
 
-  vite-plugin-html@3.2.2(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  vite-plugin-html@3.2.2(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@rollup/pluginutils': 4.2.1
       colorette: 2.0.20
@@ -13499,20 +13498,20 @@ snapshots:
       html-minifier-terser: 6.1.0
       node-html-parser: 5.4.2
       pathe: 0.2.0
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
-  vite-plugin-svgr@5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  vite-plugin-svgr@5.2.0(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@rollup/pluginutils': 5.3.0
       '@svgr/core': 8.1.0(supports-color@7.2.0)(typescript@7.0.2)
       '@svgr/plugin-jsx': 8.1.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
     transitivePeerDependencies:
       - rollup
       - supports-color
       - typescript
 
-  vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1):
+  vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -13531,15 +13530,15 @@ snapshots:
     dependencies:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
-      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vitest: 5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
     optionalDependencies:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
-  vitest@5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
+  vitest@5.1.0(@types/node@26.6.5)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.1.0(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      '@vitest/mocker': 5.1.0(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -13550,11 +13549,11 @@ snapshots:
       tinybench: 6.2.2
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+      vite: 8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 26.6.5
-      '@vitest/browser-playwright': 5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
+      '@vitest/browser-playwright': 5.1.0(bufferutil@4.1.0)(playwright@1.65.0)(utf-8-validate@5.0.10)(vite@8.3.8(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))(vitest@5.1.0)
       '@vitest/ui': 5.1.0(vitest@5.1.0)
     transitivePeerDependencies:
       - msw

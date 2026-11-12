@@ -24,27 +24,20 @@ modules = append(modules, {
                 }
             }
             l := {
-		"apple.com": true,
-            	"icloud.com": true,
-            	"cdn-apple.com": true,
-            	"mzstatic.com": true,
-            	"entrust.net": true,
-            	"digicert.com": true,
-            	"verisign.net": true,
-            	"apple": true,
-            	"push-apple.com.akadns.net": true,
-            	"itunes-apple.com.akadns.net": true,
-            	"cdn-apple.com.akadns.net": true,
-            	"ks-cdn.com": true,
-            	"ksyuncdn.com": true,
-            	"cdn-apple.com.edgekey.net": true,
-            	"e2885.e9.akamaiedge.net": true,
-            	"apple.com.edgekey.net": true,
-            	"e2490.dscb.akamaiedge.net": true,
-            	"idms-apple.com.akadns.net": true,
-            	"apple.com.edgekey.net.globalredir.akadns.net": true,
-            	"e6858.dscx.akamaiedge.net": true,
-            	"ioshost.qtlcdn.com": true
+            "apple.com": true,
+            "icloud.com": true,
+            "cdn-apple.com": true,
+            "mzstatic.com": true,
+            "entrust.net": true,
+            "digicert.com": true,
+            "verisign.net": true,
+            "apple": true,
+            "akadns.net": true,
+            "ks-cdn.com": true,
+            "ksyuncdn.com": true,
+            "edgekey.net": true,
+            "akamaiedge.net": true,
+            "ioshost.qtlcdn.com": true
             }
             r := f(hp.host, l)
             if r != undefined {
@@ -75,4 +68,3 @@ modules = append(modules, {
         }
     }
 })
-

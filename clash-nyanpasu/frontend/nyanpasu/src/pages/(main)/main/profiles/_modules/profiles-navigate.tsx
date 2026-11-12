@@ -1,11 +1,9 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import DescriptionRounded from '~icons/material-symbols/description-rounded'
 import DocumentSearchRounded from '~icons/material-symbols/document-search-rounded'
-import JavascriptRounded from '~icons/material-symbols/javascript-rounded'
-import MergeRounded from '~icons/material-symbols/merge-rounded'
 import PublicIcon from '~icons/material-symbols/public'
-import LuaIcon from '~icons/mdi/language-lua'
 import { Button } from '@nyanpasu/ui/button'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import {
   NavigationList,
   NavigationListGroup,
@@ -13,10 +11,11 @@ import {
 import { m } from '@/paraglide/messages'
 import { useDroppable } from '@dnd-kit/react'
 import { useProfile } from '@nyanpasu/query'
-import { ProfileType } from './consts'
+import { PROFILE_TYPE_COLORS, ProfileType } from './consts'
 import FolderNavItem from './folder-nav-item'
 import ProfilesNavigationItem from './profiles-navigation-item'
 import { NAV_ALL_ID, PROFILE_DRAG_TYPE } from './resolve-profile-drop'
+import TransformTypeIcon from './transform-type-icon'
 import { useProfileLayout } from './use-profile-layout'
 import { categoryProfiles } from './utils'
 
@@ -40,15 +39,17 @@ export default function ProfilesNavigate() {
       <NavigationListGroup
         label={m.profile_group_config()}
         action={
-          <Button
-            icon
-            className="mr-2 size-8"
-            aria-label={m.profile_folder_new_title()}
-            data-slot="profiles-folder-add"
-            onClick={() => openCreateFolder()}
-          >
-            <AddRounded className="size-5" />
-          </Button>
+          <ModalTrigger asChild>
+            <Button
+              icon
+              className="mr-2 size-8"
+              aria-label={m.profile_folder_new_title()}
+              data-slot="profiles-folder-add"
+              onClick={() => openCreateFolder()}
+            >
+              <AddRounded className="size-5" />
+            </Button>
+          </ModalTrigger>
         }
       >
         <ProfilesNavigationItem
@@ -79,8 +80,8 @@ export default function ProfilesNavigate() {
         <ProfilesNavigationItem
           to="/main/profiles/$type"
           params={{ type: ProfileType.JavaScript }}
-          color="yellow"
-          icon={<JavascriptRounded />}
+          color={PROFILE_TYPE_COLORS[ProfileType.JavaScript]}
+          icon={<TransformTypeIcon type={ProfileType.JavaScript} />}
           label={m.profile_nav_javascript()}
           description={m.profile_nav_count_scripts({
             count: categorized[ProfileType.JavaScript].length,
@@ -90,8 +91,8 @@ export default function ProfilesNavigate() {
         <ProfilesNavigationItem
           to="/main/profiles/$type"
           params={{ type: ProfileType.Lua }}
-          color="cyan"
-          icon={<LuaIcon />}
+          color={PROFILE_TYPE_COLORS[ProfileType.Lua]}
+          icon={<TransformTypeIcon type={ProfileType.Lua} />}
           label={m.profile_nav_lua()}
           description={m.profile_nav_count_scripts({
             count: categorized[ProfileType.Lua].length,
@@ -101,8 +102,8 @@ export default function ProfilesNavigate() {
         <ProfilesNavigationItem
           to="/main/profiles/$type"
           params={{ type: ProfileType.Merge }}
-          color="orange"
-          icon={<MergeRounded />}
+          color={PROFILE_TYPE_COLORS[ProfileType.Merge]}
+          icon={<TransformTypeIcon type={ProfileType.Merge} />}
           label={m.profile_nav_merge()}
           description={m.profile_nav_count_overlays({
             count: categorized[ProfileType.Merge].length,

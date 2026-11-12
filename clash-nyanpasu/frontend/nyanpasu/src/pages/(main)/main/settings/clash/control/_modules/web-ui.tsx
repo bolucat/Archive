@@ -3,18 +3,11 @@ import DeleteRounded from '~icons/material-symbols/delete-rounded'
 import EditSquareRounded from '~icons/material-symbols/edit-square-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import { AnimatePresence, motion } from 'motion/react'
-import {
-  ChangeEvent,
-  PropsWithChildren,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { ChangeEvent, PropsWithChildren, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
@@ -22,6 +15,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
@@ -31,11 +25,13 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashInfo, useClashSetting } from '@nyanpasu/query'
+import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListActions,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
 
 const useUrlLabels = () => {
   const { data } = useClashInfo()
@@ -113,11 +109,17 @@ const formSchema = z.object({
   url: z.httpUrl(),
 })
 
-const EditItemButton = ({
+const EditItemButton = (props: PropsWithChildren<{ defaultUrl?: string }>) => (
+  <Modal>
+    <EditItemForm {...props} />
+  </Modal>
+)
+
+const EditItemForm = ({
   defaultUrl,
   children,
 }: PropsWithChildren<{ defaultUrl?: string }>) => {
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const { value, upsert } = useClashSetting('web_ui_list')
 
@@ -130,52 +132,40 @@ const EditItemButton = ({
     },
   })
 
-  // sync default url to form
-  useEffect(() => {
-    form.reset({
-      url: defaultUrl,
-    })
-  }, [defaultUrl, form])
-
-  const handleOpenChange = (open: boolean) => {
-    if (!open) {
-      form.reset({
-        url: defaultUrl,
-      })
-    }
-
-    setOpen(open)
-  }
-
   const urlValue = form.watch('url')
 
-  const handleSubmit = form.handleSubmit(
-    async (data) => {
-      try {
-        await upsert([...(value || []), data.url])
-        handleOpenChange(false)
-      } catch (error) {
+  const handleSubmit = useLockFn(
+    form.handleSubmit(
+      async (data) => {
+        try {
+          await upsert([...(value || []), data.url])
+          setOpen(false)
+        } catch (error) {
+          message(formatError(error), {
+            title: 'Error',
+            kind: 'error',
+            error,
+          })
+        }
+      },
+      (error) => {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
           error,
         })
-      }
-    },
-    (error) => {
-      message(formatError(error), {
-        title: 'Error',
-        kind: 'error',
-        error,
-      })
-    },
+      },
+    ),
   )
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange}>
+    <>
       <ModalTrigger asChild>{children}</ModalTrigger>
 
-      <ModalContent>
+      <ModalContent
+        dismissible={!form.formState.isSubmitting}
+        onOpenAutoFocus={() => form.reset({ url: defaultUrl })}
+      >
         <Card className="w-96">
           <CardHeader>
             <ModalTitle>{m.settings_web_ui_add_button()}</ModalTitle>
@@ -230,15 +220,22 @@ const EditItemButton = ({
           </CardContent>
 
           <CardFooter className="gap-2">
-            <Button variant="flat" onClick={handleSubmit}>
+            <Button
+              variant="flat"
+              onClick={handleSubmit}
+              loading={form.formState.isSubmitting}
+              disabled={form.formState.isSubmitting}
+            >
               {m.common_submit()}
             </Button>
 
-            <ModalClose>{m.common_cancel()}</ModalClose>
+            <ModalClose disabled={form.formState.isSubmitting}>
+              {m.common_cancel()}
+            </ModalClose>
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }
 
@@ -256,14 +253,15 @@ const WebUIItem = ({ url }: { url: string }) => {
   })
 
   return (
-    <Card className="w-full min-w-0 space-y-4 overflow-hidden">
-      <CardHeader className="flex w-full min-w-0 flex-row">
-        <TextMarquee className="relative w-0 min-w-0 flex-1 text-base">
-          {formattedUrl}
-        </TextMarquee>
-      </CardHeader>
+    <SettingsListItem data-slot="web-ui-item">
+      <TextMarquee className="relative w-0 min-w-0 flex-1 text-base">
+        {formattedUrl}
+      </TextMarquee>
 
-      <CardFooter className="gap-1">
+      <div
+        className="flex shrink-0 items-center gap-1"
+        data-slot="web-ui-item-actions"
+      >
         <Button variant="flat" icon onClick={handleOpen}>
           <OpenInNewRounded className="size-5" />
         </Button>
@@ -277,8 +275,8 @@ const WebUIItem = ({ url }: { url: string }) => {
         <Button icon onClick={handleDelete}>
           <DeleteRounded className="size-5" />
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </SettingsListItem>
   )
 }
 
@@ -286,22 +284,18 @@ export default function WebUI() {
   const { value } = useClashSetting('web_ui_list')
 
   return (
-    <div className="space-y-3">
-      <SettingsCard data-slot="web-ui-card">
-        <SettingsCardContent data-slot="web-ui-card-content">
-          {value && value.length > 0 ? (
-            value.map((item, index) => <WebUIItem key={index} url={item} />)
-          ) : (
-            <EmptyState
-              tone="normal"
-              className="min-h-40"
-              message={m.settings_web_ui_empty_item()}
-            />
-          )}
-        </SettingsCardContent>
-      </SettingsCard>
+    <SettingsList data-slot="web-ui-card">
+      <SettingsListContent
+        data-slot="web-ui-card-content"
+        empty={!value?.length}
+        emptyMessage={m.settings_web_ui_empty_item()}
+      >
+        {value?.map((item, index) => (
+          <WebUIItem key={index} url={item} />
+        ))}
+      </SettingsListContent>
 
-      <div className="flex justify-end">
+      <SettingsListActions>
         <EditItemButton>
           <Button
             className="flex items-center justify-center gap-1 px-4"
@@ -311,7 +305,7 @@ export default function WebUI() {
             <span>{m.settings_web_ui_add_button()}</span>
           </Button>
         </EditItemButton>
-      </div>
-    </div>
+      </SettingsListActions>
+    </SettingsList>
   )
 }
