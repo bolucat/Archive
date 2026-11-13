@@ -54,7 +54,7 @@ impl TestEnv {
         let core_manager = CoreManager::new(
             runtime_dir,
             LocalIpcPolicy::Disable,
-            Arc::new(FsNativeStore::new(data_dir, StoreOwner::current(), None)),
+            Arc::new(FsNativeStore::new(data_dir, StoreOwner::current())),
         )
         .await
         .unwrap();

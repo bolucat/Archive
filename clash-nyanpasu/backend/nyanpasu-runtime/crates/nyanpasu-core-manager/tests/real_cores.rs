@@ -1,5 +1,5 @@
-//! Integration tests against the four real cores (mihomo, clash-rs,
-//! clash premium, meow), covering start/stop, config updates, and the
+//! Integration tests against the three real cores (mihomo, clash-rs,
+//! meow), covering start/stop, config updates, and the
 //! Force/Prefer/Disable local IPC policies.
 //!
 //! Prepare the binaries with `deno run -A scripts/prepare-cores.ts`, then run:
@@ -168,12 +168,6 @@ async fn clash_rs_starts_proxies_and_stops() {
 
 #[ignore = "requires the platform core binaries in tests/bin"]
 #[tokio::test]
-async fn clash_premium_starts_proxies_and_stops() {
-    start_stop(real::CLASH_PREMIUM).await;
-}
-
-#[ignore = "requires the platform core binaries in tests/bin"]
-#[tokio::test]
 async fn meow_starts_proxies_and_stops() {
     start_stop(real::MEOW).await;
 }
@@ -290,12 +284,6 @@ async fn clash_rs_config_update() {
 
 #[ignore = "requires the platform core binaries in tests/bin"]
 #[tokio::test]
-async fn clash_premium_config_update() {
-    config_update(real::CLASH_PREMIUM).await;
-}
-
-#[ignore = "requires the platform core binaries in tests/bin"]
-#[tokio::test]
 async fn meow_config_update() {
     config_update(real::MEOW).await;
 }
@@ -405,12 +393,6 @@ macro_rules! ipc_mode_http_only_tests {
     };
 }
 
-ipc_mode_http_only_tests!(
-    clash_premium_ipc_force,
-    clash_premium_ipc_prefer,
-    clash_premium_ipc_use_http,
-    real::CLASH_PREMIUM
-);
 ipc_mode_http_only_tests!(
     meow_ipc_force,
     meow_ipc_prefer,

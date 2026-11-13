@@ -81,21 +81,16 @@ impl StoreOwner {
     }
 }
 
-/// The host provides the data root and the PRE-migration core identity. Native
-/// bbolt headers cannot distinguish Mihomo and Premium by themselves.
+/// The host provides the data root and owner. Legacy YAML caches belong to
+/// clash-rs, and bbolt caches belong to Mihomo.
 pub struct FsNativeStore {
     data: Utf8PathBuf,
     owner: StoreOwner,
-    legacy_kind: Option<CoreKind>,
 }
 
 impl FsNativeStore {
-    pub fn new(data: Utf8PathBuf, owner: StoreOwner, legacy_kind: Option<CoreKind>) -> Self {
-        Self {
-            data,
-            owner,
-            legacy_kind,
-        }
+    pub fn new(data: Utf8PathBuf, owner: StoreOwner) -> Self {
+        Self { data, owner }
     }
 
     fn directories(&self, kind: CoreKind) -> Result<(Directory, Directory, Directory), StoreError> {
@@ -216,10 +211,7 @@ impl FsNativeStore {
         let format = cache_format(&mut old)?;
         let source_kind = match format {
             CacheFormat::Yaml => CoreKind::ClashRust,
-            CacheFormat::Bolt => self
-                .legacy_kind
-                .filter(|kind| matches!(kind, CoreKind::Mihomo | CoreKind::ClashPremium))
-                .ok_or_else(|| StoreError::Format(data.path.join("cache.db")))?,
+            CacheFormat::Bolt => CoreKind::Mihomo,
             CacheFormat::Empty => return Ok(()),
             CacheFormat::Unknown => return Err(StoreError::Format(data.path.join("cache.db"))),
         };
@@ -283,7 +275,7 @@ impl FsLease {
                 Ok(())
             }
             (CoreKind::ClashRust, CacheFormat::Yaml) => Ok(()),
-            (CoreKind::Mihomo | CoreKind::ClashPremium, CacheFormat::Bolt) => Ok(()),
+            (CoreKind::Mihomo, CacheFormat::Bolt) => Ok(()),
             _ => Err(StoreError::Format(self.home.path.join("cache.db"))),
         }
     }
@@ -735,11 +727,10 @@ mod tests {
 
     const YAML: &[u8] = b"selected:\n  Proxy: REJECT\nip_to_host: {}\nhost_to_ip: {}\n";
 
-    fn store(root: &std::path::Path, kind: Option<CoreKind>) -> FsNativeStore {
+    fn store(root: &std::path::Path) -> FsNativeStore {
         FsNativeStore::new(
             Utf8PathBuf::from_path_buf(root.into()).unwrap(),
             StoreOwner::current(),
-            kind,
         )
     }
 
@@ -762,7 +753,7 @@ mod tests {
     fn yaml_migrates_to_clash_rs_even_when_mihomo_starts_first() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("cache.db"), YAML).unwrap();
-        let store = store(dir.path(), Some(CoreKind::Mihomo));
+        let store = store(dir.path());
         let lease = store.acquire(CoreKind::Mihomo).unwrap();
         assert!(
             std::fs::read(store.home(CoreKind::Mihomo).join("cache.db"))
@@ -789,20 +780,19 @@ mod tests {
     }
 
     #[test]
-    fn bolt_requires_provenance_and_keeps_the_original() {
+    fn bolt_migrates_to_mihomo_without_provenance_and_keeps_the_original() {
         let dir = tempfile::tempdir().unwrap();
         let bytes = bolt();
         std::fs::write(dir.path().join("cache.db"), &bytes).unwrap();
-        let unknown = store(dir.path(), None);
-        assert!(matches!(
-            unknown.acquire(CoreKind::Mihomo),
-            Err(StoreError::Format(_))
-        ));
+        let store = store(dir.path());
+        drop(store.acquire(CoreKind::ClashRust).unwrap());
         assert_eq!(std::fs::read(dir.path().join("cache.db")).unwrap(), bytes);
-        let known = store(dir.path(), Some(CoreKind::Mihomo));
-        drop(known.acquire(CoreKind::ClashRust).unwrap());
         assert_eq!(
-            std::fs::read(known.home(CoreKind::Mihomo).join("cache.db")).unwrap(),
+            std::fs::read(store.home(CoreKind::Mihomo).join("cache.db")).unwrap(),
+            bytes
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("native-store/migration/cache.db.backup")).unwrap(),
             bytes
         );
     }
@@ -810,7 +800,7 @@ mod tests {
     #[test]
     fn corrupt_or_wrong_format_is_rejected_without_recreation() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         drop(store.acquire(CoreKind::Mihomo).unwrap());
         let path = store.home(CoreKind::Mihomo).join("cache.db");
         let mut corrupt = bolt();
@@ -829,8 +819,8 @@ mod tests {
     #[test]
     fn leases_exclude_other_hosts_and_checks_never_touch_native_data() {
         let dir = tempfile::tempdir().unwrap();
-        let first = store(dir.path(), None);
-        let second = store(dir.path(), None);
+        let first = store(dir.path());
+        let second = store(dir.path());
         let check = first.check_home().unwrap();
         assert!(!dir.path().join("native-store").exists());
         std::fs::write(
@@ -850,7 +840,7 @@ mod tests {
     #[test]
     fn dropping_a_prepared_lease_does_not_claim_process_death() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         let lease = store.acquire(CoreKind::ClashRust).unwrap();
         lease.prepare_spawn().unwrap();
         drop(lease);
@@ -865,7 +855,7 @@ mod tests {
     async fn an_unlocked_store_still_rejects_a_live_recorded_process() {
         use nyanpasu_utils::process::{Command, EpochPidFile, EpochPidFileSpec};
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         let config = dir.path().join("config-1.yaml");
         let pid = dir.path().join("core-1.pid");
         std::fs::write(&config, "{}").unwrap();
@@ -897,7 +887,7 @@ mod tests {
     #[test]
     fn confirmed_stop_releases_the_dirty_marker() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         let lease = store.acquire(CoreKind::ClashRust).unwrap();
         lease.prepare_spawn().unwrap();
         lease.confirm_stopped().unwrap();
@@ -908,7 +898,7 @@ mod tests {
     #[test]
     fn dropping_a_lease_unlocks_a_duplicated_descriptor() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         let (_, root, home) = store.directories(CoreKind::ClashRust).unwrap();
         let lock = root.file("lease.lock", &store.owner, true).unwrap();
         lock.try_lock().unwrap();
@@ -931,7 +921,7 @@ mod tests {
         let selected = br#"{"Proxy":"REJECT"}"#;
         std::fs::write(dir.path().join("selector-cache.json"), selected).unwrap();
         std::fs::write(dir.path().join("cache.db"), bolt()).unwrap();
-        let store = store(dir.path(), Some(CoreKind::Meow));
+        let store = store(dir.path());
         drop(store.acquire(CoreKind::Meow).unwrap());
         let target = store.home(CoreKind::Meow).join("selector-cache.json");
         assert_eq!(std::fs::read(&target).unwrap(), selected);
@@ -959,7 +949,7 @@ mod tests {
         std::fs::write(&path, bolt()).unwrap();
         let writer = File::open(path).unwrap();
         writer.lock().unwrap();
-        let store = store(dir.path(), Some(CoreKind::Mihomo));
+        let store = store(dir.path());
         assert!(matches!(
             store.acquire(CoreKind::Mihomo),
             Err(StoreError::Busy(_))
@@ -975,7 +965,6 @@ mod tests {
         let store = FsNativeStore::new(
             Utf8PathBuf::from_path_buf(dir.path().into()).unwrap(),
             StoreOwner::Missing,
-            None,
         );
         assert!(matches!(
             store.acquire(CoreKind::Mihomo),
@@ -995,7 +984,7 @@ mod tests {
         const CHILD: &str = "NYANPASU_STORE_HANDOFF_TEST_DIR";
         if let Some(path) = std::env::var_os(CHILD) {
             assert_eq!(unsafe { libc::geteuid() }, 65534);
-            let store = store(std::path::Path::new(&path), None);
+            let store = store(std::path::Path::new(&path));
             let lease = store.acquire(CoreKind::ClashRust).unwrap();
             lease.prepare_spawn().unwrap();
             let cache = store.home(CoreKind::ClashRust).join("cache.db");
@@ -1018,7 +1007,6 @@ mod tests {
                 uid: 65534,
                 gid: 65534,
             },
-            Some(CoreKind::ClashRust),
         );
         let lease = store.acquire(CoreKind::ClashRust).unwrap();
         lease.prepare_spawn().unwrap();
@@ -1042,7 +1030,7 @@ mod tests {
     fn every_spawn_repairs_owned_permissions_without_truncation() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         let lease = store.acquire(CoreKind::ClashRust).unwrap();
         let cache = store.home(CoreKind::ClashRust).join("cache.db");
         std::fs::write(&cache, YAML).unwrap();
@@ -1070,7 +1058,7 @@ mod tests {
         let outside = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(outside.path(), YAML).unwrap();
         std::fs::set_permissions(outside.path(), std::fs::Permissions::from_mode(0o444)).unwrap();
-        let store = store(dir.path(), None);
+        let store = store(dir.path());
         drop(store.acquire(CoreKind::ClashRust).unwrap());
         let cache = store.home(CoreKind::ClashRust).join("cache.db");
         std::fs::remove_file(&cache).unwrap();

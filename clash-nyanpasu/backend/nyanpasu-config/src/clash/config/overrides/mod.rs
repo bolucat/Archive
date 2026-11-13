@@ -53,7 +53,6 @@ pub enum Mode {
     Rule,
     Global,
     Direct,
-    Script,
 }
 
 #[derive(
@@ -76,9 +75,7 @@ pub struct ClashGuardOverrides {
     allow_lan: bool,
     mode: Mode,
     secret: String,
-    #[cfg(feature = "default-meta")]
     unified_delay: ManageableField<bool>,
-    #[cfg(feature = "default-meta")]
     tcp_concurrent: ManageableField<bool>,
     ipv6: bool,
 }
@@ -90,9 +87,7 @@ impl Default for ClashGuardOverrides {
             allow_lan: false,
             mode: Mode::Rule,
             secret: uuid::Uuid::new_v4().to_string().to_lowercase(),
-            #[cfg(feature = "default-meta")]
             unified_delay: ManageableField::Managed(true),
-            #[cfg(feature = "default-meta")]
             tcp_concurrent: ManageableField::Managed(true),
             ipv6: false,
         }
@@ -124,7 +119,7 @@ mod patch_tests {
     #[test]
     fn patch_uses_kebab_case_and_applies() {
         let patch: ClashGuardOverridesPatch =
-            serde_yaml_ng::from_str("allow-lan: true\nlog-level: debug\n")
+            yaml_serde::from_str("allow-lan: true\nlog-level: debug\n")
                 .expect("kebab-case patch must deserialize");
 
         let mut overrides = ClashGuardOverrides::default();
@@ -158,7 +153,6 @@ mod patch_tests {
         assert_eq!(owned, keys);
     }
 
-    #[cfg(feature = "default-meta")]
     #[test]
     fn unmanaged_fields_are_left_to_the_profiles() {
         use crate::runtime::{post_process::Ownership, value::ConfigValue};
@@ -178,7 +172,7 @@ mod patch_tests {
         let mut patch = ClashGuardOverrides::new_empty_patch();
         patch.allow_lan = Some(true);
 
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(dumped.contains("allow-lan: true"), "got:\n{dumped}");
         assert!(
             !dumped.contains("log-level"),

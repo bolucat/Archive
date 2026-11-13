@@ -16,7 +16,6 @@ async fn manager(dir: &Utf8Path, runtime: &str) -> CoreManager {
     .native_store(Arc::new(FsNativeStore::new(
         dir.into(),
         StoreOwner::current(),
-        None,
     )))
     .liveness_with_readiness_probe()
     .build()
@@ -37,7 +36,7 @@ async fn managed_switch_stops_old_writer_and_releases_lease_for_another_host() {
     let CoreState::Running { pid: old, .. } = first.status().state else {
         panic!("not running")
     };
-    let blocked = FsNativeStore::new(dir.clone(), StoreOwner::current(), None);
+    let blocked = FsNativeStore::new(dir.clone(), StoreOwner::current());
     assert!(blocked.acquire(CoreKind::Mihomo).is_err());
     assert_eq!(
         first.restart().await.unwrap(),
@@ -81,7 +80,7 @@ async fn failed_spawn_releases_native_store_for_a_retry() {
         "{error}"
     );
     assert!(!dir.join("native-store/active").exists());
-    let store = FsNativeStore::new(dir.clone(), StoreOwner::current(), None);
+    let store = FsNativeStore::new(dir.clone(), StoreOwner::current());
     drop(store.acquire(CoreKind::Mihomo).unwrap());
 
     spec.core.binary_path = common::fake_core_bin();

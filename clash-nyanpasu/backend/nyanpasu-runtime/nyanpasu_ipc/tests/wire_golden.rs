@@ -264,7 +264,6 @@ fn every_core_type_tag_is_pinned() {
             ClashCoreType::ClashRustAlpha,
             r#"{"clash":"clash-rs-alpha"}"#,
         ),
-        (ClashCoreType::ClashPremium, r#"{"clash":"clash"}"#),
         (ClashCoreType::Meow, r#"{"clash":"meow"}"#),
         (ClashCoreType::MeowAlpha, r#"{"clash":"meow-alpha"}"#),
     ];
@@ -278,6 +277,7 @@ fn every_core_type_tag_is_pinned() {
         serde_json::to_string(&CoreType::SingBox).unwrap(),
         r#""singbox""#
     );
+    assert!(serde_json::from_str::<CoreType>(r#"{"clash":"clash"}"#).is_err());
 }
 
 #[test]

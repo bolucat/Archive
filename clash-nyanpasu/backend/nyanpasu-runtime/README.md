@@ -87,7 +87,7 @@ Supporting libraries under `crates/`.
 
 ### nyanpasu-core-manager (`crates/nyanpasu-core-manager`)
 
-The core process lifecycle manager for Clash-family cores (mihomo, clash-rs, clash premium, meow): epoch-based instantiation, health probing, crash recovery with backoff, orphan process reaping, lossless switching and hot config application.
+The core process lifecycle manager for Clash-family cores (mihomo, clash-rs, meow): epoch-based instantiation, health probing, crash recovery with backoff, orphan process reaping, lossless switching and hot config application.
 
 Key API:
 

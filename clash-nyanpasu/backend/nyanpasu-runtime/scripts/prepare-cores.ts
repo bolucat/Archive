@@ -1,12 +1,12 @@
 #!/usr/bin/env -S deno run -A
 /**
- * Download the four cores used by integration tests into `tests/bin/`:
- * mihomo, clash-rs, clash premium, meow.
+ * Download the three cores used by integration tests into `tests/bin/`:
+ * mihomo, clash-rs, meow.
  *
  * Usage:
  *   deno run -A scripts/prepare-cores.ts [--force] [--only mihomo,clash-rs]
  *     [--mihomo-version v1.19.29] [--clash-rs-version v0.10.8]
- *     [--clash-version 2023-09-05-gdcc8d87] [--meow-version v0.18.0]
+ *     [--meow-version v0.18.0]
  *
  * Versions and asset templates are kept in sync with clash-nyanpasu's
  * manifest/version.json and scripts/check.ts.
@@ -69,23 +69,6 @@ const CORES: CoreDef[] = [
     archive: "raw",
   },
   {
-    // Dreamacro's premium release was taken down; use the community backup,
-    // same as clash-nyanpasu's check.ts (getClashBackupInfo).
-    name: "clash",
-    version: "2023-09-05-gdcc8d87",
-    urlTemplate:
-      "https://github.com/zhongfly/Clash-premium-backup/releases/download/{ver}/{}",
-    archTemplate: {
-      "windows-x86_64": "clash-windows-amd64-n{}.zip",
-      "windows-aarch64": "clash-windows-arm64-n{}.zip",
-      "linux-aarch64": "clash-linux-arm64-n{}.gz",
-      "linux-x86_64": "clash-linux-amd64-n{}.gz",
-      "darwin-aarch64": "clash-darwin-arm64-n{}.gz",
-      "darwin-x86_64": "clash-darwin-amd64-n{}.gz",
-    },
-    archive: IS_WIN ? "zip" : "gz",
-  },
-  {
     name: "meow",
     version: "v0.18.0",
     urlTemplate:
@@ -108,7 +91,6 @@ const args = parseArgs(Deno.args, {
     "only",
     "mihomo-version",
     "clash-rs-version",
-    "clash-version",
     "meow-version",
   ],
 });
@@ -257,7 +239,7 @@ async function gunzipFile(
 }
 
 async function sanityCheck(targetPath: string, name: string): Promise<void> {
-  // `-v` works for mihomo/clash; clash-rs/meow may only know `--version`.
+  // `-v` works for mihomo; clash-rs/meow may only know `--version`.
   for (const flag of ["-v", "--version"]) {
     const { code, stdout, stderr } = await new Deno.Command(targetPath, {
       args: [flag],

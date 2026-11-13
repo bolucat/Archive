@@ -581,12 +581,7 @@ mod tests {
 
     #[test]
     fn identical_config_is_noop_for_every_kind() {
-        for kind in [
-            CoreKind::Mihomo,
-            CoreKind::ClashRust,
-            CoreKind::ClashPremium,
-            CoreKind::Meow,
-        ] {
+        for kind in [CoreKind::Mihomo, CoreKind::ClashRust, CoreKind::Meow] {
             let spec = spec(kind, "core");
             assert!(
                 matches!(

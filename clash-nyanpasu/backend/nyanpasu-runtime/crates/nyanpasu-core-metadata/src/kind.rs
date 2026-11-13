@@ -15,15 +15,13 @@ pub enum CoreKind {
 /// Supported Clash core kinds. This is used to gate the launch arguments and api favors.
 ///
 /// For example:
-/// for modern core, such as Mihomo, we prefer the unix socket or named pipe for ipc,
-/// while for legacy core, such as Clash Premium, we prefer the http api.
+/// for Mihomo, we prefer the unix socket or named pipe for ipc,
+/// while for Meow, we use the http api.
 pub enum ClashCoreKind {
     #[serde(rename = "mihomo")]
     Mihomo,
     #[serde(rename = "clash-rs")]
     ClashRust,
-    #[serde(rename = "clash")]
-    ClashPremium,
     #[serde(rename = "meow")]
     Meow,
 }
@@ -33,7 +31,6 @@ impl AsRef<str> for ClashCoreKind {
         match self {
             ClashCoreKind::Mihomo => "mihomo",
             ClashCoreKind::ClashRust => "clash-rs",
-            ClashCoreKind::ClashPremium => "clash",
             ClashCoreKind::Meow => "meow",
         }
     }
@@ -57,8 +54,6 @@ pub enum ClashCoreResourceVariant {
     ClashRust,
     #[serde(rename = "clash-rs-alpha")]
     ClashRustAlpha,
-    #[serde(rename = "clash")]
-    ClashPremium,
     #[serde(rename = "meow")]
     Meow,
     #[serde(rename = "meow-alpha")]
@@ -79,9 +74,6 @@ impl ClashCoreResourceVariant {
             }
             ClashCoreResourceVariant::ClashRustAlpha => {
                 concat!("clash-rs-alpha", EXE_SUFFIX)
-            }
-            ClashCoreResourceVariant::ClashPremium => {
-                concat!("clash", EXE_SUFFIX)
             }
             ClashCoreResourceVariant::Meow => concat!("meow", EXE_SUFFIX),
             ClashCoreResourceVariant::MeowAlpha => concat!("meow-alpha", EXE_SUFFIX),

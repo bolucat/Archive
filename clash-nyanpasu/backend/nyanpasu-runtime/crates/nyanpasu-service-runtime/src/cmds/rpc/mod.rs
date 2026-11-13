@@ -23,8 +23,6 @@ enum CoreTypeArg {
     ClashRust,
     #[value(name = "clash-rs-alpha")]
     ClashRustAlpha,
-    #[value(name = "clash")]
-    ClashPremium,
     #[value(name = "meow")]
     Meow,
     #[value(name = "meow-alpha")]
@@ -38,7 +36,6 @@ impl From<CoreTypeArg> for CoreType {
             CoreTypeArg::MihomoAlpha => ClashCoreType::MihomoAlpha,
             CoreTypeArg::ClashRust => ClashCoreType::ClashRust,
             CoreTypeArg::ClashRustAlpha => ClashCoreType::ClashRustAlpha,
-            CoreTypeArg::ClashPremium => ClashCoreType::ClashPremium,
             CoreTypeArg::Meow => ClashCoreType::Meow,
             CoreTypeArg::MeowAlpha => ClashCoreType::MeowAlpha,
         })
@@ -196,7 +193,6 @@ mod tests {
             ("mihomo-alpha", ClashCoreType::MihomoAlpha),
             ("clash-rs", ClashCoreType::ClashRust),
             ("clash-rs-alpha", ClashCoreType::ClashRustAlpha),
-            ("clash", ClashCoreType::ClashPremium),
             ("meow", ClashCoreType::Meow),
             ("meow-alpha", ClashCoreType::MeowAlpha),
         ];
@@ -232,8 +228,10 @@ mod tests {
 
     #[test]
     fn the_core_type_parser_rejects_an_unknown_core() {
-        let err = parse("not-a-core").unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+        for name in ["not-a-core", "clash", r#"{"clash":"clash"}"#] {
+            let err = parse(name).unwrap_err();
+            assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+        }
     }
 
     #[test]
@@ -250,7 +248,6 @@ mod tests {
                 "mihomo-alpha",
                 "clash-rs",
                 "clash-rs-alpha",
-                "clash",
                 "meow",
                 "meow-alpha"
             ]

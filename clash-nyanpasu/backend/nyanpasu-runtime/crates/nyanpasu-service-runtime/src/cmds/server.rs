@@ -47,7 +47,7 @@ pub async fn server_inner(
     nyanpasu_utils::os::kill_by_pid_file(
         crate::utils::dirs::service_pid_file(),
         // TODO: use common name
-        Some(&["mihomo", "clash"]),
+        Some(&["mihomo"]),
     )
     .await?;
     tracing::info!("nyanpasu config dir: {:?}", ctx.nyanpasu_config_dir);

@@ -731,7 +731,6 @@ fn core_kind(core_type: &CoreType) -> Result<CoreKind, anyhow::Error> {
         CoreType::Clash(ClashCoreType::ClashRust | ClashCoreType::ClashRustAlpha) => {
             Ok(CoreKind::ClashRust)
         }
-        CoreType::Clash(ClashCoreType::ClashPremium) => Ok(CoreKind::ClashPremium),
         CoreType::Clash(ClashCoreType::Meow | ClashCoreType::MeowAlpha) => Ok(CoreKind::Meow),
         CoreType::SingBox => anyhow::bail!("sing-box is not a supported core"),
     }
@@ -1187,7 +1186,6 @@ mod tests {
             (ClashCoreType::MihomoAlpha, CoreKind::Mihomo),
             (ClashCoreType::ClashRust, CoreKind::ClashRust),
             (ClashCoreType::ClashRustAlpha, CoreKind::ClashRust),
-            (ClashCoreType::ClashPremium, CoreKind::ClashPremium),
             (ClashCoreType::Meow, CoreKind::Meow),
             (ClashCoreType::MeowAlpha, CoreKind::Meow),
         ];
@@ -1607,7 +1605,6 @@ mod tests {
             Arc::new(nyanpasu_core_manager::native_store::FsNativeStore::new(
                 data_dir,
                 nyanpasu_core_manager::native_store::StoreOwner::current(),
-                None,
             )),
         )
         .await

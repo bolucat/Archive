@@ -153,7 +153,7 @@ async fn immediate_exit_reports_stderr_tail() {
     }
 }
 
-/// mihomo and clash premium print their fatal record on stdout and leave stderr
+/// mihomo prints its fatal record on stdout and leaves stderr
 /// empty, so the diagnostic tail has to follow severity rather than the stream.
 #[tokio::test]
 async fn immediate_exit_reports_a_stdout_fatal() {

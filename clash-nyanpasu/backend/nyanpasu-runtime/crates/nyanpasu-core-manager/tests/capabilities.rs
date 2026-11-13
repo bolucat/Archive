@@ -139,32 +139,6 @@ async fn force_rejects_unsupported_mihomo_before_staging_check_or_spawn() {
 }
 
 #[tokio::test]
-async fn force_rejects_clash_premium_without_probing_its_version() {
-    let (_guard, dir) = common::utf8_tempdir();
-    let runtime = dir.join("runtime");
-    let binary = copied_probe_binary(&dir);
-    let port = common::free_port();
-    let config = common::write_config(&dir, &format!("external-controller: 127.0.0.1:{port}\n"));
-    let mut spec = common::mihomo_spec(&dir, config);
-    spec.core.kind = CoreKind::ClashPremium;
-    spec.core.binary_path = binary.clone();
-    spec.core.version = None;
-    let manager = manager_with_policy(runtime.clone(), LocalIpcPolicy::Force).await;
-
-    let error = manager.start(spec).await.expect_err("Force must reject");
-
-    assert!(matches!(
-        error,
-        Error::RequiredLocalIpcUnsupported {
-            kind: CoreKind::ClashPremium,
-            ..
-        }
-    ));
-    assert_eq!(probe_count(&binary), 0);
-    assert!(!runtime.join("config-1.yaml").exists());
-}
-
-#[tokio::test]
 async fn prefer_falls_back_to_the_upstream_http_controller_and_secret() {
     let (_guard, dir) = common::utf8_tempdir();
     let runtime = dir.join("runtime");

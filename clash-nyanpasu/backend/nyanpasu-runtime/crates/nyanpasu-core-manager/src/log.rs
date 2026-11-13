@@ -1,13 +1,13 @@
 //! Normalization of core console output into a single [`LogFrame`] shape.
 //!
-//! Each kind prints its own layout (mihomo logfmt, clash premium's `PrettyPrint`,
-//! and two different tracing formats), all of them on stdout, and only meow keeps
-//! ANSI when writing to a pipe. Parsing is header-only and per kind: a line whose
-//! header does not match degrades to an unformatted frame instead of being lost.
+//! Each kind prints its own layout (mihomo logfmt and two different tracing
+//! formats), all of them on stdout, and only meow keeps ANSI when writing to a
+//! pipe. Parsing is header-only and per kind: a line whose header does not match
+//! degrades to an unformatted frame instead of being lost.
 
 use std::borrow::Borrow;
 
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveTime, TimeZone};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeZone};
 
 pub use nyanpasu_core_metadata::{LogField, LogFrame, LogLevel, LogStream, LogTimestamp};
 
@@ -133,12 +133,10 @@ fn bound_frame(frame: &mut LogFrame) {
     frame.truncated |= cut;
 }
 
-/// Stateful because clash premium needs the previous timestamp to infer date
-/// rollovers, and because a fatal record can span several lines.
+/// Stateful because a fatal record can span several lines.
 pub(crate) struct LogParser {
     kind: CoreKind,
     epoch: u64,
-    premium_clock: Option<(NaiveDate, NaiveTime)>,
     pending: [Option<Pending>; 2],
     newest_pending: Option<LogStream>,
 }
@@ -148,7 +146,6 @@ impl LogParser {
         Self {
             kind,
             epoch,
-            premium_clock: None,
             pending: [None, None],
             newest_pending: None,
         }
@@ -230,16 +227,11 @@ impl LogParser {
         }
     }
 
-    fn parse_header(
-        &mut self,
-        line: &str,
-        observed_at: DateTime<FixedOffset>,
-    ) -> Option<ParsedLine> {
+    fn parse_header(&self, line: &str, observed_at: DateTime<FixedOffset>) -> Option<ParsedLine> {
         match self.kind {
             CoreKind::Mihomo => parse_mihomo(line),
             CoreKind::Meow => parse_meow(line),
             CoreKind::ClashRust => parse_clash_rs(line, observed_at),
-            CoreKind::ClashPremium => parse_premium(line, observed_at, &mut self.premium_clock),
         }
     }
 
@@ -364,14 +356,12 @@ fn strip_ansi(line: String) -> String {
 
 fn parse_level(level: &str) -> Option<LogLevel> {
     match level {
-        "trace" | "TRC" | "TRACE" => Some(LogLevel::Trace),
-        "debug" | "DBG" | "DEBUG" => Some(LogLevel::Debug),
-        "info" | "INF" | "INFO" => Some(LogLevel::Info),
-        "warn" | "warning" | "WRN" | "WARN" => Some(LogLevel::Warning),
-        "error" | "ERR" | "ERROR" => Some(LogLevel::Error),
-        "fatal" | "panic" | "FTL" | "PNC" => Some(LogLevel::Fatal),
-        // phuslu/log's placeholder for a level it does not know.
-        "???" => Some(LogLevel::Info),
+        "trace" | "TRACE" => Some(LogLevel::Trace),
+        "debug" | "DEBUG" => Some(LogLevel::Debug),
+        "info" | "INFO" => Some(LogLevel::Info),
+        "warn" | "warning" | "WARN" => Some(LogLevel::Warning),
+        "error" | "ERROR" => Some(LogLevel::Error),
+        "fatal" | "panic" => Some(LogLevel::Fatal),
         _ => None,
     }
 }
@@ -589,75 +579,6 @@ fn clash_rs_source(rest: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// `HH:MM:SS LVL message (key=value)*`. The trailing pairs are printed without
-/// quoting and their values may contain spaces and colons, so they stay in the
-/// message instead of becoming fields.
-fn parse_premium(
-    line: &str,
-    observed_at: DateTime<FixedOffset>,
-    clock: &mut Option<(NaiveDate, NaiveTime)>,
-) -> Option<ParsedLine> {
-    let bytes = line.as_bytes();
-    if bytes.get(8) != Some(&b' ') || bytes.get(12) != Some(&b' ') {
-        return None;
-    }
-    let raw_time = line.get(..8)?;
-    let time = NaiveTime::parse_from_str(raw_time, "%H:%M:%S").ok()?;
-    let level = parse_level(line.get(9..12)?)?;
-    let (target, message) = premium_target(line.get(13..)?);
-    Some(ParsedLine {
-        timestamp: Some(LogTimestamp {
-            unix_ms: premium_unix_ms(time, observed_at, clock),
-            raw: raw_time.to_owned(),
-            inferred: true,
-        }),
-        level,
-        target,
-        message,
-        fields: Vec::new(),
-    })
-}
-
-/// The `[Tag]` prefix is a literal the call site writes into the message, not a
-/// structured field, so failing to find one is normal.
-fn premium_target(body: &str) -> (Option<String>, String) {
-    let tagged = body
-        .strip_prefix('[')
-        .and_then(|rest| rest.split_once("] "));
-    match tagged {
-        Some((tag, message)) if !tag.is_empty() && !tag.contains(' ') => {
-            (Some(tag.to_owned()), message.to_owned())
-        }
-        _ => (None, body.to_owned()),
-    }
-}
-
-/// premium prints no date. The first line adopts the observed one — a printed
-/// time more than half a day ahead of it belongs to the previous day — and later
-/// lines roll forward when the clock falls from end-of-day back to start-of-day.
-fn premium_unix_ms(
-    time: NaiveTime,
-    observed_at: DateTime<FixedOffset>,
-    clock: &mut Option<(NaiveDate, NaiveTime)>,
-) -> Option<i64> {
-    let date = match *clock {
-        Some((date, previous)) if previous.signed_duration_since(time) > Duration::hours(12) => {
-            date.succ_opt()?
-        }
-        Some((date, _)) => date,
-        None => {
-            let observed = observed_at.date_naive();
-            if time.signed_duration_since(observed_at.time()) > Duration::hours(12) {
-                observed.pred_opt()?
-            } else {
-                observed
-            }
-        }
-    };
-    *clock = Some((date, time));
-    local_unix_ms(date, time, observed_at.offset())
-}
-
 fn local_unix_ms(date: NaiveDate, time: NaiveTime, offset: &FixedOffset) -> Option<i64> {
     offset
         .from_local_datetime(&date.and_time(time))
@@ -784,117 +705,6 @@ mod tests {
             "INFO[2026-07-29T00:16:22.646059400+08:00] proxy listening"
         );
         assert_eq!(frame.message, frame.raw);
-    }
-
-    #[test]
-    fn parses_premium_pretty_print() {
-        let mmdb = parse_one(
-            CoreKind::ClashPremium,
-            LogStream::Stdout,
-            "00:16:30 INF [MMDB] can't find DB, start download path=C:/.../Country.mmdb",
-            "2026-07-29T00:16:31+08:00",
-        );
-        assert_eq!(mmdb.level, LogLevel::Info);
-        assert_eq!(mmdb.target.as_deref(), Some("MMDB"));
-        assert_eq!(
-            mmdb.message,
-            "can't find DB, start download path=C:/.../Country.mmdb"
-        );
-        assert!(mmdb.fields.is_empty());
-        let timestamp = mmdb.timestamp.expect("premium prints a time of day");
-        assert!(timestamp.inferred);
-        assert_eq!(timestamp.raw, "00:16:30");
-        assert_eq!(timestamp.unix_ms, unix_ms("2026-07-29T00:16:30+08:00"));
-
-        let inbound = parse_one(
-            CoreKind::ClashPremium,
-            LogStream::Stdout,
-            "00:16:33 INF inbound create success inbound=mixed addr=127.0.0.1:17890 network=tcp",
-            "2026-07-29T00:16:34+08:00",
-        );
-        assert_eq!(inbound.target, None);
-        assert_eq!(
-            inbound.message,
-            "inbound create success inbound=mixed addr=127.0.0.1:17890 network=tcp"
-        );
-
-        let fatal = parse_one(
-            CoreKind::ClashPremium,
-            LogStream::Stdout,
-            "00:17:26 FTL [Config] parse config failed error=yaml: line 2: did not find expected node content",
-            "2026-07-29T00:17:27+08:00",
-        );
-        assert_eq!(fatal.level, LogLevel::Fatal);
-        assert_eq!(fatal.target.as_deref(), Some("Config"));
-        assert_eq!(
-            fatal.message,
-            "parse config failed error=yaml: line 2: did not find expected node content"
-        );
-
-        let unknown = parse_one(
-            CoreKind::ClashPremium,
-            LogStream::Stdout,
-            "00:17:26 ??? unlabelled record",
-            "2026-07-29T00:17:27+08:00",
-        );
-        assert_eq!(unknown.level, LogLevel::Info);
-        assert_eq!(unknown.message, "unlabelled record");
-    }
-
-    #[test]
-    fn premium_rolls_over_midnight_but_ignores_small_backward_drift() {
-        let mut parser = LogParser::new(CoreKind::ClashPremium, 1);
-        let before = collect(parser.push_at(
-            LogStream::Stdout,
-            "23:59:59 INF before".to_owned(),
-            observed("2026-07-29T23:59:59+08:00"),
-        ))
-        .remove(0);
-        let after = collect(parser.push_at(
-            LogStream::Stdout,
-            "00:00:01 INF after".to_owned(),
-            observed("2026-07-30T00:00:01+08:00"),
-        ))
-        .remove(0);
-        assert_eq!(
-            before.timestamp.unwrap().unix_ms,
-            unix_ms("2026-07-29T23:59:59+08:00")
-        );
-        assert_eq!(
-            after.timestamp.unwrap().unix_ms,
-            unix_ms("2026-07-30T00:00:01+08:00")
-        );
-
-        let mut parser = LogParser::new(CoreKind::ClashPremium, 1);
-        parser.push_at(
-            LogStream::Stdout,
-            "10:00:00 INF first".to_owned(),
-            observed("2026-07-29T10:00:00+08:00"),
-        );
-        let drifted = collect(parser.push_at(
-            LogStream::Stdout,
-            "09:59:59 INF drifted".to_owned(),
-            observed("2026-07-29T10:00:01+08:00"),
-        ))
-        .remove(0);
-        assert_eq!(
-            drifted.timestamp.unwrap().unix_ms,
-            unix_ms("2026-07-29T09:59:59+08:00")
-        );
-    }
-
-    #[test]
-    fn premium_first_line_from_the_previous_day() {
-        let frame = parse_one(
-            CoreKind::ClashPremium,
-            LogStream::Stdout,
-            "23:59:59 INF late",
-            "2026-07-30T00:00:02+08:00",
-        );
-        assert_eq!(
-            frame.timestamp.unwrap().unix_ms,
-            unix_ms("2026-07-29T23:59:59+08:00")
-        );
     }
 
     #[test]
@@ -1105,24 +915,6 @@ mod tests {
     }
 
     #[test]
-    fn premium_stack_stays_attached_to_its_record() {
-        let mut parser = LogParser::new(CoreKind::ClashPremium, 1);
-        let at = observed("2026-07-29T00:17:27+08:00");
-        for line in [
-            "00:17:26 FTL [Config] parse config failed error=bad",
-            "goroutine 1 [running]:",
-            "main.main()",
-        ] {
-            parser.push_at(LogStream::Stdout, line.to_owned(), at);
-        }
-        let frame = collect(parser.finish()).remove(0);
-        assert_eq!(
-            frame.message,
-            "parse config failed error=bad\ngoroutine 1 [running]:\nmain.main()"
-        );
-    }
-
-    #[test]
     fn oversized_stacks_keep_the_root_and_mark_truncation() {
         let mut parser = LogParser::new(CoreKind::Mihomo, 1);
         let at = observed("2026-07-29T00:17:27+08:00");
@@ -1314,17 +1106,6 @@ mod tests {
                 },
             ),
             "Parse config error: yaml: line 2: did not find expected node content"
-        );
-
-        assert_eq!(
-            summarize_output(
-                CoreKind::ClashPremium,
-                CapturedOutput {
-                    stdout: "00:16:30 INF [MMDB] can't find DB\n00:17:26 FTL [Config] parse config failed error=yaml: line 2: did not find expected node content",
-                    stderr: "",
-                },
-            ),
-            "parse config failed error=yaml: line 2: did not find expected node content"
         );
 
         let meow = summarize_output(

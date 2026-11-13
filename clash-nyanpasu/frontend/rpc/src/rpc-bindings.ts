@@ -1073,13 +1073,10 @@ export type ClashCoreType =
   | 'mihomo-alpha'
   | 'clash-rs'
   | 'clash-rs-alpha'
-  | 'clash'
   | 'meow'
   | 'meow-alpha'
 
 export type ClashCore_Deserialize =
-  | 'clash'
-  | 'clash-premium'
   | 'clash-rs'
   | 'mihomo'
   | 'clash-meta'
@@ -1089,7 +1086,6 @@ export type ClashCore_Deserialize =
   | 'meow-alpha'
 
 export type ClashCore_Serialize =
-  | 'clash'
   | 'clash-rs'
   | 'mihomo'
   | 'mihomo-alpha'
@@ -1147,7 +1143,6 @@ export type ClashRule = {
 
 export type ClashVersion = {
   version: string
-  premium: boolean | null
   meta: boolean | null
 }
 
@@ -2403,7 +2398,6 @@ export type HotkeyAction =
   | 'clash_mode_rule'
   | 'clash_mode_global'
   | 'clash_mode_direct'
-  | 'clash_mode_script'
   | 'toggle_system_proxy'
   | 'enable_system_proxy'
   | 'disable_system_proxy'
@@ -2797,7 +2791,6 @@ export type ManifestVersionLatest = {
   mihomo_alpha: string
   clash_rs: string
   clash_rs_alpha: string
-  clash_premium: string
   meow: string
   meow_alpha?: string
 }
@@ -2855,7 +2848,7 @@ export type MipsConfigPatch_Serialize = {
   congestion_controller?: TunCongestionController | null
 }
 
-export type Mode = 'rule' | 'global' | 'direct' | 'script'
+export type Mode = 'rule' | 'global' | 'direct'
 
 export type MutationOutcome<T> =
   | {

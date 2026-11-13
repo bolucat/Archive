@@ -39,7 +39,7 @@ pub struct LogTimestamp {
     /// Unix milliseconds, when the printed instant resolves to one.
     pub unix_ms: Option<i64>,
     /// The date or the zone offset came from the observation instant because the
-    /// core did not print one (clash premium and clash-rs).
+    /// core did not print one (clash-rs).
     pub inferred: bool,
 }
 
@@ -62,17 +62,16 @@ pub struct LogField {
 pub struct LogFrame {
     /// Unix milliseconds at which the parser observed the record's **root**
     /// line. Always present, which is what makes a stream of frames sortable: a
-    /// line whose header did not parse has no clock of its own, and clash
-    /// premium's and clash-rs's are inferred. A multi-line record keeps the
-    /// instant of the line that opened it.
+    /// line whose header did not parse has no clock of its own, and clash-rs's
+    /// is inferred. A multi-line record keeps the instant of the line that
+    /// opened it.
     pub at: i64,
     pub epoch: u64,
     pub kind: ClashCoreKind,
     pub stream: LogStream,
     pub level: LogLevel,
     pub timestamp: Option<LogTimestamp>,
-    /// clash premium's `[Tag]` prefix (a message convention, not a field), meow's
-    /// tracing target, or clash-rs's `file:line`.
+    /// Meow's tracing target or clash-rs's `file:line`.
     pub target: Option<String>,
     pub message: String,
     /// Filled only where field boundaries are decidable, which today means

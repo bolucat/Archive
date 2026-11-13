@@ -14,7 +14,7 @@
 //!   instant. On a log record it is the parser's observation of the record's
 //!   root line; on a gap record it is the writer's own. `at` is the only
 //!   sortable clock: a frame whose header did not parse has no timestamp at all,
-//!   and clash premium's and clash-rs's are inferred;
+//!   and clash-rs's is inferred;
 //! - a crash can only truncate the **last** line, because each batch is one
 //!   `write_all`. A reader splits on `\n`, parses each line, and ignores a
 //!   trailing line that does not parse;

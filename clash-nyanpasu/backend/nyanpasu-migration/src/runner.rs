@@ -961,15 +961,15 @@ mod tests {
             runner.store.module_state("typed_config").applied_revision,
             2
         );
-        let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::application::NyanpasuAppConfig = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::state::PersistentState = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::clash::config::ClashConfig = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
@@ -1582,7 +1582,7 @@ mod tests {
             .into_payload();
         std::fs::write(
             case.ctx.profiles_path(),
-            serde_yaml_ng::to_string(&payload).unwrap(),
+            yaml_serde::to_string(&payload).unwrap(),
         )
         .unwrap();
         let error = format!("{:#}", case.runner().unwrap_err());
@@ -1610,7 +1610,7 @@ mod tests {
         runner.run_pending().unwrap();
 
         assert_eq!(case.stamp(), Some(4));
-        let before: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(CLEAN_PROFILES).unwrap();
+        let before: yaml_serde::Mapping = yaml_serde::from_str(CLEAN_PROFILES).unwrap();
         let after = nyanpasu_persistence::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
@@ -1619,7 +1619,7 @@ mod tests {
         assert!(state.module_state("profiles").stamped);
     }
 
-    fn application_config_payload(case: &LegacyCase) -> serde_yaml_ng::Mapping {
+    fn application_config_payload(case: &LegacyCase) -> yaml_serde::Mapping {
         nyanpasu_persistence::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
@@ -1640,11 +1640,11 @@ mod tests {
     /// default application config, which is written with the stamp it had, if
     /// any.
     fn seed_typed_files(case: &LegacyCase, stamp: Option<u64>, settings: &str) {
-        let mut config = serde_yaml_ng::Mapping::new();
+        let mut config = yaml_serde::Mapping::new();
         if let Some(revision) = stamp {
             config.insert(
                 "_nyanpasu".into(),
-                serde_yaml_ng::from_str(&format!(
+                yaml_serde::from_str(&format!(
                     "document: application
 schema_revision: {revision}
 "
@@ -1653,39 +1653,39 @@ schema_revision: {revision}
             );
         }
         // A 2.0.x file predates the setting this build added.
-        let mut defaults: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            &serde_yaml_ng::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
+        let mut defaults: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
                 .unwrap(),
         )
         .unwrap();
         defaults.remove("window_close");
         config.extend(defaults);
-        config.extend(serde_yaml_ng::from_str::<serde_yaml_ng::Mapping>(settings).unwrap());
-        let application = serde_yaml_ng::to_string(&config).unwrap();
+        config.extend(yaml_serde::from_str::<yaml_serde::Mapping>(settings).unwrap());
+        let application = yaml_serde::to_string(&config).unwrap();
         std::fs::write(case.ctx.application_config_path(), application).unwrap();
         std::fs::write(
             case.ctx.session_state_path(),
-            serde_yaml_ng::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
+            yaml_serde::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
         )
         .unwrap();
         std::fs::write(
             case.ctx.clash_config_path(),
-            serde_yaml_ng::to_string(&clash_config_2_0()).unwrap(),
+            yaml_serde::to_string(&clash_config_2_0()).unwrap(),
         )
         .unwrap();
     }
 
     /// The default clash config as 2.0.x wrote it, with boolean guard fields
     /// and neither `tun` overrides nor mips options.
-    fn clash_config_2_0() -> serde_yaml_ng::Mapping {
-        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            &serde_yaml_ng::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+    fn clash_config_2_0() -> yaml_serde::Mapping {
+        let mut config: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
                 .unwrap(),
         )
         .unwrap();
         let overrides = config
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
@@ -1714,17 +1714,17 @@ schema_revision: {revision}
         let mut runner = case.runner();
         // No file yet, so the module starts at head: no step may run on a file
         // that `typed_config` is about to create at head.
-        assert_eq!(application_state(&runner), at_revision(2, false));
+        assert_eq!(application_state(&runner), at_revision(4, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(
             runner.store.task_state("application/window_close"),
             None,
             "nothing to convert in a file created at head"
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(2, true));
+        assert_eq!(state.module_state("application"), at_revision(4, true));
         assert_application_loads(&case);
     }
 
@@ -1734,9 +1734,9 @@ schema_revision: {revision}
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(4));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(2, true));
+        assert_eq!(state.module_state("application"), at_revision(4, true));
         assert_application_loads(&case);
     }
 
@@ -1758,7 +1758,7 @@ schema_revision: {revision}
             .unwrap();
         assert_eq!(
             window_close["tray_menu"],
-            serde_yaml_ng::Value::from("destroy")
+            yaml_serde::Value::from("destroy")
         );
         assert_application_loads(&case);
     }
@@ -1778,7 +1778,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(4));
         let payload = application_config_payload(&case);
         assert!(!payload.contains_key("tray_menu_close_behavior"));
         assert_eq!(payload["window_close"]["tray_menu"], "hide");
@@ -1792,7 +1792,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("application"),
             ModuleState {
-                applied_revision: 2,
+                applied_revision: 4,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -1813,7 +1813,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, true));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(
             application_config_payload(&case)["window_close"]["tray_menu"],
             "destroy"
@@ -1825,14 +1825,14 @@ tray_menu_close_behavior: hide
         let case = LegacyCase::empty();
         seed_typed_files(
             &case,
-            Some(2),
+            Some(4),
             "language: en
 ",
         );
         let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
 
         let mut runner = case.runner();
-        assert_eq!(application_state(&runner), at_revision(2, true));
+        assert_eq!(application_state(&runner), at_revision(4, true));
         runner.run_pending().unwrap();
 
         assert_eq!(
@@ -1873,7 +1873,7 @@ tray_menu_close_behavior: hide
         let mut payload = clash_config_2_0();
         let overrides = payload
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
@@ -1897,9 +1897,9 @@ tray_menu_close_behavior: hide
             .expect("a stamped revision 2 is behind this build, not lost");
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         let mut expected = payload;
-        expected.insert("tun_mips".into(), serde_yaml_ng::Mapping::new().into());
+        expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -1913,7 +1913,7 @@ tray_menu_close_behavior: hide
         ] {
             assert_eq!(state.task_state(step), None, "{step} is already applied");
         }
-        assert_eq!(state.module_state("clash_config").applied_revision, 3);
+        assert_eq!(state.module_state("clash_config").applied_revision, 4);
     }
 
     fn clash_config_file(case: &LegacyCase) -> nyanpasu_persistence::format::Inspected {
@@ -1938,16 +1938,16 @@ tray_menu_close_behavior: hide
                 .unwrap();
     }
 
-    fn clash_guard_field(case: &LegacyCase, key: &str) -> serde_yaml_ng::Value {
+    fn clash_guard_field(case: &LegacyCase, key: &str) -> yaml_serde::Value {
         clash_config_file(case).into_payload()["overrides"][key].clone()
     }
 
-    fn managed(value: bool) -> serde_yaml_ng::Value {
-        serde_yaml_ng::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
+    fn managed(value: bool) -> yaml_serde::Value {
+        yaml_serde::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
     }
 
-    fn managed_auto_route() -> serde_yaml_ng::Value {
-        serde_yaml_ng::from_str("{auto-route: {kind: managed, value: true}}").unwrap()
+    fn managed_auto_route() -> yaml_serde::Value {
+        yaml_serde::from_str("{auto-route: {kind: managed, value: true}}").unwrap()
     }
 
     #[test]
@@ -1959,11 +1959,11 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(3, false)
+            at_revision(4, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         for step in [
             "clash_config/manageable_guard_fields",
             "clash_config/tun_overrides",
@@ -1976,7 +1976,7 @@ tray_menu_close_behavior: hide
             );
         }
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(3, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(4, true));
         assert_clash_config_loads(&case);
     }
 
@@ -1986,14 +1986,14 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         assert_eq!(
             clash_config_file(&case).into_payload()["tun"],
             managed_auto_route()
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 3);
+        assert_eq!(state.module_state("clash_config").applied_revision, 4);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -2007,12 +2007,12 @@ tray_menu_close_behavior: hide
         let mut expected = clash_config_file(&case).into_payload();
         let overrides = expected
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
         expected.insert("tun".into(), managed_auto_route());
-        expected.insert("tun_mips".into(), serde_yaml_ng::Mapping::new().into());
+        expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
 
         let mut runner = case.runner();
         assert_eq!(
@@ -2021,7 +2021,7 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -2035,7 +2035,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 3,
+                applied_revision: 4,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -2058,6 +2058,156 @@ tray_menu_close_behavior: hide
         );
 
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
+    }
+
+    #[test]
+    fn legacy_premium_selections_are_normalized_before_typed_creation() {
+        for core in ["clash", "clash-premium"] {
+            let case = LegacyCase::empty();
+            std::fs::write(
+                case.ctx.nyanpasu_config_path(),
+                format!("clash_core: {core}\n"),
+            )
+            .unwrap();
+
+            case.runner().run_pending().unwrap();
+
+            assert_eq!(application_config_payload(&case)["core"], "mihomo");
+            assert_eq!(application_stamp(&case), Some(4));
+            assert_application_loads(&case);
+            case.runner().run_pending().unwrap();
+            assert_eq!(application_config_payload(&case)["core"], "mihomo");
+        }
+    }
+
+    #[test]
+    fn typed_premium_selections_at_old_revisions_are_migrated() {
+        for core in ["clash", "clash-premium"] {
+            let case = LegacyCase::empty();
+            seed_typed_files(&case, Some(3), &format!("core: {core}\nlanguage: en\n"));
+
+            let mut runner = case.runner();
+            assert_eq!(application_state(&runner), at_revision(3, true));
+            runner.run_pending().unwrap();
+
+            let payload = application_config_payload(&case);
+            assert_eq!(payload["core"], "mihomo");
+            assert_eq!(payload["language"], "en");
+            assert_eq!(application_stamp(&case), Some(4));
+            assert_eq!(
+                runner.store.task_state("application/premium_core"),
+                Some(MigrationState::Completed)
+            );
+            assert_application_loads(&case);
+            case.runner().run_pending().unwrap();
+            assert_eq!(application_config_payload(&case), payload);
+        }
+    }
+
+    #[test]
+    fn legacy_script_mode_and_hotkeys_are_normalized_before_typed_creation() {
+        let case = LegacyCase::empty();
+        std::fs::write(
+            case.ctx.nyanpasu_config_path(),
+            "hotkeys: ['clash_mode_script,Ctrl+S', 'clash_mode_rule,Ctrl+R']\n",
+        )
+        .unwrap();
+        std::fs::write(case.ctx.clash_guard_overrides_path(), "mode: script\n").unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            yaml_serde::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
+        );
+        assert_eq!(application_stamp(&case), Some(4));
+        assert_eq!(clash_config_stamp(&case), Some(4));
+        assert_application_loads(&case);
+        assert_clash_config_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+    }
+
+    #[test]
+    fn kv_script_hotkeys_are_dropped_when_typed_files_are_created_at_head() {
+        let case = LegacyCase::empty();
+        let storage = case
+            .ctx
+            .hotkey_store_opener
+            .open(&case.ctx.storage_path())
+            .unwrap();
+        storage
+            .write(&[
+                "clash_mode_script,Ctrl+S".into(),
+                "clash_mode_direct,Ctrl+D".into(),
+            ])
+            .unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            yaml_serde::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+        );
+        assert_eq!(storage.read().unwrap(), None);
+        assert_eq!(application_stamp(&case), Some(4));
+        assert_application_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            yaml_serde::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn typed_script_mode_and_hotkeys_at_old_revisions_are_migrated() {
+        let case = LegacyCase::empty();
+        seed_typed_files(
+            &case,
+            Some(2),
+            "hotkeys: ['clash_mode_script,Ctrl+S', 'clash_mode_global,Ctrl+G']\n",
+        );
+        let mut config: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+                .unwrap(),
+        )
+        .unwrap();
+        config
+            .get_mut("overrides")
+            .unwrap()
+            .as_mapping_mut()
+            .unwrap()
+            .insert("mode".into(), "script".into());
+        write::write_document(
+            &case.ctx.clash_config_path(),
+            "clash_config",
+            3,
+            config,
+            None,
+        )
+        .unwrap();
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            yaml_serde::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
+        );
+        assert_eq!(application_stamp(&case), Some(4));
+        assert_eq!(clash_config_stamp(&case), Some(4));
+        for step in ["application/script_hotkeys", "clash_config/script_mode"] {
+            assert_eq!(
+                runner.store.task_state(step),
+                Some(MigrationState::Completed)
+            );
+        }
+        assert_application_loads(&case);
+        assert_clash_config_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
     }
 
     /// A config dir holding a real 1.6.1 install, which every module still has

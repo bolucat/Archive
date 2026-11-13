@@ -28,18 +28,13 @@ pub const CLASH_RS: RealCore = RealCore {
     name: "clash-rs",
     system_ipc: true,
 };
-pub const CLASH_PREMIUM: RealCore = RealCore {
-    kind: CoreKind::ClashPremium,
-    name: "clash",
-    system_ipc: false,
-};
 pub const MEOW: RealCore = RealCore {
     kind: CoreKind::Meow,
     name: "meow",
     system_ipc: false,
 };
 
-pub const REAL_CORES: &[RealCore] = &[MIHOMO, CLASH_RS, CLASH_PREMIUM, MEOW];
+pub const REAL_CORES: &[RealCore] = &[MIHOMO, CLASH_RS, MEOW];
 
 pub fn workspace_root() -> Utf8PathBuf {
     let manifest = Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR"));

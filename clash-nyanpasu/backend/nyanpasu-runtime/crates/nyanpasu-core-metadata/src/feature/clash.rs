@@ -104,13 +104,6 @@ impl FeatureSupport for crate::kind::ClashCoreKind {
                 Feature::UnixSocketIpc => since(&CLASH_RS_UNIX, version),
                 Feature::DisableTcpController => Support::No,
             },
-            // Clash Premium only ever exposed `external-controller` over TCP.
-            crate::kind::ClashCoreKind::ClashPremium => match feature {
-                Feature::NamedPipeIpc
-                | Feature::UnixSocketIpc
-                | Feature::DisableTcpController
-                | Feature::NamedPipeSecurityDescriptor => Support::No,
-            },
             // meow-rs advertises `--ext-ctl-unix` and `--ext-ctl-pipe` in
             // `--help`, but only for mihomo CLI compatibility: both `bail!`
             // with "not yet supported" before startup (meow-app/src/main.rs,
@@ -313,23 +306,22 @@ mod tests {
     }
 
     #[test]
-    fn tcp_only_cores_never_support_local_ipc() {
-        for kind in [ClashCoreKind::ClashPremium, ClashCoreKind::Meow] {
-            for feature in [
-                Feature::NamedPipeIpc,
-                Feature::UnixSocketIpc,
-                Feature::DisableTcpController,
-            ] {
-                assert!(matches!(kind.supports(feature, None), Support::No));
-                assert!(matches!(
-                    kind.supports(feature, version("99.0.0").as_ref()),
-                    Support::No
-                ));
-                assert!(matches!(
-                    kind.supports(feature, Some(&CoreVersion::Nightly)),
-                    Support::No
-                ));
-            }
+    fn meow_never_supports_local_ipc() {
+        for feature in [
+            Feature::NamedPipeIpc,
+            Feature::UnixSocketIpc,
+            Feature::DisableTcpController,
+        ] {
+            let kind = ClashCoreKind::Meow;
+            assert!(matches!(kind.supports(feature, None), Support::No));
+            assert!(matches!(
+                kind.supports(feature, version("99.0.0").as_ref()),
+                Support::No
+            ));
+            assert!(matches!(
+                kind.supports(feature, Some(&CoreVersion::Nightly)),
+                Support::No
+            ));
         }
     }
 
@@ -338,7 +330,6 @@ mod tests {
         for kind in [
             ClashCoreKind::Mihomo,
             ClashCoreKind::ClashRust,
-            ClashCoreKind::ClashPremium,
             ClashCoreKind::Meow,
         ] {
             assert!(matches!(

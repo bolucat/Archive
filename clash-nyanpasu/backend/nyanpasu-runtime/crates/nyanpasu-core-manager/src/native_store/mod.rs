@@ -66,28 +66,3 @@ pub(crate) fn cache_failure(kind: CoreKind, message: &str) -> bool {
         }
     }
 }
-
-/// Capture the persisted selection before a control request can change it.
-/// Unknown or absent identity cannot authorize importing a bbolt database.
-pub fn legacy_kind(config: &std::path::Path) -> Result<Option<CoreKind>, StoreError> {
-    let bytes = match std::fs::read(config) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    let document: serde_yaml_ng::Mapping = serde_yaml_ng::from_slice(&bytes)
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
-    Ok(
-        match document
-            .get("core")
-            .or_else(|| document.get("clash_core"))
-            .and_then(serde_yaml_ng::Value::as_str)
-        {
-            Some("mihomo" | "mihomo-alpha" | "clash-meta") => Some(CoreKind::Mihomo),
-            Some("clash-rs" | "clash-rs-alpha") => Some(CoreKind::ClashRust),
-            Some("clash" | "clash-premium") => Some(CoreKind::ClashPremium),
-            Some("meow") => Some(CoreKind::Meow),
-            _ => None,
-        },
-    )
-}

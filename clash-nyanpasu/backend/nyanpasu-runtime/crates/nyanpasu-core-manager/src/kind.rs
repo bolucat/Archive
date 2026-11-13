@@ -44,7 +44,6 @@ pub(crate) fn run_args(kind: CoreKind, paths: CorePaths<'_>) -> Result<Vec<OsStr
             vec!["-m".into(), "-d".into(), dir, "-f".into(), cfg]
         }
         CoreKind::ClashRust => vec!["-d".into(), dir, "-c".into(), cfg],
-        CoreKind::ClashPremium => vec!["-d".into(), dir, "-f".into(), cfg],
     })
 }
 
@@ -197,11 +196,6 @@ mod tests {
         assert_eq!(
             args,
             ["-d", "C:/data", "-c", "C:/data/config.yaml"].map(OsString::from)
-        );
-        let args = run_args(CoreKind::ClashPremium, paths).unwrap();
-        assert_eq!(
-            args,
-            ["-d", "C:/data", "-f", "C:/data/config.yaml"].map(OsString::from)
         );
     }
 

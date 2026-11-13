@@ -56,7 +56,7 @@ pub enum RuntimeBuildError {
     #[snafu(display("could not serialize the final config"))]
     SerializeFinalConfig {
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("the final config is not a mapping"))]
     ConfigNotMapping,
@@ -85,18 +85,12 @@ const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
 /// `config_fixer`: the managed settings already write `log-level` as a
 /// string. Order is execution order.
 pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
-    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 3] = [
+    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 2] = [
         (
             MIHOMO_FAMILY,
             "verge_hy_alpn",
             ScriptRuntime::JavaScript,
             include_str!("./builtin/meta_hy_alpn.js"),
-        ),
-        (
-            MIHOMO_FAMILY,
-            "verge_meta_guard",
-            ScriptRuntime::JavaScript,
-            include_str!("./builtin/meta_guard.js"),
         ),
         (
             CLASH_RS_ONLY,
@@ -302,19 +296,12 @@ mod tests {
                 .map(|b| b.name)
                 .collect()
         };
-        assert_eq!(
-            names(ClashCore::Mihomo),
-            vec!["verge_hy_alpn", "verge_meta_guard"]
-        );
+        assert_eq!(names(ClashCore::Mihomo), vec!["verge_hy_alpn"]);
         assert_eq!(names(ClashCore::ClashRs), vec!["clash_rs_comp"]);
         // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
         assert!(names(ClashCore::ClashRsAlpha).is_empty());
-        assert!(names(ClashCore::ClashPremium).is_empty());
         // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
-        assert_eq!(
-            names(ClashCore::Meow),
-            vec!["verge_hy_alpn", "verge_meta_guard"]
-        );
+        assert_eq!(names(ClashCore::Meow), vec!["verge_hy_alpn"]);
     }
 
     /// Serves one profile file whatever path is asked for.
@@ -399,26 +386,6 @@ mod tests {
                 Some(TunCongestionController::Bbr)
             )
         );
-        assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mips(&mips)),
-            standard(
-                TunStackWrite::Downgraded {
-                    selected: TunStack::Mips,
-                    written: TunStack::Gvisor,
-                },
-                None
-            )
-        );
-        assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mixed),
-            standard(
-                TunStackWrite::Downgraded {
-                    selected: TunStack::Mixed,
-                    written: TunStack::Gvisor,
-                },
-                None
-            )
-        );
     }
 
     #[test]
@@ -441,31 +408,10 @@ mod tests {
     }
 
     #[test]
-    fn a_profile_stack_the_core_rejects_fails_the_build_while_tun_is_off() {
-        let input = profile_input(ClashCore::ClashPremium);
-        let error = RuntimeBuilder::build(
-            &input,
-            &OneFile(
-                "tun: { enable: false, stack: Mixed }
-",
-            ),
-            &EchoRunner,
-        )
-        .unwrap_err();
-        assert_eq!(
-            serde_json::to_value(&error).unwrap(),
-            serde_json::json!({
-                "kind": "unsupported_config_values",
-                "values": [{ "path": "tun.stack", "value": "Mixed", "supported": ["system", "gvisor"] }],
-            })
-        );
-    }
-
-    #[test]
     fn the_selected_stack_overrides_the_profile_stack_while_tun_is_on() {
-        let mut input = profile_input(ClashCore::ClashPremium);
+        let mut input = profile_input(ClashCore::Mihomo);
         input.clash.enable_tun_mode = true;
-        input.clash.tun_stack = TunStack::Mixed;
+        input.clash.tun_stack = TunStack::System;
         let artifact = RuntimeBuilder::build(
             &input,
             &OneFile(
@@ -477,7 +423,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             artifact.final_config.to_json()["tun"]["stack"],
-            serde_json::json!("gvisor")
+            serde_json::json!("system")
         );
         let warnings: Vec<_> = artifact
             .step_logs
@@ -485,7 +431,7 @@ mod tests {
             .flat_map(|log| &log.entries)
             .filter(|entry| entry.level == StepLogLevel::Warn)
             .collect();
-        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]
@@ -494,8 +440,8 @@ mod tests {
         input.app.enable_builtin_enhanced = false; // EchoRunner 下 builtin 无意义
         let artifact =
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
-        let yaml = serde_yaml_ng::to_value(&*artifact.final_config).expect("artifact to yaml");
-        assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+        let yaml = yaml_serde::to_value(&*artifact.final_config).expect("artifact to yaml");
+        assert_eq!(yaml["mixed-port"], yaml_serde::Value::from(7890));
     }
 
     #[test]

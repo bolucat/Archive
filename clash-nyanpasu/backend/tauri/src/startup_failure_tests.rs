@@ -95,16 +95,6 @@ fn typed_setup_and_rpc_sources_select_failure_kinds_and_paths() {
         ),
         (
             setup::Error::BuildCoreHost {
-                source: local_host::Error::InspectConfig {
-                    path: "application.yaml".into(),
-                    source: io::ErrorKind::PermissionDenied.into(),
-                },
-            },
-            FailureKind::Permission,
-            Some("application.yaml".into()),
-        ),
-        (
-            setup::Error::BuildCoreHost {
                 source: local_host::Error::BuildManager {
                     source: nyanpasu_core_manager::Error::RuntimeDirectoryOwned(
                         "runtime/control".into(),
@@ -135,7 +125,7 @@ fn typed_setup_and_rpc_sources_select_failure_kinds_and_paths() {
 
 #[test]
 fn configuration_parse_location_survives_the_typed_source_chain() {
-    let parse = serde_yaml::from_str::<serde_yaml::Value>("test: [\n  broken").unwrap_err();
+    let parse = yaml_serde::from_str::<yaml_serde::Value>("test: [\n  broken").unwrap_err();
     let location = parse.location().unwrap();
     let source = client::application::Error::LoadState {
         path: paths().application_config_path(),

@@ -14,7 +14,7 @@ pub use logger::Logger;
 pub use manager_bridge::CoreManagerService as CoreManager;
 use nyanpasu_core_manager::{
     ExecutorExit, LocalIpcPolicy,
-    native_store::{FsNativeStore, StoreOwner, legacy_kind},
+    native_store::{FsNativeStore, StoreOwner},
 };
 use nyanpasu_ipc::{SERVICE_PLACEHOLDER, server::create_server};
 use routing::{AppState, create_router};
@@ -190,17 +190,7 @@ fn native_store_for_host(runtime: &RuntimeInfos) -> anyhow::Result<FsNativeStore
     });
     #[cfg(windows)]
     let owner = StoreOwner::current();
-    let config_path = runtime.nyanpasu_config_dir.join("application.yaml");
-    let config_path = if config_path.try_exists()? {
-        config_path
-    } else {
-        runtime.nyanpasu_config_dir.join("nyanpasu-config.yaml")
-    };
-    Ok(FsNativeStore::new(
-        data_dir,
-        owner,
-        legacy_kind(&config_path)?,
-    ))
+    Ok(FsNativeStore::new(data_dir, owner))
 }
 
 async fn drain<E: std::error::Error + Send + Sync + 'static>(
@@ -274,10 +264,9 @@ fn controller_access_for_host(
     ))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     use nyanpasu_core_manager::{
         CoreKind,
         native_store::{NativeStore, StoreError},
@@ -294,24 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn prefers_the_typed_config_over_the_legacy_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let runtime = runtime(dir.path());
-        std::fs::create_dir(&runtime.nyanpasu_config_dir).unwrap();
-        let typed = runtime.nyanpasu_config_dir.join("application.yaml");
-        std::fs::write(&typed, "core: mihomo\n").unwrap();
-        std::fs::write(
-            runtime.nyanpasu_config_dir.join("nyanpasu-config.yaml"),
-            "invalid: [",
-        )
-        .unwrap();
-        assert!(native_store_for_host(&runtime).is_ok());
-        std::fs::remove_file(typed).unwrap();
-        assert!(native_store_for_host(&runtime).is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn an_unbound_service_can_check_but_cannot_start_a_native_writer() {
         let dir = tempfile::tempdir().unwrap();
         let runtime = runtime(dir.path());
@@ -325,7 +296,6 @@ mod tests {
         assert!(!runtime.nyanpasu_data_dir.join("native-store").exists());
     }
 
-    #[cfg(unix)]
     #[test]
     #[ignore = "requires UID 0; can run inside a private user namespace"]
     fn privileged_service_loads_its_binding_and_preserves_legacy_data() {

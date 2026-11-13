@@ -261,7 +261,7 @@ pub struct WidgetLogoDesired {
 pub struct TrayMenuDesired {
     pub menu_mode: TrayMenuMode,
     pub selector_mode: ProxiesSelectorMode,
-    /// Only a Premium core offers the script mode item.
+    /// The core determines whether the transparent-proxy item is available.
     pub core: ClashCore,
 }
 
@@ -955,7 +955,7 @@ mod tests {
         );
         assert_case(
             "core",
-            |after| after.app.core = ClashCore::ClashPremium,
+            |after| after.app.core = ClashCore::ClashRs,
             |after| vec![tray(TrayRefresh::Full, after)],
         );
         assert_case(
@@ -1061,7 +1061,7 @@ mod tests {
     #[test]
     fn the_tray_view_reads_core_and_mode_from_the_typed_configs() {
         let app = NyanpasuAppConfig {
-            core: ClashCore::ClashPremium,
+            core: ClashCore::ClashRs,
             tray_menu_mode: TrayMenuMode::Webview,
             tray_selector_mode: ProxiesSelectorMode::Submenu,
             enable_system_proxy: true,
@@ -1074,7 +1074,7 @@ mod tests {
             ..ClashConfig::default()
         };
         clash.overrides.apply(ClashGuardOverridesPatch {
-            mode: Some(Mode::Script),
+            mode: Some(Mode::Global),
             ..ClashGuardOverridesPatch::default()
         });
 
@@ -1086,10 +1086,10 @@ mod tests {
                 menu: TrayMenuDesired {
                     menu_mode: TrayMenuMode::Webview,
                     selector_mode: ProxiesSelectorMode::Submenu,
-                    core: ClashCore::ClashPremium,
+                    core: ClashCore::ClashRs,
                 },
                 part: TrayPartDesired {
-                    mode: Mode::Script,
+                    mode: Mode::Global,
                     system_proxy: true,
                     tun: true,
                     transparent_proxy: false,
