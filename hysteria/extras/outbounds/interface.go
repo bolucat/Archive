@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/apernet/hysteria/core/v2/server"
 )
@@ -110,7 +111,7 @@ func (a *PluggableOutboundAdapter) UDP(info *server.RequestInfo, reqAddr string)
 	if err != nil {
 		return nil, err
 	}
-	return &udpConnAdapter{conn}, nil
+	return &udpConnAdapter{UDPConn: conn}, nil
 }
 
 func (a *PluggableOutboundAdapter) CheckUDP(info *server.RequestInfo, reqAddr string) error {
@@ -131,29 +132,48 @@ func (a *PluggableOutboundAdapter) CheckUDP(info *server.RequestInfo, reqAddr st
 
 type udpConnAdapter struct {
 	UDPConn
+
+	// The last address converted in each direction, as it rarely changes between packets
+	lastRead  atomic.Pointer[udpConnAdapterAddr]
+	lastWrite atomic.Pointer[udpConnAdapterAddr]
+}
+
+type udpConnAdapterAddr struct {
+	String string
+	Host   string
+	Port   uint16
 }
 
 func (u *udpConnAdapter) ReadFrom(b []byte) (int, string, error) {
 	n, addr, err := u.UDPConn.ReadFrom(b)
-	if addr != nil {
-		return n, addr.String(), err
-	} else {
+	if addr == nil {
 		return n, "", err
 	}
+	last := u.lastRead.Load()
+	if last == nil || last.Host != addr.Host || last.Port != addr.Port {
+		last = &udpConnAdapterAddr{String: addr.String(), Host: addr.Host, Port: addr.Port}
+		u.lastRead.Store(last)
+	}
+	return n, last.String, err
 }
 
 func (u *udpConnAdapter) WriteTo(b []byte, addr string) (int, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return 0, err
-	}
-	portUint, err := parsePortUint16(port)
-	if err != nil {
-		return 0, err
+	last := u.lastWrite.Load()
+	if last == nil || last.String != addr {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return 0, err
+		}
+		portUint, err := parsePortUint16(port)
+		if err != nil {
+			return 0, err
+		}
+		last = &udpConnAdapterAddr{String: addr, Host: host, Port: portUint}
+		u.lastWrite.Store(last)
 	}
 	return u.UDPConn.WriteTo(b, &AddrEx{
-		Host: host,
-		Port: portUint,
+		Host: last.Host,
+		Port: last.Port,
 	})
 }
 

@@ -58,7 +58,7 @@ Store fakeip in the cache file
 
 !!! failure "Deprecated in sing-box 1.14.0"
 
-    `store_rdrc` is deprecated and will be removed in sing-box 1.16.0, check [Migration](/migration/#migrate-store-rdrc).
+    `store_rdrc` is deprecated and will be removed in sing-box 1.16.0, check [Migration](/migration/#migrate-store_rdrc).
 
 Store rejected DNS response cache in the cache file
 
@@ -69,7 +69,7 @@ will be cached until expiration.
 
 !!! failure "Deprecated in sing-box 1.14.0"
 
-    `rdrc_timeout` is deprecated and will be removed in sing-box 1.16.0, check [Migration](/migration/#migrate-store-rdrc).
+    `rdrc_timeout` is deprecated and will be removed in sing-box 1.16.0, check [Migration](/migration/#migrate-store_rdrc).
 
 Timeout of rejected DNS response cache.
 

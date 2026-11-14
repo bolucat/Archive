@@ -13,18 +13,21 @@ jobs:
     uses: ./.github/workflows/_build_web.yml
 
   Build_v2rayA:
+    # Replaces the default "<job_id> (<every matrix value>)", which would spell
+    # out CC and EXTRA_LDFLAGS in the run's job list.
+    name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - { os: ubuntu-latest, goarch: amd64, CGO_ENABLED: 0 }
-          - { os: ubuntu-latest, goarch: arm64, CGO_ENABLED: 0 }
-          - { os: ubuntu-latest, goarch: riscv64, CGO_ENABLED: 0 }
-          - { os: ubuntu-latest, goarch: loong64, CGO_ENABLED: 1, CC: "zig cc -target loongarch64-linux-gnu", EXTRA_LDFLAGS: "-extldflags=-Wl,--strip-debug" }
-          - { os: windows-latest, goarch: amd64, CGO_ENABLED: 0 }
-          - { os: windows-latest, goarch: arm64, CGO_ENABLED: 0 }
-          - { os: macos-latest, goarch: amd64, CGO_ENABLED: 0 }
-          - { os: macos-latest, goarch: arm64, CGO_ENABLED: 0 }
+          - { os: ubuntu-latest, label: linux-amd64, goarch: amd64, CGO_ENABLED: 0 }
+          - { os: ubuntu-latest, label: linux-arm64, goarch: arm64, CGO_ENABLED: 0 }
+          - { os: ubuntu-latest, label: linux-riscv64, goarch: riscv64, CGO_ENABLED: 0 }
+          - { os: ubuntu-latest, label: linux-loong64, goarch: loong64, CGO_ENABLED: 1, CC: "zig cc -target loongarch64-linux-musl", EXTRA_LDFLAGS: "-linkmode=external -extldflags '-static -Wl,--strip-debug'" }
+          - { os: windows-latest, label: windows-amd64, goarch: amd64, CGO_ENABLED: 0 }
+          - { os: windows-latest, label: windows-arm64, goarch: arm64, CGO_ENABLED: 0 }
+          - { os: macos-latest, label: darwin-amd64, goarch: amd64, CGO_ENABLED: 0 }
+          - { os: macos-latest, label: darwin-arm64, goarch: arm64, CGO_ENABLED: 0 }
     needs: Build_v2rayA_Web
     steps:
       - uses: actions/checkout@v7
@@ -60,12 +63,12 @@ jobs:
             ubuntu-latest)  os="linux";   ext="" ;;
           esac
           cd "$CurrentDir"/service
-          GOARCH="${{ matrix.goarch }}" CGO_ENABLED="${{ matrix.CGO_ENABLED }}" CC="${{ matrix.CC }}" EXTRA_LDFLAGS="${{ matrix.EXTRA_LDFLAGS }}" go build -trimpath \
-            -ldflags "-X github.com/v2rayA/v2rayA/conf.Version=$version -s -w ${EXTRA_LDFLAGS}" \
+          GOARCH="${{ matrix.goarch }}" CGO_ENABLED="${{ matrix.CGO_ENABLED }}" CC="${{ matrix.CC }}" go build -trimpath \
+            -ldflags "-X github.com/v2rayA/v2rayA/conf.Version=$version -s -w ${{ matrix.EXTRA_LDFLAGS }}" \
             -o "$CurrentDir/v2raya_bin/v2raya${ext}"
           cd "$CurrentDir"/core
-          GOARCH="${{ matrix.goarch }}" CGO_ENABLED="${{ matrix.CGO_ENABLED }}" CC="${{ matrix.CC }}" EXTRA_LDFLAGS="${{ matrix.EXTRA_LDFLAGS }}" go build -trimpath \
-            -ldflags "-X main.Version=$version -s -w ${EXTRA_LDFLAGS}" \
+          GOARCH="${{ matrix.goarch }}" CGO_ENABLED="${{ matrix.CGO_ENABLED }}" CC="${{ matrix.CC }}" go build -trimpath \
+            -ldflags "-X main.Version=$version -s -w ${{ matrix.EXTRA_LDFLAGS }}" \
             -o "$CurrentDir/v2raya_bin/v2raya_core${ext}" ./main
       - name: Upload v2rayA Binary
         uses: actions/upload-artifact@v7

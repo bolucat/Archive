@@ -374,6 +374,8 @@ type udpIOImpl struct {
 	RequestHook   RequestHook
 	Outbound      Outbound
 	RequestInfo   *RequestInfo
+
+	lastAddr string // Address of the last message received
 }
 
 func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
@@ -383,11 +385,12 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
 			// Connection error, this will stop the session manager
 			return nil, err
 		}
-		udpMsg, err := protocol.ParseUDPMessage(msg)
+		udpMsg, err := protocol.ParseUDPMessageReuseAddr(msg, io.lastAddr)
 		if err != nil {
 			// Invalid message, this is fine - just wait for the next
 			continue
 		}
+		io.lastAddr = udpMsg.Addr
 		if io.TrafficLogger != nil {
 			ok := io.TrafficLogger.LogTraffic(io.AuthID, uint64(len(udpMsg.Data)), 0)
 			if !ok {

@@ -26,7 +26,7 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mattn/go-runewidth v0.0.27
 	github.com/mdlayher/netlink v1.11.2
-	github.com/metacubex/utls v1.8.7
+	github.com/metacubex/utls v1.9.0-alpha.1
 	github.com/mholt/acmez/v3 v3.1.6
 	github.com/miekg/dns v1.1.72
 	github.com/openai/openai-go/v3 v3.26.0
@@ -40,21 +40,21 @@ require (
 	github.com/sagernet/fswatch v0.1.2
 	github.com/sagernet/gliderssh v0.3.4-0.20261023092853-e0cad6d28647
 	github.com/sagernet/gomobile v0.1.12
-	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
-	github.com/sagernet/nftables v0.3.0-mod.4
-	github.com/sagernet/quic-go v0.61.0-sing-box-mod.13
+	github.com/sagernet/netlink v0.0.0-20261114050611-bf24b30b925f
+	github.com/sagernet/nftables v0.3.0-mod.4.0.20261114074246-0b310c3e010b
+	github.com/sagernet/quic-go v0.61.0-sing-box-mod.14
 	github.com/sagernet/sing v0.9.7-0.20261110095940-27b73774b240
 	github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
 	github.com/sagernet/sing-cloudflared v0.1.4-0.20261108120326-83391fb7b139
 	github.com/sagernet/sing-mux v0.3.10-0.20261110064256-375087483ea2
 	github.com/sagernet/sing-openconnect v0.1.1-0.20261110063215-cd35f41e8f69
 	github.com/sagernet/sing-openvpn v0.1.1-0.20261110111939-ad7a6ce7d11b
-	github.com/sagernet/sing-quic v0.7.2-0.20261109110824-5253224b67cf
+	github.com/sagernet/sing-quic v0.7.2-0.20261114063120-0979e001618d
 	github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929204512-65740e0f0e3e
 	github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20261110092058-52ade8ab7e95
-	github.com/sagernet/sing-shadowtls v0.2.2-0.20261110092247-ce8a3b8474bb
+	github.com/sagernet/sing-shadowtls v0.2.2-0.20261114073233-97863830a3b3
 	github.com/sagernet/sing-snell v0.0.0-20261110094602-04667b0a321c
-	github.com/sagernet/sing-tun v0.9.7-0.20261109145802-79ed0653fdc6
+	github.com/sagernet/sing-tun v0.9.7-0.20261114080632-40bd6cff5647
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca
 	github.com/sagernet/sing-vmess v0.2.9-0.20261110093549-d800eb57f96c
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1

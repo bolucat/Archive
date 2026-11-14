@@ -41,12 +41,12 @@ public class CoreConfigContextBuilder
             RunCoreType = runCoreType,
             AllProxiesMap = [],
             AppConfig = config,
-            FullConfigTemplate = await AppManager.Instance.GetFullConfigTemplateItem(coreType),
+            FullConfigTemplate = await ConfigDbQuery.GetFullConfigTemplateItem(coreType),
             IsTunEnabled = config.TunModeItem.EnableTun,
             SimpleDnsItem = config.SimpleDNSItem,
             ProtectDomainList = [],
-            RawDnsItem = await AppManager.Instance.GetDNSItem(coreType),
-            RoutingItem = await ConfigHandler.GetDefaultRouting(config),
+            RawDnsItem = await ConfigDbQuery.GetDNSItem(coreType),
+            RoutingItem = await ConfigDbHandler.GetDefaultRouting(config),
             IsWindows = Utils.IsWindows(),
             IsMacOS = Utils.IsMacOS(),
             IsLinux = Utils.IsLinux(),
@@ -73,7 +73,7 @@ public class CoreConfigContextBuilder
                     ruleItem.OutboundTag = Global.ProxyTag;
                     continue;
                 }
-                var ruleOutboundNode = await AppManager.Instance.GetProfileItemViaRemarks(ruleItem.OutboundTag);
+                var ruleOutboundNode = await ConfigDbQuery.GetProfileItemViaRemarks(ruleItem.OutboundTag);
                 if (ruleOutboundNode == null)
                 {
                     validatorResult.Warnings.Add(string.Format(ResUI.MsgRoutingRuleOutboundNodeNotFound,
@@ -204,7 +204,7 @@ public class CoreConfigContextBuilder
         var node = nodeContext.Node;
         var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
 
-        var preSocksItem = ConfigHandler.GetPreSocksItem(config, node, coreType);
+        var preSocksItem = ConfigDbHandler.GetPreSocksItem(config, node, coreType);
         if (preSocksItem != null)
         {
             var preSocksResult = await Build(nodeContext.AppConfig, preSocksItem);
@@ -277,7 +277,7 @@ public class CoreConfigContextBuilder
             return (null, result);
         }
 
-        var subItem = await AppManager.Instance.GetSubItem(node.Subid);
+        var subItem = await ConfigDbQuery.GetSubItem(node.Subid);
         if (subItem == null)
         {
             return (null, result);
@@ -288,7 +288,7 @@ public class CoreConfigContextBuilder
 
         if (!subItem.PrevProfile.IsNullOrEmpty())
         {
-            prevNode = await AppManager.Instance.GetProfileItemViaRemarks(subItem.PrevProfile);
+            prevNode = await ConfigDbQuery.GetProfileItemViaRemarks(subItem.PrevProfile);
             if (prevNode == null)
             {
                 result.Warnings.Add(string.Format(ResUI.MsgSubscriptionPrevProfileNotFound, subItem.PrevProfile));
@@ -296,7 +296,7 @@ public class CoreConfigContextBuilder
         }
         if (!subItem.NextProfile.IsNullOrEmpty())
         {
-            nextNode = await AppManager.Instance.GetProfileItemViaRemarks(subItem.NextProfile);
+            nextNode = await ConfigDbQuery.GetProfileItemViaRemarks(subItem.NextProfile);
             if (nextNode == null)
             {
                 result.Warnings.Add(string.Format(ResUI.MsgSubscriptionNextProfileNotFound, subItem.NextProfile));
