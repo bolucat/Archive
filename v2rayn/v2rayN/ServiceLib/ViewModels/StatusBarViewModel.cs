@@ -218,7 +218,7 @@ public partial class StatusBarViewModel : MyReactiveObject
 
     private async Task Init()
     {
-        await ConfigDbHandler.InitBuiltinRouting(_config);
+        await ConfigDbHandler.InitBuiltinRouting();
         await RefreshRoutingsMenu();
         await InboundDisplayStatus();
         // The view refreshes its icon on initialization; interaction handlers are not registered yet.
@@ -267,7 +267,7 @@ public partial class StatusBarViewModel : MyReactiveObject
         await RefreshServersMenu();
 
         //display running server
-        var running = await ConfigDbHandler.GetDefaultServer(_config);
+        var running = await ConfigTextHandler.GetDefaultServer();
         if (running != null)
         {
             RunningServerDisplay = running.GetSummary();
@@ -319,7 +319,7 @@ public partial class StatusBarViewModel : MyReactiveObject
 
     public async Task<AvailabilityCheckResult?> TestServerAvailability()
     {
-        var item = await ConfigDbHandler.GetDefaultServer(_config);
+        var item = await ConfigTextHandler.GetDefaultServer();
         if (item == null)
         {
             return null;
@@ -413,7 +413,7 @@ public partial class StatusBarViewModel : MyReactiveObject
             return;
         }
 
-        if (await ConfigDbHandler.SetDefaultRouting(_config, item) == 0)
+        if (await ConfigDbHandler.SetDefaultRouting(item) == 0)
         {
             NoticeManager.Instance.SendMessageEx(ResUI.TipChangeRouting);
             ReloadRequested.Publish();

@@ -1,5 +1,3 @@
-
-
 namespace ServiceLib.ViewModels;
 
 public partial class ProfilesViewModel : MyReactiveObject
@@ -401,7 +399,7 @@ public partial class ProfilesViewModel : MyReactiveObject
     {
         var lstModel = await ConfigDbQuery.ProfileModels(_config.SubIndexId, filter);
 
-        await ConfigDbHandler.SetDefaultServer(_config, lstModel);
+        await ConfigTextHandler.SetDefaultServer(lstModel);
 
         var lstServerStat = (_config.GuiItem.EnableStatistics ? StatisticsManager.Instance.ServerStat : null) ?? [];
         var lstProfileExs = await ProfileExManager.Instance.GetProfileExs();
@@ -516,7 +514,7 @@ public partial class ProfilesViewModel : MyReactiveObject
         }
         var exists = lstSelected.Exists(t => t.IndexId == _config.IndexId);
 
-        await ConfigDbHandler.RemoveServers(_config, lstSelected);
+        await ConfigDbHandler.RemoveServers(lstSelected);
         NoticeManager.Instance.Enqueue(ResUI.OperationSuccess);
         if (lstSelected.Count == ProfileItems.Count)
         {
@@ -536,7 +534,7 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        var tuple = await ConfigDbHandler.DedupServerList(_config, _config.SubIndexId);
+        var tuple = await ConfigDbHandler.DedupServerList(_config.SubIndexId);
         if (tuple.Item1 > 0 || tuple.Item2 > 0)
         {
             await RefreshServers();
@@ -552,7 +550,7 @@ public partial class ProfilesViewModel : MyReactiveObject
         {
             return;
         }
-        if (await ConfigDbHandler.CopyServer(_config, lstSelected) == 0)
+        if (await ConfigDbHandler.CopyServer(lstSelected) == 0)
         {
             await RefreshServers();
             NoticeManager.Instance.Enqueue(ResUI.OperationSuccess);
@@ -585,7 +583,7 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        if (await ConfigDbHandler.SetDefaultServerIndex(_config, indexId) == 0)
+        if (await ConfigTextHandler.SetDefaultServerIndex(indexId) == 0)
         {
             await RefreshServers();
             Reload();
@@ -611,7 +609,7 @@ public partial class ProfilesViewModel : MyReactiveObject
 
     private async Task GenGroupAllServer()
     {
-        var ret = await ConfigDbHandler.AddGroupAllServer(_config, SelectedSub);
+        var ret = await ConfigDbHandler.AddGroupAllServer( SelectedSub);
         if (ret.Success != true)
         {
             NoticeManager.Instance.Enqueue(ResUI.OperationFailed);
@@ -623,7 +621,7 @@ public partial class ProfilesViewModel : MyReactiveObject
 
     private async Task GenGroupRegionServer()
     {
-        var ret = await ConfigDbHandler.AddGroupRegionServer(_config, SelectedSub);
+        var ret = await ConfigDbHandler.AddGroupRegionServer( SelectedSub);
         if (ret.Success != true)
         {
             NoticeManager.Instance.Enqueue(ResUI.OperationFailed);
@@ -643,7 +641,7 @@ public partial class ProfilesViewModel : MyReactiveObject
 
         _dicHeaderSort.TryAdd(colName, true);
         _dicHeaderSort.TryGetValue(colName, out var asc);
-        if (await ConfigDbHandler.SortServers(_config, _config.SubIndexId, colName, asc) != 0)
+        if (await ConfigDbHandler.SortServers( _config.SubIndexId, colName, asc) != 0)
         {
             return;
         }
@@ -653,7 +651,7 @@ public partial class ProfilesViewModel : MyReactiveObject
 
     public async Task RemoveInvalidServerResult()
     {
-        var count = await ConfigDbHandler.RemoveInvalidServerResult(_config, _config.SubIndexId);
+        var count = await ConfigDbHandler.RemoveInvalidServerResult( _config.SubIndexId);
         await RefreshServers();
         NoticeManager.Instance.Enqueue(string.Format(ResUI.RemoveInvalidServerResultTip, count));
     }
@@ -667,7 +665,7 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        await ConfigDbHandler.MoveToGroup(_config, lstSelected, SelectedMoveToGroup.Id);
+        await ConfigDbHandler.MoveToGroup( lstSelected, SelectedMoveToGroup.Id);
         NoticeManager.Instance.Enqueue(ResUI.OperationSuccess);
 
         await RefreshServers();
@@ -685,7 +683,7 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        if (await ConfigDbHandler.MoveServer(_config, lstProfile, index, eMove) == 0)
+        if (await ConfigDbHandler.MoveServer( lstProfile, index, eMove) == 0)
         {
             await RefreshServers();
         }
@@ -697,7 +695,7 @@ public partial class ProfilesViewModel : MyReactiveObject
         if (startIndex >= 0 && targetIndex >= 0 && startIndex != targetIndex)
         {
             var lstProfile = ProfileItems?.Select(t => t.IndexId).ToList() ?? [];
-            if (await ConfigDbHandler.MoveServer(_config, lstProfile, startIndex, EMove.Position, targetIndex) == 0)
+            if (await ConfigDbHandler.MoveServer( lstProfile, startIndex, EMove.Position, targetIndex) == 0)
             {
                 await RefreshServers();
             }
@@ -719,8 +717,7 @@ public partial class ProfilesViewModel : MyReactiveObject
             .Select(item => item.IndexId)
             .ToList();
 
-        var result = await ConfigDbHandler.MoveServersTo(
-            _config,
+        var result = await ConfigDbHandler.MoveServersTo(        
             orderedProfileIds,
             sourceIndices,
             insertIndex);
@@ -923,7 +920,7 @@ public partial class ProfilesViewModel : MyReactiveObject
         {
             return;
         }
-        await ConfigDbHandler.DeleteSubItem(_config, item.Id);
+        await ConfigDbHandler.DeleteSubItem( item.Id);
 
         await RefreshSubscriptions();
         await SubSelectedChangedAsync();
