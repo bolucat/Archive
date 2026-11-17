@@ -37,7 +37,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 	headers := options.Headers.Build()
-	client, err := http.NewClientWithTLS(ctx, logger, outboundDialer, options.ServerOptions, common.PtrValueOrDefault(options.TLS), http.ClientOptions{
+	client, err := http.NewClientWithTLS(ctx, logger, outboundDialer, options.ServerOptions, common.PtrValueOrDefault(options.TLS), options.DomainResolver, http.ClientOptions{
 		Username:               options.Username,
 		Password:               options.Password,
 		Path:                   options.Path,

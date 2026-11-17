@@ -27,13 +27,15 @@ export async function createPortableArchive(
     mainEntryPath = path.join(buildDir, 'clash-nyanpasu.exe')
   }
   zip.addLocalFile(mainEntryPath)
-  zip.addLocalFile(path.join(buildDir, 'clash.exe'))
   zip.addLocalFile(path.join(buildDir, 'mihomo.exe'))
   zip.addLocalFile(path.join(buildDir, 'mihomo-alpha.exe'))
   zip.addLocalFile(path.join(buildDir, 'nyanpasu-service.exe'))
+  zip.addLocalFile(path.join(buildDir, 'nyanpasu-cli.exe'))
   zip.addLocalFile(path.join(buildDir, 'clash-rs.exe'))
   zip.addLocalFile(path.join(buildDir, 'clash-rs-alpha.exe'))
   zip.addLocalFolder(path.join(buildDir, 'resources'), 'resources')
+  zip.addLocalFolder(path.join(buildDir, 'skills'), 'skills')
+  zip.addLocalFolder(path.join(buildDir, 'completions'), 'completions')
 
   if (variant === 'fixed-webview') {
     const webviewPath = path.join(tauriDir, FIXED_WEBVIEW_DIR)

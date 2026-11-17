@@ -40,7 +40,7 @@ require (
 	github.com/sagernet/fswatch v0.1.2
 	github.com/sagernet/gliderssh v0.3.4-0.20261023092853-e0cad6d28647
 	github.com/sagernet/gomobile v0.1.12
-	github.com/sagernet/netlink v0.0.0-20261114050611-bf24b30b925f
+	github.com/sagernet/netlink v0.0.0-20261116064630-4ea47d5d44b1
 	github.com/sagernet/nftables v0.3.0-mod.4.0.20261114074246-0b310c3e010b
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.14
 	github.com/sagernet/sing v0.9.7-0.20261110095940-27b73774b240
@@ -54,9 +54,9 @@ require (
 	github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20261110092058-52ade8ab7e95
 	github.com/sagernet/sing-shadowtls v0.2.2-0.20261114073233-97863830a3b3
 	github.com/sagernet/sing-snell v0.0.0-20261110094602-04667b0a321c
-	github.com/sagernet/sing-tun v0.9.7-0.20261114080632-40bd6cff5647
+	github.com/sagernet/sing-tun v0.9.7-0.20261116065105-d69ccb79defd
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca
-	github.com/sagernet/sing-vmess v0.2.9-0.20261110093549-d800eb57f96c
+	github.com/sagernet/sing-vmess v0.2.9-0.20261116164733-ca746ebade33
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1
 	github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20261028024127-670967df7dbf
 	github.com/sagernet/wireguard-go v0.0.8-0.20261022215849-fdf0ad046586

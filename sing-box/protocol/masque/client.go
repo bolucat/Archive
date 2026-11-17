@@ -107,7 +107,7 @@ func NewClientEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 			}
 		}
 	}
-	httpClient, err := http.NewClientWithTLS(ctx, logger, outboundDialer, options.ServerOptions, common.PtrValueOrDefault(options.TLS), http.ClientOptions{
+	httpClient, err := http.NewClientWithTLS(ctx, logger, outboundDialer, options.ServerOptions, common.PtrValueOrDefault(options.TLS), options.DomainResolver, http.ClientOptions{
 		Authority:              authority,
 		Username:               options.Username,
 		Password:               options.Password,
