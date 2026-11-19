@@ -1,4 +1,15 @@
 export default {
+  nodeProbe: {
+    mode: "노드 검사 모드",
+    server: "서버 연결",
+    proxy: "프록시 경유",
+    url: "검사 URL",
+    title: "노드 검사",
+    hint: "대시보드와 노드 목록에 적용됩니다. 서버 연결은 서버 접속을 확인하고, 프록시 경유는 각 노드를 통해 웹사이트를 요청합니다.",
+    urlHint:
+      "비워 두면 https://gstatic.com/generate_204를 사용합니다. 요청 실패는 대상 웹사이트의 문제일 수도 있습니다.",
+    invalidUrl: "인증 정보가 없는 HTTP(S) URL을 입력하세요.",
+  },
   onboarding: {
     title: "사용 안내",
     importTitle: "노드 가져오기",
@@ -34,10 +45,17 @@ export default {
     sources: { all: "전체", local: "로컬" },
     membersOnly: "구성원만",
     source: "출처",
+    sort: "정렬",
+    sorts: {
+      none: "기본",
+      asc: "지연 시간 낮은 순",
+      desc: "지연 시간 높은 순",
+    },
     inUse: "사용 중",
     addToGroup: "프록시 그룹에 추가",
     removeFromGroup: "프록시 그룹에서 제거",
     selectAll: "전체 선택",
+    selectFailed: "실패한 노드 선택",
     autoUpdate: "자동 업데이트",
     noSubscriptions: "아직 구독이 없습니다",
     noSubscriptionsHint:
@@ -58,7 +76,7 @@ export default {
     switchNode: "전환",
     proxyGroup: "프록시 그룹",
     editGroup: "노드 추가/삭제",
-    autoFastest: "자동 (최저 지연 시간)",
+    autoFastest: "자동 (그룹 전략)",
     emptyGroup: "이 그룹에 노드가 없습니다",
     updateAll: "모두 업데이트",
     updatedAt: "업데이트: {time}",
@@ -150,6 +168,9 @@ export default {
     coreStoppedDirectAll:
       "코어가 중지되었습니다. 모든 구독을 프록시를 거치지 않고 업데이트하시겠습니까?",
 
+    nodeDns: "노드 DNS",
+    nodeDnsHint:
+      "auto는 기존 순서를 유지합니다. 또는 순수 IP 기반 UDP, TCP, TLS, HTTPS DNS를 입력하세요. DNS 하이재킹이 켜져 있을 때만 적용됩니다. DoH에는 https://1.1.1.1/dns-query처럼 경로가 포함된 URL이 필요합니다. 지연 시간 테스트와 구독 다운로드에는 영향이 없습니다.",
     settingsTitle: "구독 업데이트",
     remarks: "별칭",
     numberServers: "서버 수",
@@ -505,6 +526,7 @@ export default {
       global: "모두 프록시, LAN은 직접 연결",
       minimal: "자주 쓰는 해외 서비스만 프록시, 나머지는 직접 연결",
       russia: "러시아 사이트는 직접 연결, 예외와 나머지는 프록시",
+      iran: "이란 사이트는 직접 연결, 나머지는 프록시",
       ads: "광고 도메인 차단",
       streaming:
         "스트리밍은 프록시 (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
@@ -630,6 +652,11 @@ export default {
     probeUrl: "탐색 URL",
     probeInterval: "탐색 간격",
     type: "유형",
+    strategies: {
+      leastLoad: "최소 부하",
+      roundRobin: "순차 선택",
+      random: "무작위 선택",
+    },
   },
   proxyGroup: {
     searchNodes: "노드 검색...",
@@ -774,6 +801,10 @@ export default {
       "지원되지 않는 암호화 방식: {cipher}. aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305 또는 2022-blake3 방식을 사용하세요",
     LINK_MALFORMED: "잘못된 {protocol} 링크: {detail}",
     SUBSCRIPTION_FETCH_FAILED: "{host}에서 구독 가져오기 실패: {detail}",
+    NODE_DNS_INVALID:
+      "이 서비스의 DNS 리스너를 가리키지 않는 순수 IP 기반 UDP, TCP, TLS, HTTPS DNS 주소를 사용하세요.",
+    NODE_DNS_CONFLICT:
+      "연결된 구독에서 노드 도메인 {domain}에 서로 다른 DNS를 사용합니다. 공유 도메인에는 같은 주소를 선택하세요.",
     SUBSCRIPTION_EMPTY: "구독에 서버 없음.",
     SUBSCRIPTION_NOT_FOUND: "구독 #{id} 없음. 페이지를 새로 고치세요.",
     SERVER_NOT_FOUND:

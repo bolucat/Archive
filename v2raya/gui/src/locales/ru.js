@@ -1,4 +1,15 @@
 export default {
+  nodeProbe: {
+    mode: "Режим проверки узлов",
+    server: "До сервера",
+    proxy: "Через прокси",
+    url: "URL проверки",
+    title: "Проверка узлов",
+    hint: "Для дашборда и списка узлов. «До сервера» проверяет соединение с сервером; «Через прокси» — запрос к сайту через каждый узел.",
+    urlHint:
+      "Оставьте пустым для https://gstatic.com/generate_204. Ошибка запроса может означать недоступность целевого сайта.",
+    invalidUrl: "Введите HTTP(S) URL без логина и пароля.",
+  },
   onboarding: {
     title: "Краткое руководство",
     importTitle: "Импорт узлов",
@@ -34,10 +45,17 @@ export default {
     sources: { all: "Все", local: "Локальные" },
     membersOnly: "Только участники",
     source: "Источник",
+    sort: "Сортировка",
+    sorts: {
+      none: "По умолчанию",
+      asc: "Сначала с меньшей задержкой",
+      desc: "Сначала с большей задержкой",
+    },
     inUse: "Используется",
     addToGroup: "Добавить в группу прокси",
     removeFromGroup: "Удалить из группы прокси",
     selectAll: "Выбрать все",
+    selectFailed: "Выбрать не прошедшие проверку",
     autoUpdate: "Автообновление",
     noSubscriptions: "Подписок пока нет",
     noSubscriptionsHint:
@@ -60,7 +78,7 @@ export default {
     switchNode: "Сменить",
     proxyGroup: "Группа прокси",
     editGroup: "Добавить или удалить узлы",
-    autoFastest: "Авто (минимальная задержка)",
+    autoFastest: "Авто (стратегия группы)",
     emptyGroup: "В этой группе нет узлов",
     updateAll: "Обновить все",
     updatedAt: "Обновлено {time}",
@@ -153,6 +171,9 @@ export default {
     coreStoppedDirectAll:
       "Ядро выключено. Обновить все подписки мимо прокси?",
 
+    nodeDns: "DNS узлов",
+    nodeDnsHint:
+      "auto сохраняет прежний порядок; либо укажите DNS по IP через UDP, TCP, TLS или HTTPS. Действует только при включённом перехвате DNS. Для DoH нужен URL с путём, например https://1.1.1.1/dns-query. Тесты задержки и загрузка подписок не меняются.",
     settingsTitle: "Обновление подписок",
     remarks: "Примечания",
     numberServers: "Количество серверов",
@@ -513,6 +534,7 @@ export default {
       minimal:
         "Только распространённые зарубежные сервисы через прокси, остальное напрямую",
       russia: "Российские сайты напрямую, исключения и остальное через прокси",
+      iran: "Иранские сайты напрямую, остальное через прокси",
       ads: "Блокировать рекламные домены",
       streaming:
         "Стриминг через прокси (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
@@ -641,6 +663,11 @@ export default {
     probeUrl: "URL проверки",
     probeInterval: "Интервал проверки",
     type: "Тип",
+    strategies: {
+      leastLoad: "Наименьшая нагрузка",
+      roundRobin: "По очереди",
+      random: "Случайно",
+    },
   },
   proxyGroup: {
     searchNodes: "Поиск узлов...",
@@ -791,6 +818,10 @@ export default {
     LINK_MALFORMED: "Некорректная ссылка протокола {protocol}: {detail}",
     SUBSCRIPTION_FETCH_FAILED:
       "Не удалось получить подписку по адресу {host}: {detail}",
+    NODE_DNS_INVALID:
+      "Используйте IP-адрес DNS с UDP, TCP, TLS или HTTPS, не указывающий на DNS-слушатель этой службы.",
+    NODE_DNS_CONFLICT:
+      "Домен узла {domain} использует разные DNS в подключённых подписках. Выберите одинаковый адрес для общего домена.",
     SUBSCRIPTION_EMPTY: "Подписка не содержит серверов.",
     SUBSCRIPTION_NOT_FOUND:
       "Подписка №{id} не существует. Перезагрузите страницу.",

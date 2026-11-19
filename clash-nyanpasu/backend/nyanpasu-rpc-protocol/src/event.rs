@@ -1,10 +1,6 @@
 //! Stable shared event identities, independent of desktop wrappers.
 
-use crate::{RpcTarget, Scope, ShellCapability};
-
-const DESKTOP_ONLY: &[RpcTarget] = &[RpcTarget::Desktop];
-const DESKTOP_AND_HTTP: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http];
-const ALL_TARGETS: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http, RpcTarget::Local];
+use crate::permission::{self, ResourceKind, ResourceMetadata};
 
 /// A shared event a shell publishes to its frontends. The names are the
 /// Tauri event names the generated bindings listen on; the desktop shell
@@ -24,6 +20,7 @@ pub enum EventName {
     ServiceStatusChanged,
     ServiceStatusSummaryChanged,
     StateChanged,
+    SyncStatusChanged,
     StorageResync,
     StorageValueChanged,
     WindowMessage,
@@ -31,7 +28,7 @@ pub enum EventName {
 
 impl EventName {
     /// All shared identities in desktop bridge registration order.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::AppUpdateStateChanged,
         Self::AppUpdateSummaryChanged,
         Self::ClashWs,
@@ -48,6 +45,7 @@ impl EventName {
         Self::CoreStatusSummaryChanged,
         Self::ServiceStatusSummaryChanged,
         Self::CoreLogsSummaryChanged,
+        Self::SyncStatusChanged,
     ];
 
     /// The existing event name used on every frontend transport.
@@ -66,127 +64,103 @@ impl EventName {
             Self::ServiceStatusChanged => "service-status-changed-event",
             Self::ServiceStatusSummaryChanged => "service-status-summary-changed-event",
             Self::StateChanged => "state-changed-event",
+            Self::SyncStatusChanged => "sync-status-changed-event",
             Self::StorageResync => "storage-resync-event",
             Self::StorageValueChanged => "storage-value-changed-event",
             Self::WindowMessage => "window-message-event",
         }
     }
 
-    /// The scope a principal needs to receive this event's payload. Reviewed
-    /// per variant against what the payload carries, not against its name.
-    /// This is metadata only: event admission is decided by the common
-    /// authorization layer, not here.
-    pub fn scope(self) -> Scope {
-        match self {
-            // Structural values, invalidation signals and an empty deep-link
-            // notice (it never carries the link) hold no free text. Whether a
-            // desktop-only signal may reach another transport is the separate
-            // question of event exposure, decided with admission.
-            Self::ClashWs
-            | Self::AppUpdateSummaryChanged
-            | Self::ConfigurationStatusSummaryChanged
-            | Self::CoreLogsSummaryChanged
-            | Self::CoreStatusSummaryChanged
-            | Self::ServiceStatusSummaryChanged
-            | Self::SchemeRequestReceived
-            | Self::StateChanged
-            | Self::StorageResync => Scope::Read,
-            // Full status values carry owner diagnostic text, endpoints and
-            // controller details; the update state carries unaudited error and
-            // endpoint text; the core-log status carries an error message; a
-            // storage change carries an arbitrary stored value; an inter-window
-            // message carries an arbitrary payload.
-            Self::AppUpdateStateChanged
-            | Self::ConfigurationStatusChanged
-            | Self::CoreLogsChanged
-            | Self::CoreStatusChanged
-            | Self::ServiceStatusChanged
-            | Self::StorageValueChanged
-            | Self::WindowMessage => Scope::SensitiveRead,
-        }
+    /// The resource table row that admits this event. Its scope, exposure and capability are
+    /// declared with the other resources; a test keeps every identity paired with one row.
+    pub fn resource(self) -> &'static ResourceMetadata {
+        permission::find(ResourceKind::Event, self.as_str())
+            .unwrap_or_else(|| panic!("event `{}` has no resource row", self.as_str()))
     }
 
     /// Look up an event identity by its wire event name.
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|event| event.as_str() == name)
     }
-
-    /// Explicit transport exposure for this event identity.
-    ///
-    /// Window messages and deep-link notices belong strictly to the native desktop shell.
-    pub fn targets(self) -> &'static [RpcTarget] {
-        match self {
-            Self::SchemeRequestReceived | Self::WindowMessage => DESKTOP_ONLY,
-            Self::AppUpdateStateChanged
-            | Self::ClashWs
-            | Self::ConfigurationStatusChanged
-            | Self::CoreLogsChanged
-            | Self::CoreStatusChanged
-            | Self::ServiceStatusChanged => ALL_TARGETS,
-            Self::AppUpdateSummaryChanged
-            | Self::ConfigurationStatusSummaryChanged
-            | Self::CoreLogsSummaryChanged
-            | Self::CoreStatusSummaryChanged
-            | Self::ServiceStatusSummaryChanged
-            | Self::StateChanged
-            | Self::StorageResync
-            | Self::StorageValueChanged => DESKTOP_AND_HTTP,
-        }
-    }
-
-    /// Shell capability required before a non-desktop transport may expose or deliver this event.
-    pub fn capability(self) -> Option<ShellCapability> {
-        match self {
-            Self::AppUpdateStateChanged | Self::AppUpdateSummaryChanged => {
-                Some(ShellCapability::AppUpdate)
-            }
-            Self::SchemeRequestReceived => Some(ShellCapability::DeepLink),
-            Self::WindowMessage => Some(ShellCapability::Window),
-            Self::ClashWs
-            | Self::ConfigurationStatusChanged
-            | Self::ConfigurationStatusSummaryChanged
-            | Self::CoreLogsChanged
-            | Self::CoreLogsSummaryChanged
-            | Self::CoreStatusChanged
-            | Self::CoreStatusSummaryChanged
-            | Self::ServiceStatusChanged
-            | Self::ServiceStatusSummaryChanged
-            | Self::StateChanged
-            | Self::StorageResync
-            | Self::StorageValueChanged => None,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
+    use nyanpasu_config::application::{Access, Resource};
+
+    use crate::{RpcTarget, permission::RESOURCES};
+
+    /// Whether `rows` name every event identity exactly once and nothing else.
+    fn rows_match_events(rows: &[&str]) -> Result<(), String> {
+        let mut seen = BTreeSet::new();
+        for row in rows {
+            if EventName::from_name(row).is_none() {
+                return Err(format!("`{row}` is not an event identity"));
+            }
+            if !seen.insert(*row) {
+                return Err(format!("`{row}` is declared twice"));
+            }
+        }
+        match EventName::ALL
+            .into_iter()
+            .find(|event| !seen.contains(event.as_str()))
+        {
+            Some(event) => Err(format!("`{}` has no resource row", event.as_str())),
+            None => Ok(()),
+        }
+    }
+
+    fn event_rows() -> Vec<&'static str> {
+        RESOURCES
+            .iter()
+            .filter(|resource| resource.kind == ResourceKind::Event)
+            .map(|resource| resource.name)
+            .collect()
+    }
 
     #[test]
-    fn event_scopes_are_pinned() {
-        let by_scope = |scope| {
+    fn every_event_has_one_row() {
+        assert_eq!(rows_match_events(&event_rows()), Ok(()));
+    }
+
+    #[test]
+    fn event_rows_reject_missing_extra_and_duplicate_events() {
+        let mut rows = event_rows();
+        let removed = rows.pop().unwrap();
+        assert_eq!(
+            rows_match_events(&rows),
+            Err(format!("`{removed}` has no resource row"))
+        );
+        rows.push(removed);
+        rows.push("not-an-event");
+        assert_eq!(
+            rows_match_events(&rows),
+            Err("`not-an-event` is not an event identity".to_owned())
+        );
+        rows.pop();
+        rows.push(removed);
+        assert_eq!(
+            rows_match_events(&rows),
+            Err(format!("`{removed}` is declared twice"))
+        );
+    }
+
+    /// Events only read; the sensitive ones are a reviewed list.
+    #[test]
+    fn event_requirements_are_pinned() {
+        let by = |filter: &dyn Fn(&crate::permission::ResourceMetadata) -> bool| {
             EventName::ALL
                 .into_iter()
-                .filter(|event| event.scope() == scope)
+                .filter(|event| filter(event.resource()))
                 .map(EventName::as_str)
                 .collect::<Vec<_>>()
         };
+        assert!(by(&|resource| resource.permission.access != Access::Read).is_empty());
         assert_eq!(
-            by_scope(Scope::Read),
-            [
-                "app-update-summary-changed",
-                "clash-ws-event",
-                "scheme-request-received-event",
-                "storage-resync-event",
-                "state-changed-event",
-                "configuration-status-summary-changed",
-                "core-status-summary-changed-event",
-                "service-status-summary-changed-event",
-                "core-logs-summary-changed",
-            ]
-        );
-        assert_eq!(
-            by_scope(Scope::SensitiveRead),
+            by(&|resource| resource.sensitive),
             [
                 "app-update-state-changed",
                 "core-logs-changed",
@@ -195,9 +169,14 @@ mod tests {
                 "service-status-changed-event",
                 "storage-value-changed-event",
                 "window-message-event",
+                "sync-status-changed-event",
             ]
         );
-        assert!(by_scope(Scope::System).is_empty());
+        assert_eq!(
+            by(&|resource| resource.permission.resource == Resource::Traffic),
+            ["clash-ws-event"]
+        );
+        assert!(by(&|resource| resource.permission.resource == Resource::Remote).is_empty());
     }
 
     #[test]
@@ -205,7 +184,7 @@ mod tests {
         let by_target = |target| {
             EventName::ALL
                 .into_iter()
-                .filter(|event| event.targets().contains(&target))
+                .filter(|event| event.resource().targets.contains(&target))
                 .map(EventName::as_str)
                 .collect::<Vec<_>>()
         };
@@ -213,7 +192,8 @@ mod tests {
         let http = by_target(RpcTarget::Http);
         assert!(!http.contains(&"window-message-event"));
         assert!(!http.contains(&"scheme-request-received-event"));
-        assert_eq!(http.len(), EventName::ALL.len() - 2);
+        assert!(!http.contains(&"sync-status-changed-event"));
+        assert_eq!(http.len(), EventName::ALL.len() - 3);
 
         let local = by_target(RpcTarget::Local);
         assert_eq!(

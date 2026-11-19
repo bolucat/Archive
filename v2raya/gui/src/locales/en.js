@@ -1,4 +1,15 @@
 export default {
+  nodeProbe: {
+    mode: "Node check mode",
+    server: "To server",
+    proxy: "Through proxy",
+    url: "Test URL",
+    title: "Node checks",
+    hint: "Applies to the dashboard and node list. To server checks the connection to the server; Through proxy requests a website through each node.",
+    urlHint:
+      "Leave empty to use https://gstatic.com/generate_204. A failed request can also mean the target website is unavailable.",
+    invalidUrl: "Enter an HTTP(S) URL without credentials.",
+  },
   onboarding: {
     title: "Quick tutorial",
     importTitle: "Import nodes",
@@ -34,10 +45,17 @@ export default {
     sources: { all: "All", local: "Local" },
     membersOnly: "Members only",
     source: "Source",
+    sort: "Sort",
+    sorts: {
+      none: "Default",
+      asc: "Lowest latency first",
+      desc: "Highest latency first",
+    },
     inUse: "In use",
     addToGroup: "Add to proxy group",
     removeFromGroup: "Remove from proxy group",
     selectAll: "Select all",
+    selectFailed: "Select failed",
     autoUpdate: "Auto-update",
     noSubscriptions: "No subscriptions yet",
     noSubscriptionsHint:
@@ -60,7 +78,7 @@ export default {
     switchNode: "Switch",
     proxyGroup: "Proxy group",
     editGroup: "Add or remove nodes",
-    autoFastest: "Auto (lowest latency)",
+    autoFastest: "Auto (group strategy)",
     emptyGroup: "This group has no nodes",
     updateAll: "Update all",
     updatedAt: "Updated {time}",
@@ -151,6 +169,9 @@ export default {
     coreStoppedDirectAll:
       "The core is stopped. Update all subscriptions without the proxy?",
 
+    nodeDns: "Node DNS",
+    nodeDnsHint:
+      "auto keeps the existing order; otherwise enter a pure-IP UDP, TCP, TLS or HTTPS DNS. Applies only with DNS hijack on. DoH needs a URL with a path, such as https://1.1.1.1/dns-query. Latency tests and subscription downloads are unchanged.",
     settingsTitle: "Subscription updates",
     remarks: "Remarks",
     numberServers: "Number of Servers",
@@ -513,6 +534,7 @@ export default {
         "Only common foreign services through the proxy, everything else direct",
       russia:
         "Russian sites direct, listed exceptions and the rest through the proxy",
+      iran: "Iranian sites direct, everything else through the proxy",
       ads: "Block advertising domains",
       streaming:
         "Streaming through the proxy (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
@@ -639,6 +661,11 @@ export default {
     probeUrl: "Probe URL",
     probeInterval: "Probe Interval",
     type: "Type",
+    strategies: {
+      leastLoad: "Least load",
+      roundRobin: "Round robin",
+      random: "Random",
+    },
   },
   proxyGroup: {
     searchNodes: "Search nodes...",
@@ -783,6 +810,10 @@ export default {
     LINK_MALFORMED: "Malformed {protocol} link: {detail}",
     SUBSCRIPTION_FETCH_FAILED:
       "Could not fetch the subscription from {host}: {detail}",
+    NODE_DNS_INVALID:
+      "Use a pure-IP UDP, TCP, TLS or HTTPS DNS endpoint that does not point to this service’s DNS listener.",
+    NODE_DNS_CONFLICT:
+      "Node domain {domain} uses different DNS endpoints in connected subscriptions. Choose the same endpoint for the shared domain.",
     SUBSCRIPTION_EMPTY: "The subscription contains no servers.",
     SUBSCRIPTION_NOT_FOUND:
       "Subscription #{id} does not exist. Reload the page.",

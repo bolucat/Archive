@@ -54,6 +54,7 @@ const IMPLEMENTATION = [
   'nyanpasu-profile-io',
   'nyanpasu-net',
   'nyanpasu-os',
+  'nyanpasu-sync-opendal',
 ]
 
 /** What neither the wire crate nor a client standing on it may pull in. */
@@ -213,6 +214,13 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-single-instance',
     forbids: GUI,
     allowedWorkspace: ['nyanpasu-single-instance'],
+  },
+  // The catalog generator lives in its tests and rewrites protocol source, so it
+  // must build while that source is stale: syntax libraries only.
+  {
+    package: 'nyanpasu-rpc-macro',
+    forbids: GUI,
+    allowedWorkspace: ['nyanpasu-rpc-macro'],
   },
   {
     package: 'nyanpasu-diagnose',

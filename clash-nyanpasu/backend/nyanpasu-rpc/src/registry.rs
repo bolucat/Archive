@@ -3,8 +3,9 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_rpc_protocol::{
-    AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, ResponseVisibility,
-    RpcDescribeResponse, RpcError, RpcOwner, RpcTarget, ServerInfo, ShellCapability,
+    AuthContext, CommandKind, Principal, ResponseVisibility, RpcDescribeResponse, RpcError,
+    RpcOwner, RpcTarget, ServerInfo, ShellCapability,
+    permission::{RESOURCES, ResourceMetadata},
 };
 use serde_json::Value;
 
@@ -16,6 +17,7 @@ use crate::{
         RpcTransport,
     },
     events::EventBus,
+    permission::Authority,
 };
 
 /// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
@@ -102,7 +104,7 @@ impl specta::function::FunctionArg for RpcCaller {
 
 const RPC_DESCRIBE_PROTOCOL_VERSION: u32 = nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION;
 
-/// Host and caller snapshot injected into [`crate::commands::describe::rpc_describe`].
+/// Host and caller snapshot injected into [`crate::commands::meta::rpc_describe`].
 pub struct RpcDescribeContext {
     response: RpcDescribeResponse,
 }
@@ -127,9 +129,26 @@ pub struct RpcCallMeta {
     server: ServerInfo,
     target: RpcTarget,
     commands: CommandHandlers,
+    provided: Vec<ShellCapability>,
+    /// The row admission admitted this call to: the seam the layers inside admission read.
+    resource: ResourceMetadata,
+    /// What the redaction layer decided the caller sees of the result and errors.
+    visibility: ResponseVisibility,
 }
 
 impl RpcCallMeta {
+    /// The resource table row this call was admitted to.
+    #[must_use]
+    pub fn resource(&self) -> &ResourceMetadata {
+        &self.resource
+    }
+
+    /// How the result and errors of this call are encoded for the caller.
+    #[must_use]
+    pub fn visibility(&self) -> ResponseVisibility {
+        self.visibility
+    }
+
     /// Build a caller-scoped self-description snapshot for `rpc_describe`.
     #[must_use]
     pub fn describe_context(&self, auth: &AuthContext) -> RpcDescribeContext {
@@ -139,11 +158,23 @@ impl RpcCallMeta {
                 server: self.server.clone(),
                 transport: self.target,
                 principal: auth.principal.clone(),
-                scopes: auth.scopes.clone(),
-                commands: crate::policy::describe_commands(&self.commands, self.target, auth),
+                role: auth.role,
+                permissions: auth.permissions,
+                commands: crate::permission::describe_commands(
+                    &self.commands,
+                    Authority::new(&self.provided),
+                    self.target,
+                    auth,
+                ),
             },
         }
     }
+}
+
+/// The refusal of a method the registry does not know. It has no resource whose `write` would lift
+/// redaction, so the name the caller sent is never echoed back.
+fn unknown_method(method: &str) -> RpcError {
+    RpcError::unknown_method_for(ResponseVisibility::Public, method)
 }
 
 /// Observe dispatch without changing its result, polling, cancellation or unwind.
@@ -238,7 +269,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, result, operation = SetStorageItem)]
+/// #[nyanpasu_rpc::rpc(result, operation = SetStorageItem, expose = [local])]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -250,7 +281,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -262,25 +293,9 @@ pub type RpcHandler =
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
 /// }
-/// ```
-///
-/// A command that declares no permission does not compile:
-///
-/// ```compile_fail
-/// fn a_command_without_a_permission_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(http)]
-///     fn reorder() -> bool { true }
-/// }
-/// ```
-///
-/// Effect and scope are independent: a query's permission may map to the `proxy` scope.
-///
-/// ```no_run
-/// #[nyanpasu_macro::rpc(http, query, permission = "proxy.url_delay:measure")]
-/// fn proxy_scoped_query() -> bool { true }
 /// ```
 ///
 /// The name is checked in a constant, including declarations never called:
@@ -289,14 +304,20 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
 /// }
 /// ```
+///
+/// The entry records what was implemented, never who may call it: authorization metadata comes
+/// only from the generated resource table, matched by name at registration.
 pub struct CommandEntry {
-    pub metadata: CommandMetadata,
+    pub name: &'static str,
+    pub kind: CommandKind,
+    /// Whether the neutral handler runs the implementation, as HTTP and local exposure require.
+    pub transport_neutral: bool,
     pub handler: RpcHandler,
 }
 
@@ -304,75 +325,55 @@ inventory::collect!(CommandEntry);
 
 #[derive(Clone)]
 pub(crate) struct RegisteredCommand {
-    metadata: CommandMetadata,
-    capabilities_available: bool,
+    metadata: ResourceMetadata,
     native_linked: bool,
     handler: Option<RpcHandler>,
 }
 
 impl RegisteredCommand {
-    pub(crate) fn metadata(&self) -> &CommandMetadata {
+    pub(crate) fn metadata(&self) -> &ResourceMetadata {
         &self.metadata
     }
 
-    pub(crate) fn capabilities_available(&self) -> bool {
-        self.capabilities_available
-    }
-
-    pub(crate) fn has_neutral_handler(&self) -> bool {
-        self.handler.is_some()
-    }
-
-    pub(crate) fn native_linked(&self) -> bool {
-        self.native_linked
-    }
-
-    fn unavailable(&self, target: RpcTarget) -> RpcError {
-        if target == RpcTarget::Http {
-            RpcError::unsupported(self.metadata.name)
+    /// Whether an implementation that serves `target` is linked: the native wrapper for a native
+    /// command on the desktop, the neutral handler otherwise.
+    pub(crate) fn linked(&self, target: RpcTarget) -> bool {
+        if target == RpcTarget::Desktop && self.metadata.is_native_command() {
+            self.native_linked
         } else {
-            RpcError::new(
-                "unsupported",
-                format!(
-                    "command `{}` is unavailable in this shell",
-                    self.metadata.name
-                ),
-            )
+            self.handler.is_some()
         }
     }
 
+    /// The neutral handler serving `target`: none where the command is not exposed, or where
+    /// only the native wrapper serves it. Capabilities and the requirement are admission's.
     fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
-        if !crate::policy::is_command_runnable(
-            &self.metadata,
-            self.capabilities_available,
-            self.handler.is_some(),
-            self.native_linked,
-            target,
-        ) {
-            return Err(self.unavailable(target));
+        if !self.metadata.targets.contains(&target)
+            || (target == RpcTarget::Desktop && self.metadata.is_native_command())
+        {
+            return Err(crate::permission::unavailable(&self.metadata, target));
         }
-        if target == RpcTarget::Desktop && self.metadata.kind == CommandKind::Native {
-            return Err(self.unavailable(target));
-        }
-        self.handler.ok_or_else(|| self.unavailable(target))
+        self.handler
+            .ok_or_else(|| crate::permission::unavailable(&self.metadata, target))
     }
 }
 
 pub(crate) type CommandHandlers = Arc<HashMap<&'static str, RegisteredCommand>>;
 
-pub(crate) fn register_commands(
-    catalog: &[CommandMetadata],
+pub(crate) fn register_commands<'a>(
+    resources: impl IntoIterator<Item = &'a ResourceMetadata>,
     entries: impl IntoIterator<Item = &'static CommandEntry>,
-    provided: &[ShellCapability],
 ) -> Result<CommandHandlers, SetupError> {
     let mut commands = HashMap::new();
-    for metadata in catalog {
+    for metadata in resources
+        .into_iter()
+        .filter(|resource| resource.is_command())
+    {
         if commands
             .insert(
                 metadata.name,
                 RegisteredCommand {
                     metadata: *metadata,
-                    capabilities_available: false,
                     native_linked: false,
                     handler: None,
                 },
@@ -385,31 +386,25 @@ pub(crate) fn register_commands(
         }
     }
     for entry in entries {
+        // A handler without a table row has no authorization metadata, so it is never served.
         let command = commands
-            .entry(entry.metadata.name)
-            .or_insert(RegisteredCommand {
-                metadata: entry.metadata,
-                capabilities_available: false,
-                native_linked: false,
-                handler: None,
-            });
+            .get_mut(entry.name)
+            .ok_or(SetupError::UndeclaredCommand { name: entry.name })?;
         if command.handler.replace(entry.handler).is_some() {
-            return Err(SetupError::RegisterCommand {
-                name: entry.metadata.name,
-            });
+            return Err(SetupError::RegisterCommand { name: entry.name });
         }
     }
-
-    // Validate every linked name before checking availability. Missing facilities
-    // never erase a known name, and optional effects are not admission requirements.
-    for command in commands.values_mut() {
-        command.capabilities_available = command
-            .metadata
-            .capabilities
-            .iter()
-            .all(|capability| provided.contains(capability));
-    }
     Ok(Arc::new(commands))
+}
+
+/// The production resource table, plus the rows of test-only declarations in builds that link
+/// them.
+fn resources() -> impl Iterator<Item = &'static ResourceMetadata> {
+    #[cfg(any(test, feature = "test-resources"))]
+    let test: &[ResourceMetadata] = test_resources::TEST_RESOURCES;
+    #[cfg(not(any(test, feature = "test-resources")))]
+    let test: &[ResourceMetadata] = &[];
+    RESOURCES.iter().chain(test)
 }
 
 #[derive(Clone)]
@@ -431,8 +426,7 @@ impl UnifiedRpc {
         server: ServerInfo,
         provided: &[ShellCapability],
     ) -> Result<Self, SetupError> {
-        let commands =
-            register_commands(COMMAND_CATALOG, inventory::iter::<CommandEntry>, provided)?;
+        let commands = register_commands(resources(), inventory::iter::<CommandEntry>)?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
             server,
@@ -447,7 +441,7 @@ impl UnifiedRpc {
         let commands = Arc::make_mut(&mut self.commands);
         for name in names {
             if let Some(command) = commands.get_mut(name)
-                && command.metadata.kind == CommandKind::Native
+                && command.metadata.is_native_command()
             {
                 command.native_linked = true;
             }
@@ -479,9 +473,20 @@ impl UnifiedRpc {
             server: self.server.clone(),
             transport: target,
             principal: auth.principal.clone(),
-            scopes: auth.scopes.clone(),
-            commands: crate::policy::describe_commands(&self.commands, target, auth),
+            role: auth.role,
+            permissions: auth.permissions,
+            commands: crate::permission::describe_commands(
+                &self.commands,
+                self.authority(),
+                target,
+                auth,
+            ),
         }
+    }
+
+    /// Admission for the capabilities this host provides.
+    pub(crate) fn authority(&self) -> Authority<'_> {
+        Authority::new(&self.provided)
     }
 
     #[cfg(test)]
@@ -490,6 +495,9 @@ impl UnifiedRpc {
             server: self.server.clone(),
             target,
             commands: Arc::clone(&self.commands),
+            provided: self.provided.clone(),
+            resource: self.commands["rpc_describe"].metadata,
+            visibility: ResponseVisibility::Full,
         }
     }
 
@@ -528,13 +536,16 @@ impl UnifiedRpc {
         if auth.is_none() {
             return Err(RpcError::unauthorized("authentication required"));
         }
-        let visibility = ResponseVisibility::for_auth(auth);
         let command = self
             .commands
             .get(method)
-            .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
+            .ok_or_else(|| unknown_method(method))?;
         command.neutral_handler(target)?;
-        crate::policy::admit_resolved_command(&command.metadata, auth)
+        self.authority().admit(
+            &command.metadata,
+            target,
+            auth.map(|auth| &auth.permissions),
+        )
     }
 
     pub(crate) async fn call_with_admission(
@@ -553,18 +564,26 @@ impl UnifiedRpc {
         };
         dispatch_with_audit(invocation, || {
             let caller = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
-            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             let command = self
                 .commands
                 .get(method)
-                .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
+                .ok_or_else(|| unknown_method(method))?;
             let handler = command.neutral_handler(target)?;
-            crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
+            self.authority()
+                .admit(&command.metadata, target, Some(&caller.auth().permissions))?;
             admit_resource()?;
+            // Data sharing (TODO, permission namespace spec section 4.6) sits here, reading the
+            // admitted row from the call metadata.
             let meta = RpcCallMeta {
                 server: self.server.clone(),
                 target,
                 commands: self.commands.clone(),
+                provided: self.provided.clone(),
+                resource: command.metadata,
+                visibility: crate::redaction::visibility(
+                    &command.metadata,
+                    &caller.auth().permissions,
+                ),
             };
             handler(self.dependencies.clone(), meta, caller, params)
         })
@@ -578,7 +597,7 @@ impl UnifiedRpc {
         &self,
         method: &str,
         caller: RpcCaller,
-        call: impl FnOnce() -> Result<RpcFuture, RpcError>,
+        call: impl FnOnce(ResponseVisibility) -> Result<RpcFuture, RpcError>,
     ) -> Result<Value, RpcError> {
         dispatch_audited(
             &self.dependencies.audit,
@@ -588,19 +607,25 @@ impl UnifiedRpc {
             || self.audit_command_name(method),
             None,
             || {
-                let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
                 let command = self
                     .commands
                     .get(method)
-                    .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
-                if command.metadata.kind != CommandKind::Native
-                    || !command.metadata.targets.contains(&RpcTarget::Desktop)
-                    || !command.capabilities_available
-                {
-                    return Err(command.unavailable(RpcTarget::Desktop));
+                    .ok_or_else(|| unknown_method(method))?;
+                if !command.metadata.is_native_command() {
+                    return Err(crate::permission::unavailable(
+                        &command.metadata,
+                        RpcTarget::Desktop,
+                    ));
                 }
-                crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
-                call()
+                self.authority().admit(
+                    &command.metadata,
+                    RpcTarget::Desktop,
+                    Some(&caller.auth().permissions),
+                )?;
+                call(crate::redaction::visibility(
+                    &command.metadata,
+                    &caller.auth().permissions,
+                ))
             },
         )
         .await
@@ -641,6 +666,8 @@ pub enum SetupError {
     InstallTlsIdentity,
     #[snafu(display("duplicate RPC command: {name}"))]
     RegisterCommand { name: &'static str },
+    #[snafu(display("RPC command {name} is linked but has no resource table row"))]
+    UndeclaredCommand { name: &'static str },
 }
 
 #[cfg(all(test, feature = "http"))]
@@ -653,27 +680,40 @@ mod delivery_tests;
 mod observation_tests;
 #[cfg(all(test, feature = "http"))]
 mod settings_tests;
+#[cfg(any(test, feature = "test-resources"))]
+mod test_resources;
 #[cfg(all(test, feature = "http"))]
 mod tests;
 
-/// Verify linked shared/native metadata and known unlinked names in a host test.
+/// Verify, in a host test that links every production declaration, that each resource row has
+/// exactly one linked declaration of its kind, that exposed rows have transport-neutral handlers,
+/// and that unlinked native names stay known.
 #[cfg(feature = "test-support")]
 pub fn assert_command_category_inventory() {
-    let commands = register_commands(
-        COMMAND_CATALOG,
-        inventory::iter::<CommandEntry>,
-        crate::test_support::CAPABILITIES,
-    )
-    .unwrap();
-    for metadata in COMMAND_CATALOG {
+    // Every linked handler has a row, or registration fails.
+    let commands = register_commands(resources(), inventory::iter::<CommandEntry>).unwrap();
+    for metadata in RESOURCES.iter().filter(|resource| resource.is_command()) {
         let command = &commands[metadata.name];
-        let entry = inventory::iter::<CommandEntry>
+        let mut entries = inventory::iter::<CommandEntry>
             .into_iter()
-            .find(|entry| entry.metadata.name == metadata.name)
-            .unwrap();
+            .filter(|entry| entry.name == metadata.name);
+        let entry = entries
+            .next()
+            .unwrap_or_else(|| panic!("{} has no linked declaration", metadata.name));
+        assert!(entries.next().is_none(), "{} linked twice", metadata.name);
         assert_eq!(
-            entry.metadata, *metadata,
-            "{} catalog metadata",
+            metadata.kind,
+            nyanpasu_rpc_protocol::permission::ResourceKind::Command(entry.kind),
+            "{} kind",
+            metadata.name
+        );
+        let exposed = metadata
+            .targets
+            .iter()
+            .any(|target| *target != RpcTarget::Desktop);
+        assert!(
+            !exposed || entry.transport_neutral,
+            "{} is exposed beyond the desktop without a transport-neutral handler",
             metadata.name
         );
         assert!(
@@ -681,17 +721,23 @@ pub fn assert_command_category_inventory() {
             "{} neutral handler",
             metadata.name
         );
-        if metadata.kind == CommandKind::Shared {
+        if !metadata.is_native_command() {
             for target in metadata.targets {
                 assert!(command.neutral_handler(*target).is_ok());
             }
         }
     }
-    let unlinked = register_commands(COMMAND_CATALOG, [], &[]).unwrap();
-    assert_eq!(unlinked.len(), COMMAND_CATALOG.len());
-    for metadata in COMMAND_CATALOG
+    let unlinked = register_commands(RESOURCES, []).unwrap();
+    assert_eq!(
+        unlinked.len(),
+        RESOURCES
+            .iter()
+            .filter(|resource| resource.is_command())
+            .count()
+    );
+    for metadata in RESOURCES
         .iter()
-        .filter(|metadata| metadata.kind == CommandKind::Native)
+        .filter(|metadata| metadata.is_native_command())
     {
         let command = &unlinked[metadata.name];
         assert_eq!(command.metadata, *metadata);

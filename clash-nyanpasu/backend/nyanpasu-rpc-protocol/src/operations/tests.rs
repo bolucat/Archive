@@ -1,7 +1,7 @@
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-use crate::{COMMAND_CATALOG, RpcTarget, operation::RpcOperation, operations};
+use crate::{RpcTarget, operation::RpcOperation, operations, permission::RESOURCES};
 
 #[test]
 fn operation_methods_match_the_local_catalog() {
@@ -21,7 +21,7 @@ fn operation_methods_match_the_local_catalog() {
         operations::CloseLogSession::NAME,
         operations::RpcDescribe::NAME,
     ];
-    let mut catalog: Vec<_> = COMMAND_CATALOG
+    let mut catalog: Vec<_> = RESOURCES
         .iter()
         .filter(|command| command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)
@@ -215,13 +215,19 @@ fn operation_receivers_decode_existing_success_values() {
     })));
     receive::<operations::CloseLogSession>(());
     receive::<operations::RpcDescribe>(sample(json!({
-        "protocol": 1,
+        "protocol": 2,
         "server": {"kind": "headless", "version": "2.0.0"},
         "transport": "local",
         "principal": {"kind": "local_socket", "user": "1000"},
-        "scopes": ["read"],
-        "commands": [
-            {"name": "rpc_describe", "effect": "query", "scope": "read", "allowed": true}
-        ]
+        "role": "owner",
+        "permissions": {
+            "proxy": "write", "profile": "write", "settings": "write", "system": "write",
+            "logs": "write", "traffic": "write", "remote": "write"
+        },
+        "commands": [{
+            "name": "rpc_describe", "effect": "query",
+            "permission": {"resource": "meta", "access": "read"},
+            "sensitive": false, "allowed": true
+        }]
     })));
 }

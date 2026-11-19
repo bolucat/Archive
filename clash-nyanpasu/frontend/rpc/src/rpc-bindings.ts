@@ -16,8 +16,8 @@ export function createRpcClient(
      *  Returns protocol, server, transport, own principal/scopes, and per-target
      *  command availability for the resolved caller.
      *
-     *  Any resolved caller may invoke `rpc_describe` without holding `Scope::Read`
-     *  (enforced by [`crate::policy::admit_resolved_command`]); it returns own
+     *  Any resolved caller may invoke `rpc_describe`: it requires `meta:read`, which every resolved
+     *  caller holds (enforced by [`crate::permission::Authority::admit`]); it returns own
      *  discovery metadata only and never discloses another principal or grants
      *  business data access.
      */
@@ -513,6 +513,29 @@ export function createRpcClient(
       typedError<BrowserSessionSummary[], IpcError_Serialize>(
         __RPC_INVOKE('list_remote_browser_sessions'),
       ),
+    /**  The sync status, without the credentials a provider may hold. */
+    getSyncStatus: () =>
+      typedError<SyncStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_status'),
+      ),
+    /**  Settings, whether credentials exist, and the provider kinds this build has. */
+    getSyncSettings: () =>
+      typedError<SyncSettingsView, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_settings'),
+      ),
+    /**  Provider kinds compiled into this build. */
+    getSyncProviderKinds: () =>
+      typedError<ProviderKind[], IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_provider_kinds'),
+      ),
+    /**  Open conflicts with both values. */
+    listSyncConflicts: () =>
+      typedError<SyncConflict_Serialize[], IpcError_Serialize>(
+        __RPC_INVOKE('list_sync_conflicts'),
+      ),
+    /**  Pre-image snapshots this device took. */
+    listSyncSnapshots: () =>
+      __RPC_INVOKE<SnapshotSummary[]>('list_sync_snapshots'),
     writeClipboardText: (text: string) =>
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('write_clipboard_text', { text }),
@@ -682,8 +705,8 @@ export function createRpcClient(
     /**
      *  Applies the network rules to the current network again, overwriting
      *  capture switches changed by hand since. Switching the capture mechanisms
-     *  reaches the same optional effects as a configuration patch. A caller without
-     *  `sensitive_read` gets the status without the network reading and the matched rule.
+     *  reaches the same optional effects as a configuration patch. A redacted response holds the
+     *  status without the network reading and the matched rule.
      */
     applyNetworkAutomation: () =>
       typedError<RpcNetworkAutomationStatus, IpcError_Serialize>(
@@ -693,7 +716,7 @@ export function createRpcClient(
      *  Reads the Wi-Fi name once, which the network rules do not until a rule
      *  matches on it. Where the platform gates the name behind location access,
      *  this asks the user for it. The status holds that reading, or why there is
-     *  none, except that a caller without `sensitive_read` gets neither the name nor the gateway.
+     *  none, except that a redacted response holds neither the name nor the gateway.
      *  Desktop-only: the status holds the live Wi-Fi name and gateway.
      */
     requestWifiNameAccess: () =>
@@ -1027,6 +1050,47 @@ export function createRpcClient(
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
+    /**  Saves the provider, its secrets and the sync options. */
+    configureSync: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('configure_sync', { settings, secrets }),
+      ),
+    /**  Checks reachability and credentials without saving anything. */
+    testSyncConnection: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('test_sync_connection', { settings, secrets }),
+      ),
+    /**  Runs the first cycle and keeps syncing. */
+    enableSync: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('enable_sync')),
+    /**  Stops syncing; local data and the remote vault stay. */
+    disableSync: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('disable_sync')),
+    /**  Runs one cycle now. */
+    syncNow: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('sync_now')),
+    /**  Records a conflict resolution and runs a cycle. */
+    resolveSyncConflict: (conflictId: string, choice: ConflictChoice) =>
+      typedError<SyncRunView, IpcError_Serialize>(
+        __RPC_INVOKE('resolve_sync_conflict', { conflictId, choice }),
+      ),
+    /**  Re-applies a snapshot's pre-images; the next cycle pushes them. */
+    restoreSyncSnapshot: (snapshotId: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('restore_sync_snapshot', { snapshotId }),
+      ),
   }
 
   const events = {
@@ -1089,6 +1153,10 @@ export function createRpcClient(
       transport.events,
       'storage-value-changed-event',
     ),
+    syncStatusChangedEvent: makeEvent<SyncStatusChanged>(
+      transport.events,
+      'sync-status-changed-event',
+    ),
     windowMessageEvent: makeEvent<WindowMessageEvent>(
       transport.events,
       'window-message-event',
@@ -1106,7 +1174,68 @@ export function createRpcClient(
 
 export type RpcClient = ReturnType<typeof createRpcClient>
 
+/* Constants */
+export const ANONYMOUS_PERMISSIONS_LIMIT = {
+  logs: 'read',
+  profile: 'write',
+  proxy: 'write',
+  settings: 'write',
+  system: 'read',
+  traffic: 'write',
+} as const
+
+export const ASSIGNABLE_ROLES = ['viewer', 'operator', 'admin'] as const
+
+export const GRANTABLE_RESOURCES = [
+  'logs',
+  'profile',
+  'proxy',
+  'settings',
+  'system',
+  'traffic',
+] as const
+
+export const ROLE_PERMISSIONS = {
+  admin: {
+    logs: 'write',
+    profile: 'write',
+    proxy: 'write',
+    settings: 'write',
+    system: 'write',
+    traffic: 'write',
+  },
+  anonymous: {},
+  operator: {
+    logs: 'read',
+    profile: 'write',
+    proxy: 'write',
+    settings: 'write',
+    system: 'read',
+    traffic: 'write',
+  },
+  owner: {
+    logs: 'write',
+    profile: 'write',
+    proxy: 'write',
+    remote: 'write',
+    settings: 'write',
+    system: 'write',
+    traffic: 'write',
+  },
+  viewer: {
+    logs: 'read',
+    profile: 'read',
+    proxy: 'read',
+    settings: 'read',
+    system: 'read',
+    traffic: 'read',
+  },
+} as const
+
 /* Types */
+/**  An access level. The derived order is the implication: `Write >= Read`. */
+export type Access = 'read' | 'write'
+
 /**  Lifecycle state reported for a named access token (non-secret). */
 export type AccessTokenStatus =
   /**  Token may authenticate and issue sessions until optional expiry. */
@@ -1124,8 +1253,8 @@ export type AccessTokenSummary = {
   id: string
   /**  User-assigned display label. */
   name: string
-  /**  Independent permissions granted to this token. */
-  scopes: ScopeSet
+  /**  What this token was granted. */
+  grant: Grant
   /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
   created_at_ms: number
   /**  Optional wall-clock expiration timestamp in Unix epoch milliseconds. */
@@ -1269,6 +1398,7 @@ export type ApplicationPreferencesPatch_Deserialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1316,6 +1446,7 @@ export type ApplicationPreferencesPatch_Serialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1387,6 +1518,7 @@ export type ApplicationSettings_Deserialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
 }
 
 /**
@@ -1449,6 +1581,13 @@ export type ApplicationSettings_Serialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
+}
+
+export type BlockedItem = {
+  /**  The logical key, or the physical path when it has no valid key. */
+  item: string
+  reason: SyncBlockedReason
 }
 
 export type BrandVersion = {
@@ -1487,8 +1626,8 @@ export type BrowserSessionSummary = {
   id: string
   /**  Backing token ID when the session was established via `login_with_token`. */
   backing_token_id: string | null
-  /**  Independent scopes held by this session. */
-  scopes: ScopeSet
+  /**  What this session holds: `admin` from a launch code, or its backing token's grant. */
+  grant: Grant
   /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
   created_at_ms: number
   /**  Wall-clock last-activity timestamp in Unix epoch milliseconds. */
@@ -1796,7 +1935,7 @@ export type ClashOverridesSettingsPatch_Serialize = {
 }
 
 /**
- *  Why a Clash read or probe a caller without `sensitive_read` made has no result.
+ *  Why a Clash read or probe has no result, in a redacted response.
  *
  *  The messages are fixed and carry no source: the core's response, the request it failed on and
  *  the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
@@ -2019,7 +2158,8 @@ export type ClosedPage = {
  *
  *  Queries observe application or network state; refreshing a read model or measuring latency
  *  does not change application configuration. Mutations perform application operations, including
- *  allocating caller-owned resources. Scope independently controls who may request either effect.
+ *  allocating caller-owned resources. The permission independently controls who may request either
+ *  effect.
  *  The declaration is the source of truth; the generated frontend's split is checked against it.
  */
 export type CommandEffect =
@@ -2237,6 +2377,14 @@ export type ConfigurationStatusSummary = {
 }
 
 export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
+/**  Which side of a conflict a resolution chooses. */
+export type ConflictChoice = 'local' | 'remote' | 'keep_both'
+
+/**  Which side wins a unit both sides changed. */
+export type ConflictPolicy =
+  /**  Each device keeps its value and the conflict stays open until resolved. */
+  'manual' | 'local_wins' | 'remote_wins'
 
 export type Connection = Connection_Serialize | Connection_Deserialize
 
@@ -2590,22 +2738,22 @@ export type CoreInfos_Serialize = {
 }
 
 /**
- *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
- *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` unredacted and projected
+ *  public [`IpcError`] otherwise.
  */
 export type CoreLogCommandError =
   CoreLogCommandError_Serialize | CoreLogCommandError_Deserialize
 
 /**
- *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
- *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` unredacted and projected
+ *  public [`IpcError`] otherwise.
  */
 export type CoreLogCommandError_Deserialize =
   CoreLogError | IpcError_Deserialize
 
 /**
- *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
- *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` unredacted and projected
+ *  public [`IpcError`] otherwise.
  */
 export type CoreLogCommandError_Serialize = CoreLogError | IpcError_Serialize
 
@@ -2656,7 +2804,7 @@ export type CoreLogQuery = {
 }
 
 /**
- *  Why a core log query a caller without `sensitive_read` made has no result.
+ *  Why a core log query has no result, in a redacted response.
  *
  *  The messages are fixed and carry no source: backend store paths and storage errors stay out of
  *  the error, and their diagnostics stay on the protected full queries.
@@ -2940,7 +3088,8 @@ export type CoreVersionError =
 /**  Request payload for minting a named remote-access bearer token. */
 export type CreateRemoteAccessTokenRequest = {
   name: string
-  scopes: ScopeSet
+  /**  A role (`viewer`, `operator` or `admin`) or a custom permission map without `remote`. */
+  grant: Grant
   expires_at_ms?: number | null
 }
 
@@ -3011,7 +3160,10 @@ export type DelayHistory = {
 export type DescribedCommand = {
   name: string
   effect: CommandEffect
-  scope: Scope
+  /**  The one permission a caller must hold. */
+  permission: Permission
+  /**  Responses may carry credentials, subscription URLs, configuration text or diagnostics. */
+  sensitive: boolean
   allowed: boolean
 }
 
@@ -3383,6 +3535,16 @@ export type GetSysProxyResponse = {
 }
 
 /**
+ *  A persisted grant: `{ "role": "viewer" }` or `{ "permissions": { "proxy": "write" } }`.
+ *
+ *  A role follows later changes to its definition, so commands added by an upgrade become
+ *  available with it; a custom map stays exactly what was granted.
+ */
+export type Grant =
+  | ({ role: Role } & { permissions?: never })
+  | ({ permissions: Partial<{ [key in Resource]: Access }> } & { role?: never })
+
+/**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
  *  they are fixed by the configurations users already have.
  */
@@ -3440,10 +3602,11 @@ export type HttpAccessConfig = {
   /**  Serve the bundled web UI. When false only the API is served. */
   serve_webui?: boolean
   /**
-   *  What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
-   *  another strategy is selected.
+   *  What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`] beyond capability
+   *  discovery, at most the `operator` role. Empty by default; kept while another strategy is
+   *  selected.
    */
-  local_open_scopes?: Scope[]
+  anonymous_permissions?: Partial<{ [key in Resource]: Access }>
   /**
    *  The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
    *  IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
@@ -3461,9 +3624,9 @@ export type HttpAccessStrategy =
   /**  Loopback only; every request must carry a valid credential. */
   | 'local_authenticated'
   /**
-   *  Loopback only; a request without a credential is an anonymous caller holding
-   *  [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
-   *  reach it, because loopback TCP is not user-scoped.
+   *  Loopback only; a request without a credential is an anonymous caller holding capability
+   *  discovery plus [`HttpAccessConfig::anonymous_permissions`]. Every local process of every
+   *  OS user can reach it, because loopback TCP is not user-scoped.
    */
   | 'local_open'
   /**
@@ -3654,7 +3817,7 @@ export type IpcErrorKind_Deserialize =
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
-  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  /**  Exhaustive public classification for redacted responses. */
   | { domain: 'public'; error: PublicFailure_Deserialize }
 
 /**  The domain a command failed in. A domain joins once its errors are typed. */
@@ -3673,7 +3836,7 @@ export type IpcErrorKind_Serialize =
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
-  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  /**  Exhaustive public classification for redacted responses. */
   | { domain: 'public'; error: PublicFailure_Serialize }
 
 /**  A failed command as the frontend receives it. */
@@ -3962,6 +4125,17 @@ export type LoggingLevel_Deserialize =
 
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
+
+/**
+ *  A slash-separated relative key, identical on every platform.
+ *
+ *  One to four segments. A segment starts with an ASCII letter or digit,
+ *  continues with letters, digits, `.`, `_` or `-`, does not end with `.`, and
+ *  its stem is not a Windows device name. Keys are compared by bytes; use
+ *  [`LogicalPath::case_folded`] to find names a case-insensitive filesystem
+ *  cannot hold together.
+ */
+export type LogicalPath = string
 
 /**  A runtime config field that Nyanpasu may take over from the profiles. */
 export type ManageableField<T> =
@@ -4391,6 +4565,16 @@ export type NyanpasuAppConfig_Deserialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons?: boolean
 }
 
 /**  `application.yaml` schema. */
@@ -4523,6 +4707,16 @@ export type NyanpasuAppConfig_Serialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons: boolean
 }
 
 export type OpenLogs = {
@@ -4650,6 +4844,12 @@ export type PageCapabilities = {
   devicePixelRatio?: number | null
 }
 
+/**  One requirement, written `proxy:write`; on the wire `{ "resource": "proxy", "access": "write" }`. */
+export type Permission = {
+  resource: Resource
+  access: Access
+}
+
 export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
@@ -4724,7 +4924,7 @@ export type Principal =
       /**  Public non-secret session correlation identifier (never a cookie or access token). */
       id: string
     }
-  /**  Scoped bearer token identified by its public ID and user-assigned label. */
+  /**  Bearer token identified by its public ID and user-assigned label. */
   | {
       kind: 'token'
       /**  Public non-secret token identifier. */
@@ -5153,7 +5353,7 @@ export type ProfileSubscriptionInfo = {
 }
 
 /**
- *  Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+ *  Why a profile's sync status or run history has no result, in a redacted response.
  *
  *  The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
  *  out of the error, and their diagnostics stay on the protected full queries.
@@ -6110,6 +6310,30 @@ export type ProfilesListing_Serialize = {
   items: ProfileListingItem_Serialize[]
 }
 
+/**  Where a vault lives. Holds no secret: those travel as [`ProviderSecrets`]. */
+export type ProviderConfig =
+  | {
+      kind: 'webdav'
+      endpoint: string
+      /**  Directory on the server that contains the vault. */
+      root: string
+      username: string | null
+    }
+  | {
+      kind: 's3'
+      /**  `None` selects the AWS endpoint of `region`. */
+      endpoint: string | null
+      region: string
+      bucket: string
+      root: string
+      access_key_id: string
+      virtual_host_style: boolean
+    }
+  /**  A directory on this machine, such as a mounted share. */
+  | { kind: 'fs'; root: string }
+
+export type ProviderKind = 'webdav' | 's3' | 'fs'
+
 export type ProviderName = string
 
 export type ProviderType = 'Proxy' | 'Rule' | string
@@ -6182,7 +6406,7 @@ export type ProxyGroup = {
   hidden: boolean
   /**
    *  Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
-   *  credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+   *  credential, so only `get_proxy_group_icons`, a sensitive query, returns it.
    */
   iconConfigured: boolean
   capabilities: ProxyGroupCapabilities
@@ -6526,16 +6750,10 @@ export type PublicDegradation_Serialize = {
 /**  Safe public side-effects error discriminant. */
 export type PublicEffectsError = { kind: 'effects_stopped' }
 
-/**
- *  Exhaustive public classification for a failed command when the caller lacks
- *  `Scope::SensitiveRead`.
- */
+/**  Exhaustive public classification for a failed command when the response is redacted. */
 export type PublicFailure = PublicFailure_Serialize | PublicFailure_Deserialize
 
-/**
- *  Exhaustive public classification for a failed command when the caller lacks
- *  `Scope::SensitiveRead`.
- */
+/**  Exhaustive public classification for a failed command when the response is redacted. */
 export type PublicFailure_Deserialize =
   | { domain: 'profiles'; error: PublicProfilesError_Deserialize }
   | { domain: 'runtime'; error: PublicRuntimeError_Deserialize }
@@ -6556,10 +6774,7 @@ export type PublicFailure_Deserialize =
       }
     }
 
-/**
- *  Exhaustive public classification for a failed command when the caller lacks
- *  `Scope::SensitiveRead`.
- */
+/**  Exhaustive public classification for a failed command when the response is redacted. */
 export type PublicFailure_Serialize =
   | { domain: 'profiles'; error: PublicProfilesError_Serialize }
   | { domain: 'runtime'; error: PublicRuntimeError_Serialize }
@@ -6636,11 +6851,11 @@ export type PublicLocalSocketError =
   | { kind: 'change_unsupported' }
   | { kind: 'read_status' }
 
-/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+/**  Safe public outcome for committed mutations when the response is redacted. */
 export type PublicMutationOutcome<T> =
   PublicMutationOutcome_Serialize<T> | PublicMutationOutcome_Deserialize<T>
 
-/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+/**  Safe public outcome for committed mutations when the response is redacted. */
 export type PublicMutationOutcome_Deserialize<T> =
   | ({
       status: 'committed'
@@ -6656,7 +6871,7 @@ export type PublicMutationOutcome_Deserialize<T> =
       degradations: PublicDegradation_Deserialize[]
     }
 
-/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+/**  Safe public outcome for committed mutations when the response is redacted. */
 export type PublicMutationOutcome_Serialize<T> =
   | ({
       status: 'committed'
@@ -7029,8 +7244,7 @@ export type PublicProfilesError_Serialize =
 /**  Safe public remote-access config rejection discriminant. */
 export type PublicRemoteAccessErrorKind =
   | 'port_zero'
-  | 'local_open_scopes_empty'
-  | 'local_open_scope_forbidden'
+  | 'anonymous_beyond_operator'
   | 'use_dedicated_command'
   | 'lan_requires_tls'
 
@@ -7565,13 +7779,15 @@ export type RemoteAccessConfig = {
 export type RemoteAccessError =
   /**  Port 0 asks the OS for any port; the persisted port is always a concrete one. */
   | { kind: 'port_zero' }
-  /**  An anonymous caller must hold at least one scope; `local_open` with none admits nothing. */
-  | { kind: 'local_open_scopes_empty' }
-  /**  An anonymous caller never holds secrets, system control or remote administration. */
+  /**
+   *  Anonymous callers are unidentified local processes, so they never exceed the `operator`
+   *  role.
+   */
   | {
-      kind: 'local_open_scope_forbidden'
-      /**  The scope that anonymous callers can never hold. */
-      scope: Scope
+      kind: 'anonymous_beyond_operator'
+      /**  The first permission beyond the `operator` role. */
+      resource: Resource
+      access: Access
     }
   /**
    *  The section is changed only by the dedicated remote-access command, never by a
@@ -7626,6 +7842,37 @@ export type ReportRequest = {
 }
 
 /**
+ *  A domain resource: the part of the application a permission covers. One variant per
+ *  top-level `namespace!`; the names are persisted, so renaming one is a migration.
+ */
+export type Resource =
+  /**  Application and core logs. */
+  | 'logs'
+  /**  Capability discovery: `rpc_describe`, which every resolved caller may call. */
+  | 'meta'
+  /**  Stored profile definitions, subscriptions, chains and the proxy group layout. */
+  | 'profile'
+  /**
+   *  The running routing state: proxy groups and nodes, selection, latency tests, the proxy
+   *  mode, providers, rules and closing connections.
+   */
+  | 'proxy'
+  /**
+   *  Remote-access administration: the HTTP and local socket settings, access tokens and browser
+   *  sessions.
+   */
+  | 'remote'
+  /**
+   *  Ordinary application and Clash preferences, configuration sync and the frontend key-value
+   *  storage.
+   */
+  | 'settings'
+  /**  The core lifecycle, system proxy, TUN, service mode and OS integration. */
+  | 'system'
+  /**  Traffic, connection lists and their history. */
+  | 'traffic'
+
+/**
  *  The compare-and-swap identity of a config revision.
  *
  *  Deliberately a subset of [`ConfigRevisionInfo`]: the manager's CAS compares
@@ -7645,20 +7892,35 @@ export type RevisionSummary = {
 }
 
 /**
+ *  A named set of permissions. The permission layer never sees a role: a role only appears
+ *  where a grant is assigned or expanded.
+ */
+export type Role =
+  /**  An HTTP request without a credential, under the `local_open` listening strategy. */
+  | 'anonymous'
+  | 'viewer'
+  | 'operator'
+  | 'admin'
+  /**  The desktop window and the same-user local socket; never assignable. */
+  | 'owner'
+
+/**
  *  Canonical command reply union for app-update state-changing commands.
  *
- *  Callers holding `Scope::SensitiveRead` receive [`AppUpdateSnapshot`]; all other
- *  callers receive [`AppUpdateSummary`].
+ *  Unredacted responses carry [`AppUpdateSnapshot`]; redacted ones carry
+ *  [`AppUpdateSummary`].
  */
 export type RpcAppUpdateOutcome = AppUpdateSnapshot | AppUpdateSummary
 
-/**  Canonical caller-scoped discovery document returned by `rpc_describe`. */
+/**  Canonical caller-specific discovery document returned by `rpc_describe`. */
 export type RpcDescribeResponse = {
   protocol: number
   server: ServerInfo
   transport: RpcTarget
   principal: Principal
-  scopes: ScopeSet
+  /**  The role the caller's permissions expand from; absent for a custom permission map. */
+  role: Role | null
+  permissions: Partial<{ [key in Resource]: Access }>
   commands: DescribedCommand[]
 }
 
@@ -7692,8 +7954,8 @@ export type RpcFolderMutationOutcome_Serialize =
 /**
  *  Canonical command reply union for committed mutations.
  *
- *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
- *  callers receive [`PublicMutationOutcome<T>`].
+ *  Unredacted responses carry [`MutationOutcome<T>`]; redacted ones carry
+ *  [`PublicMutationOutcome<T>`].
  */
 export type RpcMutationOutcome<T> =
   RpcMutationOutcome_Serialize<T> | RpcMutationOutcome_Deserialize<T>
@@ -7701,8 +7963,8 @@ export type RpcMutationOutcome<T> =
 /**
  *  Canonical command reply union for committed mutations.
  *
- *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
- *  callers receive [`PublicMutationOutcome<T>`].
+ *  Unredacted responses carry [`MutationOutcome<T>`]; redacted ones carry
+ *  [`PublicMutationOutcome<T>`].
  */
 export type RpcMutationOutcome_Deserialize<T> =
   MutationOutcome<T> | PublicMutationOutcome_Deserialize<T>
@@ -7710,8 +7972,8 @@ export type RpcMutationOutcome_Deserialize<T> =
 /**
  *  Canonical command reply union for committed mutations.
  *
- *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
- *  callers receive [`PublicMutationOutcome<T>`].
+ *  Unredacted responses carry [`MutationOutcome<T>`]; redacted ones carry
+ *  [`PublicMutationOutcome<T>`].
  */
 export type RpcMutationOutcome_Serialize<T> =
   MutationOutcome<T> | PublicMutationOutcome_Serialize<T>
@@ -7719,8 +7981,8 @@ export type RpcMutationOutcome_Serialize<T> =
 /**
  *  Canonical command reply union for the network automation commands.
  *
- *  Callers holding `Scope::SensitiveRead` receive [`NetworkAutomationStatus`], which holds the
- *  live Wi-Fi name and gateway MAC address; all other callers receive
+ *  Unredacted responses carry [`NetworkAutomationStatus`], which holds the
+ *  live Wi-Fi name and gateway MAC address; redacted ones carry
  *  [`NetworkAutomationSummary`].
  */
 export type RpcNetworkAutomationStatus =
@@ -8010,36 +8272,6 @@ export type RuntimePipelineError =
  */
 export type SchemeRequestReceivedEvent = null
 
-/**
- *  What a command needs, and what a principal holds.
- *
- *  A command declares exactly one scope. Scopes are independent: holding `proxy` grants no `read`.
- */
-export type Scope =
-  /**  Queries without secrets: status, listings, logs, traffic and connection views. */
-  | 'read'
-  /**
-   *  Queries that return secrets: the Clash secret, subscription URLs, profile and runtime
-   *  contents, and generic storage.
-   */
-  | 'sensitive_read'
-  /**  Select a proxy, latency tests, switch the proxy mode, close connections. */
-  | 'proxy'
-  /**  Profile and subscription changes, transforms, provider updates. */
-  | 'profile'
-  /**  Ordinary application and Clash preferences. */
-  | 'settings'
-  /**
-   *  Core lifecycle, system proxy, TUN, transparent proxy, service, the Clash control plane,
-   *  listening exposure and every shell or OS operation.
-   */
-  | 'system'
-  /**  Remote access settings, tokens and sessions. */
-  | 'remote_admin'
-
-/**  Canonical deduplicated set of independent permission scopes held by a caller. */
-export type ScopeSet = Scope[]
-
 /**  A missing engine rejects the entire build, even when transforms are lenient. */
 export type ScriptExecutionError = {
   kind: 'start_engine'
@@ -8275,6 +8507,13 @@ export type SnapshotDiffHunk = {
   new_lines: number
   /**  Unified diff lines, including their space, plus, or minus prefix. */
   lines: string[]
+}
+
+/**  The manifest of one snapshot, for the UI. */
+export type SnapshotSummary = {
+  id: string
+  created_at: string
+  items: LogicalPath[]
 }
 
 export type SourceOrigin =
@@ -8549,9 +8788,113 @@ export type SubscriptionInfo_Serialize = {
   Expire: number
 }
 
+/**  Whether this build and this device can sync. */
+export type SyncAvailability =
+  /**  The shell supplied no sync adapters. */
+  'unsupported' | 'disabled' | 'enabled'
+
+/**  Why an item is held back rather than synced or applied. */
+export type SyncBlockedReason =
+  | { kind: 'schema_too_new'; remote_revision: number; supported: number }
+  | { kind: 'not_utf8' }
+  | { kind: 'unportable_name' }
+  | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict = SyncConflict_Serialize | SyncConflict_Deserialize
+
+export type SyncConflictKind =
+  'modify_modify' | 'modify_delete' | 'delete_active'
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Deserialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Serialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  A classified sync failure. The UI localizes by variant. */
+export type SyncError =
+  | { kind: 'unauthorized' }
+  | { kind: 'unreachable' }
+  | { kind: 'quota_exceeded' }
+  | { kind: 'vault_too_new'; found: number; supported: number }
+  | { kind: 'vault_mismatch' }
+  | { kind: 'provider_lacks_conditional_create' }
+  | { kind: 'storage'; reason: string }
+
+/**  The remote head, for the status card. */
+export type SyncHead = {
+  generation: number
+  device_name: string
+  created_at: string
+}
+
+/**  How sync reaches the provider. */
+export type SyncNetwork =
+  | 'direct'
+  | 'system'
+  /**  Through the running core's proxy. */
+  | 'through_core'
+
+export type SyncOutcome = 'synced' | 'up_to_date' | 'degraded' | 'failed'
+
 /**  A failed run is only `Failed`: its code and message are owner text. */
 export type SyncOutcomeKind =
   'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'skipped'
+
+/**  The phase of the current or last cycle. */
+export type SyncPhase =
+  | 'idle'
+  | 'scanning'
+  | 'fetching'
+  | 'planning'
+  | 'downloading'
+  | 'snapshotting'
+  | 'applying'
+  | 'uploading'
+  | 'committing'
+  | 'confirming'
+  | 'finalizing'
+
+export type SyncProgress = {
+  done: number
+  total: number
+}
 
 export type SyncRunPageSummary = {
   items: SyncRunSummary[]
@@ -8575,6 +8918,61 @@ export type SyncRunSummary = {
   finished_at: string | null
   state: SyncRunStateSummary
 }
+
+/**  One cycle's outcome, without conflict contents. */
+export type SyncRunView = {
+  outcome: SyncOutcome | null
+  pushed: number
+  pulled: number
+  merged: number
+  blocked: BlockedItem[]
+  conflicts: number
+}
+
+/**  Write-only credentials: accepted, never returned. */
+export type SyncSecrets = {
+  password?: string | null
+  secret_access_key?: string | null
+}
+
+/**  The sync settings of one device, stored without secrets. */
+export type SyncSettings = {
+  enabled: boolean
+  provider: ProviderConfig | null
+  device_name: string
+  conflict_policy: ConflictPolicy
+  /**  `0` means manual only, as for remote profile refresh. */
+  interval_minutes: number
+  sync_on_change: boolean
+  network: SyncNetwork
+}
+
+/**  The settings view: no secret value can appear in it. */
+export type SyncSettingsView = {
+  settings: SyncSettings
+  credentials_present: boolean
+  provider_kinds: ProviderKind[]
+}
+
+/**  The full sync status, published as `SyncStatusChanged`. */
+export type SyncStatus = {
+  /**  Increases with every change, so a delayed read cannot replace a newer value. */
+  revision: number
+  availability: SyncAvailability
+  phase: SyncPhase
+  progress: SyncProgress | null
+  last_success_at: number | null
+  last_result: SyncOutcome | null
+  last_error: SyncError | null
+  open_conflicts: number
+  blocked_items: BlockedItem[]
+  head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
+}
+
+/**  Full sync status, revisioned so a delayed read cannot replace a newer value. */
+export type SyncStatusChanged = SyncStatus
 
 /**
  *  Why the system DNS cache could not be flushed. No variant is compiled out

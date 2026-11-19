@@ -5,13 +5,19 @@ import { effectScope, type EffectScope } from "vue";
 import "@/plugins/dayjs";
 
 const api = vi.hoisted(() => ({
-  getPingLatency: vi.fn(),
+  getNodeLatency: vi.fn(),
   getHttpLatency: vi.fn(),
   putOutboundConnections: vi.fn(),
 }));
 vi.mock("@/api", () => api);
 
-import { filterRows, useNodes, type Row } from "./model";
+import {
+  compareLatency,
+  filterRows,
+  latencyFailed,
+  useNodes,
+  type Row,
+} from "./model";
 import { useAppStore } from "@/stores/app";
 
 function row(id: number, pingLatency = ""): Row {
@@ -55,42 +61,37 @@ beforeEach(() => {
 afterEach(() => scope.stop());
 
 describe("latency testing", () => {
-  test.each([false, true])(
-    "testAll uses the supplied rows (HTTP: %s)",
-    async (http) => {
-      const request = http ? api.getHttpLatency : api.getPingLatency;
-      const nodes = createNodes();
-      const other = http ? api.getPingLatency : api.getHttpLatency;
-      request.mockResolvedValue({
-        whiches: [
-          { _type: "server", id: 2, pingLatency: "25ms" },
-          { _type: "subscriptionServer", sub: 0, id: 1, pingLatency: "8ms" },
-        ],
-      });
-      const untouched = nodes.touch.value.servers[0];
-      const rows = [
-        nodes.touch.value.servers[1],
-        nodes.touch.value.subscriptions[0].servers[0],
-      ];
-      const pending = nodes.testAll(rows, http, "Testing");
-      expect(rows.map((r) => r.pingLatency)).toEqual(["Testing", "Testing"]);
-      expect(untouched.pingLatency).toBe("");
-      expect(request).toHaveBeenCalledExactlyOnceWith([
-        { _type: "server", id: 2, sub: null },
-        { _type: "subscriptionServer", id: 1, sub: 0 },
-      ]);
-      expect(other).not.toHaveBeenCalled();
-      await pending;
-      expect(rows.map((r) => r.pingLatency)).toEqual(["25ms", "8ms"]);
-    },
-  );
+  test("testAll uses the supplied rows and the global probe policy", async () => {
+    const request = api.getNodeLatency;
+    const nodes = createNodes();
+    request.mockResolvedValue({
+      whiches: [
+        { _type: "server", id: 2, pingLatency: "25ms" },
+        { _type: "subscriptionServer", sub: 0, id: 1, pingLatency: "8ms" },
+      ],
+    });
+    const untouched = nodes.touch.value.servers[0];
+    const rows = [
+      nodes.touch.value.servers[1],
+      nodes.touch.value.subscriptions[0].servers[0],
+    ];
+    const pending = nodes.testAll(rows, "Testing");
+    expect(rows.map((r) => r.pingLatency)).toEqual(["Testing", "Testing"]);
+    expect(untouched.pingLatency).toBe("");
+    expect(request).toHaveBeenCalledExactlyOnceWith([
+      { _type: "server", id: 2, sub: null },
+      { _type: "subscriptionServer", id: 1, sub: 0 },
+    ]);
+    await pending;
+    expect(rows.map((r) => r.pingLatency)).toEqual(["25ms", "8ms"]);
+  });
 
   test("failed tests clear testing marks and propagate the error", async () => {
     const nodes = createNodes();
     const error = new Error("latency unavailable");
-    api.getPingLatency.mockRejectedValue(error);
+    api.getNodeLatency.mockRejectedValue(error);
     const rows = nodes.touch.value.servers;
-    await expect(nodes.testAll(rows, false, "Testing")).rejects.toBe(error);
+    await expect(nodes.testAll(rows, "Testing")).rejects.toBe(error);
     expect(rows.map((r) => r.pingLatency)).toEqual(["", ""]);
   });
 });
@@ -132,5 +133,32 @@ describe("filterRows", () => {
     expect(filterRows(rows, "missing")).toEqual([]);
     expect(filterRows(rows, "")).toBe(rows);
     expect(rows.map((r) => r.id)).toEqual([1, 2]);
+  });
+});
+
+describe("latency order", () => {
+  const latencies = [
+    "120ms",
+    "",
+    "TIMEOUT",
+    "35ms",
+    "testing",
+    "PROXY ERROR",
+    "800ms",
+  ];
+  const rows = latencies.map((latency, i) => row(i + 1, latency));
+  const sorted = (asc: boolean) =>
+    [...rows]
+      .sort((a, b) => compareLatency(a, b, asc))
+      .map((r) => r.pingLatency);
+  test("sorts measured rows both ways and keeps untested, testing and failed rows last in their order", () => {
+    const rest = ["", "TIMEOUT", "testing", "PROXY ERROR"];
+    expect(sorted(true)).toEqual(["35ms", "120ms", "800ms", ...rest]);
+    expect(sorted(false)).toEqual(["800ms", "120ms", "35ms", ...rest]);
+  });
+  test("counts a finished test without a time as failed, not an untested or running one", () => {
+    expect(
+      rows.filter((r) => latencyFailed(r, "testing")).map((r) => r.pingLatency),
+    ).toEqual(["TIMEOUT", "PROXY ERROR"]);
   });
 });

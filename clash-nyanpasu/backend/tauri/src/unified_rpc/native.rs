@@ -85,10 +85,9 @@ impl DesktopRpc {
     ) -> Result<Value, RpcError> {
         let caller = RpcCaller::desktop(window.label());
         if let Some(handler) = self.handlers.get(method) {
-            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             return self
                 .rpc
-                .call_native(method, caller, || {
+                .call_native(method, caller, |visibility| {
                     handler(app, window, webview, visibility, params)
                 })
                 .await;
@@ -100,7 +99,7 @@ impl DesktopRpc {
 }
 
 // This is the transport entrypoint, not an application operation. All
-// application commands must use #[nyanpasu_macro::rpc] and its registry.
+// application commands must use #[nyanpasu_rpc::rpc] and its registry.
 #[tauri::command]
 #[specta::specta]
 pub async fn call_rpc(

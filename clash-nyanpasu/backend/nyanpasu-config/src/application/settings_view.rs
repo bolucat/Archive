@@ -8,8 +8,8 @@
 //! public desired state of the system settings, and reduces the two URL fields and the network
 //! rules to flags: `pac_configured`, `latency_test_configured` and `network_automation_enabled`.
 //!
-//! A flag is not a placeholder: a form that needs the real URL reads the full config
-//! (`sensitive_read`), and a flag is never a valid thing to write back.
+//! A flag is not a placeholder: a form that needs the real URL reads the full config, a
+//! sensitive query, and a flag is never a valid thing to write back.
 
 use serde::Serialize;
 use specta::Type;
@@ -77,8 +77,6 @@ pub struct ApplicationSettings {
     pub enable_tray_text: bool,
     pub enable_tray_traffic: bool,
     pub use_legacy_ui: bool,
-    #[cfg(target_os = "macos")]
-    #[specta(skip)]
     pub enable_macos_colored_icons: bool,
 }
 
@@ -129,7 +127,6 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         } = config;
 
@@ -178,7 +175,6 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             enable_tray_text: *enable_tray_text,
             enable_tray_traffic: *enable_tray_traffic,
             use_legacy_ui: *use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons: *enable_macos_colored_icons,
         }
     }

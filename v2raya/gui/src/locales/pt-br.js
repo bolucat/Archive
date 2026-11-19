@@ -1,4 +1,15 @@
 export default {
+  nodeProbe: {
+    mode: "Modo de verificação dos nós",
+    server: "Até o servidor",
+    proxy: "Pelo proxy",
+    url: "URL de teste",
+    title: "Verificação dos nós",
+    hint: "Vale para o painel e a lista de nós. Até o servidor verifica a conexão; Pelo proxy solicita um site por cada nó.",
+    urlHint:
+      "Deixe vazio para usar https://gstatic.com/generate_204. A falha também pode indicar que o site de destino está indisponível.",
+    invalidUrl: "Insira uma URL HTTP(S) sem credenciais.",
+  },
   onboarding: {
     title: "Tutorial rápido",
     importTitle: "Importar nós",
@@ -34,10 +45,17 @@ export default {
     sources: { all: "Todos", local: "Locais" },
     membersOnly: "Somente membros",
     source: "Origem",
+    sort: "Ordenar",
+    sorts: {
+      none: "Padrão",
+      asc: "Menor latência primeiro",
+      desc: "Maior latência primeiro",
+    },
     inUse: "Em uso",
     addToGroup: "Adicionar ao grupo de proxy",
     removeFromGroup: "Remover do grupo de proxy",
     selectAll: "Selecionar todos",
+    selectFailed: "Selecionar os que falharam",
     autoUpdate: "Atualização automática",
     noSubscriptions: "Nenhuma assinatura ainda",
     noSubscriptionsHint:
@@ -60,7 +78,7 @@ export default {
     switchNode: "Trocar",
     proxyGroup: "Grupo de proxy",
     editGroup: "Adicionar ou remover nós",
-    autoFastest: "Automático (menor latência)",
+    autoFastest: "Automático (estratégia do grupo)",
     emptyGroup: "Este grupo não tem nós",
     updateAll: "Atualizar todas",
     updatedAt: "Atualizado {time}",
@@ -153,6 +171,9 @@ export default {
     coreStoppedDirectAll:
       "O núcleo está parado. Atualizar todas as assinaturas sem o proxy?",
 
+    nodeDns: "DNS dos nós",
+    nodeDnsHint:
+      "auto mantém a ordem atual; ou informe um DNS UDP, TCP, TLS ou HTTPS com IP puro. Só se aplica com o sequestro de DNS ativado. DoH precisa de uma URL com caminho, como https://1.1.1.1/dns-query. Testes de latência e downloads de assinaturas não mudam.",
     settingsTitle: "Atualização de assinaturas",
     remarks: "Observações",
     numberServers: "Número de servidores",
@@ -518,6 +539,7 @@ export default {
       global: "Tudo pelo proxy, rede local direto",
       minimal: "Só os serviços estrangeiros comuns pelo proxy, o resto direto",
       russia: "Sites russos direto, exceções e o restante pelo proxy",
+      iran: "Sites iranianos direto, o restante pelo proxy",
       ads: "Bloquear domínios de publicidade",
       streaming:
         "Streaming pelo proxy (Netflix, Disney, HBO, Prime Video, YouTube, Spotify, TikTok)",
@@ -648,6 +670,11 @@ export default {
     probeUrl: "URL de sondagem",
     probeInterval: "Intervalo de sondagem",
     type: "Tipo",
+    strategies: {
+      leastLoad: "Menor carga",
+      roundRobin: "Rodízio",
+      random: "Aleatório",
+    },
   },
   proxyGroup: {
     searchNodes: "Pesquisar nós...",
@@ -795,6 +822,10 @@ export default {
     LINK_MALFORMED: "Link {protocol} malformado: {detail}",
     SUBSCRIPTION_FETCH_FAILED:
       "Não foi possível obter a assinatura de {host}: {detail}",
+    NODE_DNS_INVALID:
+      "Use um endereço DNS com IP via UDP, TCP, TLS ou HTTPS que não aponte para o listener DNS deste serviço.",
+    NODE_DNS_CONFLICT:
+      "O domínio do nó {domain} usa DNS diferentes nas assinaturas conectadas. Escolha o mesmo endereço para o domínio compartilhado.",
     SUBSCRIPTION_EMPTY: "A assinatura não contém servidores.",
     SUBSCRIPTION_NOT_FOUND:
       "A assinatura #{id} não existe. Recarregue a página.",

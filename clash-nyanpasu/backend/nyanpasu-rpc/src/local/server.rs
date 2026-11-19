@@ -6,7 +6,7 @@ use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_logging::LogSession;
 use nyanpasu_owner_support::blocking;
 use nyanpasu_rpc_protocol::{
-    AuthContext, RpcError, RpcOwner, RpcTarget, Scope,
+    AuthContext, RpcError, RpcOwner, RpcTarget,
     frame::{self, Feature, Frame, Reply, RequestId, SubscriptionErrorCode, SubscriptionTarget},
     session::{RECOVERABLE_EVENTS, Session},
 };
@@ -222,6 +222,8 @@ enum Completion {
         audit: AuditInvocation,
         id: RequestId,
         result: Result<Subscription, SubscriptionErrorCode>,
+        /// What the redaction layer decided for the subscribed event or stream.
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
         permit: OwnedSemaphorePermit,
     },
 }
@@ -431,13 +433,16 @@ impl Connection {
                 });
                 let policy_rejection = if check_policy {
                     let admission = match event {
-                        Some(event) => crate::policy::admit_event(
-                            event,
-                            &self.rpc.provided,
+                        Some(event) => self.rpc.authority().admit(
+                            event.resource(),
                             RpcTarget::Local,
-                            Some(&self.auth),
+                            Some(&self.auth.permissions),
                         ),
-                        None => crate::policy::admit_route(Scope::Read, Some(&self.auth)),
+                        None => self.rpc.authority().admit(
+                            crate::permission::declared(crate::permission::CONNECTION_DETAILS),
+                            RpcTarget::Local,
+                            Some(&self.auth.permissions),
+                        ),
                     };
                     admission.err().map(|error| match error.kind {
                         "unsupported" => SubscriptionErrorCode::Unsupported,
@@ -499,8 +504,13 @@ impl Connection {
                     }
                     return;
                 }
-                let visibility =
-                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
+                let visibility = crate::redaction::visibility(
+                    event.map_or_else(
+                        || crate::permission::declared(crate::permission::CONNECTION_DETAILS),
+                        |event| event.resource(),
+                    ),
+                    &self.auth.permissions,
+                );
                 self.pending_resources += 1;
                 let rpc = self.rpc.clone();
                 let source = self.source.clone();
@@ -552,6 +562,7 @@ impl Connection {
                             audit,
                             id,
                             result,
+                            visibility,
                             permit,
                         }
                     }
@@ -646,6 +657,7 @@ impl Connection {
                 audit,
                 id,
                 result,
+                visibility,
                 permit,
             } => {
                 self.pending_resources -= 1;
@@ -702,8 +714,6 @@ impl Connection {
                             audits: vec![DeliveryAudit::new(audit)],
                         })
                         .await;
-                        let visibility =
-                            nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                         let forwarding = subscriptions::forward(
                             subscription,
                             stream,

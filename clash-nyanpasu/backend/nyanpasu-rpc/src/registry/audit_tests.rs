@@ -10,7 +10,7 @@ use nyanpasu_contracts::auth::AuthContext;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, CommandKind, RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability,
+    RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability, permission::RESOURCES,
 };
 use nyanpasu_runtime_values::runtime::{
     CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
@@ -33,7 +33,7 @@ use crate::{
     test_support::{Capture, Fixture, SECRET, test_http_auth, with_http_auth},
 };
 
-#[nyanpasu_macro::rpc(http, permission = "settings.storage_item:set")]
+#[nyanpasu_rpc::rpc(expose = [http])]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
 }
@@ -62,7 +62,7 @@ fn receipt() -> CommitReceipt {
     }
 }
 
-#[nyanpasu_macro::rpc(http, privacy, permission = "settings.storage_item:set")]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn audit_mutation(
     value: String,
     degraded: bool,
@@ -97,7 +97,7 @@ fn audit_mutation(
 
 type AuditOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<AuditValue>;
 
-#[nyanpasu_macro::rpc(http, privacy, permission = "settings.storage_item:set")]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn audit_mutation_alias(value: String, degraded: bool, fail_encoding: bool) -> AuditOutcomeAlias {
     let value = AuditValue {
         value,
@@ -210,7 +210,8 @@ async fn app_preferences_decode_rejection_is_recorded_before_admission() {
 
 #[tokio::test]
 async fn audit_preserves_committed_degraded_summary() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+    use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
+    use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let fixture = Fixture::new(false).await;
     let public_auth = AuthContext::new(
@@ -218,11 +219,11 @@ async fn audit_preserves_committed_degraded_summary() {
             id: "tok-settings-audit".into(),
             name: "settings-only".into(),
         },
-        [Scope::Settings].into_iter().collect(),
+        Grant::Custom(Permissions::NONE.with(Resource::Settings, Access::Read)),
     );
     for command in ["audit_mutation", "audit_mutation_alias"] {
         for degraded in [false, true] {
-            // Privileged caller (SensitiveRead) receives Full MutationOutcome.
+            // A `settings` writer receives the full MutationOutcome.
             let (status, full_value) = fixture
                 .call(
                     command,
@@ -235,7 +236,7 @@ async fn audit_preserves_committed_degraded_summary() {
                 assert_eq!(full_value["degradations"][0]["message"], SECRET);
             }
 
-            // Caller with only Scope::Settings receives PublicMutationOutcome (message projected away).
+            // A `settings` reader receives PublicMutationOutcome (message projected away).
             let (pub_status, pub_value) = crate::test_support::rpc_for_test_call_with_auth(
                 &fixture.rpc.clone().router(),
                 command,
@@ -286,7 +287,8 @@ async fn audit_preserves_committed_degraded_summary() {
 
 #[tokio::test]
 async fn audit_keeps_receipts_when_response_encoding_fails() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+    use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
+    use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let fixture = Fixture::new(false).await;
     let public_auth = AuthContext::new(
@@ -294,7 +296,7 @@ async fn audit_keeps_receipts_when_response_encoding_fails() {
             id: "tok-settings-audit-enc".into(),
             name: "settings-only".into(),
         },
-        [Scope::Settings].into_iter().collect(),
+        Grant::Custom(Permissions::NONE.with(Resource::Settings, Access::Read)),
     );
     for command in ["audit_mutation", "audit_mutation_alias"] {
         let (status, error) = fixture
@@ -463,12 +465,7 @@ async fn audit_drop_does_not_claim_transaction_cancellation() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_macro::rpc(
-    local,
-    owner,
-    optional_capabilities(elevation),
-    permission = "settings.storage_item:set"
-)]
+#[nyanpasu_rpc::rpc(owner, optional_capabilities(elevation), expose = [local])]
 #[specta::specta]
 fn local_optional_effect(
     _client: RpcState<'_, NyanpasuClient>,
@@ -547,11 +544,7 @@ async fn local_optional_elevation_expands_and_registers() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_macro::rpc(
-    http,
-    capabilities(clipboard),
-    permission = "settings.storage_item:set"
-)]
+#[nyanpasu_rpc::rpc(capabilities(clipboard), expose = [http])]
 fn requires_clipboard(value: String) -> String {
     panic!("a command missing its required capability must not run: {value}");
 }
@@ -591,7 +584,7 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
             .call_native(
                 "read_clipboard_text",
                 RpcCaller::desktop("audit-window"),
-                || panic!("unavailable native handler must not run")
+                |_| panic!("unavailable native handler must not run")
             )
             .await
             .unwrap_err()
@@ -689,11 +682,17 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
 #[tokio::test]
 async fn headless_registry_knows_unlinked_native_commands() {
     let mut fixture = Fixture::with_capabilities(false, &[]).await;
-    fixture.rpc.commands = super::register_commands(COMMAND_CATALOG, [], &[]).unwrap();
-    assert_eq!(fixture.rpc.command_names().len(), COMMAND_CATALOG.len());
-    for metadata in COMMAND_CATALOG
+    fixture.rpc.commands = super::register_commands(RESOURCES, []).unwrap();
+    assert_eq!(
+        fixture.rpc.command_names().len(),
+        RESOURCES
+            .iter()
+            .filter(|resource| resource.is_command())
+            .count()
+    );
+    for metadata in RESOURCES
         .iter()
-        .filter(|metadata| metadata.kind == CommandKind::Native)
+        .filter(|metadata| metadata.is_native_command())
     {
         let command = &fixture.rpc.commands[metadata.name];
         assert_eq!(
@@ -719,8 +718,7 @@ async fn headless_registry_knows_unlinked_native_commands() {
         fixture.sink.records.lock()[0].header.method,
         "get_system_accent_color"
     );
-    let unlinked =
-        super::register_commands(COMMAND_CATALOG, [], crate::test_support::CAPABILITIES).unwrap();
+    let unlinked = super::register_commands(RESOURCES, []).unwrap();
     assert_eq!(
         unlinked["read_clipboard_text"]
             .neutral_handler(RpcTarget::Desktop)
@@ -908,7 +906,8 @@ async fn audit_records_rejected_dispatches() {
                 .to_vec()
         )
         .unwrap()
-        .contains("duplicate field")
+        // A malformed query has no admitted resource, so the parser's detail is redacted.
+        .contains("invalid parameters")
     );
     {
         let all_records = fixture.sink.records.lock();

@@ -1,4 +1,15 @@
 export default {
+  nodeProbe: {
+    mode: "حالت بررسی گره",
+    server: "اتصال به سرور",
+    proxy: "از طریق پراکسی",
+    url: "نشانی آزمون",
+    title: "بررسی گره‌ها",
+    hint: "برای داشبورد و فهرست گره‌ها اعمال می‌شود. اتصال به سرور ارتباط را بررسی می‌کند؛ از طریق پراکسی یک سایت را از طریق هر گره درخواست می‌کند.",
+    urlHint:
+      "برای استفاده از https://gstatic.com/generate_204 خالی بگذارید. شکست درخواست ممکن است به دلیل در دسترس نبودن سایت مقصد باشد.",
+    invalidUrl: "نشانی HTTP(S) بدون نام کاربری و گذرواژه وارد کنید.",
+  },
   onboarding: {
     title: "آموزش کوتاه",
     importTitle: "وارد کردن گره‌ها",
@@ -34,10 +45,17 @@ export default {
     sources: { all: "همه", local: "محلی" },
     membersOnly: "فقط اعضا",
     source: "منبع",
+    sort: "مرتب‌سازی",
+    sorts: {
+      none: "پیش‌فرض",
+      asc: "کمترین تأخیر اول",
+      desc: "بیشترین تأخیر اول",
+    },
     inUse: "در حال استفاده",
     addToGroup: "افزودن به گروه پروکسی",
     removeFromGroup: "حذف از گروه پروکسی",
     selectAll: "انتخاب همه",
+    selectFailed: "انتخاب گره‌های ناموفق",
     autoUpdate: "به‌روزرسانی خودکار",
     noSubscriptions: "هنوز اشتراکی وجود ندارد",
     noSubscriptionsHint:
@@ -59,7 +77,7 @@ export default {
     switchNode: "تغییر",
     proxyGroup: "گروه پروکسی",
     editGroup: "افزودن یا حذف گره‌ها",
-    autoFastest: "خودکار (کمترین تأخیر)",
+    autoFastest: "خودکار (راهبرد گروه)",
     emptyGroup: "این گروه گره‌ای ندارد",
     updateAll: "به‌روزرسانی همه",
     updatedAt: "به‌روزرسانی {time}",
@@ -150,6 +168,9 @@ export default {
     coreStoppedDirectAll:
       "هسته متوقف است. همهٔ اشتراک‌ها بدون پراکسی به‌روزرسانی شوند؟",
 
+    nodeDns: "DNS گره",
+    nodeDnsHint:
+      "auto ترتیب فعلی را حفظ می‌کند؛ یا DNS با IP خالص از نوع UDP، TCP، TLS یا HTTPS وارد کنید. فقط با فعال بودن ربایش DNS اعمال می‌شود. DoH به URL دارای مسیر مانند https://1.1.1.1/dns-query نیاز دارد. تست تأخیر و دانلود اشتراک تغییری نمی‌کنند.",
     settingsTitle: "به‌روزرسانی اشتراک‌ها",
     remarks: "توضیحات",
     numberServers: "تعداد سرورها",
@@ -507,6 +528,7 @@ export default {
       global: "همه از پروکسی، شبکهٔ محلی مستقیم",
       minimal: "فقط سرویس‌های خارجی رایج از پروکسی، بقیه مستقیم",
       russia: "سایت‌های روسیه مستقیم، استثناها و بقیه از پروکسی",
+      iran: "سایت‌های ایران مستقیم، بقیه از پروکسی",
       ads: "مسدود کردن دامنه‌های تبلیغاتی",
       streaming:
         "پخش ویدئو و موسیقی از پروکسی (Netflix، Disney، HBO، Prime Video، YouTube، Spotify، TikTok)",
@@ -633,6 +655,11 @@ export default {
     probeUrl: "نشانی آزمون",
     probeInterval: "فاصله آزمون",
     type: "نوع",
+    strategies: {
+      leastLoad: "کمترین بار",
+      roundRobin: "چرخشی",
+      random: "تصادفی",
+    },
   },
   proxyGroup: {
     searchNodes: "جست‌وجوی گره‌ها...",
@@ -778,6 +805,10 @@ export default {
       "رمزنگاری پشتیبانی نمی‌شود: {cipher}؛ از aes-128-gcm، aes-256-gcm، chacha20-ietf-poly1305 یا روش‌های 2022-blake3 استفاده کنید",
     LINK_MALFORMED: "پیوند {protocol} ساختار نادرستی دارد: {detail}",
     SUBSCRIPTION_FETCH_FAILED: "دریافت اشتراک از {host} ناموفق بود: {detail}",
+    NODE_DNS_INVALID:
+      "از یک نشانی DNS با IP و UDP، TCP، TLS یا HTTPS استفاده کنید که به شنوندهٔ DNS این سرویس اشاره نکند.",
+    NODE_DNS_CONFLICT:
+      "دامنهٔ گره {domain} در اشتراک‌های متصل DNS متفاوتی دارد. برای دامنهٔ مشترک یک نشانی یکسان انتخاب کنید.",
     SUBSCRIPTION_EMPTY: "اشتراک شامل هیچ سروری نیست.",
     SUBSCRIPTION_NOT_FOUND:
       "اشتراک #{id} وجود ندارد. صفحه را دوباره بارگیری کنید.",

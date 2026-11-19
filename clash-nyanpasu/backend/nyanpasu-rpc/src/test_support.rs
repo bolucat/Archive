@@ -6,7 +6,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use nyanpasu_rpc_protocol::{AuthContext, COMMAND_CATALOG, ServerInfo, ShellCapability};
+use nyanpasu_rpc_protocol::{AuthContext, ServerInfo, ShellCapability, permission::RESOURCES};
 use parking_lot::Mutex;
 use serde_json::Value;
 use tower::ServiceExt as _;
@@ -40,7 +40,7 @@ impl RpcAuditSink for AuditSink {
 
 // These commands exercise generated parsing, execution and serialization without
 // adding capabilities to the production registry or touching application state.
-#[nyanpasu_macro::rpc(http, permission = "settings.storage_item:set")]
+#[nyanpasu_rpc::rpc(expose = [http])]
 async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
     if fail {
         Err(std::io::Error::other(value))
@@ -175,9 +175,14 @@ pub const CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::HttpServer,
 ];
 
-/// Build an explicit full-scope bootstrap HTTP `Session` caller for router tests.
+/// Build an HTTP `Session` caller holding every permission, for router tests.
 pub fn test_http_auth() -> AuthContext {
-    AuthContext::session("test-session")
+    AuthContext::new(
+        nyanpasu_contracts::auth::Principal::Session {
+            id: "test-session".to_owned(),
+        },
+        nyanpasu_contracts::auth::Grant::Role(nyanpasu_contracts::auth::Role::Owner),
+    )
 }
 
 /// Wrap an HTTP router with a fixed [`AuthContext`] extension for authenticated unit tests.
@@ -258,8 +263,8 @@ pub async fn test_client_args_with_endpoint(
 
 pub fn assert_duplicate_commands_rejected(entry: &'static crate::registry::CommandEntry) {
     assert!(matches!(
-        crate::registry::register_commands(COMMAND_CATALOG, [entry, entry], &[]),
-        Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.metadata.name
+        crate::registry::register_commands(RESOURCES, [entry, entry]),
+        Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.name
     ));
 }
 

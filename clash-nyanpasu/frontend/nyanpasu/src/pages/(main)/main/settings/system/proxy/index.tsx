@@ -38,7 +38,7 @@ const ProxyMode = () => {
         {m.settings_system_proxy_proxy_mode_label()}
       </SettingsLabel>
 
-      <ReadOnlyScope scopes={['system']}>
+      <ReadOnlyScope permissions={['system:write']}>
         <SettingsGroup className="pb-4">
           <div className="grid grid-cols-2 gap-2">
             <SystemProxyButton />
@@ -66,7 +66,7 @@ const ProxyGuard = () => {
         {m.settings_system_proxy_proxy_guard_label()}
       </SettingsLabel>
 
-      <ReadOnlyScope scopes={['system']} banner={false}>
+      <ReadOnlyScope permissions={['system:write']} banner={false}>
         <SettingsGroup>
           <SettingsCard>
             <SettingsCardContent>
@@ -111,13 +111,21 @@ const NetworkRules = () => {
 
         <AnimatePresence initial={false}>
           {policy?.enabled && (
-            <SettingsCard asChild>
+            <SettingsCard key="status" asChild>
               <SettingsCardAnimatedItem>
                 <SettingsCardContent>
                   <NetworkAutomationStatus />
+                </SettingsCardContent>
+              </SettingsCardAnimatedItem>
+            </SettingsCard>
+          )}
 
-                  <NetworkRuleList />
+          {policy?.enabled && <NetworkRuleList key="rules" />}
 
+          {policy?.enabled && (
+            <SettingsCard key="default-actions" asChild>
+              <SettingsCardAnimatedItem>
+                <SettingsCardContent>
                   <NetworkDefaultActions />
                 </SettingsCardContent>
               </SettingsCardAnimatedItem>
