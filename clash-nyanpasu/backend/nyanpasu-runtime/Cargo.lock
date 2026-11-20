@@ -2166,6 +2166,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77730ed34f01f4990cb2ea67fec715ecebc6fab9a6396cf83c5529b13f581bdc"
+dependencies = [
+ "bitflags 2.13.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2440,7 +2452,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.31.3",
+ "nix 0.32.0",
  "nyanpasu-log-preview",
  "os_pipe",
  "parking_lot 0.13.0",
@@ -3058,9 +3070,9 @@ checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
 name = "redb"
-version = "4.4.0"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39178e0a867f9e3eaa6292a4ab1dd3613f2519c5b564341e1e7b29b270736cc4"
+checksum = "11175cc688ba1b9d3cec4fe582fd82cb97e2a82e28ccc8101b7b8030a8003280"
 dependencies = [
  "libc",
 ]

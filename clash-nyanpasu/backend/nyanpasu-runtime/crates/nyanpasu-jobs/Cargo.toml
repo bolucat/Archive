@@ -16,7 +16,7 @@ jiff = { version = "0.2", features = ["serde"] }
 jiff-cron = "=0.3.0"
 futures-util.workspace = true
 ractor = "0.16.5"
-redb = { version = "4.2", optional = true }
+redb = { version = "5.0.0", optional = true }
 serde.workspace = true
 serde_json = "1"
 thiserror.workspace = true

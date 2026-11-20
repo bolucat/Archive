@@ -112,7 +112,7 @@ jobs:
 
       # `pnpm tauri build` generates the open source credits before the frontend.
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.90.3
+        uses: taiki-e/install-action@v2.90.6
         with:
           tool: cargo-about@0.9.2
 
@@ -285,7 +285,7 @@ jobs:
             }
           }
 
-          $version = '157.0.4341.60'
+          $version = '158.0.4370.33'
           $uri = "https://github.com/libnyanpasu/webview2-runtime-archive/releases/download/$version/Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
           $outfile = "Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
           echo "Downloading $uri to $outfile"

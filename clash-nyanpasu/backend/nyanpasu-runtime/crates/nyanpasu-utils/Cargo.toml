@@ -35,7 +35,7 @@ processkit = {
   features = ["tracing"],
   optional = true
 }
-redb = { version = "4.4", optional = true }
+redb = { version = "5.0.0", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 reqwest = { version = "0.13", default-features = false, optional = true }
 reqwest-websocket = { version = "0.6", optional = true }
@@ -59,7 +59,7 @@ tokio = { version = "1", features = ["test-util"] }
 [target."cfg(unix)".dependencies]
 libc = { version = "0.2", optional = true }
 nix = {
-  version = "0.31.0",
+  version = "0.32.0",
   features = ["process", "signal", "user", "fs"],
   optional = true
 }
