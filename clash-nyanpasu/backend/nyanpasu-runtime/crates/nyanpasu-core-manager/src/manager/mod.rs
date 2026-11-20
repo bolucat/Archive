@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use enumset::EnumSet;
 use nyanpasu_utils::process::AtomicStopStrategy;
-use serde_yaml_ng::Mapping;
 use tokio::sync::{broadcast, watch};
+use yaml_serde::Mapping;
 
 use crate::{
     Epoch, Feature, RuntimeFeature,

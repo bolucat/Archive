@@ -13,11 +13,11 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use serde_yaml_ng::{Mapping, Value};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
+use yaml_serde::{Mapping, Value};
 
 struct Behavior {
     external_controller: Option<String>,
@@ -79,7 +79,7 @@ fn lines(doc: &Mapping, key: &str) -> Vec<String> {
 }
 
 fn parse(config: &str) -> Behavior {
-    let doc: Mapping = serde_yaml_ng::from_str(config).expect("valid yaml");
+    let doc: Mapping = yaml_serde::from_str(config).expect("valid yaml");
     let x = doc
         .get(Value::String("x-fake-core".into()))
         .and_then(Value::as_mapping)
@@ -230,7 +230,7 @@ async fn main() {
     let ctx = Arc::new(Ctx {
         ready: AtomicBool::new(false),
         behavior,
-        runtime: Mutex::new(serde_yaml_ng::from_str(&config).expect("runtime mapping")),
+        runtime: Mutex::new(yaml_serde::from_str(&config).expect("runtime mapping")),
     });
     if !ctx.behavior.never_ready {
         let ctx = ctx.clone();
@@ -450,13 +450,13 @@ where
                 respond(&mut stream, 500, r#"{"message":"reload rejected"}"#).await;
                 return;
             }
-            let request: Mapping = serde_yaml_ng::from_str(&body).expect("PUT JSON mapping");
+            let request: Mapping = yaml_serde::from_str(&body).expect("PUT JSON mapping");
             let path = request
                 .get(Value::String("path".into()))
                 .and_then(Value::as_str)
                 .expect("PUT path");
             let desired = std::fs::read_to_string(path).expect("read PUT path");
-            *ctx.runtime.lock() = serde_yaml_ng::from_str(&desired).expect("PUT runtime mapping");
+            *ctx.runtime.lock() = yaml_serde::from_str(&desired).expect("PUT runtime mapping");
             respond(&mut stream, 204, "").await;
         }
         ("PATCH", "/configs") => {
@@ -480,7 +480,7 @@ where
                 }
             }
             if !ctx.behavior.patch_no_effect {
-                let patch: Mapping = serde_yaml_ng::from_str(&body).expect("PATCH JSON mapping");
+                let patch: Mapping = yaml_serde::from_str(&body).expect("PATCH JSON mapping");
                 merge_mapping(&mut ctx.runtime.lock(), &patch);
             }
             if ctx.behavior.patch_delay_ms > 0 {

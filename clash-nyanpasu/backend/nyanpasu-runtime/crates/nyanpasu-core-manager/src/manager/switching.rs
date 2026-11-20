@@ -75,12 +75,12 @@ impl CoreManager {
         self.validate_launchable(&spec).await?;
         let resolved = self.resolve_features(&spec).await?;
         let local_controller = resolved.runtime.contains(RuntimeFeature::LocalIpc);
-        let has_http = |doc: &serde_yaml_ng::Mapping| {
+        let has_http = |doc: &yaml_serde::Mapping| {
             ["external-controller", "external-controller-tls"]
                 .iter()
                 .any(|field| {
                     doc.get(*field)
-                        .and_then(serde_yaml_ng::Value::as_str)
+                        .and_then(yaml_serde::Value::as_str)
                         .is_some_and(|value| !value.is_empty())
                 })
         };

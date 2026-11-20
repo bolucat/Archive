@@ -11,8 +11,8 @@ use crate::api::{
     self,
     contract::{
         CoreCheck, CoreStart, CoreStop, CoreV2Operation, CoreV2Status, CoreV2Submit, LogsInspect,
-        LogsRetrieve, NetworkSetDns, NetworkTransparentProxyReconcile,
-        NetworkTransparentProxyStatusQuery, Status,
+        LogsRetrieve, NetworkSetDns, NetworkTransparentProxyDiagnosticsQuery,
+        NetworkTransparentProxyReconcile, NetworkTransparentProxyStatusQuery, Status,
     },
     core::v2::{
         CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT, OperationInfo,
@@ -185,6 +185,18 @@ impl Client {
             .ok_or(ClientError::EmptyData {
                 operation:
                     api::network::transparent_proxy::NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT,
+            })
+    }
+
+    pub async fn transparent_proxy_diagnostics(
+        &self,
+    ) -> Result<api::network::transparent_proxy::NetworkTransparentProxyDiagnostics> {
+        self.call::<NetworkTransparentProxyDiagnosticsQuery>(None)
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation:
+                    api::network::transparent_proxy::NETWORK_TRANSPARENT_PROXY_DIAGNOSTICS_ENDPOINT,
             })
     }
 

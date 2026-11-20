@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use serde_yaml_ng::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 #[derive(Debug)]
 pub(super) struct DiffEntry {
@@ -110,8 +110,8 @@ mod tests {
 
     fn changes(current: &str, desired: &str) -> Vec<(Vec<String>, Option<Value>)> {
         diff(
-            &serde_yaml_ng::from_str(current).unwrap(),
-            &serde_yaml_ng::from_str(desired).unwrap(),
+            &yaml_serde::from_str(current).unwrap(),
+            &yaml_serde::from_str(desired).unwrap(),
         )
         .into_iter()
         .map(|entry| (entry.path, entry.new))
@@ -121,13 +121,13 @@ mod tests {
     fn entry(path: &[&str], new: Option<&str>) -> (Vec<String>, Option<Value>) {
         (
             path.iter().map(|part| (*part).to_owned()).collect(),
-            new.map(|yaml| serde_yaml_ng::from_str(yaml).unwrap()),
+            new.map(|yaml| yaml_serde::from_str(yaml).unwrap()),
         )
     }
 
     #[test]
     fn equal_independent_documents_and_empty_roots_have_no_changes() {
-        let current: Mapping = serde_yaml_ng::from_str("rules: [MATCH,DIRECT]\ndns: {}\n").unwrap();
+        let current: Mapping = yaml_serde::from_str("rules: [MATCH,DIRECT]\ndns: {}\n").unwrap();
         let desired = current.clone();
         assert!(diff(&current, &desired).is_empty());
         assert!(diff(&Mapping::new(), &Mapping::new()).is_empty());

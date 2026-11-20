@@ -387,8 +387,7 @@ impl CoreManagerService {
 
     pub async fn effective_config(
         &self,
-    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, serde_yaml_ng::Error>
-    {
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, yaml_serde::Error> {
         self.inner
             .control
             .effective_config()
@@ -397,7 +396,7 @@ impl CoreManagerService {
                 Ok(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
                     instance_id: snapshot.instance_id.to_string(),
                     revision: map_revision(&snapshot.revision),
-                    config: serde_yaml_ng::to_string(snapshot.config.as_ref())?,
+                    config: yaml_serde::to_string(snapshot.config.as_ref())?,
                 })
             })
             .transpose()

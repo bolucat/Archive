@@ -148,6 +148,7 @@ mod tests {
                 "get_core_log_status",
                 "get_core_status",
                 "get_custom_app_dir",
+                "get_meow_statistics",
                 "get_network_automation_status",
                 "get_postprocessing_output",
                 "get_profile_sync_logs",
@@ -160,6 +161,7 @@ mod tests {
                 "get_service_install_prompt",
                 "get_storage_item",
                 "get_sync_settings",
+                "get_transparent_proxy_diagnostics",
                 "get_transparent_proxy_status",
                 "inspect_applied_runtime",
                 "inspect_runtime",
@@ -169,6 +171,8 @@ mod tests {
                 "probe_profile_url",
                 "query_core_logs",
                 "query_logs",
+                "query_meow_logbook",
+                "query_meow_traffic_ledger",
                 "read_clipboard_text",
                 "read_profile_file",
                 "status_service",
@@ -199,16 +203,22 @@ mod tests {
             [
                 "create_http_launch_url",
                 "create_remote_access_token",
+                "export_remote_access_authority",
                 "get_local_socket_status",
+                "get_remote_access_certificate",
+                "list_local_networks",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "open_remote_access_certificate",
                 "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
             ]
         );
-        // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
+        // The launch URL is a credential for a browser, so it stays with the desktop that opens it,
+        // and the network list, the certificate fields, its viewer and its export serve only the
+        // desktop settings page.
         assert_eq!(
             names(|command| command.permission.resource == Resource::Remote
                 && command.targets.contains(&RpcTarget::Local)),

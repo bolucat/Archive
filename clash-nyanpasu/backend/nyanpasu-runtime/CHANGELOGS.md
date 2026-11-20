@@ -1,4 +1,30 @@
 
+## [2.0.4] - 2026-11-19
+
+### 💥 Breaking Changes
+
+- Remove the Clash Premium core by @greenhat616 
+
+
+
+### ✨ Features
+
+- **transparent-proxy:** Expose read-only diagnostics snapshot (#499) by @keiko233  in [#499](https://github.com/libnyanpasu/nyanpasu-runtime/pull/499)
+
+
+### 🔨 Refactor
+
+- **deps:** Switch from serde_yaml_ng to yaml_serde by @greenhat616 
+
+-----------------
+
+
+
+**Full Changelog**: https://github.com/libnyanpasu/nyanpasu-runtime/compare/v2.0.3...v2.0.4
+
+
+
+
 ## [2.0.3] - 2026-11-09
 
 

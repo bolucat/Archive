@@ -41,7 +41,10 @@ macro_rules! schema_commands {
     ($($command:tt)*) => {
         tauri_specta::Commands::<tauri::Wry>(
             std::sync::Arc::new(|_| false),
-            std::sync::Arc::new(specta::function::collect_functions![$($command)*]),
+            std::sync::Arc::new(|types: &mut specta::Types| tauri_specta::CollectedCommands {
+                functions: specta::function::collect_functions![$($command)*](types),
+                accessor_names: Default::default(),
+            }),
         )
     };
 }
@@ -52,6 +55,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::meta::rpc_describe,
             commands::system::status::get_http_server_status,
             commands::remote::settings::get_local_socket_status,
+            commands::remote::settings::list_local_networks,
+            commands::remote::settings::get_remote_access_certificate,
             commands::system::status::get_configuration_status,
             commands::system::status::get_configuration_status_summary,
             commands::system::service::get_service_status_summary,
@@ -60,6 +65,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::system::os::read_clipboard_text,
             commands::logs::core::query_core_logs,
             commands::logs::core::query_core_logs_summary,
+            commands::logs::core::query_meow_logbook,
             commands::logs::core::get_core_log,
             commands::logs::core::get_core_log_status,
             commands::logs::core::get_core_log_status_summary,
@@ -122,6 +128,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::system::core::get_core_agent_skills_summary,
             commands::traffic::connections::get_clash_ws_snapshot,
             commands::traffic::usage::get_traffic_summary,
+            commands::traffic::usage::get_meow_statistics,
+            commands::traffic::usage::query_meow_traffic_ledger,
             commands::traffic::usage::query_traffic_report,
             commands::traffic::usage::query_traffic_usage,
             commands::traffic::usage::query_traffic_usage_by_keys,
@@ -134,6 +142,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::system::os::get_system_accent_color,
             ipc::system::proxy::get_transparent_proxy_status,
             ipc::system::proxy::get_transparent_proxy_status_summary,
+            ipc::system::proxy::get_transparent_proxy_diagnostics,
             commands::remote::tokens::list_remote_access_tokens,
             commands::remote::sessions::list_remote_browser_sessions,
             commands::settings::sync::get_sync_status,
@@ -175,6 +184,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::settings::backup::create_config_backup,
             ipc::system::os::open_logs_dir,
             ipc::system::os::open_web_url,
+            ipc::remote::open_remote_access_certificate,
+            ipc::remote::export_remote_access_authority,
             ipc::system::core::open_core_dir,
             ipc::system::os::install_cli,
             commands::system::core::restart_sidecar,
@@ -303,18 +314,42 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
 }
 
-/// The role expansions, the anonymous limit and what a token can be granted, which the frontend
-/// offers and explains to the user; only the backend validates and admits.
+/// A command an HTTP caller may reach, as the token dialog lists it.
+#[derive(serde::Serialize, specta::Type)]
+struct HttpCommand {
+    name: &'static str,
+    /// The module path below the command root, such as `proxy.delay`.
+    namespace: &'static str,
+    permission: nyanpasu_config::application::Permission,
+    effect: nyanpasu_rpc_protocol::CommandEffect,
+    sensitive: bool,
+}
+
+/// The role expansions, the anonymous limit, what a token can be granted and the commands HTTP
+/// offers, which the frontend shows and explains to the user; only the backend validates and
+/// admits.
 fn permission_constants(
     builder: tauri_specta::Builder<tauri::Wry>,
 ) -> tauri_specta::Builder<tauri::Wry> {
     use nyanpasu_config::application::{ANONYMOUS_PERMISSIONS_LIMIT, Role};
     use nyanpasu_contracts::auth::Grant;
+    use nyanpasu_rpc_protocol::{RpcTarget, permission::RESOURCES};
     use strum::IntoEnumIterator as _;
 
     let roles = Role::iter()
         .map(|role| (role.to_string(), role.permissions()))
         .collect::<std::collections::BTreeMap<_, _>>();
+    let http_commands: Vec<HttpCommand> = RESOURCES
+        .iter()
+        .filter(|resource| resource.is_command() && resource.targets.contains(&RpcTarget::Http))
+        .map(|command| HttpCommand {
+            name: command.name,
+            namespace: command.namespace,
+            permission: command.permission,
+            effect: command.effect,
+            sensitive: command.sensitive,
+        })
+        .collect();
     builder
         .constant("ROLE_PERMISSIONS", roles)
         .constant("ANONYMOUS_PERMISSIONS_LIMIT", ANONYMOUS_PERMISSIONS_LIMIT)
@@ -323,6 +358,7 @@ fn permission_constants(
             "GRANTABLE_RESOURCES",
             Grant::grantable_resources().collect::<Vec<_>>(),
         )
+        .constant("HTTP_COMMANDS", http_commands)
 }
 
 pub(crate) fn adapt_rpc_bindings(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
@@ -338,8 +374,16 @@ pub(crate) fn adapt_query_bindings(
 
     let queries_start = "export const queries = {";
     let mutations_start = "export const mutations = {";
-    if query_bindings.matches(queries_start).count() != 1
-        || query_bindings.matches(mutations_start).count() != 1
+    let query_keys_start = "export const queryKeys = {";
+    let mutation_keys_start = "export const mutationKeys = {";
+    if [
+        queries_start,
+        mutations_start,
+        query_keys_start,
+        mutation_keys_start,
+    ]
+    .iter()
+    .any(|start| query_bindings.matches(start).count() != 1)
     {
         return Err(Error::new(
             ErrorKind::InvalidData,
@@ -349,11 +393,13 @@ pub(crate) fn adapt_query_bindings(
 
     let source = query_bindings
         .replacen(queries_start, "const queries = {", 1)
-        .replacen(mutations_start, "const mutations = {", 1);
+        .replacen(mutations_start, "const mutations = {", 1)
+        .replacen(query_keys_start, "const queryKeys = {", 1)
+        .replacen(mutation_keys_start, "const mutationKeys = {", 1);
     let queries_start = source.find("const queries = {").unwrap();
     let imports = &source[..queries_start];
     let source = format!(
-        "{}\nimport type {{ RpcClient }} from '@nyanpasu/rpc'\n\nexport function createQueryBindings(rpc: RpcClient) {{\n  const commands = rpc\n\n{}\n  return {{ queries, mutations }}\n}}\n",
+        "{}\nimport type {{ RpcClient }} from '@nyanpasu/rpc'\n\nexport function createQueryBindings(rpc: RpcClient) {{\n  const commands = rpc\n\n{}\n  return {{ queries, mutations, queryKeys, mutationKeys }}\n}}\n",
         imports,
         &source[queries_start..]
     );
@@ -451,13 +497,13 @@ type RpcEventCallback<T> = (event: RpcEvent<T>) => void;
 
 import type { RpcEventTransport } from './event-transport';
 
-function makeEvent<T>(eventTransport: RpcEventTransport, name: string, serialize?: (payload: T) => unknown, deserialize?: (payload: any) => T) {
-    const mapEvent = (cb: RpcEventCallback<T>) => (event: RpcEvent<any>) => cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
-    const mapPayload = (payload: T) => serialize ? serialize(payload) : payload;
+function makeEvent<TListen, TEmit = TListen>(eventTransport: RpcEventTransport, name: string, serialize?: (payload: TEmit) => unknown, deserialize?: (payload: any) => TListen) {
+    const mapEvent = (cb: RpcEventCallback<TListen>) => (event: RpcEvent<any>) => cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
+    const mapPayload = (payload: TEmit) => serialize ? serialize(payload) : payload;
     return {
-        listen: (cb: RpcEventCallback<T>) => eventTransport.listen(name, mapEvent(cb)),
-        once: (cb: RpcEventCallback<T>) => eventTransport.once(name, mapEvent(cb)),
-        emit: ((payload: T) => eventTransport.emit(name, mapPayload(payload)) as unknown) as EventEmit<T>
+        listen: (cb: RpcEventCallback<TListen>) => eventTransport.listen(name, mapEvent(cb)),
+        once: (cb: RpcEventCallback<TListen>) => eventTransport.once(name, mapEvent(cb)),
+        emit: ((payload: TEmit) => eventTransport.emit(name, mapPayload(payload)) as unknown) as EventEmit<TEmit>
     };
 }"#;
 
@@ -856,7 +902,7 @@ mod tests {
         assert!(!generated.contains("checkUpdate:"));
         assert!(!generated.contains("installUpdate:"));
         assert!(!generated.contains("__TAURI_EVENT"));
-        assert!(generated.contains("import type { Channel }"));
+        assert!(generated.contains("import type { Channel, InvokeOptions }"));
         assert!(!generated.contains("import { Channel }"));
         assert!(!generated.contains("new Channel"));
         // PR-3 T08: the profile IPC surface now speaks the domain types, so the
@@ -951,7 +997,11 @@ mod tests {
                         );
                     }
                 }
-                assert_contains_all(declaration, name, required);
+                // A patch is a request: the accepted (deserialized) shape is the contract. The
+                // serialized shape omits `None` fields instead of sending `null`.
+                if suffix == "Deserialize" {
+                    assert_contains_all(declaration, name, required);
+                }
             }
         };
         advertised(
@@ -1044,7 +1094,7 @@ mod tests {
 
         // The plain `ClashConfig` name belongs to the typed persistent config,
         // not to the clash-API `/configs` DTO.
-        let clash_config = exported_type(&generated, "ClashConfig");
+        let clash_config = exported_type(&generated, "ClashConfig_Serialize");
         assert_contains_all(
             clash_config,
             "ClashConfig",
@@ -1143,7 +1193,7 @@ mod tests {
         // pin the actual generated shapes so a wire-format drift breaks CI.
         // Substrings are copied verbatim from the generated product (prettier
         // emits single-quoted tags and one union variant per line).
-        let mutation_outcome = exported_type(&generated, "MutationOutcome");
+        let mutation_outcome = exported_type(&generated, "MutationOutcome_Serialize");
         assert_contains_all(
             mutation_outcome,
             "MutationOutcome",
@@ -1160,7 +1210,7 @@ mod tests {
             "MutationOutcome must not retain legacy RebuildOutcome status tags:\n{mutation_outcome}"
         );
 
-        let degradation = exported_type(&generated, "Degradation");
+        let degradation = exported_type(&generated, "Degradation_Serialize");
         assert_contains_all(
             degradation,
             "Degradation",
@@ -1172,7 +1222,7 @@ mod tests {
             ],
         );
 
-        let reason = exported_type(&generated, "DegradationReason");
+        let reason = exported_type(&generated, "DegradationReason_Serialize");
         assert_contains_all(
             reason,
             "DegradationReason",
@@ -1293,27 +1343,29 @@ mod tests {
             let profiles_listing_name = format!("ProfilesListing_{suffix}");
             let profiles_listing = exported_type(&generated, &profiles_listing_name);
             let expected_items = format!("items: ProfileListingItem_{suffix}[]");
+            // A defaulted field may be omitted on input but is always present on output.
+            let expected_current = if suffix == "Deserialize" {
+                "current?: ProfileId | null"
+            } else {
+                "current: ProfileId | null"
+            };
             assert_contains_all(
                 profiles_listing,
                 &profiles_listing_name,
-                &[
-                    "current: ProfileId | null",
-                    "proxy_group_layouts:",
-                    &expected_items,
-                ],
+                &[expected_current, "proxy_group_layouts:", &expected_items],
             );
         }
         assert_contains_all(
-            exported_type(&generated, "ProfileSyncSummary"),
+            exported_type(&generated, "ProfileSyncSummary_Serialize"),
             "ProfileSyncSummary",
             &[
                 "scheduled: boolean",
-                "active: SyncRunSummary[]",
+                "active: SyncRunSummary_Serialize[]",
                 "has_registration_error: boolean",
             ],
         );
         assert_contains_all(
-            exported_type(&generated, "SyncRunSummary"),
+            exported_type(&generated, "SyncRunSummary_Serialize"),
             "SyncRunSummary",
             &[
                 "id: string",
@@ -1322,9 +1374,12 @@ mod tests {
             ],
         );
         assert_contains_all(
-            exported_type(&generated, "SyncRunPageSummary"),
+            exported_type(&generated, "SyncRunPageSummary_Serialize"),
             "SyncRunPageSummary",
-            &["items: SyncRunSummary[]", "next: RunCursorDto | null"],
+            &[
+                "items: SyncRunSummary_Serialize[]",
+                "next: RunCursorDto | null",
+            ],
         );
         assert_contains_all(
             exported_type(&generated, "ProfileSyncReadError"),
@@ -1337,7 +1392,7 @@ mod tests {
             ],
         );
         assert_contains_all(
-            exported_type(&generated, "CoreLogStatusSummary"),
+            exported_type(&generated, "CoreLogStatusSummary_Serialize"),
             "CoreLogStatusSummary",
             &[
                 "generation: string",
@@ -1357,12 +1412,15 @@ mod tests {
             ],
         );
         assert_contains_all(
-            exported_type(&generated, "CoreLogPageSummary"),
+            exported_type(&generated, "CoreLogPageSummary_Serialize"),
             "CoreLogPageSummary",
-            &["rows: CoreLogRowSummary[]", "status: CoreLogStatusSummary"],
+            &[
+                "rows: CoreLogRowSummary[]",
+                "status: CoreLogStatusSummary_Serialize",
+            ],
         );
         assert_contains_all(
-            exported_type(&generated, "LogRowSummary"),
+            exported_type(&generated, "LogRowSummary_Serialize"),
             "LogRowSummary",
             &[
                 "id: string",
@@ -1373,9 +1431,13 @@ mod tests {
             ],
         );
         assert_contains_all(
-            exported_type(&generated, "LogPageSummary"),
+            exported_type(&generated, "LogPageSummary_Serialize"),
             "LogPageSummary",
-            &["rows: LogRowSummary[]", "file: string", "building: boolean"],
+            &[
+                "rows: LogRowSummary_Serialize[]",
+                "file: string",
+                "building: boolean",
+            ],
         );
         assert_contains_all(
             exported_type(&generated, "CoreLogReadError"),

@@ -1,4 +1,5 @@
 import AppsRounded from '~icons/material-symbols/apps-rounded'
+import BarChartRounded from '~icons/material-symbols/bar-chart-rounded'
 import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
@@ -9,10 +10,11 @@ import PublicRounded from '~icons/material-symbols/public-rounded'
 import { createContext, useContext } from 'react'
 import { m } from '@/paraglide/messages'
 import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
+import type { MeowCore } from '@nyanpasu/query'
 import type {
   Dimension,
   TrafficQuery,
-  TrafficReport,
+  TrafficReport_Serialize,
   TrafficRetention,
 } from '@nyanpasu/rpc/types'
 import type { TrafficSearch } from './search'
@@ -68,6 +70,12 @@ export const TRAFFIC_PAGES = [
     icon: DashboardRounded,
     title: m.traffic_overview,
   },
+  {
+    view: 'meow',
+    to: '/main/topology/meow',
+    icon: BarChartRounded,
+    title: m.meow_traffic_title,
+  },
   ...ANALYSIS_VIEWS,
   // Each dimension's full listing has its own entry.
   ...RANKINGS.map(({ dimension, icon }) => ({
@@ -90,7 +98,7 @@ export const withoutTrafficView = (search: TrafficSearch) => ({
 
 export const TrafficPageContext = createContext<{
   search: TrafficSearch
-  report?: TrafficReport
+  report?: TrafficReport_Serialize
   query: TrafficQuery
   labelOf: (dimension: Dimension, key: string) => UsageLabel
   onSearchChange: (update: Partial<TrafficSearch>) => void
@@ -99,6 +107,7 @@ export const TrafficPageContext = createContext<{
   paused: boolean
   onPausedChange: (paused: boolean) => void
   onViewConnections?: () => void
+  meowCore?: MeowCore
 } | null>(null)
 
 export function useTrafficPage() {

@@ -13,7 +13,7 @@ pub mod runtime_store;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use enumset::EnumSet;
-use serde_yaml_ng::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 pub(crate) use clash::LOCAL_TRANSPORT_FEATURE;
 
@@ -72,7 +72,7 @@ impl ConfigSnapshot {
     }
 
     fn from_bytes(source_path: Utf8PathBuf, raw: &[u8]) -> Result<Self, Error> {
-        let value: Value = serde_yaml_ng::from_slice(raw)?;
+        let value: Value = yaml_serde::from_slice(raw)?;
         let Value::Mapping(document) = value else {
             return Err(Error::InvalidConfig(
                 "top-level YAML document must be a mapping".into(),
@@ -223,7 +223,7 @@ fn canonicalize(value: Value) -> Result<Value, Error> {
 }
 
 fn serialize_mapping(document: &Mapping) -> Result<Vec<u8>, Error> {
-    Ok(serde_yaml_ng::to_string(document)?.into_bytes())
+    Ok(yaml_serde::to_string(document)?.into_bytes())
 }
 
 /// Mapping order is meaningful to the core (e.g. `dns.nameserver-policy`), so
@@ -231,7 +231,7 @@ fn serialize_mapping(document: &Mapping) -> Result<Vec<u8>, Error> {
 /// the source order.
 fn semantic_hash(document: &Mapping) -> Result<String, Error> {
     let canonical = canonicalize(Value::Mapping(document.clone()))?;
-    let bytes = serde_yaml_ng::to_string(&canonical)?;
+    let bytes = yaml_serde::to_string(&canonical)?;
     Ok(fnv1a(bytes.as_bytes()))
 }
 

@@ -158,12 +158,11 @@ impl RuntimeBackend for ProcessRuntimeBackend {
                 isolated.working_dir =
                     camino::Utf8PathBuf::from_path_buf(home.path().to_owned())
                         .map_err(|_| Error::InvalidConfig("temporary path is not UTF-8".into()))?;
-                let mut document: serde_yaml_ng::Mapping =
-                    serde_yaml_ng::from_slice(&tokio::fs::read(&spec.config_path).await?)?;
+                let mut document: yaml_serde::Mapping =
+                    yaml_serde::from_slice(&tokio::fs::read(&spec.config_path).await?)?;
                 crate::native_store::rewrite_paths(spec.core.kind, &mut document, store.data_dir());
                 isolated.config_path = isolated.working_dir.join("check.yaml");
-                tokio::fs::write(&isolated.config_path, serde_yaml_ng::to_string(&document)?)
-                    .await?;
+                tokio::fs::write(&isolated.config_path, yaml_serde::to_string(&document)?).await?;
                 crate::kind::check_config_with_source(&isolated, store.data_dir()).await
             } else {
                 crate::kind::check_config(spec).await

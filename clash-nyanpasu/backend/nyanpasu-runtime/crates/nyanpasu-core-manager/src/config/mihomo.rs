@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use serde_yaml_ng::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 use crate::{
     Error, InstanceSpec,
@@ -176,7 +176,7 @@ pub(crate) struct RuntimeProjection {
 impl RuntimeProjection {
     /// `actual` is the `GET /configs` response, typed or raw.
     pub(crate) fn verify(&self, actual: &impl serde::Serialize) -> Result<bool, Error> {
-        let actual = serde_yaml_ng::to_value(actual)?;
+        let actual = yaml_serde::to_value(actual)?;
         Ok(self.expected.iter().all(|(path, expected)| {
             value_at(&actual, path).is_some_and(|actual| actual == expected)
         }))
@@ -340,11 +340,11 @@ fn build_patch(desired: &Mapping, changes: &[DiffEntry]) -> Result<ConfigChange,
             return Ok(ConfigChange::Switch);
         }
     }
-    let Ok(patch) = serde_yaml_ng::from_value::<clash_api::ConfigPatch>(Value::Mapping(document))
+    let Ok(patch) = yaml_serde::from_value::<clash_api::ConfigPatch>(Value::Mapping(document))
     else {
         return Ok(ConfigChange::Switch);
     };
-    let serialized = serde_yaml_ng::to_value(&patch)?;
+    let serialized = yaml_serde::to_value(&patch)?;
     let mut expected = Vec::new();
     collect_leaves(&serialized, &mut Vec::new(), &mut expected);
     Ok(ConfigChange::Patch {
@@ -472,7 +472,7 @@ mod tests {
     use crate::{CoreSpec, InstanceOptions};
 
     fn mapping(yaml: &str) -> Mapping {
-        serde_yaml_ng::from_str(yaml).unwrap()
+        yaml_serde::from_str(yaml).unwrap()
     }
 
     fn spec(kind: CoreKind, binary: &str) -> InstanceSpec {
@@ -512,16 +512,13 @@ mod tests {
         let projection = super::RuntimeProjection {
             expected: vec![
                 (vec!["allow-lan".into()], Value::Bool(false)),
-                (
-                    vec!["mixed-port".into()],
-                    serde_yaml_ng::to_value(0).unwrap(),
-                ),
+                (vec!["mixed-port".into()], yaml_serde::to_value(0).unwrap()),
             ],
         };
-        let missing = serde_yaml_ng::from_str::<clash_api::RuntimeConfig>("{}").unwrap();
+        let missing = yaml_serde::from_str::<clash_api::RuntimeConfig>("{}").unwrap();
         assert!(!projection.verify(&missing).unwrap());
         let present =
-            serde_yaml_ng::from_str::<clash_api::RuntimeConfig>("allow-lan: false\nmixed-port: 0")
+            yaml_serde::from_str::<clash_api::RuntimeConfig>("allow-lan: false\nmixed-port: 0")
                 .unwrap();
         assert!(projection.verify(&present).unwrap());
     }
@@ -878,7 +875,7 @@ interface-name: Ethernet
         else {
             panic!("complete expressible document must patch")
         };
-        let Value::Mapping(patch_document) = serde_yaml_ng::to_value(&patch).unwrap() else {
+        let Value::Mapping(patch_document) = yaml_serde::to_value(&patch).unwrap() else {
             unreachable!()
         };
         let roots: BTreeSet<&str> = patch_document.keys().filter_map(Value::as_str).collect();
@@ -929,7 +926,7 @@ disable-keep-alive: false
         );
         merge(&mut runtime, &patch_document);
         let runtime: clash_api::RuntimeConfig =
-            serde_yaml_ng::from_value(Value::Mapping(runtime)).unwrap();
+            yaml_serde::from_value(Value::Mapping(runtime)).unwrap();
         assert!(projection.verify(&runtime).unwrap());
         assert_eq!(
             projection.expected.len(),

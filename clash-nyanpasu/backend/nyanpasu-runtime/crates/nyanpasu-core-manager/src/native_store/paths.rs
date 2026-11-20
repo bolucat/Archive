@@ -1,6 +1,6 @@
 use crate::CoreKind;
 use camino::Utf8Path;
-use serde_yaml_ng::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 /// Rebase only schema-defined filesystem inputs. A proxy's transport `path`
 /// is an HTTP path, and inline PEM values are not filesystem references.
@@ -102,7 +102,7 @@ mod tests {
     use super::*;
     #[test]
     fn rebases_file_inputs_without_rewriting_transport_paths_or_pem() {
-        let mut doc: Mapping = serde_yaml_ng::from_str("external-ui: ui\nproxy-providers:\n  p: {type: http, path: providers/p.yaml, url: 'https://example.org/p'}\nproxies:\n  - {type: vmess, ws-opts: {path: /ws}}\ntls:\n  certificate: cert.pem\n  private-key: '-----BEGIN PRIVATE KEY-----'\n").unwrap();
+        let mut doc: Mapping = yaml_serde::from_str("external-ui: ui\nproxy-providers:\n  p: {type: http, path: providers/p.yaml, url: 'https://example.org/p'}\nproxies:\n  - {type: vmess, ws-opts: {path: /ws}}\ntls:\n  certificate: cert.pem\n  private-key: '-----BEGIN PRIVATE KEY-----'\n").unwrap();
         rewrite_paths(CoreKind::Mihomo, &mut doc, Utf8Path::new("/data"));
         assert_eq!(doc["external-ui"], "/data/ui");
         assert_eq!(doc["proxy-providers"]["p"]["path"], "providers/p.yaml");
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn preserves_file_provider_and_outbound_credentials_when_home_changes() {
-        let mut doc: Mapping = serde_yaml_ng::from_str(
+        let mut doc: Mapping = yaml_serde::from_str(
             r#"
 proxy-providers:
   local: {type: file, path: providers/local.yaml}

@@ -53,7 +53,7 @@ impl Default for FakeDns {
 }
 
 impl DnsController for FakeDns {
-    fn desired(&self, _effective: &serde_yaml_ng::Mapping) -> Option<DnsIntent> {
+    fn desired(&self, _effective: &yaml_serde::Mapping) -> Option<DnsIntent> {
         Some(DnsIntent {
             servers: vec!["198.18.0.2".to_owned()],
         })

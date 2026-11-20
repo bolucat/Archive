@@ -1,7 +1,7 @@
 //! Meow hot-patches only `tun.enable`; every other change restarts.
 
 use clash_api::{ConfigPatch, TunPatch};
-use serde_yaml_ng::Value;
+use yaml_serde::Value;
 
 use super::{
     diff::{DiffEntry, diff},

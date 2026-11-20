@@ -603,16 +603,16 @@ async fn graceful_overlap_removes_shared_http_controller_from_both_epochs() {
     for epoch in [1, 2] {
         let runtime = std::fs::read_to_string(runtime_dir.join(format!("config-{epoch}.yaml")))
             .expect("read overlapping effective config");
-        let document: serde_yaml_ng::Mapping =
-            serde_yaml_ng::from_str(&runtime).expect("parse effective config");
+        let document: yaml_serde::Mapping =
+            yaml_serde::from_str(&runtime).expect("parse effective config");
         assert!(
-            !document.contains_key(serde_yaml_ng::Value::String("external-controller".into())),
+            !document.contains_key(yaml_serde::Value::String("external-controller".into())),
             "epoch {epoch} retained the shared HTTP controller"
         );
         assert_eq!(
             document
-                .get(serde_yaml_ng::Value::String("secret".into()))
-                .and_then(serde_yaml_ng::Value::as_str),
+                .get(yaml_serde::Value::String("secret".into()))
+                .and_then(yaml_serde::Value::as_str),
             Some("shared"),
             "epoch {epoch} did not retain the source secret"
         );

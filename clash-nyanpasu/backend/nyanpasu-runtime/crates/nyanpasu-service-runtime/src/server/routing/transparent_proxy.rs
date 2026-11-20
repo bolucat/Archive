@@ -4,9 +4,13 @@ use axum::{Json, Router, extract::State, http::StatusCode};
 use nyanpasu_ipc::{
     api::{
         R, RBuilder,
-        contract::{NetworkTransparentProxyReconcile, NetworkTransparentProxyStatusQuery},
+        contract::{
+            NetworkTransparentProxyDiagnosticsQuery, NetworkTransparentProxyReconcile,
+            NetworkTransparentProxyStatusQuery,
+        },
         network::transparent_proxy::{
-            NetworkTransparentProxyRequest, NetworkTransparentProxyStatus,
+            NetworkTransparentProxyDiagnostics, NetworkTransparentProxyRequest,
+            NetworkTransparentProxyStatus,
         },
     },
     server::RegisterOperation,
@@ -18,6 +22,7 @@ pub fn setup() -> Router<AppState> {
     Router::new()
         .register(NetworkTransparentProxyReconcile, reconcile)
         .register(NetworkTransparentProxyStatusQuery, status)
+        .register(NetworkTransparentProxyDiagnosticsQuery, diagnostics)
 }
 
 async fn reconcile(
@@ -39,5 +44,19 @@ async fn status(
     (
         StatusCode::OK,
         Json(RBuilder::success(state.transparent_proxy.status().await)),
+    )
+}
+
+async fn diagnostics(
+    State(state): State<AppState>,
+) -> (
+    StatusCode,
+    Json<R<'static, NetworkTransparentProxyDiagnostics>>,
+) {
+    (
+        StatusCode::OK,
+        Json(RBuilder::success(
+            state.transparent_proxy.diagnostics().await,
+        )),
     )
 }

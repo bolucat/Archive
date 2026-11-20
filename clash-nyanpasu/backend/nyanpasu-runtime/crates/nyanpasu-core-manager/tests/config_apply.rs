@@ -575,12 +575,12 @@ async fn failed_desired_restart_restores_and_restarts_the_old_revision() {
     };
     assert_eq!(revision, old_revision);
     assert!(!failed_apply.is_empty());
-    let restored: serde_yaml_ng::Mapping =
-        serde_yaml_ng::from_str(&std::fs::read_to_string(&revision.runtime_path).unwrap()).unwrap();
+    let restored: yaml_serde::Mapping =
+        yaml_serde::from_str(&std::fs::read_to_string(&revision.runtime_path).unwrap()).unwrap();
     assert_ne!(
         restored
-            .get(serde_yaml_ng::Value::String("allow-lan".into()))
-            .and_then(serde_yaml_ng::Value::as_bool),
+            .get(yaml_serde::Value::String("allow-lan".into()))
+            .and_then(yaml_serde::Value::as_bool),
         Some(true)
     );
     assert!(matches!(manager.status().state, CoreState::Running { .. }));
@@ -639,18 +639,18 @@ async fn failed_restart_after_an_in_place_apply_rolls_back_to_the_latest_generat
     // Not generation 1: the rollback relaunches the whole plan the last
     // successful in-place apply left behind.
     assert_eq!(revision, generation_two);
-    let restored: serde_yaml_ng::Mapping =
-        serde_yaml_ng::from_str(&std::fs::read_to_string(&revision.runtime_path).unwrap()).unwrap();
+    let restored: yaml_serde::Mapping =
+        yaml_serde::from_str(&std::fs::read_to_string(&revision.runtime_path).unwrap()).unwrap();
     assert!(
         restored
-            .get(serde_yaml_ng::Value::String("rules".into()))
+            .get(yaml_serde::Value::String("rules".into()))
             .is_some(),
         "generation 2 was not the restored runtime config"
     );
     assert_ne!(
         restored
-            .get(serde_yaml_ng::Value::String("allow-lan".into()))
-            .and_then(serde_yaml_ng::Value::as_bool),
+            .get(yaml_serde::Value::String("allow-lan".into()))
+            .and_then(yaml_serde::Value::as_bool),
         Some(true)
     );
     assert_eq!(running(&manager).0, epoch);

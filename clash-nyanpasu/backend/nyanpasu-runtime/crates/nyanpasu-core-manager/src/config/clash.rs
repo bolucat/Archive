@@ -7,7 +7,7 @@
 //! transports modelled by [`clash_api::Host`]. A core that does not speak the
 //! Clash API (sing-box, …) needs its own module rather than a branch here.
 
-use serde_yaml_ng::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 use crate::Feature;
 

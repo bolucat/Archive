@@ -15,8 +15,12 @@ use std::{
 use nyanpasu_core_manager::{ConfigRevision, CoreState};
 use nyanpasu_ipc::api::{
     network::transparent_proxy::{
-        NetworkTransparentProxyMode as Mode, NetworkTransparentProxyRequest as Request,
-        NetworkTransparentProxyStatus as Status,
+        NetworkTransparentProxyAppliedScope, NetworkTransparentProxyBypass,
+        NetworkTransparentProxyDiagnostics, NetworkTransparentProxyMarks,
+        NetworkTransparentProxyMode as Mode, NetworkTransparentProxyObject,
+        NetworkTransparentProxyObjectObservation, NetworkTransparentProxyObjectState,
+        NetworkTransparentProxyProtocol, NetworkTransparentProxyRequest as Request,
+        NetworkTransparentProxyRouting, NetworkTransparentProxyStatus as Status,
     },
     status::RevisionIdInfo,
 };
@@ -113,6 +117,66 @@ impl TransparentProxy {
     pub(crate) async fn status(&self) -> Status {
         let _operation = self.operation.lock().await;
         self.status_locked().await
+    }
+
+    /// A read-only snapshot of the applied scope and the kernel objects this
+    /// service owns or expects. Serialized with reconcile so the scope and the
+    /// observation describe the same instant.
+    pub(crate) async fn diagnostics(&self) -> NetworkTransparentProxyDiagnostics {
+        let _operation = self.operation.lock().await;
+        self.diagnostics_locked().await
+    }
+
+    async fn diagnostics_locked(&self) -> NetworkTransparentProxyDiagnostics {
+        if !cfg!(target_os = "linux") {
+            return empty_diagnostics(false);
+        }
+
+        let current = self.manager.runtime_status();
+        let applied = self.inner.lock().await.clone();
+        let applied_stale = applied
+            .as_ref()
+            .is_some_and(|state| is_stale(&self.manager, &current, state));
+        let recovery_pending = self.recovery_pending.load(Ordering::Acquire);
+        let active = applied.as_ref().filter(|_| !applied_stale);
+        let scope = active.map(applied_scope);
+        let nft = inspect_nft(self.runner.as_ref());
+        let policy4 = inspect_policy(self.runner.as_ref(), false);
+        let policy6 = inspect_policy(self.runner.as_ref(), true);
+        let observed_owned = nft.is_present() || policy4.is_present() || policy6.is_present();
+        let stale = applied_stale || recovery_pending || (active.is_none() && observed_owned);
+
+        NetworkTransparentProxyDiagnostics {
+            supported: true,
+            applied: scope.clone(),
+            stale,
+            marks: NetworkTransparentProxyMarks {
+                capture_mark: 0x10000,
+                capture_mask: 0x10000,
+                egress_mark: ROUTING_MARK,
+            },
+            routing: NetworkTransparentProxyRouting {
+                rule_priority: RULE_PRIORITY
+                    .parse()
+                    .expect("rule priority is a compiled numeric literal"),
+                table: ROUTE_TABLE
+                    .parse()
+                    .expect("route table is a compiled numeric literal"),
+            },
+            bypass: NetworkTransparentProxyBypass {
+                root_uid: scope.as_ref().is_some_and(|scope| scope.local),
+                local_destination: scope.is_some(),
+                private_reserved: scope.is_some(),
+                core_egress_mark: scope.is_some(),
+            },
+            objects: diagnostic_objects(
+                scope.as_ref(),
+                applied.as_ref().map(|state| state.request.mode),
+                &nft,
+                &policy4,
+                &policy6,
+            ),
+        }
     }
 
     async fn status_locked(&self) -> Status {
@@ -347,6 +411,538 @@ impl TransparentProxy {
     }
 }
 
+fn empty_diagnostics(supported: bool) -> NetworkTransparentProxyDiagnostics {
+    NetworkTransparentProxyDiagnostics {
+        supported,
+        applied: None,
+        stale: false,
+        marks: NetworkTransparentProxyMarks {
+            capture_mark: 0x10000,
+            capture_mask: 0x10000,
+            egress_mark: ROUTING_MARK,
+        },
+        routing: NetworkTransparentProxyRouting {
+            rule_priority: RULE_PRIORITY
+                .parse()
+                .expect("rule priority is a compiled numeric literal"),
+            table: ROUTE_TABLE
+                .parse()
+                .expect("route table is a compiled numeric literal"),
+        },
+        bypass: NetworkTransparentProxyBypass {
+            root_uid: false,
+            local_destination: false,
+            private_reserved: false,
+            core_egress_mark: false,
+        },
+        objects: Vec::new(),
+    }
+}
+
+fn applied_scope(applied: &Applied) -> NetworkTransparentProxyAppliedScope {
+    let request = &applied.request;
+    let mut protocols = vec![NetworkTransparentProxyProtocol::Tcp];
+    if request.mode == Mode::Tproxy {
+        protocols.push(NetworkTransparentProxyProtocol::Udp);
+    }
+    NetworkTransparentProxyAppliedScope {
+        mode: request.mode,
+        port: request.port,
+        local: request.local,
+        interfaces: request.interfaces.clone(),
+        ipv6: request.ipv6,
+        protocols,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Family {
+    V4,
+    V6,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureAction {
+    CaptureMark,
+    Tproxy,
+    Redirect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NftRule {
+    chain: String,
+    family: Option<Family>,
+    action: Option<CaptureAction>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NftContent {
+    chains: std::collections::HashSet<String>,
+    rules: Vec<NftRule>,
+}
+
+impl NftContent {
+    fn has_chain(&self, chain: &str) -> bool {
+        self.chains.contains(chain)
+    }
+
+    fn has_capture(&self, chain: &str, family: Family, action: CaptureAction) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.chain == chain && rule.family == Some(family) && rule.action == Some(action)
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NftObservation {
+    Absent,
+    Owned(NftContent),
+    Foreign,
+    ReadError,
+}
+
+impl NftObservation {
+    fn is_present(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
+
+    fn object_state(&self) -> NetworkTransparentProxyObjectState {
+        match self {
+            Self::Absent => NetworkTransparentProxyObjectState::Absent,
+            Self::Owned(_) => NetworkTransparentProxyObjectState::Present,
+            Self::Foreign => NetworkTransparentProxyObjectState::Foreign,
+            Self::ReadError => NetworkTransparentProxyObjectState::ReadError,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyEntryObservation {
+    Absent,
+    Present,
+    Foreign,
+    ReadError,
+}
+
+impl PolicyEntryObservation {
+    fn is_present(self) -> bool {
+        matches!(self, Self::Present)
+    }
+
+    fn object_state(self) -> NetworkTransparentProxyObjectState {
+        match self {
+            Self::Absent => NetworkTransparentProxyObjectState::Absent,
+            Self::Present => NetworkTransparentProxyObjectState::Present,
+            Self::Foreign => NetworkTransparentProxyObjectState::Foreign,
+            Self::ReadError => NetworkTransparentProxyObjectState::ReadError,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PolicyFamilyObservation {
+    rule: PolicyEntryObservation,
+    route: PolicyEntryObservation,
+}
+
+impl PolicyFamilyObservation {
+    fn is_present(self) -> bool {
+        self.rule.is_present() || self.route.is_present()
+    }
+}
+
+fn inspect_nft(runner: &dyn CommandRunner) -> NftObservation {
+    let output = match runner.run(
+        "nft",
+        &["-j", "list", "table", "inet", "nyanpasu_transparent"],
+        None,
+    ) {
+        Ok(output) => output,
+        Err(_) => return NftObservation::ReadError,
+    };
+    if !output.status.success() {
+        return if missing_resource(&output.stderr) {
+            NftObservation::Absent
+        } else {
+            NftObservation::ReadError
+        };
+    }
+    parse_nft_diagnostics(&output.stdout)
+}
+
+fn parse_nft_diagnostics(stdout: &[u8]) -> NftObservation {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(stdout) else {
+        return NftObservation::ReadError;
+    };
+    let Some(items) = value.get("nftables").and_then(serde_json::Value::as_array) else {
+        return NftObservation::ReadError;
+    };
+    let table = items.iter().find_map(|item| {
+        let table = item.get("table")?;
+        let family = table.get("family")?.as_str()?;
+        let name = table.get("name")?.as_str()?;
+        (family == "inet" && name == "nyanpasu_transparent").then_some(table)
+    });
+    let Some(table) = table else {
+        return NftObservation::Foreign;
+    };
+    let owned = table
+        .get("comment")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|comment| comment.contains("nyanpasu-service transparent-proxy"));
+    if !owned {
+        return NftObservation::Foreign;
+    }
+
+    let mut content = NftContent::default();
+    for item in items {
+        if let Some(chain) = item.get("chain")
+            && let Some(name) = chain.get("name").and_then(serde_json::Value::as_str)
+        {
+            content.chains.insert(name.to_owned());
+        }
+        if let Some(rule) = item.get("rule") {
+            let Some(chain) = rule.get("chain").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let Some(expr) = rule.get("expr").and_then(serde_json::Value::as_array) else {
+                continue;
+            };
+            content.rules.push(NftRule {
+                chain: chain.to_owned(),
+                family: rule_family(expr),
+                action: rule_action(expr),
+            });
+        }
+    }
+    NftObservation::Owned(content)
+}
+
+fn rule_family(expr: &[serde_json::Value]) -> Option<Family> {
+    expr.iter().find_map(|item| {
+        let matched = item.get("match")?;
+        let key = matched
+            .pointer("/left/meta/key")
+            .and_then(serde_json::Value::as_str)?;
+        if key != "nfproto" {
+            return None;
+        }
+        match matched.get("right").and_then(serde_json::Value::as_str) {
+            Some("ipv4") => Some(Family::V4),
+            Some("ipv6") => Some(Family::V6),
+            _ => None,
+        }
+    })
+}
+
+fn rule_action(expr: &[serde_json::Value]) -> Option<CaptureAction> {
+    let mut capture_mark = false;
+    for item in expr {
+        if item.get("tproxy").is_some() {
+            return Some(CaptureAction::Tproxy);
+        }
+        if item.get("redirect").is_some() {
+            return Some(CaptureAction::Redirect);
+        }
+        if item.get("mangle").is_some()
+            && serde_json::to_string(item).is_ok_and(|item| item.contains("65536"))
+        {
+            capture_mark = true;
+        }
+    }
+    capture_mark.then_some(CaptureAction::CaptureMark)
+}
+
+fn inspect_policy(runner: &dyn CommandRunner, ipv6: bool) -> PolicyFamilyObservation {
+    let family = ipv6.then_some("-6");
+    let mut rule_args = vec!["-j"];
+    rule_args.extend(family);
+    rule_args.extend(["rule", "show"]);
+    let rule = inspect_policy_rule(runner, &rule_args);
+
+    let mut route_args = vec!["-j"];
+    route_args.extend(family);
+    route_args.extend(["route", "show", "table", ROUTE_TABLE]);
+    let route = inspect_policy_route(runner, &route_args);
+
+    PolicyFamilyObservation { rule, route }
+}
+
+fn inspect_policy_rule(runner: &dyn CommandRunner, args: &[&str]) -> PolicyEntryObservation {
+    let output = match runner.run("ip", args, None) {
+        Ok(output) => output,
+        Err(_) => return PolicyEntryObservation::ReadError,
+    };
+    if !output.status.success() {
+        return if missing_resource(&output.stderr) {
+            PolicyEntryObservation::Absent
+        } else {
+            PolicyEntryObservation::ReadError
+        };
+    }
+    let Ok(rules) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return PolicyEntryObservation::ReadError;
+    };
+    let Some(rules) = rules.as_array() else {
+        return PolicyEntryObservation::ReadError;
+    };
+    let mut found = false;
+    for rule in rules {
+        if rule.get("priority").and_then(serde_json::Value::as_u64) != Some(10_000) {
+            continue;
+        }
+        found = true;
+        if !owned_policy_rule(rule) {
+            return PolicyEntryObservation::Foreign;
+        }
+    }
+    if found {
+        PolicyEntryObservation::Present
+    } else {
+        PolicyEntryObservation::Absent
+    }
+}
+
+fn owned_policy_rule(rule: &serde_json::Value) -> bool {
+    rule.get("src").and_then(serde_json::Value::as_str) == Some("all")
+        && table_value(rule.get("table")) == Some(ROUTE_TABLE.parse().expect("numeric literal"))
+        && rule.get("fwmark").and_then(mark_value) == Some(0x10000)
+        && rule.get("fwmask").and_then(mark_value) == Some(0x10000)
+}
+
+fn table_value(value: Option<&serde_json::Value>) -> Option<u32> {
+    let value = value?;
+    if let Some(value) = value.as_u64() {
+        return u32::try_from(value).ok();
+    }
+    value.as_str()?.parse().ok()
+}
+
+fn mark_value(value: &serde_json::Value) -> Option<u32> {
+    if let Some(value) = value.as_u64() {
+        return u32::try_from(value).ok();
+    }
+    let value = value.as_str()?;
+    if let Some(value) = value.strip_prefix("0x") {
+        u32::from_str_radix(value, 16).ok()
+    } else {
+        value.parse().ok()
+    }
+}
+
+fn inspect_policy_route(runner: &dyn CommandRunner, args: &[&str]) -> PolicyEntryObservation {
+    let output = match runner.run("ip", args, None) {
+        Ok(output) => output,
+        Err(_) => return PolicyEntryObservation::ReadError,
+    };
+    if !output.status.success() {
+        return if missing_resource(&output.stderr) {
+            PolicyEntryObservation::Absent
+        } else {
+            PolicyEntryObservation::ReadError
+        };
+    }
+    let Ok(routes) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return PolicyEntryObservation::ReadError;
+    };
+    let Some(routes) = routes.as_array() else {
+        return PolicyEntryObservation::ReadError;
+    };
+    if routes.is_empty() {
+        return PolicyEntryObservation::Absent;
+    }
+    if routes.iter().all(owned_policy_route) {
+        PolicyEntryObservation::Present
+    } else {
+        PolicyEntryObservation::Foreign
+    }
+}
+
+fn owned_policy_route(route: &serde_json::Value) -> bool {
+    route.get("type").and_then(serde_json::Value::as_str) == Some("local")
+        && route.get("dst").and_then(serde_json::Value::as_str) == Some("default")
+        && route.get("dev").and_then(serde_json::Value::as_str) == Some("lo")
+}
+
+fn diagnostic_objects(
+    scope: Option<&NetworkTransparentProxyAppliedScope>,
+    applied_mode: Option<Mode>,
+    nft: &NftObservation,
+    policy4: &PolicyFamilyObservation,
+    policy6: &PolicyFamilyObservation,
+) -> Vec<NetworkTransparentProxyObjectObservation> {
+    use NetworkTransparentProxyObject as Object;
+
+    let mut objects = Vec::new();
+    objects.push(object_observation(
+        Object::NftTable,
+        scope.is_some(),
+        nft.object_state(),
+    ));
+
+    let expected_output = scope.is_some_and(|scope| scope.local);
+    let expected_prerouting =
+        scope.is_some_and(|scope| scope.mode == Mode::Tproxy || !scope.interfaces.is_empty());
+    objects.push(object_observation(
+        Object::NftOutputChain,
+        expected_output,
+        nft_chain_state(nft, "output"),
+    ));
+    objects.push(object_observation(
+        Object::NftPreroutingChain,
+        expected_prerouting,
+        nft_chain_state(nft, "prerouting"),
+    ));
+
+    objects.push(capture_observation(
+        Object::NftOutputIpv4Capture,
+        scope,
+        "output",
+        Family::V4,
+        true,
+        nft,
+    ));
+    objects.push(capture_observation(
+        Object::NftOutputIpv6Capture,
+        scope,
+        "output",
+        Family::V6,
+        true,
+        nft,
+    ));
+    objects.push(capture_observation(
+        Object::NftPreroutingIpv4Capture,
+        scope,
+        "prerouting",
+        Family::V4,
+        false,
+        nft,
+    ));
+    objects.push(capture_observation(
+        Object::NftPreroutingIpv6Capture,
+        scope,
+        "prerouting",
+        Family::V6,
+        false,
+        nft,
+    ));
+
+    let tproxy = scope.is_some_and(|scope| scope.mode == Mode::Tproxy);
+    let ipv6 = scope.is_some_and(|scope| scope.ipv6);
+    let routes_not_applicable = applied_mode == Some(Mode::Redir);
+    objects.push(policy_observation(
+        Object::PolicyRuleIpv4,
+        tproxy,
+        policy4.rule,
+        routes_not_applicable,
+    ));
+    objects.push(policy_observation(
+        Object::PolicyRuleIpv6,
+        tproxy && ipv6,
+        policy6.rule,
+        routes_not_applicable,
+    ));
+    objects.push(policy_observation(
+        Object::PolicyRouteIpv4,
+        tproxy,
+        policy4.route,
+        routes_not_applicable,
+    ));
+    objects.push(policy_observation(
+        Object::PolicyRouteIpv6,
+        tproxy && ipv6,
+        policy6.route,
+        routes_not_applicable,
+    ));
+    objects
+}
+
+fn object_observation(
+    object: NetworkTransparentProxyObject,
+    expected: bool,
+    state: NetworkTransparentProxyObjectState,
+) -> NetworkTransparentProxyObjectObservation {
+    NetworkTransparentProxyObjectObservation {
+        object,
+        expected,
+        state,
+    }
+}
+
+fn nft_chain_state(nft: &NftObservation, chain: &str) -> NetworkTransparentProxyObjectState {
+    match nft {
+        NftObservation::Owned(content) if content.has_chain(chain) => {
+            NetworkTransparentProxyObjectState::Present
+        }
+        NftObservation::Owned(_) => NetworkTransparentProxyObjectState::Absent,
+        _ => nft.object_state(),
+    }
+}
+
+fn capture_observation(
+    object: NetworkTransparentProxyObject,
+    scope: Option<&NetworkTransparentProxyAppliedScope>,
+    chain: &str,
+    family: Family,
+    output: bool,
+    nft: &NftObservation,
+) -> NetworkTransparentProxyObjectObservation {
+    let expected = scope.is_some_and(|scope| {
+        if output && !scope.local {
+            return false;
+        }
+        if !output && scope.mode == Mode::Redir && scope.interfaces.is_empty() {
+            return false;
+        }
+        if family == Family::V6 && !scope.ipv6 {
+            return false;
+        }
+        match scope.mode {
+            Mode::Tproxy | Mode::Redir => true,
+            Mode::Disabled => false,
+        }
+    });
+    let state = match nft {
+        NftObservation::Owned(content) => {
+            let actions: &[CaptureAction] = match scope.map(|scope| scope.mode) {
+                Some(Mode::Tproxy) if output => &[CaptureAction::CaptureMark],
+                Some(Mode::Tproxy) => &[CaptureAction::Tproxy],
+                Some(Mode::Redir) => &[CaptureAction::Redirect],
+                Some(Mode::Disabled) | None => &[
+                    CaptureAction::CaptureMark,
+                    CaptureAction::Tproxy,
+                    CaptureAction::Redirect,
+                ],
+            };
+            if content.has_chain(chain)
+                && actions
+                    .iter()
+                    .any(|action| content.has_capture(chain, family, *action))
+            {
+                NetworkTransparentProxyObjectState::Present
+            } else {
+                NetworkTransparentProxyObjectState::Absent
+            }
+        }
+        _ => nft.object_state(),
+    };
+    object_observation(object, expected, state)
+}
+
+fn policy_observation(
+    object: NetworkTransparentProxyObject,
+    expected: bool,
+    observed: PolicyEntryObservation,
+    not_applicable: bool,
+) -> NetworkTransparentProxyObjectObservation {
+    let state = if not_applicable || (observed == PolicyEntryObservation::Absent && !expected) {
+        NetworkTransparentProxyObjectState::NotApplicable
+    } else {
+        observed.object_state()
+    };
+    object_observation(object, expected, state)
+}
+
 fn is_stale(
     manager: &CoreManager,
     status: &nyanpasu_core_manager::CoreStatus,
@@ -397,11 +993,11 @@ fn validate(request: &Request) -> Result<(), String> {
 }
 
 fn verify_ports(config: &str, mode: Mode, port: u16) -> Result<(), String> {
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(config).map_err(|e| e.to_string())?;
+    let value: yaml_serde::Value = yaml_serde::from_str(config).map_err(|e| e.to_string())?;
     if value
         .get("tun")
         .and_then(|tun| tun.get("enable"))
-        .and_then(serde_yaml_ng::Value::as_bool)
+        .and_then(yaml_serde::Value::as_bool)
         == Some(true)
     {
         return Err("disable TUN before enabling transparent capture".into());
@@ -413,8 +1009,8 @@ fn verify_ports(config: &str, mode: Mode, port: u16) -> Result<(), String> {
     };
     let actual = value
         .as_mapping()
-        .and_then(|map| map.get(serde_yaml_ng::Value::String(key.into())))
-        .and_then(serde_yaml_ng::Value::as_u64);
+        .and_then(|map| map.get(yaml_serde::Value::String(key.into())))
+        .and_then(yaml_serde::Value::as_u64);
     if actual != Some(port as u64) {
         return Err(format!(
             "effective Mihomo {key} does not match requested port {port}"
@@ -427,8 +1023,7 @@ fn verify_ports(config: &str, mode: Mode, port: u16) -> Result<(), String> {
         "redir-port",
         "tproxy-port",
     ] {
-        if other != key
-            && value.get(other).and_then(serde_yaml_ng::Value::as_u64) == Some(port as u64)
+        if other != key && value.get(other).and_then(yaml_serde::Value::as_u64) == Some(port as u64)
         {
             return Err(format!(
                 "effective {other} conflicts with {key} on port {port}"
@@ -437,10 +1032,10 @@ fn verify_ports(config: &str, mode: Mode, port: u16) -> Result<(), String> {
     }
     if value
         .get("listeners")
-        .and_then(serde_yaml_ng::Value::as_sequence)
+        .and_then(yaml_serde::Value::as_sequence)
         .is_some_and(|listeners| {
             listeners.iter().any(|listener| {
-                listener.get("port").and_then(serde_yaml_ng::Value::as_u64) == Some(port as u64)
+                listener.get("port").and_then(yaml_serde::Value::as_u64) == Some(port as u64)
             })
         })
     {
@@ -450,8 +1045,8 @@ fn verify_ports(config: &str, mode: Mode, port: u16) -> Result<(), String> {
     }
     let mark = value
         .as_mapping()
-        .and_then(|map| map.get(serde_yaml_ng::Value::String("routing-mark".into())))
-        .and_then(serde_yaml_ng::Value::as_u64);
+        .and_then(|map| map.get(yaml_serde::Value::String("routing-mark".into())))
+        .and_then(yaml_serde::Value::as_u64);
     if mark != Some(ROUTING_MARK as u64) {
         return Err("effective Mihomo routing-mark must be 0x20000".into());
     }
@@ -1114,6 +1709,264 @@ mod tests {
                 effective_hash: "hash".into(),
             },
         }
+    }
+
+    fn state_of(
+        objects: &[NetworkTransparentProxyObjectObservation],
+        object: NetworkTransparentProxyObject,
+    ) -> NetworkTransparentProxyObjectObservation {
+        *objects
+            .iter()
+            .find(|observation| observation.object == object)
+            .expect("diagnostics must report every managed object")
+    }
+
+    fn owned_nft() -> NftObservation {
+        NftObservation::Owned(NftContent {
+            chains: ["output", "prerouting"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            rules: vec![
+                NftRule {
+                    chain: "output".into(),
+                    family: Some(Family::V4),
+                    action: Some(CaptureAction::CaptureMark),
+                },
+                NftRule {
+                    chain: "output".into(),
+                    family: Some(Family::V6),
+                    action: Some(CaptureAction::CaptureMark),
+                },
+                NftRule {
+                    chain: "prerouting".into(),
+                    family: Some(Family::V4),
+                    action: Some(CaptureAction::Tproxy),
+                },
+                NftRule {
+                    chain: "prerouting".into(),
+                    family: Some(Family::V6),
+                    action: Some(CaptureAction::Tproxy),
+                },
+            ],
+        })
+    }
+
+    #[test]
+    fn diagnostics_matching_scope_reports_every_expected_object_present() {
+        let applied = Applied {
+            request: request(Mode::Tproxy, true, vec!["eth0".into()], true),
+            revision: RevisionIdInfo {
+                epoch: 1,
+                generation: 7,
+                effective_hash: "hash".into(),
+            },
+            cleanup_pending: false,
+        };
+        let scope = applied_scope(&applied);
+        let policy = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::Present,
+            route: PolicyEntryObservation::Present,
+        };
+        let objects = diagnostic_objects(
+            Some(&scope),
+            Some(Mode::Tproxy),
+            &owned_nft(),
+            &policy,
+            &policy,
+        );
+
+        assert!(
+            objects
+                .iter()
+                .filter(|object| object.expected)
+                .all(|object| { object.state == NetworkTransparentProxyObjectState::Present })
+        );
+        assert_eq!(
+            scope.protocols,
+            [
+                NetworkTransparentProxyProtocol::Tcp,
+                NetworkTransparentProxyProtocol::Udp
+            ]
+        );
+    }
+
+    #[test]
+    fn diagnostics_absent_scope_reports_absent_and_not_applicable() {
+        let policy = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::Absent,
+            route: PolicyEntryObservation::Absent,
+        };
+        let objects = diagnostic_objects(None, None, &NftObservation::Absent, &policy, &policy);
+
+        assert!(!objects.iter().any(|object| object.expected));
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::NftTable).state,
+            NetworkTransparentProxyObjectState::Absent
+        );
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::PolicyRuleIpv4).state,
+            NetworkTransparentProxyObjectState::NotApplicable
+        );
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::PolicyRouteIpv6).state,
+            NetworkTransparentProxyObjectState::NotApplicable
+        );
+    }
+
+    #[test]
+    fn diagnostics_foreign_objects_are_not_reported_as_owned() {
+        let applied = Applied {
+            request: request(Mode::Tproxy, true, vec!["eth0".into()], false),
+            revision: RevisionIdInfo {
+                epoch: 1,
+                generation: 7,
+                effective_hash: "hash".into(),
+            },
+            cleanup_pending: false,
+        };
+        let scope = applied_scope(&applied);
+        let policy = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::Foreign,
+            route: PolicyEntryObservation::Foreign,
+        };
+        let objects = diagnostic_objects(
+            Some(&scope),
+            Some(Mode::Tproxy),
+            &NftObservation::Foreign,
+            &policy,
+            &policy,
+        );
+
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::NftTable).state,
+            NetworkTransparentProxyObjectState::Foreign
+        );
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::NftOutputChain).state,
+            NetworkTransparentProxyObjectState::Foreign
+        );
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::PolicyRuleIpv4).state,
+            NetworkTransparentProxyObjectState::Foreign
+        );
+    }
+
+    #[test]
+    fn diagnostics_partial_scope_reports_missing_ipv6_and_policy_entries() {
+        let applied = Applied {
+            request: request(Mode::Tproxy, true, vec!["eth0".into()], true),
+            revision: RevisionIdInfo {
+                epoch: 1,
+                generation: 7,
+                effective_hash: "hash".into(),
+            },
+            cleanup_pending: false,
+        };
+        let scope = applied_scope(&applied);
+        let partial_nft = NftObservation::Owned(NftContent {
+            chains: ["output", "prerouting"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            rules: vec![
+                NftRule {
+                    chain: "output".into(),
+                    family: Some(Family::V4),
+                    action: Some(CaptureAction::CaptureMark),
+                },
+                NftRule {
+                    chain: "prerouting".into(),
+                    family: Some(Family::V4),
+                    action: Some(CaptureAction::Tproxy),
+                },
+            ],
+        });
+        let policy4 = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::Present,
+            route: PolicyEntryObservation::Absent,
+        };
+        let policy6 = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::Absent,
+            route: PolicyEntryObservation::Absent,
+        };
+        let objects = diagnostic_objects(
+            Some(&scope),
+            Some(Mode::Tproxy),
+            &partial_nft,
+            &policy4,
+            &policy6,
+        );
+
+        let output_v6 = state_of(
+            &objects,
+            NetworkTransparentProxyObject::NftOutputIpv6Capture,
+        );
+        assert!(output_v6.expected);
+        assert_eq!(output_v6.state, NetworkTransparentProxyObjectState::Absent);
+        let route4 = state_of(&objects, NetworkTransparentProxyObject::PolicyRouteIpv4);
+        assert!(route4.expected);
+        assert_eq!(route4.state, NetworkTransparentProxyObjectState::Absent);
+        let rule6 = state_of(&objects, NetworkTransparentProxyObject::PolicyRuleIpv6);
+        assert!(rule6.expected);
+        assert_eq!(rule6.state, NetworkTransparentProxyObjectState::Absent);
+    }
+
+    #[test]
+    fn diagnostics_read_errors_are_distinct_from_absent_resources() {
+        let applied = Applied {
+            request: request(Mode::Redir, false, vec!["br-lan".into()], false),
+            revision: RevisionIdInfo {
+                epoch: 1,
+                generation: 7,
+                effective_hash: "hash".into(),
+            },
+            cleanup_pending: false,
+        };
+        let scope = applied_scope(&applied);
+        let policy = PolicyFamilyObservation {
+            rule: PolicyEntryObservation::ReadError,
+            route: PolicyEntryObservation::ReadError,
+        };
+        let objects = diagnostic_objects(
+            Some(&scope),
+            Some(Mode::Redir),
+            &NftObservation::ReadError,
+            &policy,
+            &policy,
+        );
+
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::NftTable).state,
+            NetworkTransparentProxyObjectState::ReadError
+        );
+        assert_eq!(
+            state_of(
+                &objects,
+                NetworkTransparentProxyObject::NftPreroutingIpv4Capture
+            )
+            .state,
+            NetworkTransparentProxyObjectState::ReadError
+        );
+        assert_eq!(
+            state_of(&objects, NetworkTransparentProxyObject::PolicyRuleIpv4).state,
+            NetworkTransparentProxyObjectState::NotApplicable,
+            "REDIRECT routing stays N/A even when the probe failed"
+        );
+    }
+
+    #[test]
+    fn diagnostics_parse_nft_json_family_and_actions() {
+        let output = br#"{"nftables":[{"metainfo":{"json_schema_version":1}},{"table":{"family":"inet","name":"nyanpasu_transparent","comment":"nyanpasu-service transparent-proxy"}},{"chain":{"family":"inet","table":"nyanpasu_transparent","name":"output","type":"route","hook":"output","prio":-150}},{"rule":{"family":"inet","table":"nyanpasu_transparent","chain":"output","expr":[{"match":{"op":"==","left":{"meta":{"key":"nfproto"}},"right":"ipv4"}},{"match":{"op":"==","left":{"meta":{"key":"l4proto"}},"right":{"set":["tcp","udp"]}}},{"mangle":{"key":{"meta":{"key":"mark"}},"value":{"|":[{"meta":{"key":"mark"}},65536]}}}]}},{"chain":{"family":"inet","table":"nyanpasu_transparent","name":"prerouting","type":"nat","hook":"prerouting","prio":-100}},{"rule":{"family":"inet","table":"nyanpasu_transparent","chain":"prerouting","expr":[{"match":{"op":"==","left":{"meta":{"key":"nfproto"}},"right":"ipv6"}},{"match":{"op":"==","left":{"meta":{"key":"l4proto"}},"right":"tcp"}},{"redirect":{"port":7894}}]}}]}"#;
+
+        let nft = parse_nft_diagnostics(output);
+        let NftObservation::Owned(content) = nft else {
+            panic!("owned service table must parse");
+        };
+        assert!(content.has_chain("output"));
+        assert!(content.has_chain("prerouting"));
+        assert!(content.has_capture("output", Family::V4, CaptureAction::CaptureMark));
+        assert!(content.has_capture("prerouting", Family::V6, CaptureAction::Redirect));
     }
 
     /// Run only in a disposable network namespace with nftables and iproute2.

@@ -14,7 +14,7 @@
 //!   points at a core that is being torn down.
 
 use serde::{Deserialize, Serialize};
-use serde_yaml_ng::Mapping;
+use yaml_serde::Mapping;
 
 use crate::{Epoch, runtime::BoxFuture};
 

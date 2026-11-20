@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   CreateRemoteAccessTokenRequest,
   HttpAccessConfig,
@@ -23,11 +22,13 @@ export function useRemoteAccess() {
   const statusOptions = api.queries.getHttpServerStatus()
   const status = useQuery({
     queryKey: statusOptions.queryKey,
-    queryFn: async () => unwrapResult(await invokeQuery(statusOptions)),
+    queryFn: async () => await invokeQuery(statusOptions),
     refetchInterval: 2000,
   })
 
-  const setCommand = api.mutations.setRemoteAccess
+  const certificateKey = api.queries.getRemoteAccessCertificate().queryKey
+
+  const setCommand = api.mutations.setRemoteAccess()
   const update = useMutation({
     mutationKey: setCommand.mutationKey,
     // The command replaces the whole section, so a change is merged into the committed one. Keep
@@ -38,11 +39,9 @@ export function useRemoteAccess() {
         throw new Error('The remote access settings have not loaded yet.')
       }
 
-      return unwrapResult(
-        await invokeMutation(setCommand, [
-          { ...current, http: { ...current.http, ...patch } },
-        ]),
-      )
+      return await invokeMutation(setCommand, {
+        config: { ...current, http: { ...current.http, ...patch } },
+      })
     },
     onSuccess: () =>
       Promise.all([
@@ -53,27 +52,31 @@ export function useRemoteAccess() {
         queryClient.invalidateQueries({
           queryKey: api.queries.getAppConfig().queryKey,
         }),
+        // A listener that starts serving HTTPS generates the first certificate.
+        queryClient.invalidateQueries({ queryKey: certificateKey }),
       ]),
   })
 
-  const resetCertificateCommand = api.mutations.resetRemoteAccessTls
+  const resetCertificateCommand = api.mutations.resetRemoteAccessTls()
   const resetCertificate = useMutation({
     mutationKey: resetCertificateCommand.mutationKey,
-    mutationFn: async () =>
-      unwrapResult(await invokeMutation(resetCertificateCommand, [])),
+    mutationFn: async () => await invokeMutation(resetCertificateCommand),
     // The listener restarts with the new certificate, whose fingerprint the status reports.
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
+        queryClient.invalidateQueries({ queryKey: certificateKey }),
+      ]),
   })
 
-  const launchCommand = api.mutations.createHttpLaunchUrl
-  const openCommand = api.mutations.openWebUrl
+  const launchCommand = api.mutations.createHttpLaunchUrl()
+  const openCommand = api.mutations.openWebUrl()
   const openInBrowser = useMutation({
     mutationKey: launchCommand.mutationKey,
     mutationFn: async () => {
-      const url = unwrapResult(await invokeMutation(launchCommand, []))
+      const url = await invokeMutation(launchCommand)
       if (url != null) {
-        unwrapResult(await invokeMutation(openCommand, [url]))
+        await invokeMutation(openCommand, { url })
       }
     },
   })
@@ -90,6 +93,51 @@ export function useRemoteAccess() {
 }
 
 /**
+ * The local root clients trust and the short-lived certificate it issued to the listener, both
+ * readable while nothing listens; the platform's viewer and a file export for the root.
+ */
+export function useRemoteAccessCertificate() {
+  const api = useQueryApi()
+
+  const certificateOptions = api.queries.getRemoteAccessCertificate()
+  const query = useQuery({
+    queryKey: certificateOptions.queryKey,
+    queryFn: async () => await invokeQuery(certificateOptions),
+  })
+
+  const openCommand = api.mutations.openRemoteAccessCertificate()
+  const openInViewer = useMutation({
+    mutationKey: openCommand.mutationKey,
+    mutationFn: async () => await invokeMutation(openCommand),
+  })
+
+  const exportCommand = api.mutations.exportRemoteAccessAuthority()
+  const exportAuthority = useMutation({
+    mutationKey: exportCommand.mutationKey,
+    mutationFn: async () => await invokeMutation(exportCommand),
+  })
+
+  return { query, openInViewer, exportAuthority }
+}
+
+/**
+ * The IPv4 networks this computer is attached to, which the LAN listen scope may allow. Read
+ * fresh on every mount, since interfaces such as a VPN come and go.
+ */
+export function useLocalNetworks({ enabled }: { enabled: boolean }) {
+  const api = useQueryApi()
+
+  const listOptions = api.queries.listLocalNetworks()
+
+  return useQuery({
+    queryKey: listOptions.queryKey,
+    queryFn: async () => await invokeQuery(listOptions),
+    enabled,
+    staleTime: 0,
+  })
+}
+
+/**
  * The access tokens' metadata and their administration. A token's secret is returned once, by the
  * creating mutation, and is not kept: the mutation is dropped as soon as nothing observes it.
  */
@@ -100,24 +148,24 @@ export function useRemoteAccessTokens() {
   const listOptions = api.queries.listRemoteAccessTokens()
   const query = useQuery({
     queryKey: listOptions.queryKey,
-    queryFn: async () => unwrapResult(await invokeQuery(listOptions)),
+    queryFn: async () => await invokeQuery(listOptions),
   })
 
-  const createCommand = api.mutations.createRemoteAccessToken
+  const createCommand = api.mutations.createRemoteAccessToken()
   const create = useMutation({
     mutationKey: createCommand.mutationKey,
     mutationFn: async (request: CreateRemoteAccessTokenRequest) =>
-      unwrapResult(await invokeMutation(createCommand, [request])),
+      await invokeMutation(createCommand, { request }),
     gcTime: 0,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: listOptions.queryKey }),
   })
 
-  const revokeCommand = api.mutations.revokeRemoteAccessToken
+  const revokeCommand = api.mutations.revokeRemoteAccessToken()
   const revoke = useMutation({
     mutationKey: revokeCommand.mutationKey,
     mutationFn: async (id: string) =>
-      unwrapResult(await invokeMutation(revokeCommand, [id])),
+      await invokeMutation(revokeCommand, { id }),
     // Revoking a token also ends the browser sessions it opened.
     onSuccess: () =>
       Promise.all([
@@ -139,15 +187,15 @@ export function useRemoteBrowserSessions() {
   const listOptions = api.queries.listRemoteBrowserSessions()
   const query = useQuery({
     queryKey: listOptions.queryKey,
-    queryFn: async () => unwrapResult(await invokeQuery(listOptions)),
+    queryFn: async () => await invokeQuery(listOptions),
     refetchInterval: 10_000,
   })
 
-  const revokeCommand = api.mutations.revokeRemoteBrowserSession
+  const revokeCommand = api.mutations.revokeRemoteBrowserSession()
   const revoke = useMutation({
     mutationKey: revokeCommand.mutationKey,
     mutationFn: async (id: string) =>
-      unwrapResult(await invokeMutation(revokeCommand, [id])),
+      await invokeMutation(revokeCommand, { id }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: listOptions.queryKey }),
   })

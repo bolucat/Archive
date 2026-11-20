@@ -5,6 +5,9 @@ export * from './use-clash-cores'
 export * from './core-version'
 export * from './use-clash-info'
 export * from './use-clash-logs'
+export * from './meow-core'
+export * from './use-meow-logbook'
+export * from './use-meow-traffic'
 export * from './use-clash-memory'
 export * from './use-clash-proxies-provider'
 export * from './use-clash-proxies'
@@ -25,6 +28,7 @@ export * from './settings-conversions'
 export * from './use-release-channel'
 export * from './use-network-automation'
 export * from './use-system-proxy'
+export * from './use-transparent-proxy-diagnostics'
 export * from './use-service-status'
 export * from './use-system-service'
 export * from './use-service-prompt'
@@ -49,7 +53,6 @@ export {
   invokeQuery,
   isNonRetryableRpcFailure,
   shouldRetryRpcQuery,
-  unwrapQueryOptions,
 } from './query-options'
 export type {
   ClashDelayOptions,

@@ -372,7 +372,7 @@ fn cache_format(file: &mut File) -> Result<CacheFormat, StoreError> {
     }
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
-    let Ok(serde_yaml_ng::Value::Mapping(map)) = serde_yaml_ng::from_slice(&bytes) else {
+    let Ok(yaml_serde::Value::Mapping(map)) = yaml_serde::from_slice(&bytes) else {
         return Ok(CacheFormat::Unknown);
     };
     if !["selected", "ip_to_host", "host_to_ip"]

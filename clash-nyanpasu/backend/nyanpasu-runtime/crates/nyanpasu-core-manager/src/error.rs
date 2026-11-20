@@ -77,7 +77,7 @@ pub enum Error {
     #[error(transparent)]
     Api(#[from] clash_api::Error),
     #[error("failed to process config YAML: {0}")]
-    Yaml(#[from] serde_yaml_ng::Error),
+    Yaml(#[from] yaml_serde::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-jobs"
-version = "0.1.4"
+version = "0.1.5"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -26,11 +26,11 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid = { version = "1", features = ["v4", "serde"] }
 
-specta = { version = "2.0.0-rc.25", features = ["derive"], optional = true }
+specta = { version = "2.0.0-rc.28", features = ["derive"], optional = true }
 
 [dev-dependencies]
-specta-serde = "0.0.12"
-specta-typescript = "0.0.12"
+specta-serde = "0.0.15"
+specta-typescript = "0.0.15"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

@@ -33,9 +33,10 @@ use super::{
     network::{
         set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq},
         transparent_proxy::{
+            NETWORK_TRANSPARENT_PROXY_DIAGNOSTICS_ENDPOINT,
             NETWORK_TRANSPARENT_PROXY_RECONCILE_ENDPOINT,
-            NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT, NetworkTransparentProxyRequest,
-            NetworkTransparentProxyStatus,
+            NETWORK_TRANSPARENT_PROXY_STATUS_ENDPOINT, NetworkTransparentProxyDiagnostics,
+            NetworkTransparentProxyRequest, NetworkTransparentProxyStatus,
         },
     },
     status::{STATUS_ENDPOINT, StatusResBody},
@@ -226,6 +227,16 @@ impl IpcOperation for NetworkTransparentProxyStatusQuery {
     type Data = NetworkTransparentProxyStatus;
 }
 
+/// `GET /network/transparent-proxy/diagnostics`
+pub struct NetworkTransparentProxyDiagnosticsQuery;
+
+impl IpcOperation for NetworkTransparentProxyDiagnosticsQuery {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = NETWORK_TRANSPARENT_PROXY_DIAGNOSTICS_ENDPOINT;
+    type Req<'a> = ();
+    type Data = NetworkTransparentProxyDiagnostics;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,6 +280,13 @@ mod tests {
                 NetworkTransparentProxyStatusQuery::PATH
             ),
             (Method::GET, "/network/transparent-proxy/status")
+        );
+        assert_eq!(
+            (
+                NetworkTransparentProxyDiagnosticsQuery::METHOD,
+                NetworkTransparentProxyDiagnosticsQuery::PATH
+            ),
+            (Method::GET, "/network/transparent-proxy/diagnostics")
         );
         assert_eq!(
             (CoreCheck::METHOD, CoreCheck::PATH),

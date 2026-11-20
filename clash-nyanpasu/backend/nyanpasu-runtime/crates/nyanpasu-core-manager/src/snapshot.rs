@@ -1,7 +1,7 @@
 //! Private effective configuration reporting. Hosts decide how snapshots are stored.
 use std::sync::Arc;
 
-use serde_yaml_ng::Mapping;
+use yaml_serde::Mapping;
 
 use crate::ConfigRevision;
 

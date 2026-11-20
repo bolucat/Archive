@@ -8,6 +8,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_VERSION:=2019.07
+PKG_RELEASE:=2
 
 PKG_HASH:=bff4fa77e8da17521c030ca4c5b947a056c1b1be4d3e6ee8637020b8d50251d0
 
@@ -18,6 +19,7 @@ include $(INCLUDE_DIR)/host-build.mk
 
 define U-Boot/Default
   BUILD_TARGET:=zynq
+  BUILD_SUBTARGET:=generic
   UBOOT_IMAGE:=spl/boot.bin u-boot.img
   UBOOT_CONFIG:=zynq_$(1)
   UENV:=default
