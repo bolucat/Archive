@@ -197,8 +197,8 @@ importers:
         specifier: 3.2.2
         version: 3.2.2(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@tanstack/react-query':
-        specifier: 5.108.1
-        version: 5.108.1(@types/react@19.3.0)(react@19.3.1)
+        specifier: 5.108.2
+        version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
       '@tauri-apps/api':
         specifier: 2.12.5
         version: 2.12.5
@@ -224,14 +224,14 @@ importers:
         specifier: 2.1.1
         version: 2.1.1
       knip:
-        specifier: 6.46.1
-        version: 6.46.1
+        specifier: 6.47.0
+        version: 6.47.0
       lint-staged:
         specifier: 17.6.1
         version: 17.6.1
       npm-run-all2:
-        specifier: 9.0.4
-        version: 9.0.4
+        specifier: 9.1.0
+        version: 9.1.0
       oxlint:
         specifier: 1.94.0
         version: 1.94.0
@@ -263,23 +263,23 @@ importers:
         specifier: 17.6.1
         version: 17.6.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       stylelint:
-        specifier: 18.0.0
-        version: 18.0.0
+        specifier: 18.1.0
+        version: 18.1.0
       stylelint-config-html:
         specifier: 2.0.0
-        version: 2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.0.0)
+        version: 2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.1.0)
       stylelint-config-recess-order:
         specifier: 7.10.1
-        version: 7.10.1(stylelint-order@8.1.3(stylelint@18.0.0))(stylelint@18.0.0)
+        version: 7.10.1(stylelint-order@8.1.3(stylelint@18.1.0))(stylelint@18.1.0)
       stylelint-config-standard:
-        specifier: 41.0.0
-        version: 41.0.0(stylelint@18.0.0)
+        specifier: 41.1.0
+        version: 41.1.0(stylelint@18.1.0)
       stylelint-declaration-block-no-ignored-properties:
         specifier: 3.1.0
-        version: 3.1.0(stylelint@18.0.0)
+        version: 3.1.0(stylelint@18.1.0)
       stylelint-order:
         specifier: 8.1.3
-        version: 8.1.3(stylelint@18.0.0)
+        version: 8.1.3(stylelint@18.1.0)
       tailwind-merge:
         specifier: 3.7.1
         version: 3.7.1
@@ -338,8 +338,8 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@hookform/resolvers':
-        specifier: 7.0.7
-        version: 7.0.7(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        specifier: 7.0.8
+        version: 7.0.8(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@inlang/paraglide-js':
         specifier: 3.2.2
         version: 3.2.2(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
@@ -447,8 +447,8 @@ importers:
         specifier: 12.1.1
         version: 12.1.1
       '@iconify/json':
-        specifier: 2.2.559
-        version: 2.2.559
+        specifier: 2.2.560
+        version: 2.2.560
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.57.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -456,8 +456,8 @@ importers:
         specifier: 4.3.5
         version: 4.3.5(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@tanstack/react-query':
-        specifier: 5.108.1
-        version: 5.108.1(@types/react@19.3.0)(react@19.3.1)
+        specifier: 5.108.2
+        version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
       '@tanstack/react-router':
         specifier: 1.170.46
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -549,8 +549,8 @@ importers:
         specifier: workspace:^
         version: link:../rpc
       '@tanstack/react-query':
-        specifier: 5.108.1
-        version: 5.108.1(@types/react@19.3.0)(react@19.3.1)
+        specifier: 5.108.2
+        version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
       '@tauri-apps/api':
         specifier: 2.12.5
         version: 2.12.5
@@ -644,8 +644,8 @@ importers:
         version: 19.3.1(react@19.3.1)
     devDependencies:
       '@iconify/json':
-        specifier: 2.2.559
-        version: 2.2.559
+        specifier: 2.2.560
+        version: 2.2.560
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -686,8 +686,8 @@ importers:
         specifier: 1.53.2
         version: 1.53.2
       figlet:
-        specifier: 1.12.0
-        version: 1.12.0
+        specifier: 1.13.0
+        version: 1.13.0
       globby:
         specifier: 16.2.4
         version: 16.2.4
@@ -1597,15 +1597,15 @@ packages:
   '@grammyjs/types@5.0.0':
     resolution: {integrity: sha512-iq1Qrq1iPKkB8yAa0qSuIURMZOCuqTY5pWy5gHpCeL1oQ+GPadGhw/cDTVE8waJwuCzacUzuIjRv1sESvk7u7A==}
 
-  '@hookform/resolvers@7.0.7':
-    resolution: {integrity: sha512-sxiEGu5dhg6gMEsGznEQ/++634YiRLmxclw+/B1+yNN9uuhKIfNCRTE4xwqkRcKNqBPwtmDXg5oDhLw3i/wklw==}
+  '@hookform/resolvers@7.0.8':
+    resolution: {integrity: sha512-44+R4PUy3MWIBJR4sOjW0bZaz+H81k26urkTYeXAvEa8h45ueHrvQpZR/96iyLOobL6/yO0BJTaRPwwyDlL1/A==}
     peerDependencies:
       '@standard-schema/spec': ^1.0.0
       '@vinejs/vine': ^2.0.0 || ^3.0.0 || ^4.0.0
       ajv: ^8.12.0
       ajv-errors: ^3.0.0
       ajv-formats: ^2.1.1 || ^3.0.0
-      arktype: ^2.0.0
+      arktype: ^2.0.0 || ^3.0.0
       ata-validator: ^1.23.0
       class-transformer: '>=0.4.0'
       class-validator: '>=0.12.0'
@@ -1690,8 +1690,8 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
-  '@iconify/json@2.2.559':
-    resolution: {integrity: sha512-H8cKSqE1irQCwpn8oKDgfIAxCshMmARXWxecd4h2QYiENgD+Hke2DucFkvOsjTh15aIotMF083jtmNtY/qLwnA==}
+  '@iconify/json@2.2.560':
+    resolution: {integrity: sha512-YclhHQsi7GT88AOE0lVZFO5n1PKxEa8DImC3e8CHhWLbzQuVHR/i06IXP6Dw5nZWT38PFOKe4NeaHXYdFjbZdQ==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -3529,11 +3529,11 @@ packages:
     resolution: {integrity: sha512-w1+YvwmTkwt5n8yUqEH3IWZ9DsmorCZW/EQ3KYHnqEgIkOZpH54NvW6/Epq3Dzb8H0ifIeYX8PExvrNLIH5FIA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/query-core@5.108.1':
-    resolution: {integrity: sha512-GBX6Xsc9E+9eVLLxuM7orQNbssQjpruOCbocBYwT78MjxOWT5I+CWdvEo0N+UM6+oCZEKxuSud1oFLvE3OEmIg==}
+  '@tanstack/query-core@5.108.2':
+    resolution: {integrity: sha512-0l+0xDKqn71hfJBKaAvFP/X7WYM0TbscEk6nK1pHaWQUWUEA+WJD0VlT8wF+HIJANMV9B/DouPWwDnX3w/l9BA==}
 
-  '@tanstack/react-query@5.108.1':
-    resolution: {integrity: sha512-8/p7fpIdmUiKIukQ5ddAMUUSKC7Z8CcgUOBR2r3WqRvMg9Lzc4CXeoFchjfATKvqi23SyYFvesDdOULrvyunNg==}
+  '@tanstack/react-query@5.108.2':
+    resolution: {integrity: sha512-wV6hEjVGTfh9rvu3uREYW0hgBfS9klDejGelhPY575jD5jg6qbAb1nzT7hR1Q+wemR66ZjtE5p9pAGUwqK8zbg==}
     peerDependencies:
       '@types/react': ^18 || ^19
       react: ^18 || ^19
@@ -4270,10 +4270,6 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
-  ansi-styles@7.0.0:
-    resolution: {integrity: sha512-kKvt3m4uwzqL0wlkPd09CmljPJGOZZ4D0fP65sqFSvPkMRKhNi+74MgIJ5QxE6SxqB4t4KyUFGg8+n5zjo6hew==}
-    engines: {node: '>=22'}
-
   ansis@4.4.0:
     resolution: {integrity: sha512-9k3v7xcHwgdO/DruxGIg4HtjvlAZlcnsX/mzqUb1t3NkYnl9kK2UJ+Gq0io+vQf7iT//BD/HB/NBkUR1LWxoeA==}
     engines: {node: '>=14'}
@@ -4283,6 +4279,10 @@ packages:
 
   argparse@3.0.4:
     resolution: {integrity: sha512-fwWK3Zq22l4XJJjx5mcBHGikIk+hJqO+32dPm0Jur7+rtG5x1scOjSfdT9ZKeWHPpsya/l0HHK4tDImBkTrtvA==}
+
+  argsclopts@1.1.1:
+    resolution: {integrity: sha512-6WxZv61e68WtkWfKkZSMJ85ErP5DKMr2O8J9cJ9AF/55fAJKq4PzPyVCmP26LGqtqyYhbLcZCAwlUiACYl0sZQ==}
+    engines: {node: ^22.13.0 || >=24, npm: '>=10'}
 
   argue-cli@3.2.0:
     resolution: {integrity: sha512-VipTB0gXgGIFO2Rg9yEVN5wLt2AurJcZqDbgmYSwPwsykhLrQhs240/bfceev4w68lI8JshoOJIk9uW7tFzROw==}
@@ -4480,8 +4480,8 @@ packages:
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
-  colord@2.10.0:
-    resolution: {integrity: sha512-AidJptpBJmjTclAp9BkLwJi0T93fo5epJnbaZslpg6QVzpHjAiveF55mE9AcUJiGMqRHgMDY8soMsQtuNYMHfw==}
+  colord@2.14.0:
+    resolution: {integrity: sha512-eSdMel9EBvdFxnchObp7gljRoqYQLr+zXhaxjkym7syVphw1FIhfQwgsA5Bv3jArflZPJEa1rmQtGpa7NRc7Rw==}
 
   colorette@2.0.20:
     resolution: {integrity: sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==}
@@ -5057,8 +5057,8 @@ packages:
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
-  figlet@1.12.0:
-    resolution: {integrity: sha512-Ith3WsUi0N/EqGt+0/F6XnWhT04sohhH2tT0Dq7GdUmWbMTIoCbg2Jq9qKggmTO62ST5kRCfB311EmIMbizGyA==}
+  figlet@1.13.0:
+    resolution: {integrity: sha512-gtv594/YXiGqBNyxnz7OcJkFwJ8VHv8nKPQpg6lKNvkAj3tBVI5rP+sapaTQ96EsBl063MNZMGwCjB80ymcnXA==}
     engines: {node: '>= 17.0.0'}
     hasBin: true
 
@@ -5380,8 +5380,8 @@ packages:
   khroma@2.1.0:
     resolution: {integrity: sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==}
 
-  knip@6.46.1:
-    resolution: {integrity: sha512-5/ajqjZfmuv8O74+McrKBOSArKG6tsUgy6yJird36VZh9HiUq75qY4U39uqf9wjchEUOLrStuOZpFP057CZFRw==}
+  knip@6.47.0:
+    resolution: {integrity: sha512-nYmQnk0YqDXIJrYViJz88c8xw3tBDkpuAmofo58EkVPnKr6DnRKYtf6oIqcGVHZvXDE+gtmFuYx277/QsWng+A==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -5583,10 +5583,6 @@ packages:
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
-
-  memorystream@0.3.1:
-    resolution: {integrity: sha512-S3UwM3yj5mtUSEfP41UZmt/0SCoVYUcU1rkXv+BQ5Ig8ndL4sPoJNBUJERafdPb5jjHJGuMgytgKvKIf58XNBw==}
-    engines: {node: '>= 0.10.0'}
 
   meow@13.2.0:
     resolution: {integrity: sha512-pxQJQzB6djGPXh08dacEloMFopsOqGVRKFPYvPOt9XDZ1HasbgDZA74CJGreSU4G3Ak7EFJGoiH2auq+yXISgA==}
@@ -5831,8 +5827,8 @@ packages:
     resolution: {integrity: sha512-tdt4aFn9QamlhdN3HV2D2ccpBwO5/fyjjbXUxYA6uBjyekMZcZvDq0aSj9t5Jo+tih6AYFnt/cuIRn9013e0Uw==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
-  npm-run-all2@9.0.4:
-    resolution: {integrity: sha512-GuGRF8MddEKavyUzjy0k2z2pA76/N+eT8lHlypx0/AhShLKD2FOerQxHhpFhcqnQmAqCkunUCYlf6Z9RKh/4zg==}
+  npm-run-all2@9.1.0:
+    resolution: {integrity: sha512-zYpHPU7vMd/GeR1rRa4ZCd+Xt8/OdTSQELWeje6SE+amea/nWfyiYLj33h14G7w2odDzDH0sdXqBCrHgKSwjXA==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0, npm: '>= 10'}
     hasBin: true
 
@@ -6520,8 +6516,8 @@ packages:
     peerDependencies:
       stylelint: ^18.0.0
 
-  stylelint-config-standard@41.0.0:
-    resolution: {integrity: sha512-EJIvMOMARieBOLhw2yzN7BaVFiIY2Ex8CkbXahxP6tQZK41+N8OVUo57Uvx9iTr862h+thqDoDH7vQbeth1ryg==}
+  stylelint-config-standard@41.1.0:
+    resolution: {integrity: sha512-Z7PiQpBffnqu7U5h/FeBWCYZsRsZXa1J8MjkpgcciphLJULysDcu2jKXuSrPgnQGow9x0T+pOfblqRA5cSE6aw==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
     peerDependencies:
       stylelint: ^18.0.0
@@ -6538,8 +6534,8 @@ packages:
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0 || ^18.0.0
 
-  stylelint@18.0.0:
-    resolution: {integrity: sha512-kI10GsHXQvsH/AcklVZdQgwDuxtHi+A+h1Ujzd7h9LDf3e5jQiLQkWFlPtpynX3E6oVWHG1wo9v6dL0Mr+nnSA==}
+  stylelint@18.1.0:
+    resolution: {integrity: sha512-QbF/IY7KY6lZRhYU/vmPU1KYxc71wgkXdgeptqzTh3lbnZps6WHaskfPjpL6Fh4JaCzwkKKitVcMrpfQTSwwPA==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
     hasBin: true
 
@@ -8190,7 +8186,7 @@ snapshots:
 
   '@grammyjs/types@5.0.0': {}
 
-  '@hookform/resolvers@7.0.7(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
+  '@hookform/resolvers@7.0.8(ajv@8.17.1)(react-hook-form@7.92.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.92.0(@types/react@19.3.0)(react@19.3.1)
@@ -8213,7 +8209,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.559':
+  '@iconify/json@2.2.560':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
@@ -9836,11 +9832,11 @@ snapshots:
 
   '@tanstack/history@1.162.5': {}
 
-  '@tanstack/query-core@5.108.1': {}
+  '@tanstack/query-core@5.108.2': {}
 
-  '@tanstack/react-query@5.108.1(@types/react@19.3.0)(react@19.3.1)':
+  '@tanstack/react-query@5.108.2(@types/react@19.3.0)(react@19.3.1)':
     dependencies:
-      '@tanstack/query-core': 5.108.1
+      '@tanstack/query-core': 5.108.2
       react: 19.3.1
     optionalDependencies:
       '@types/react': 19.3.0
@@ -10229,7 +10225,7 @@ snapshots:
 
   '@types/figlet@1.12.0':
     dependencies:
-      figlet: 1.12.0
+      figlet: 1.13.0
 
   '@types/geojson@7946.0.14': {}
 
@@ -10461,13 +10457,13 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
-  ansi-styles@7.0.0: {}
-
   ansis@4.4.0: {}
 
   argparse@2.0.1: {}
 
   argparse@3.0.4: {}
+
+  argsclopts@1.1.1: {}
 
   argue-cli@3.2.0: {}
 
@@ -10659,7 +10655,7 @@ snapshots:
 
   color-name@1.1.4: {}
 
-  colord@2.10.0: {}
+  colord@2.14.0: {}
 
   colorette@2.0.20: {}
 
@@ -11230,7 +11226,7 @@ snapshots:
 
   fflate@0.8.3: {}
 
-  figlet@1.12.0:
+  figlet@1.13.0:
     dependencies:
       commander: 14.0.3
 
@@ -11534,7 +11530,7 @@ snapshots:
 
   khroma@2.1.0: {}
 
-  knip@6.46.1:
+  knip@6.47.0:
     dependencies:
       formatly: 0.11.4
       get-tsconfig: 4.14.3
@@ -11851,8 +11847,6 @@ snapshots:
   mdn-data@2.0.14: {}
 
   mdn-data@2.27.1: {}
-
-  memorystream@0.3.1: {}
 
   meow@13.2.0: {}
 
@@ -12226,11 +12220,10 @@ snapshots:
 
   npm-normalize-package-bin@6.0.0: {}
 
-  npm-run-all2@9.0.4:
+  npm-run-all2@9.1.0:
     dependencies:
-      ansi-styles: 7.0.0
+      argsclopts: 1.1.1
       cross-spawn: 7.0.6
-      memorystream: 0.3.1
       picomatch: 4.0.7
       pidtree: 1.0.0
       read-package-json-fast: 6.0.0
@@ -13028,36 +13021,36 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.0.0):
+  stylelint-config-html@2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.1.0):
     dependencies:
       postcss-html: 2.0.1(postcss@8.5.33)
-      stylelint: 18.0.0
+      stylelint: 18.1.0
 
-  stylelint-config-recess-order@7.10.1(stylelint-order@8.1.3(stylelint@18.0.0))(stylelint@18.0.0):
+  stylelint-config-recess-order@7.10.1(stylelint-order@8.1.3(stylelint@18.1.0))(stylelint@18.1.0):
     dependencies:
-      stylelint: 18.0.0
-      stylelint-order: 8.1.3(stylelint@18.0.0)
+      stylelint: 18.1.0
+      stylelint-order: 8.1.3(stylelint@18.1.0)
 
-  stylelint-config-recommended@19.0.0(stylelint@18.0.0):
+  stylelint-config-recommended@19.0.0(stylelint@18.1.0):
     dependencies:
-      stylelint: 18.0.0
+      stylelint: 18.1.0
 
-  stylelint-config-standard@41.0.0(stylelint@18.0.0):
+  stylelint-config-standard@41.1.0(stylelint@18.1.0):
     dependencies:
-      stylelint: 18.0.0
-      stylelint-config-recommended: 19.0.0(stylelint@18.0.0)
+      stylelint: 18.1.0
+      stylelint-config-recommended: 19.0.0(stylelint@18.1.0)
 
-  stylelint-declaration-block-no-ignored-properties@3.1.0(stylelint@18.0.0):
+  stylelint-declaration-block-no-ignored-properties@3.1.0(stylelint@18.1.0):
     dependencies:
-      stylelint: 18.0.0
+      stylelint: 18.1.0
 
-  stylelint-order@8.1.3(stylelint@18.0.0):
+  stylelint-order@8.1.3(stylelint@18.1.0):
     dependencies:
       postcss: 8.5.33
       postcss-sorting: 10.0.0(postcss@8.5.33)
-      stylelint: 18.0.0
+      stylelint: 18.1.0
 
-  stylelint@18.0.0:
+  stylelint@18.1.0:
     dependencies:
       '@csstools/css-calc': 3.4.3(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
       '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
@@ -13066,7 +13059,7 @@ snapshots:
       '@csstools/media-query-list-parser': 5.0.2(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
       '@csstools/selector-resolve-nested': 4.0.2(postcss-selector-parser@7.2.1)
       '@csstools/selector-specificity': 6.0.1(postcss-selector-parser@7.2.1)
-      colord: 2.10.0
+      colord: 2.14.0
       cosmiconfig: 10.0.1
       css-tree: 3.2.1
       ignore: 7.0.14
