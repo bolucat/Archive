@@ -141,7 +141,7 @@ func (c *Client) parseResponseGoogle(ctx context.Context, w dns.ResponseWriter, 
 		}
 	}
 
-	body, err := io.ReadAll(req.response.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(nil, req.response.Body, jsondns.ReasonableJSONResponseLengthLimit))
 	if err != nil {
 		log.Println(err)
 		req.reply.Rcode = dns.RcodeServerFailure
