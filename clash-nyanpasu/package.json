@@ -118,7 +118,7 @@
     "knip": "6.48.0",
     "lint-staged": "17.6.2",
     "npm-run-all2": "9.1.0",
-    "oxlint": "1.94.0",
+    "oxlint": "1.95.0",
     "playwright": "1.65.1",
     "postcss": "8.5.33",
     "postcss-html": "2.0.1",
@@ -141,13 +141,13 @@
     "@types/react-dom": "19.3.0",
     "vite-plugin-svgr": "5.2.0",
     "vitest-browser-react": "2.3.0",
-    "@tanstack/react-query": "5.108.3",
+    "@tanstack/react-query": "5.108.4",
     "@tauri-apps/api": "2.12.5",
     "clsx": "2.1.1",
     "tailwind-merge": "3.7.1",
     "react-use": "17.6.1"
   },
-  "packageManager": "pnpm@12.21.0",
+  "packageManager": "pnpm@12.23.0",
   "engines": {
     "node": "26.13.1"
   }
