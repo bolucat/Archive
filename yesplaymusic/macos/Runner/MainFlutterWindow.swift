@@ -4,6 +4,26 @@ import MediaPlayer
 import WebKit
 
 class MainFlutterWindow: NSWindow {
+  /// Settings → "keep running after closing the window", sent by Dart (prefs).
+  /// On, closing (red button, ⌘W) only hides the window; clicking the Dock icon brings it back.
+  static var keepRunning = false
+
+  override func close() {
+    guard MainFlutterWindow.keepRunning else { return super.close() }
+    guard styleMask.contains(.fullScreen) else { return orderOut(nil) }
+    // Hiding a full-screen window would leave an empty Space behind: leave full screen first.
+    hideAfterFullScreen = true
+    toggleFullScreen(nil)
+  }
+
+  private var hideAfterFullScreen = false
+
+  @objc private func didExitFullScreen(_ note: Notification) {
+    guard hideAfterFullScreen else { return }
+    hideAfterFullScreen = false
+    orderOut(nil)
+  }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     flutterViewController.backgroundColor = NSColor(red: 0x0B / 255.0, green: 0x0B / 255.0, blue: 0x0D / 255.0, alpha: 1)
@@ -23,6 +43,10 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(didExitFullScreen(_:)),
+      name: NSWindow.didExitFullScreenNotification, object: self)
+
     let channel = FlutterMethodChannel(
       name: "yesplaymusic/window", binaryMessenger: flutterViewController.engine.binaryMessenger)
     channel.setMethodCallHandler { [weak self] call, result in
@@ -36,6 +60,10 @@ class MainFlutterWindow: NSWindow {
       case "zoom":
         self.zoom(nil)
         result(nil)
+      case "prefs":
+        let a = call.arguments as? [String: Any]
+        MainFlutterWindow.keepRunning = a?["keepRunning"] as? Bool ?? false
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -45,6 +73,7 @@ class MainFlutterWindow: NSWindow {
     MediaSession.shared.attach(
       FlutterMethodChannel(
         name: "yesplaymusic/media", binaryMessenger: flutterViewController.engine.binaryMessenger))
+    DynamicIsland.shared.mainWindow = self
 
     // 插件的网页登录（host.webSignIn）：见 WebSignIn。
     let signIn = FlutterMethodChannel(
@@ -159,6 +188,10 @@ final class MediaSession {
 
   func attach(_ channel: FlutterMethodChannel) {
     self.channel = channel
+    // 灵动岛的按钮也走这条通道
+    DynamicIsland.shared.send = { [weak self] name, arg in
+      self?.channel?.invokeMethod(name, arguments: arg)
+    }
     channel.setMethodCallHandler { [weak self] call, result in
       guard call.method == "update", let a = call.arguments as? [String: Any] else {
         return result(FlutterMethodNotImplemented)
@@ -198,11 +231,18 @@ final class MediaSession {
     if let art = a["art"] as? String, art != artURL {
       artURL = art
       info.removeValue(forKey: MPMediaItemPropertyArtwork)
+      DynamicIsland.shared.setArt(nil)
       loadArt(art)
     }
     let center = MPNowPlayingInfoCenter.default()
     center.nowPlayingInfo = info
     center.playbackState = playing ? .playing : .paused
+    let island = DynamicIsland.shared
+    if let on = a["island"] as? Bool { island.setEnabled(on) }
+    island.update(
+      title: a["title"] as? String ?? "", artist: a["artist"] as? String ?? "",
+      duration: a["duration"] as? Double ?? 0, position: a["position"] as? Double ?? 0,
+      playing: playing)
   }
 
   private func loadArt(_ s: String) {
@@ -213,6 +253,7 @@ final class MediaSession {
       DispatchQueue.main.async {
         guard let self = self, self.artURL == s else { return }
         self.info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        DynamicIsland.shared.setArt(image)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = self.info
       }
     }

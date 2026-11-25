@@ -1,51 +1,101 @@
-// 播放引擎：把 Source 给出的 AudioStream 交给 libmpv（media_kit）播放。
+// Playback engine: hands the AudioStream from a Source to libmpv (media_kit).
 //
-// 本地文件是 file://，插件给的是 http(s)，可能带请求头（Referer、Cookie…），
-// 对引擎来说没有区别。
+// Local files are file://, plugins give http(s), possibly with headers (Referer, Cookie…);
+// to the engine it makes no difference.
+//
+// Gapless: mpv's playlist holds at most two entries, [current, next]. [queueNext]
+// appends the next one shortly before the end and mpv moves on by itself
+// (gapless-audio defaults to weak: seamless when the formats match), then tells
+// the app through [onAdvanced]. Only local files (library, audio cache) are
+// appended, so headers and expiring URLs don't matter.
 
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../net/proxy.dart';
+import 'eq.dart';
 import 'models.dart';
 
-class AudioEngine {
+/// The playback engine the app uses; tests swap in a fake without libmpv.
+abstract interface class PlaybackEngine {
+  abstract void Function(Duration)? onPosition, onDuration;
+  abstract void Function(bool)? onPlaying;
+  abstract void Function()? onCompleted;
+  abstract void Function(String)? onError;
+  abstract void Function(String key)? onAdvanced;
+  String? get queuedKey;
+  Future<void> open(
+    AudioStream s, {
+    required String key,
+    bool play = true,
+    Duration? start,
+    String rg = 'no',
+    double gainDb = 0,
+  });
+  Future<void> queueNext(
+    AudioStream s, {
+    required String key,
+    String rg = 'no',
+    double gainDb = 0,
+  });
+  Future<void> dropQueued();
+  Future<void> setReplayGain(String rg, double gainDb);
+  Future<void> setEq(EqSettings s);
+  Future<void> play();
+  Future<void> pause();
+  Future<void> seek(Duration d);
+  Future<void> setVolume(double v);
+  Future<void> setFade(double f);
+  Future<void> stop();
+  Future<void> dispose();
+}
+
+class AudioEngine implements PlaybackEngine {
   AudioEngine() {
     _subs = [
       _p.stream.position.listen((d) => onPosition?.call(d)),
       _p.stream.duration.listen((d) => onDuration?.call(d)),
       _p.stream.playing.listen((v) => onPlaying?.call(v)),
+      // mpv reports eof-reached at the end of every file, even with another queued;
+      // when the next one is queued mpv continues by itself, so it isn't the end
       _p.stream.completed.listen((done) {
-        if (done) onCompleted?.call();
+        if (done && _queuedKey == null) onCompleted?.call();
       }),
       _p.stream.error.listen((e) => onError?.call(e)),
+      _p.stream.playlist.listen(_onPlaylist),
     ];
-    // 网络音频走系统代理（本地文件不受影响）。
-    final proxy = systemProxy();
-    if (proxy != null && _p.platform is mk.NativePlayer) {
-      (_p.platform as mk.NativePlayer).setProperty('http-proxy', proxy.url);
+    final n = _native;
+    if (n != null) {
+      // Network audio uses the system proxy (local files are unaffected).
+      final proxy = systemProxy();
+      if (proxy != null) n.setProperty('http-proxy', proxy.url);
+      n.setProperty('prefetch-playlist', 'yes');
+      n.onLoadHooks.add(_onLoad);
     }
   }
 
-  /// 进程里调用一次，加载 libmpv。
+  mk.NativePlayer? get _native =>
+      _p.platform is mk.NativePlayer ? _p.platform as mk.NativePlayer : null;
+
+  /// Called once per process to load libmpv.
   static void init() {
     mk.MediaKit.ensureInitialized();
     if (kDebugMode) _detachStalePlayers();
   }
 
-  /// 热重启保护。mpv 的唤醒回调指向创建它的 isolate；热重启时旧 isolate
-  /// 被销毁，mpv 核心线程再发事件（播放中每秒好几次）就跳进野指针崩溃
-  /// （SIGSEGV/SIGBUS，栈在 mpv send_event / mp_client_send_property_changes）。
+  /// Hot restart guard. mpv's wakeup callback points into the isolate that created it; on hot restart the old isolate
+  /// is destroyed, and the next event from mpv's core thread (several per second while playing) jumps into a dangling pointer and crashes
+  /// (SIGSEGV/SIGBUS, with the stack in mpv send_event / mp_client_send_property_changes).
   ///
-  /// 1. 挂一个 NativeFinalizer：isolate 销毁时 Dart VM 先跑 finalizer、再回收
-  ///    回调跳板，C 里（native/mpv_guard.c）同步把所有 mpv 实例的回调清掉，
-  ///    不留空窗。
-  /// 2. 新 isolate 起来再清一遍，兜住没走到 finalizer 的情况。
+  /// 1. Attach a NativeFinalizer: when the isolate is destroyed the Dart VM runs finalizers before freeing
+  ///    callback trampolines, and the C code (native/mpv_guard.c) synchronously clears the callbacks of every mpv instance,
+  ///    leaving no gap.
+  /// 2. Clear again when the new isolate starts, covering cases where the finalizer didn't run.
   static void _detachStalePlayers() {
     try {
       final file = File(
@@ -59,7 +109,7 @@ class AudioEngine {
       _mpvDetachAll(buffer);
       _mpvGuard.attach(_mpvGuardToken, buffer);
     } catch (_) {
-      // 只是开发期的保护，找不到就算了
+      // Only a development-time guard; if it can't be found, never mind
     }
   }
 
@@ -69,7 +119,7 @@ class AudioEngine {
     ),
   );
 
-  /// 永远不释放，它的 finalizer 只会在 isolate 销毁时触发。
+  /// Never released; its finalizer only fires when the isolate is destroyed.
   static final _mpvGuardToken = _MpvGuardToken();
 
   final mk.Player _p = mk.Player(
@@ -77,54 +127,229 @@ class AudioEngine {
   );
   late final List<StreamSubscription<Object?>> _subs;
 
+  @override
   void Function(Duration)? onPosition, onDuration;
+  @override
   void Function(bool)? onPlaying;
+
+  /// The whole mpv list finished (nothing queued next).
+  @override
   void Function()? onCompleted;
+  @override
   void Function(String)? onError;
 
-  /// 打开并（默认）开始播放。[start] 用于恢复上次的进度。
-  Future<void> open(AudioStream s, {bool play = true, Duration? start}) async {
-    final uri = Uri.parse(s.url);
-    // mpv 对 file:// 里的中文、空格等转义处理不一，直接给本地路径最稳。
-    final target = uri.scheme == 'file' ? uri.toFilePath() : s.url;
+  /// mpv moved on to the track queued by [queueNext]; the argument is its key.
+  @override
+  void Function(String key)? onAdvanced;
+
+  /// Keys of the playing and queued tracks (as given to open / queueNext).
+  String? _currentKey, _queuedKey;
+  @override
+  String? get queuedKey => _queuedKey;
+
+  /// Opens and (by default) starts playing, replacing mpv's whole list. [start]
+  /// restores the previous position. [rg] and [gainDb] are this track's ReplayGain,
+  /// see replay_gain.dart.
+  @override
+  Future<void> open(
+    AudioStream s, {
+    required String key,
+    bool play = true,
+    Duration? start,
+    String rg = 'no',
+    double gainDb = 0,
+  }) async {
+    _currentKey = key;
+    _queuedKey = null;
     await _p.open(
-      mk.Media(
-        target,
-        httpHeaders: s.headers.isEmpty ? null : s.headers,
-        start: start,
-      ),
+      _media(s, key: key, start: start, rg: rg, gainDb: gainDb),
       play: play,
     );
   }
 
+  /// Queues the next track in mpv to follow the current one without a gap. Replaces any track already queued.
+  @override
+  Future<void> queueNext(
+    AudioStream s, {
+    required String key,
+    String rg = 'no',
+    double gainDb = 0,
+  }) async {
+    await dropQueued();
+    // Also drop the finished track left at the head of the list by the last advance
+    for (var i = _p.state.playlist.index - 1; i >= 0; i--) {
+      await _p.remove(i);
+    }
+    _queuedKey = key;
+    await _p.add(_media(s, key: key, rg: rg, gainDb: gainDb));
+  }
+
+  /// Removes the queued track (the queue changed, the sleep timer stops after this one…).
+  @override
+  Future<void> dropQueued() async {
+    if (_queuedKey == null) return;
+    _queuedKey = null;
+    final pl = _p.state.playlist;
+    for (var i = pl.medias.length - 1; i > pl.index; i--) {
+      await _p.remove(i);
+    }
+  }
+
+  mk.Media _media(
+    AudioStream s, {
+    required String key,
+    Duration? start,
+    required String rg,
+    required double gainDb,
+  }) {
+    final uri = Uri.parse(s.url);
+    // mpv handles escaping of CJK, spaces etc. in file:// inconsistently; passing the local path directly is safest.
+    final target = uri.scheme == 'file' ? uri.toFilePath() : s.url;
+    return mk.Media(
+      target,
+      httpHeaders: s.headers.isEmpty ? null : s.headers,
+      start: start,
+      extras: {'key': key, 'rg': rg, 'gain': gainDb},
+    );
+  }
+
+  /// Reads an mpv property, so tests can check a setting took effect.
+  @visibleForTesting
+  Future<String> mpvProperty(String name) =>
+      _native?.getProperty(name) ?? Future.value('');
+
+  void _onPlaylist(mk.Playlist pl) {
+    // The index is 0 after opening or dropping the finished track; it's 1 only when mpv moved on by itself
+    if (pl.index <= 0 || pl.index >= pl.medias.length) return;
+    final key = pl.medias[pl.index].extras?['key'];
+    if (key is! String || key == _currentKey) return;
+    _currentKey = key;
+    if (_queuedKey == key) _queuedKey = null;
+    onAdvanced?.call(key);
+  }
+
+  /// Before each file loads (mpv's on_load hook, which mpv waits for): apply this
+  /// track's ReplayGain through file-local-options, which reset when it ends.
+  Future<void> _onLoad() async {
+    final n = _native;
+    if (n == null) return;
+    try {
+      final pos = int.tryParse(await n.getProperty('playlist-pos')) ?? -1;
+      final ms = _p.state.playlist.medias;
+      if (pos < 0 || pos >= ms.length) return;
+      final x = ms[pos].extras;
+      await n.setProperty(
+        'file-local-options/replaygain',
+        '${x?['rg'] ?? 'no'}',
+      );
+      final gain = (x?['gain'] as num?)?.toDouble() ?? 0;
+      await n.setProperty(
+        'file-local-options/replaygain-fallback',
+        gain.toStringAsFixed(2),
+      );
+    } catch (_) {
+      // If it can't be found, play with the global settings
+    }
+  }
+
+  /// Changes the ReplayGain of the playing track (when the setting changes); later tracks use what they were opened with.
+  @override
+  Future<void> setReplayGain(String rg, double gainDb) async {
+    final n = _native;
+    if (n == null) return;
+    await n.setProperty('replaygain', rg);
+    await n.setProperty('file-local-options/replaygain', rg);
+    await n.setProperty(
+      'file-local-options/replaygain-fallback',
+      gainDb.toStringAsFixed(2),
+    );
+  }
+
+  // ───── Equalizer ─────
+  EqSettings _eq = const EqSettings();
+
+  @override
+  Future<void> setEq(EqSettings s) async {
+    final prev = _eq;
+    _eq = s;
+    _preampDb = eqPreamp(s);
+    await _applyVolume();
+    final n = _native;
+    if (n == null) return;
+    if (prev.active && s.active) {
+      // Only the gains changed: send a command per band instead of rebuilding the chain (which pops)
+      final a = prev.gains, b = s.gains;
+      for (var i = 0; i < eqBands.length; i++) {
+        if (a[i] == b[i]) continue;
+        await n.command([
+          'af-command',
+          eqLabel(i),
+          'g',
+          b[i].toStringAsFixed(1),
+        ]);
+      }
+    } else if (prev.active != s.active || s.active) {
+      await n.setProperty('af', eqFilter(s));
+    }
+  }
+
+  // ───── Volume ─────
+  // Output volume = slider × equalizer preamp × fade, all folded into mpv's volume.
+  double _volume = 0, _preampDb = 0, _fade = 1;
+
+  @override
   Future<void> play() => _p.play();
+  @override
   Future<void> pause() => _p.pause();
+  @override
   Future<void> seek(Duration d) => _p.seek(d);
 
-  /// 0~1，滑块位置。
-  Future<void> setVolume(double v) => _p.setVolume(mpvVolume(v));
+  /// 0–1, slider position.
+  @override
+  Future<void> setVolume(double v) {
+    _volume = v;
+    return _applyVolume();
+  }
 
-  /// 滑块位置 → mpv 的 volume（0~100）。
+  /// Fade factor (0–1, amplitude) for the sleep timer; doesn't change the saved volume.
+  @override
+  Future<void> setFade(double f) {
+    _fade = f.clamp(0.0, 1.0);
+    return _applyVolume();
+  }
+
+  Future<void> _applyVolume() =>
+      _p.setVolume(mpvVolume(_volume, gainDb: _preampDb, fade: _fade));
+
+  /// Slider position → mpv volume (0–100).
   ///
-  /// 按分贝均匀的指数曲线（https://dr-lex.be/info-stuff/volumecontrols.html）：
-  /// 幅度 = 10^(−[_rangeDb]·(1−p)/20)，滑块每走 10% 响度变化一样多；
-  /// 最底下 10% 线性收到 0，拉到底是真正的静音。
-  /// 范围没用文章推荐的 60 dB：系统音量本身已经压低了一截，60 dB 时下半段
-  /// 全在 −30 dB 以下，听着都差不多小，用不上。
-  /// mpv 自己会把 volume/100 再三次方（player/audio.c 的 audio_get_gain），
-  /// 所以这里先开立方根抵消掉。
-  static double mpvVolume(double p) {
+  /// An exponential curve even in decibels (https://dr-lex.be/info-stuff/volumecontrols.html):
+  /// amplitude = 10^(−[_rangeDb]·(1−p)/20), so every 10% of the slider changes loudness by the same amount;
+  /// the bottom 10% goes linearly to 0, so all the way down is true silence.
+  /// The range isn't the 60 dB the article recommends: system volume already lowers things a lot, and at 60 dB the lower half
+  /// is all below −30 dB, sounding equally quiet and useless.
+  /// mpv itself cubes volume/100 (audio_get_gain in player/audio.c),
+  /// so take the cube root here to cancel it out.
+  /// [gainDb] (≤ 0) and [fade] multiply the amplitude.
+  static double mpvVolume(double p, {double gainDb = 0, double fade = 1}) {
     p = p.clamp(0.0, 1.0);
     double amp(double x) => math.pow(10, -_rangeDb * (1 - x) / 20).toDouble();
-    final a = p < 0.1 ? p * 10 * amp(0.1) : amp(p);
+    var a = p < 0.1 ? p * 10 * amp(0.1) : amp(p);
+    a *= math.pow(10, math.min(gainDb, 0) / 20) * fade.clamp(0.0, 1.0);
     return 100 * math.pow(a.clamp(0.0, 1.0), 1 / 3).toDouble();
   }
 
-  /// 滑块从底到顶的响度范围（dB）。
+  /// Loudness range (dB) from the bottom to the top of the slider.
   static const _rangeDb = 40.0;
 
-  Future<void> stop() => _p.stop();
+  @override
+  Future<void> stop() {
+    _currentKey = null;
+    _queuedKey = null;
+    return _p.stop();
+  }
 
+  @override
   Future<void> dispose() async {
     for (final s in _subs) {
       await s.cancel();

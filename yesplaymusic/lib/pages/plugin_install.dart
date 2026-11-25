@@ -1,8 +1,8 @@
-// 安装插件（Sketch 定稿「v31 / 设置 · 插件 · 安装 1 / 2」）。
+// Install plugin (Sketch final "v31 / 设置 · 插件 · 安装 1 / 2").
 //
-// 第一步粘贴链接（GitHub 仓库、Release、plugin.json、.zip），或者选本地文件夹；
-// 第二步列出来源、要的权限和提供的能力，用户点「安装」才真正装进插件目录。
-// 更新插件时直接从第二步开始。
+// Step one: paste a link (GitHub repo, Release, plugin.json, .zip) or pick a local folder;
+// step two lists the origin, requested permissions and provided capabilities; it's only installed into the plugin directory after the user clicks "Install".
+// Updating a plugin starts directly at step two.
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/widgets.dart';
@@ -17,7 +17,7 @@ import '../ui.dart';
 import 'common.dart';
 import 'plugin_ui.dart';
 
-/// 打开安装弹窗。给了 [link] 时直接去读它（更新插件）。
+/// Opens the install dialog. With [link], reads it right away (plugin update).
 void showInstallPlugin(BuildContext context, {String? link}) {
   showPluginDialog(
     context,
@@ -40,7 +40,7 @@ class _InstallFlowState extends State<_InstallFlow> {
   PluginPackage? _pkg;
   String? _error;
   var _busy = false, _installing = false, _installed = false;
-  var _gen = 0; // 读到一半关掉或换了链接时，晚到的结果丢掉
+  var _gen = 0; // late results are dropped if closed midway or the link changed
 
   @override
   void initState() {
@@ -108,7 +108,9 @@ class _InstallFlowState extends State<_InstallFlow> {
     final pkg = _pkg;
     if (pkg == null || _installing) return;
     final app = context.appRead;
-    final update = _installedVersion(app, pkg.manifest) != null;
+    final update =
+        _installedVersion(app, pkg.manifest) != null &&
+        app.pluginIdConflict(pkg) == null;
     final name = pluginTr(pkg.dir, pkg.manifest.info.name);
     setState(() => _installing = true);
     try {
@@ -122,6 +124,17 @@ class _InstallFlowState extends State<_InstallFlow> {
       showToast(L.pluginInstallFailed('$e'));
       if (mounted) setState(() => _installing = false);
     }
+  }
+
+  /// Display name of the installed plugin with the same id.
+  static String _installedName(AppState app, PluginManifest mf) {
+    for (final s in app.plugins) {
+      if (s.id == mf.id) return s.tr(s.info.name);
+    }
+    for (final e in app.disabledPlugins.entries) {
+      if (e.value.id == mf.id) return pluginTr(e.key, e.value.info.name);
+    }
+    return mf.id;
   }
 
   static String? _installedVersion(AppState app, PluginManifest mf) {
@@ -147,7 +160,7 @@ class _InstallFlowState extends State<_InstallFlow> {
           ),
   );
 
-  // ───── 第一步：链接 ─────
+  // ───── Step one: link ─────
 
   Widget _linkStep() {
     final l = context.l10n;
@@ -171,13 +184,13 @@ class _InstallFlowState extends State<_InstallFlow> {
             ),
           ),
           const SizedBox(height: 20),
-          Text(
+          CjkText(
             l.pluginInstallTitle,
             textAlign: TextAlign.center,
             style: ts(20, w: w700),
           ),
           const SizedBox(height: 10),
-          Text(
+          CjkText(
             l.pluginInstallPrompt,
             textAlign: TextAlign.center,
             style: ts(14, w: w500, c: P.dark ? wa(0.6) : P.muted, h: 22 / 14),
@@ -214,7 +227,7 @@ class _InstallFlowState extends State<_InstallFlow> {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          CjkText(
             _error ?? l.pluginInstallSupportHint,
             style: ts(
               12,
@@ -264,13 +277,14 @@ class _InstallFlowState extends State<_InstallFlow> {
     );
   }
 
-  // ───── 第二步：权限与能力 ─────
+  // ───── Step two: permissions and capabilities ─────
 
   Widget _review(PluginPackage pkg) {
     final app = context.app;
     final l = context.l10n;
     final mf = pkg.manifest;
     final installed = _installedVersion(app, mf);
+    final conflict = app.pluginIdConflict(pkg);
     final blocked = pkg.blocked;
     final caps = capabilityLabels(pkg.ops, l);
     final nav = navTitles(mf, dir: pkg.dir);
@@ -329,7 +343,7 @@ class _InstallFlowState extends State<_InstallFlow> {
                 ),
                 if (mf.description.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text(
+                  CjkText(
                     pluginTr(pkg.dir, mf.description),
                     style: ts(13, w: w500, c: P.muted, h: 20 / 13),
                   ),
@@ -347,6 +361,32 @@ class _InstallFlowState extends State<_InstallFlow> {
                           w: w500,
                           c: errorColor,
                           lines: 2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (conflict != null) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Ico('warning', size: 16, color: warnColor),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CjkText(
+                          conflict.isEmpty
+                              ? l.pluginIdConflictUnknown(
+                                  _installedName(app, mf),
+                                )
+                              : l.pluginIdConflict(
+                                  _installedName(app, mf),
+                                  conflict,
+                                ),
+                          style: ts(13, w: w500, c: warnColor, h: 20 / 13),
                         ),
                       ),
                     ],
@@ -391,6 +431,16 @@ class _InstallFlowState extends State<_InstallFlow> {
                     iconColor: warnColor,
                     detail: l.pluginPermProcessDetail(
                       programsText(mf.process, l),
+                    ),
+                  ),
+                ],
+                if (mf.ipc.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  PermRow(
+                    icon: 'plugin',
+                    title: l.pluginPermIpc,
+                    detail: l.pluginPermIpcDetail(
+                      mf.ipc.join(listJoiner(currentLocale)),
                     ),
                   ),
                 ],
@@ -451,6 +501,8 @@ class _InstallFlowState extends State<_InstallFlow> {
                 child: Btn(
                   label: _installing
                       ? l.pluginInstalling
+                      : conflict != null
+                      ? l.actionReplace
                       : (installed != null ? l.actionUpdate : l.actionInstall),
                   size: BtnSize.l,
                   kind: BtnKind.primary,

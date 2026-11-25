@@ -76,6 +76,15 @@ class AppLocalizationsFr extends AppLocalizations {
   String get actionClose => 'Fermer';
 
   @override
+  String get windowMinimize => 'Réduire';
+
+  @override
+  String get windowMaximize => 'Agrandir';
+
+  @override
+  String get windowRestore => 'Niveau inférieur';
+
+  @override
   String get actionCancel => 'Annuler';
 
   @override
@@ -422,11 +431,25 @@ class AppLocalizationsFr extends AppLocalizations {
   String get langSystem => 'Suivre le système';
 
   @override
-  String get settingsMiniLyric => 'Afficher les paroles dans le mini-lecteur';
+  String get settingsMiniLyric =>
+      'Toujours afficher les paroles dans le mini-lecteur';
 
   @override
-  String get settingsMinimizeToTray =>
-      'Réduire dans la barre d\'état à la fermeture';
+  String get settingsKeepRunning =>
+      'Continuer en arrière-plan après la fermeture';
+
+  @override
+  String get trayShowWindow => 'Afficher la fenêtre';
+
+  @override
+  String get trayQuit => 'Quitter';
+
+  @override
+  String get settingsDynamicIsland => 'Île dynamique';
+
+  @override
+  String get settingsDynamicIslandHint =>
+      'Affiche la lecture en cours autour de l\'encoche en haut de l\'écran ; survolez pour afficher les commandes';
 
   @override
   String aboutDownloadVersion(String version) {
@@ -586,6 +609,42 @@ class AppLocalizationsFr extends AppLocalizations {
   String get sourceNoMusicFound => 'Aucune musique trouvée';
 
   @override
+  String sourceScanningCount(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString titres',
+      one: '1 titre',
+    );
+    return 'Analyse… $_temp0';
+  }
+
+  @override
+  String sourceFoldersUnreadable(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString dossiers illisibles ont été ignorés',
+      one: '1 dossier illisible a été ignoré',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sourceFolderUnreadable => 'Illisible, ignoré';
+
+  @override
+  String get sourceCancelScan => 'Annuler l\'analyse';
+
+  @override
   String get sourceNotFound => 'Source musicale introuvable';
 
   @override
@@ -703,6 +762,15 @@ class AppLocalizationsFr extends AppLocalizations {
   String get pluginSettingsTitle => 'Paramètres du plugin';
 
   @override
+  String get pluginTestConnection => 'Tester la connexion';
+
+  @override
+  String get pluginTesting => 'Test en cours…';
+
+  @override
+  String get pluginTestOk => 'Connecté';
+
+  @override
   String get pluginSectionAccount => 'Compte';
 
   @override
@@ -815,6 +883,14 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String get pluginPermIpc => 'Se connecter aux applications locales';
+
+  @override
+  String pluginPermIpcDetail(String names) {
+    return 'Communique avec d\'autres applications de cet ordinateur : $names';
+  }
+
+  @override
   String get pluginPermStorage => 'Stockage de données';
 
   @override
@@ -874,6 +950,20 @@ class AppLocalizationsFr extends AppLocalizations {
   String get officialEmbyDesc => 'Se connecter à un serveur Emby';
 
   @override
+  String get officialLastfmDesc => 'Scrobbler vos écoutes sur Last.fm';
+
+  @override
+  String get officialListenbrainzDesc =>
+      'Scrobbler sur ListenBrainz ou un serveur auto-hébergé';
+
+  @override
+  String get officialDiscordDesc => 'Afficher sur Discord ce que vous écoutez';
+
+  @override
+  String get officialWebdavDesc =>
+      'Écouter la musique de serveurs WebDAV (NAS, Nextcloud, OpenList…)';
+
+  @override
   String get capSuggest => 'Suggestions';
 
   @override
@@ -902,6 +992,12 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get capHistory => 'Historique';
+
+  @override
+  String get capScrobble => 'Scrobbling';
+
+  @override
+  String get capPlaybackStatus => 'État de lecture';
 
   @override
   String get capDislike => 'Pas intéressé';
@@ -1705,4 +1801,166 @@ class AppLocalizationsFr extends AppLocalizations {
   String sourceErrNotFound(String source) {
     return 'Source introuvable : $source';
   }
+
+  @override
+  String get actionReplace => 'Remplacer';
+
+  @override
+  String pluginIdConflict(String name, String source) {
+    return '« $name » est déjà installé depuis $source, une autre source avec le même identifiant. Le remplacer efface ses réglages, sa connexion et les autorisations accordées.';
+  }
+
+  @override
+  String pluginIdConflictUnknown(String name) {
+    return '« $name » est déjà installé avec le même identifiant, mais rien ne confirme qu’il vienne de la même source. Le remplacer efface ses réglages, sa connexion et les autorisations accordées.';
+  }
+
+  @override
+  String get pluginCheckUpdate => 'Rechercher des mises à jour';
+
+  @override
+  String pluginUpToDate(String name) {
+    return '« $name » est à jour';
+  }
+
+  @override
+  String pluginUpdateFoundToast(String name, String version) {
+    return '« $name » peut être mis à jour vers $version';
+  }
+
+  @override
+  String pluginUpdateCheckFailed(String error) {
+    return 'Impossible de rechercher des mises à jour : $error';
+  }
+
+  @override
+  String get pluginSectionUpdates => 'Mises à jour';
+
+  @override
+  String get pluginAutoUpdate => 'Mettre à jour automatiquement';
+
+  @override
+  String get pluginAutoUpdateDetail =>
+      'Installe les nouvelles versions en arrière-plan. Les versions qui demandent de nouvelles autorisations nécessitent toujours votre confirmation.';
+
+  @override
+  String get pluginAutoUpdateUnsupported =>
+      'Disponible uniquement pour les plugins installés depuis GitHub ou indiquant un dépôt GitHub dans plugin.json.';
+
+  @override
+  String pluginAutoUpdatedToast(String name, String version) {
+    return '« $name » a été mis à jour vers $version';
+  }
+
+  @override
+  String get settingsReplayGain => 'Égalisation du volume';
+
+  @override
+  String get settingsReplayGainHint => 'Lire tous les titres au même niveau';
+
+  @override
+  String get gainModeOff => 'Désactivée';
+
+  @override
+  String get gainModeTrack => 'Par titre';
+
+  @override
+  String get gainModeAlbum => 'Par album';
+
+  @override
+  String get gainModeSmart => 'Intelligente';
+
+  @override
+  String get gainModeOffInfo => 'Les titres sont lus à leur volume d’origine.';
+
+  @override
+  String get gainModeTrackInfo =>
+      'Chaque titre est ajusté à un niveau similaire. Idéal en lecture aléatoire ou pour les playlists mêlant plusieurs albums.';
+
+  @override
+  String get gainModeAlbumInfo =>
+      'Tout l’album est ajusté d’un bloc, les écarts de volume entre ses titres sont conservés. Idéal pour écouter un album en entier.';
+
+  @override
+  String get gainModeSmartInfo =>
+      'Utilise « Par album » quand un album est lu dans l’ordre, sinon « Par titre » (aléatoire, playlists, radio).';
+
+  @override
+  String get gainModeNote =>
+      'Nécessite des balises ReplayGain dans le fichier ou des données de volume fournies par le plugin. Sinon, le titre n’est pas ajusté.';
+
+  @override
+  String get settingsEqualizer => 'Égaliseur';
+
+  @override
+  String get eqPresetFlat => 'Neutre';
+
+  @override
+  String get eqPresetPop => 'Pop';
+
+  @override
+  String get eqPresetRock => 'Rock';
+
+  @override
+  String get eqPresetVocal => 'Voix';
+
+  @override
+  String get eqPresetBassBoost => 'Basses+';
+
+  @override
+  String get eqPresetTrebleBoost => 'Aigus+';
+
+  @override
+  String get eqPresetClassical => 'Classique';
+
+  @override
+  String get eqPresetJazz => 'Jazz';
+
+  @override
+  String get eqPresetElectronic => 'Électro';
+
+  @override
+  String get eqPresetCustom => 'Perso';
+
+  @override
+  String get sleepTimer => 'Minuteur de veille';
+
+  @override
+  String sleepMinutes(int n) {
+    return '$n min';
+  }
+
+  @override
+  String get sleepCustom => 'Personnalisé…';
+
+  @override
+  String get sleepAfterTrack => 'Fin de ce titre';
+
+  @override
+  String get sleepOff => 'Désactiver le minuteur';
+
+  @override
+  String sleepLeft(String time) {
+    return 'Reste $time';
+  }
+
+  @override
+  String get sleepCustomTitle => 'Arrêter la lecture dans';
+
+  @override
+  String get sleepCustomPlaceholder => 'Minutes';
+
+  @override
+  String get sleepCustomAction => 'Démarrer';
+
+  @override
+  String toastSleepIn(int n) {
+    return 'La lecture s’arrêtera dans $n min';
+  }
+
+  @override
+  String get toastSleepAfterTrack => 'La lecture s’arrêtera après ce titre';
+
+  @override
+  String get toastSleepOff => 'Minuteur de veille désactivé';
 }

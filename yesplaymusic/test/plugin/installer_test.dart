@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:yesplaymusic/plugin/installer.dart';
 import 'package:yesplaymusic/plugin/manifest.dart';
 
-/// 本机静态文件服务：路径 → 内容。记录被请求过的路径。
+/// Local static file server: path → content. Records the paths requested.
 Future<({HttpServer server, List<String> hits})> _serve(
   Map<String, List<int>> files,
 ) async {
@@ -52,7 +52,7 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  /// tmp 下除了 plugins/ 以外有没有别的文件（被写出插件目录）。
+  /// Whether tmp has any files besides plugins/ (written outside the plugin directory).
   List<String> escaped() => [
     for (final e in tmp.listSync(recursive: true))
       if (e is File && !p.isWithin(root, e.path)) e.path,
@@ -241,6 +241,31 @@ void main() {
       expect(File(p.join(dir, 'index.js')).existsSync(), isTrue);
     });
 
+    test('symlinks in the folder are not followed', () async {
+      final secret = Directory(p.join(tmp.path, 'secret'))..createSync();
+      File(p.join(secret.path, 'id_rsa')).writeAsStringSync('KEY');
+      final src = Directory(p.join(tmp.path, 'src3'))..createSync();
+      File(p.join(src.path, 'plugin.json'))
+          .writeAsStringSync('{"id":"lnk","name":"Lnk","version":"1.0.0"}');
+      File(p.join(src.path, 'index.js'))
+          .writeAsStringSync('export async function playlists(){}');
+      Link(p.join(src.path, 'data')).createSync(secret.path);
+      Link(p.join(src.path, 'key.txt'))
+          .createSync(p.join(secret.path, 'id_rsa'));
+
+      final pkg = await fetchPluginFromFolder(src.path, pluginsRoot: root);
+      final dir = await installPlugin(pkg, pluginsRoot: root);
+      expect(File(p.join(dir, 'index.js')).existsSync(), isTrue);
+      expect(
+        FileSystemEntity.typeSync(p.join(dir, 'data', 'id_rsa')),
+        FileSystemEntityType.notFound,
+      );
+      expect(
+        FileSystemEntity.typeSync(p.join(dir, 'key.txt')),
+        FileSystemEntityType.notFound,
+      );
+    }, skip: Platform.isWindows ? 'creating symlinks needs privileges' : false);
+
     test('文件夹里缺入口文件时报错', () async {
       final src = Directory(p.join(tmp.path, 'src2'))..createSync();
       File(p.join(src.path, 'plugin.json'))
@@ -277,6 +302,116 @@ export * from '../outside.js';
         'album',
         'playlist',
       });
+    });
+  });
+
+  group('sameOrigin', () {
+    test(
+      'same GitHub repo counts as the same plugin, whatever the link form',
+      () {
+        expect(
+          sameOrigin(
+            'https://github.com/alice/ypm-foo',
+            'https://github.com/Alice/ypm-foo/tree/dev',
+          ),
+          isTrue,
+        );
+      },
+    );
+    test('different repos, links or local vs link differ', () {
+      expect(
+        sameOrigin(
+          'https://github.com/alice/ypm-foo',
+          'https://github.com/bob/ypm-foo',
+        ),
+        isFalse,
+      );
+      expect(
+        sameOrigin('https://a.com/foo.zip', 'https://b.com/foo.zip'),
+        isFalse,
+      );
+      expect(sameOrigin('', 'https://github.com/alice/ypm-foo'), isFalse);
+    });
+    test('two local folder installs are the same', () {
+      expect(sameOrigin('', ''), isTrue);
+    });
+  });
+
+  test('originLabel', () {
+    expect(
+      originLabel('https://github.com/alice/ypm-foo/tree/dev'),
+      'github.com/alice/ypm-foo',
+    );
+    expect(originLabel('https://a.com/p/foo.zip'), 'a.com/p/foo.zip');
+    expect(originLabel(''), '');
+  });
+
+  group('permissionsGrow', () {
+    PluginManifest mf({
+      List<String> net = const [],
+      Object proc = const [],
+      List<String> ipc = const [],
+    }) => PluginManifest.parse(
+      jsonEncode({
+        'id': 'a.b',
+        'name': 'B',
+        'main': 'index.js',
+        'permissions': {'network': net, 'process': proc, 'ipc': ipc},
+      }),
+    );
+
+    test('same or fewer permissions is fine', () {
+      expect(
+        permissionsGrow(mf(net: ['a.com', 'b.com']), mf(net: ['a.com'])),
+        isFalse,
+      );
+      expect(
+        permissionsGrow(mf(proc: ['ffmpeg']), mf(proc: ['ffmpeg'])),
+        isFalse,
+      );
+      expect(
+        permissionsGrow(mf(ipc: ['discord-ipc-*']), mf(ipc: ['discord-ipc-*'])),
+        isFalse,
+      );
+    });
+    test('a new host, program or ipc name needs the user', () {
+      expect(
+        permissionsGrow(mf(net: ['a.com']), mf(net: ['a.com', 'c.com'])),
+        isTrue,
+      );
+      expect(permissionsGrow(mf(), mf(proc: ['ffmpeg'])), isTrue);
+      expect(permissionsGrow(mf(net: ['a.com']), mf(net: ['*'])), isTrue);
+      expect(permissionsGrow(mf(), mf(ipc: ['discord-ipc-*'])), isTrue);
+    });
+    test('* already covers everything', () {
+      expect(permissionsGrow(mf(net: ['*']), mf(net: ['c.com'])), isFalse);
+      expect(permissionsGrow(mf(proc: true), mf(proc: ['ffmpeg'])), isFalse);
+    });
+  });
+
+  group('manifest repository', () {
+    test('parses string and object repository', () {
+      final a = PluginManifest.parse(
+        jsonEncode({
+          'id': 'a.b',
+          'name': 'B',
+          'repository': ' https://github.com/alice/ypm-b ',
+        }),
+      );
+      expect(a.repository, 'https://github.com/alice/ypm-b');
+      final b = PluginManifest.parse(
+        jsonEncode({
+          'id': 'a.b',
+          'name': 'B',
+          'repository': {
+            'type': 'git',
+            'url': 'https://github.com/alice/ypm-b',
+          },
+        }),
+      );
+      expect(b.repository, 'https://github.com/alice/ypm-b');
+      final c = PluginManifest.parse(jsonEncode({'id': 'a.b', 'name': 'B'}));
+      expect(c.repository, isEmpty);
     });
   });
 }

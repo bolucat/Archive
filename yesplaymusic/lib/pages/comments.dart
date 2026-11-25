@@ -1,6 +1,6 @@
-// 正在播放页的评论（定稿 · 正在播放 · 评论）：每条评论一样大，头像、名字、
-// 时间、正文、点赞、回复；回复是一条普通评论，正文下面引用被回复的那条。
-// 写评论和回复都打开整屏的输入层（沉浸大字）。
+// Comments on the Now Playing page (final · Now Playing · Comments): every comment the same size, with avatar, name,
+// time, body, likes and reply; a reply is a normal comment quoting the one it replies to under the body.
+// Writing a comment or reply opens a full-screen input layer (immersive large text).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -22,7 +22,7 @@ import 'home_sections.dart' show playsText;
 String _err(Object e, String fallback) =>
     e is SourceError && e.reason.isNotEmpty ? e.reason : fallback;
 
-/// 3 天前、5 月 12 日（今年）、2024 年 1 月 3 日。
+/// 3 days ago, May 12 (this year), Jan 3, 2024.
 String commentTime(int ms, AppLocalizations l) {
   if (ms <= 0) return '';
   final t = DateTime.fromMillisecondsSinceEpoch(ms);
@@ -129,7 +129,7 @@ class _CommentsPanelState extends State<CommentsPanel> {
             itemCount: feed.items.length + (feed.more ? 1 : 0),
             itemBuilder: (context, i) {
               if (i == feed.items.length) {
-                // 列表不够长滚不动时也要接着取
+                // Keep fetching even when the list is too short to scroll
                 scheduleMicrotask(feed.loadMore);
                 return Padding(
                   padding: const EdgeInsets.only(left: 44, top: 4),
@@ -185,12 +185,12 @@ class _SortTab extends StatelessWidget {
     builder: (_, h, _) => AnimatedDefaultTextStyle(
       duration: fast,
       style: ts(14, w: w700, c: wa(active ? 1 : (h ? 0.75 : 0.5))),
-      child: Text(label),
+      child: CjkText(label),
     ),
   );
 }
 
-/// 评论人头像：源给了图就用图，没有就是名字的第一个字。
+/// Commenter avatar: the image if the source gives one, otherwise the first character of the name.
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.name, required this.url, this.size = 32});
   final String name, url;
@@ -210,7 +210,7 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// 被回复的那条：左边一道竖线，「@名字：」接正文，最多两行。
+/// The comment being replied to: a vertical line on the left, "@name:" followed by the body, at most two lines.
 class _Quote extends StatelessWidget {
   const _Quote(this.q, {this.size = 13});
   final m.CommentQuote q;
@@ -226,7 +226,7 @@ class _Quote extends StatelessWidget {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Text.rich(
+            child: CjkText.rich(
               TextSpan(
                 children: [
                   if (q.userName.isNotEmpty)
@@ -279,7 +279,7 @@ class _CommentRow extends StatelessWidget {
                     c: white,
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  CjkText(
                     c.text,
                     style: ts(14, w: w500, c: wa(0.85), h: 1.57),
                   ),
@@ -288,7 +288,7 @@ class _CommentRow extends StatelessWidget {
                     _Quote(c.replyTo!),
                   ],
                   const SizedBox(height: 8),
-                  // 左下角是时间，右下角是点赞和回复
+                  // Time at the bottom left, likes and reply at the bottom right
                   Row(
                     children: [
                       tx(
@@ -345,9 +345,9 @@ class _CommentRow extends StatelessWidget {
   }
 }
 
-// ───── 输入层 ─────
+// ───── Input layer ─────
 
-/// 打开写评论（[replyTo] 为空）或回复的整屏输入层。
+/// Opens the full-screen input layer for writing a comment ([replyTo] empty) or a reply.
 void openComposer(
   BuildContext context,
   Track track,
@@ -572,7 +572,7 @@ class _ComposerState extends State<_Composer>
           listenable: _text,
           builder: (_, _) => _text.text.isEmpty
               ? IgnorePointer(
-                  child: Text(
+                  child: CjkText(
                     r == null
                         ? context.l10n.commentPlaceholder
                         : context.l10n.commentReplyPlaceholder(r.userName),

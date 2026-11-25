@@ -76,6 +76,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get actionClose => '닫기';
 
   @override
+  String get windowMinimize => '최소화';
+
+  @override
+  String get windowMaximize => '최대화';
+
+  @override
+  String get windowRestore => '이전 크기로 복원';
+
+  @override
   String get actionCancel => '취소';
 
   @override
@@ -419,10 +428,23 @@ class AppLocalizationsKo extends AppLocalizations {
   String get langSystem => '시스템 설정 따르기';
 
   @override
-  String get settingsMiniLyric => '미니 플레이어에 현재 가사 표시';
+  String get settingsMiniLyric => '미니 플레이어에 항상 가사 표시';
 
   @override
-  String get settingsMinimizeToTray => '창을 닫을 때 트레이로 최소화';
+  String get settingsKeepRunning => '창을 닫아도 백그라운드에서 계속 실행';
+
+  @override
+  String get trayShowWindow => '창 표시';
+
+  @override
+  String get trayQuit => '종료';
+
+  @override
+  String get settingsDynamicIsland => '다이내믹 아일랜드';
+
+  @override
+  String get settingsDynamicIslandHint =>
+      '화면 상단 노치 주변에 재생 중인 곡을 표시하고, 마우스를 올리면 컨트롤이 펼쳐집니다';
 
   @override
   String aboutDownloadVersion(String version) {
@@ -577,6 +599,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get sourceNoMusicFound => '음악을 찾지 못했습니다';
 
   @override
+  String sourceScanningCount(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '스캔 중… $countString곡';
+  }
+
+  @override
+  String sourceFoldersUnreadable(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '폴더 $countString개를 읽을 수 없어 건너뛰었습니다';
+  }
+
+  @override
+  String get sourceFolderUnreadable => '읽을 수 없어 건너뜀';
+
+  @override
+  String get sourceCancelScan => '스캔 취소';
+
+  @override
   String get sourceNotFound => '음악 소스를 찾을 수 없습니다';
 
   @override
@@ -692,6 +738,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pluginSettingsTitle => '플러그인 설정';
 
   @override
+  String get pluginTestConnection => '연결 테스트';
+
+  @override
+  String get pluginTesting => '테스트 중…';
+
+  @override
+  String get pluginTestOk => '연결되었습니다';
+
+  @override
   String get pluginSectionAccount => '계정';
 
   @override
@@ -798,6 +853,14 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get pluginPermIpc => '로컬 앱에 연결';
+
+  @override
+  String pluginPermIpcDetail(String names) {
+    return '이 컴퓨터의 다른 앱과 통신: $names';
+  }
+
+  @override
   String get pluginPermStorage => '데이터 저장';
 
   @override
@@ -852,6 +915,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get officialEmbyDesc => 'Emby 서버에 연결';
 
   @override
+  String get officialLastfmDesc => '들은 곡을 Last.fm에 기록';
+
+  @override
+  String get officialListenbrainzDesc => '들은 곡을 ListenBrainz나 자체 호스팅 서버에 기록';
+
+  @override
+  String get officialDiscordDesc => '듣고 있는 곡을 Discord에 표시';
+
+  @override
+  String get officialWebdavDesc =>
+      'NAS, Nextcloud, OpenList 등 WebDAV 서버의 음악 재생';
+
+  @override
   String get capSuggest => '검색 제안';
 
   @override
@@ -880,6 +956,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get capHistory => '재생 기록';
+
+  @override
+  String get capScrobble => '스크로블';
+
+  @override
+  String get capPlaybackStatus => '재생 상태';
 
   @override
   String get capDislike => '관심 없음';
@@ -1667,4 +1749,166 @@ class AppLocalizationsKo extends AppLocalizations {
   String sourceErrNotFound(String source) {
     return '소스를 찾을 수 없습니다: $source';
   }
+
+  @override
+  String get actionReplace => '교체';
+
+  @override
+  String pluginIdConflict(String name, String source) {
+    return '「$name」이(가) $source에서 이미 설치되어 있습니다. id는 같지만 출처가 다릅니다. 교체하면 해당 플러그인의 설정, 로그인 상태, 허용한 권한이 삭제됩니다.';
+  }
+
+  @override
+  String pluginIdConflictUnknown(String name) {
+    return '「$name」이(가) 같은 id로 이미 설치되어 있지만 같은 출처인지 확인할 수 없습니다. 교체하면 해당 플러그인의 설정, 로그인 상태, 허용한 권한이 삭제됩니다.';
+  }
+
+  @override
+  String get pluginCheckUpdate => '업데이트 확인';
+
+  @override
+  String pluginUpToDate(String name) {
+    return '「$name」은(는) 최신 버전입니다';
+  }
+
+  @override
+  String pluginUpdateFoundToast(String name, String version) {
+    return '「$name」을(를) $version(으)로 업데이트할 수 있습니다';
+  }
+
+  @override
+  String pluginUpdateCheckFailed(String error) {
+    return '업데이트를 확인하지 못했습니다: $error';
+  }
+
+  @override
+  String get pluginSectionUpdates => '업데이트';
+
+  @override
+  String get pluginAutoUpdate => '자동 업데이트';
+
+  @override
+  String get pluginAutoUpdateDetail =>
+      '새 버전을 백그라운드에서 설치합니다. 새 권한을 요청하는 버전은 직접 확인해야 합니다.';
+
+  @override
+  String get pluginAutoUpdateUnsupported =>
+      'GitHub에서 설치했거나 plugin.json에 GitHub 저장소가 지정된 플러그인만 지원합니다.';
+
+  @override
+  String pluginAutoUpdatedToast(String name, String version) {
+    return '「$name」을(를) $version(으)로 업데이트했습니다';
+  }
+
+  @override
+  String get settingsReplayGain => '음량 평준화';
+
+  @override
+  String get settingsReplayGainHint => '곡마다 비슷한 크기로 들리게 합니다';
+
+  @override
+  String get gainModeOff => '끔';
+
+  @override
+  String get gainModeTrack => '곡별';
+
+  @override
+  String get gainModeAlbum => '앨범별';
+
+  @override
+  String get gainModeSmart => '스마트';
+
+  @override
+  String get gainModeOffInfo => '곡을 원래 음량 그대로 재생합니다.';
+
+  @override
+  String get gainModeTrackInfo =>
+      '곡마다 비슷한 크기로 맞춥니다. 셔플 재생이나 여러 앨범의 곡이 섞인 플레이리스트에 알맞습니다.';
+
+  @override
+  String get gainModeAlbumInfo =>
+      '앨범 전체를 함께 조정해 곡 사이의 음량 차이가 그대로 유지됩니다. 앨범을 처음부터 끝까지 들을 때 알맞습니다.';
+
+  @override
+  String get gainModeSmartInfo =>
+      '앨범을 순서대로 재생할 때는 \'앨범별\', 그 밖에는(셔플, 플레이리스트, 라디오) \'곡별\'을 사용합니다.';
+
+  @override
+  String get gainModeNote =>
+      '파일에 ReplayGain 태그가 있거나 플러그인이 음량 정보를 제공해야 합니다. 둘 다 없는 곡은 조정하지 않습니다.';
+
+  @override
+  String get settingsEqualizer => '이퀄라이저';
+
+  @override
+  String get eqPresetFlat => '플랫';
+
+  @override
+  String get eqPresetPop => '팝';
+
+  @override
+  String get eqPresetRock => '록';
+
+  @override
+  String get eqPresetVocal => '보컬';
+
+  @override
+  String get eqPresetBassBoost => '저음 강화';
+
+  @override
+  String get eqPresetTrebleBoost => '고음 강화';
+
+  @override
+  String get eqPresetClassical => '클래식';
+
+  @override
+  String get eqPresetJazz => '재즈';
+
+  @override
+  String get eqPresetElectronic => '일렉트로닉';
+
+  @override
+  String get eqPresetCustom => '사용자 지정';
+
+  @override
+  String get sleepTimer => '취침 타이머';
+
+  @override
+  String sleepMinutes(int n) {
+    return '$n분';
+  }
+
+  @override
+  String get sleepCustom => '사용자 지정…';
+
+  @override
+  String get sleepAfterTrack => '이 곡이 끝나면';
+
+  @override
+  String get sleepOff => '타이머 끄기';
+
+  @override
+  String sleepLeft(String time) {
+    return '$time 남음';
+  }
+
+  @override
+  String get sleepCustomTitle => '재생 중지까지';
+
+  @override
+  String get sleepCustomPlaceholder => '분';
+
+  @override
+  String get sleepCustomAction => '시작';
+
+  @override
+  String toastSleepIn(int n) {
+    return '$n분 후 재생을 멈춥니다';
+  }
+
+  @override
+  String get toastSleepAfterTrack => '이 곡이 끝나면 재생을 멈춥니다';
+
+  @override
+  String get toastSleepOff => '취침 타이머를 껐습니다';
 }

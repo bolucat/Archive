@@ -33,30 +33,68 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
+  landing:
+    name: Landing page
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.name }})
     needs: test
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos
+          - name: macos-arm64
+            os: macos
+            arch: arm64
             runner: macos-15
-          - os: windows
+          - name: macos-x64
+            os: macos
+            arch: x64
+            runner: macos-15-intel
+          - name: windows
+            os: windows
             runner: windows-2022
-          - os: linux
+          - name: linux-x64
+            os: linux
             runner: ubuntu-22.04
+          - name: linux-arm64
+            os: linux
+            runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
+        if: matrix.name != 'linux-arm64'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      # Flutter publishes no prebuilt Linux arm64 SDK, so clone the release tag instead.
+      - name: Install Flutter (Linux arm64)
+        if: matrix.name == 'linux-arm64'
+        run: |
+          git clone --depth 1 -b "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - name: Install Linux dependencies
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libmpv-dev
-      - run: flutter build ${{ matrix.os }} --release
+      - if: matrix.os == 'macos'
+        run: scripts/build-macos.sh "${{ matrix.arch }}"
+      - if: matrix.os != 'macos'
+        run: flutter build ${{ matrix.os }} --release

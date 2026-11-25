@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+- 支持 Intel Mac，提供独立安装包和自动更新。 / Support Intel Macs with a separate installer and automatic updates.
+- 听歌上报：插件可以导出 `nowPlaying` 和 `scrobble`，接入 ListenBrainz、Last.fm 这类听歌记录服务。不管歌来自本地还是哪个插件都会上报，规则沿用 Last.fm（听够一半或 4 分钟）。见 [插件开发指南](https://github.com/qier222/YesPlayMusic/blob/main/docs/plugins.md#听歌上报)。
+- 官方插件新增 Last.fm：用自己的 API key 登录后，把听过的歌记到 Last.fm。从 2026 年 12 月 1 日起 Last.fm 的 API key 需要订阅 Last.fm Pro。
+- 官方插件新增 ListenBrainz：填上 token 就能把听过的歌记到 ListenBrainz（免费），也支持 Koito、Maloja 等自建服务。
+- 官方插件新增 Discord：在 Discord 个人资料上显示正在听的歌（Rich Presence）。
+- 插件可以导出 `playback`，在换歌、播放 / 暂停、拖进度、停止时收到播放状态；新增 `host.ipc`（连本机应用的本地通道，需要在 `permissions.ipc` 里声明，安装时会列出来）和 `host.pid`。
+- 修复插件的 `played` 从来没被调用的问题：现在一首歌听够了（同上的规则）会告诉它所属的插件，Jellyfin 等插件导出的播放记录上报开始生效。
+- 官方插件新增 WebDAV：播放 NAS、Nextcloud、OpenList / AList 等 WebDAV 服务器上的音乐，读取标签、封面和歌词。
+- 插件设置弹窗里新增「测试连接」，用还没保存的设置试连（插件导出 `testConnection` 时显示）。
+- 插件：新增 `host.files`，插件可以在自己的数据目录里存文件（封面、大块数据），拿到 `file://` 地址直接用作封面或播放地址。
+- 修复：插件更新或重新加载后，设置页里还显示旧的插件图标。
+
 ## [3.0.0] - 2026-11-24
 
 YesPlayMusic 用 Flutter 重写的第一个版本。

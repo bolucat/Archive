@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/log"
@@ -222,21 +223,47 @@ func (c *HTTP2Conn) NeedAdditionalReadDeadline() bool {
 
 type ServerHTTPConn struct {
 	HTTP2Conn
-	Flusher http.Flusher
+	Controller  *http.ResponseController
+	writeAccess sync.Mutex
+	writing     bool
+	closed      bool
 }
 
 func (c *ServerHTTPConn) Write(b []byte) (n int, err error) {
+	c.writeAccess.Lock()
+	if c.closed {
+		c.writeAccess.Unlock()
+		return 0, net.ErrClosed
+	}
+	c.writing = true
+	c.writeAccess.Unlock()
 	n, err = c.writer.Write(b)
 	if err == nil {
-		c.Flusher.Flush()
+		err = c.Controller.Flush()
 	}
+	c.writeAccess.Lock()
+	c.writing = false
+	c.writeAccess.Unlock()
 	return
+}
+
+func (c *ServerHTTPConn) Close() error {
+	c.writeAccess.Lock()
+	c.closed = true
+	writing := c.writing
+	c.writeAccess.Unlock()
+	var err error
+	if writing {
+		err = c.Controller.SetWriteDeadline(time.Now())
+	}
+	return E.Errors(err, c.HTTP2Conn.Close())
 }
 
 type HTTP2ConnWrapper struct {
 	N.ExtendedConn
-	access sync.Mutex
-	closed bool
+	access      sync.Mutex
+	closeAccess sync.Mutex
+	closed      atomic.Bool
 }
 
 func NewHTTP2Wrapper(conn net.Conn) *HTTP2ConnWrapper {
@@ -248,7 +275,7 @@ func NewHTTP2Wrapper(conn net.Conn) *HTTP2ConnWrapper {
 func (w *HTTP2ConnWrapper) Write(p []byte) (n int, err error) {
 	w.access.Lock()
 	defer w.access.Unlock()
-	if w.closed {
+	if w.closed.Load() {
 		return 0, net.ErrClosed
 	}
 	return w.ExtendedConn.Write(p)
@@ -257,20 +284,26 @@ func (w *HTTP2ConnWrapper) Write(p []byte) (n int, err error) {
 func (w *HTTP2ConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
 	w.access.Lock()
 	defer w.access.Unlock()
-	if w.closed {
+	if w.closed.Load() {
+		buffer.Release()
 		return net.ErrClosed
 	}
 	return w.ExtendedConn.WriteBuffer(buffer)
 }
 
 func (w *HTTP2ConnWrapper) CloseWrapper() {
+	w.Close()
 	w.access.Lock()
-	defer w.access.Unlock()
-	w.closed = true
+	w.access.Unlock()
 }
 
 func (w *HTTP2ConnWrapper) Close() error {
-	w.CloseWrapper()
+	w.closeAccess.Lock()
+	defer w.closeAccess.Unlock()
+	if w.closed.Load() {
+		return nil
+	}
+	w.closed.Store(true)
 	return w.ExtendedConn.Close()
 }
 

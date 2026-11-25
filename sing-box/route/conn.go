@@ -128,35 +128,10 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 			dialerString = " using outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
 		}
 		err = E.Cause(err, "open connection to ", remoteString, dialerString)
-		m.deleteURLTestHistory(metadata.OutboundChain)
+		m.deleteURLTestHistory(metadata.OutboundChain, err)
 		N.CloseOnHandshakeFailure(conn, onClose, err)
 		m.logger.ErrorContext(ctx, err)
 		return
-	}
-	if len(metadata.TCPPrefix) > 0 {
-		writeContext, cancel := context.WithTimeout(ctx, C.TCPTimeout)
-		writeClosed := make(chan struct{})
-		stop := context.AfterFunc(writeContext, func() {
-			remoteConn.Close()
-			close(writeClosed)
-		})
-		var n int
-		n, err = remoteConn.Write(metadata.TCPPrefix)
-		if !stop() {
-			<-writeClosed
-			err = writeContext.Err()
-		}
-		cancel()
-		if err == nil && n < len(metadata.TCPPrefix) {
-			err = io.ErrShortWrite
-		}
-		if err != nil {
-			err = E.Cause(err, "write TCP prefix")
-			remoteConn.Close()
-			N.CloseOnHandshakeFailure(conn, onClose, err)
-			m.logger.ErrorContext(ctx, err)
-			return
-		}
 	}
 	err = N.ReportConnHandshakeSuccess(conn, remoteConn)
 	if err != nil {
@@ -166,7 +141,10 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 		m.logger.ErrorContext(ctx, err)
 		return
 	}
-	if !metadata.TLSFragment && !metadata.TLSRecordFragment && metadata.TLSSpoof == "" {
+	if len(metadata.TCPPrefix) > 0 {
+		remoteConn = &prefixConn{Conn: remoteConn, prefix: metadata.TCPPrefix}
+	}
+	if !metadata.TLSFragment && !metadata.TLSRecordFragment && metadata.TLSSpoof == "" && len(metadata.TCPPrefix) == 0 {
 		var spliced bool
 		spliced, err = m.spliceConnection(ctx, conn, remoteConn, onClose)
 		if err != nil {
@@ -195,10 +173,10 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 	}
 	serverFirst := sniff.Skip(&metadata)
 	var done atomic.Bool
-	if m.kickWriteHandshake(ctx, conn, remoteConn, serverFirst, false, &done, onClose) {
+	if m.kickWriteHandshake(ctx, conn, remoteConn, serverFirst, len(metadata.TCPPrefix) > 0, false, &done, onClose) {
 		return
 	}
-	if m.kickWriteHandshake(ctx, remoteConn, conn, serverFirst, true, &done, onClose) {
+	if m.kickWriteHandshake(ctx, remoteConn, conn, serverFirst, false, true, &done, onClose) {
 		return
 	}
 	go m.connectionCopy(ctx, conn, remoteConn, false, &done, onClose)
@@ -214,19 +192,8 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 		err                error
 	)
 	if metadata.UDPConnect {
-		parallelDialer, isParallelDialer := this.(dialer.ParallelInterfaceDialer)
-		if len(metadata.DestinationAddresses) > 0 {
-			if isParallelDialer {
-				remoteConn, err = dialer.DialSerialNetwork(ctx, parallelDialer, N.NetworkUDP, metadata.Destination, metadata.DestinationAddresses, metadata.NetworkStrategy, metadata.NetworkType, metadata.FallbackNetworkType, metadata.FallbackDelay)
-			} else {
-				remoteConn, err = N.DialSerial(ctx, this, N.NetworkUDP, metadata.Destination, metadata.DestinationAddresses)
-			}
-		} else if metadata.Destination.IsIP() {
-			if isParallelDialer {
-				remoteConn, err = dialer.DialSerialNetwork(ctx, parallelDialer, N.NetworkUDP, metadata.Destination, metadata.DestinationAddresses, metadata.NetworkStrategy, metadata.NetworkType, metadata.FallbackNetworkType, metadata.FallbackDelay)
-			} else {
-				remoteConn, err = this.DialContext(ctx, N.NetworkUDP, metadata.Destination)
-			}
+		if len(metadata.DestinationAddresses) > 0 || metadata.Destination.IsIP() {
+			remoteConn, err = dialer.DialSerialNetwork(ctx, this, N.NetworkUDP, metadata.Destination, metadata.DestinationAddresses, metadata.NetworkStrategy, metadata.NetworkType, metadata.FallbackNetworkType, metadata.FallbackDelay)
 		} else {
 			remoteConn, err = this.DialContext(ctx, N.NetworkUDP, metadata.Destination)
 		}
@@ -242,7 +209,7 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 				dialerString = " using outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
 			}
 			err = E.Cause(err, "open packet connection to ", remoteString, dialerString)
-			m.deleteURLTestHistory(metadata.OutboundChain)
+			m.deleteURLTestHistory(metadata.OutboundChain, err)
 			N.CloseOnHandshakeFailure(conn, onClose, err)
 			m.logger.ErrorContext(ctx, err)
 			return
@@ -266,7 +233,7 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 				dialerString = " using outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
 			}
 			err = E.Cause(err, "listen packet connection", dialerString)
-			m.deleteURLTestHistory(metadata.OutboundChain)
+			m.deleteURLTestHistory(metadata.OutboundChain, err)
 			N.CloseOnHandshakeFailure(conn, onClose, err)
 			m.logger.ErrorContext(ctx, err)
 			return
@@ -325,12 +292,20 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 	go m.packetConnectionCopy(ctx, destination, conn, true, &done, onClose)
 }
 
-func (m *ConnectionManager) deleteURLTestHistory(chain []adapter.Outbound) {
-	if slices.ContainsFunc(chain, func(it adapter.Outbound) bool {
-		_, isURLTestGroup := it.(adapter.URLTestGroup)
-		return isURLTestGroup
-	}) {
-		m.urlTestHistory.DeleteURLTestHistory(chain[len(chain)-1].Tag())
+func (m *ConnectionManager) deleteURLTestHistory(chain []adapter.Outbound, err error) {
+	if E.IsClosedOrCanceled(err) {
+		return
+	}
+	urlTestGroups := common.FilterIsInstance(chain, func(it adapter.Outbound) (adapter.URLTestGroup, bool) {
+		group, isURLTestGroup := it.(adapter.URLTestGroup)
+		return group, isURLTestGroup
+	})
+	if len(urlTestGroups) == 0 {
+		return
+	}
+	m.urlTestHistory.DeleteURLTestHistory(chain[len(chain)-1].Tag())
+	for _, group := range slices.Backward(urlTestGroups) {
+		group.PerformUpdateCheck()
 	}
 }
 
@@ -375,7 +350,7 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source net.Conn,
 	}
 }
 
-func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.Conn, destination net.Conn, serverFirst bool, direction bool, done *atomic.Bool, onClose N.CloseHandlerFunc) bool {
+func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.Conn, destination net.Conn, serverFirst bool, writePrefix bool, direction bool, done *atomic.Bool, onClose N.CloseHandlerFunc) bool {
 	if !N.NeedHandshakeForWrite(destination) {
 		return false
 	}
@@ -383,8 +358,13 @@ func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.C
 		err          error
 		wrotePayload bool
 	)
+	handshakeTimeout := C.ReadPayloadTimeout
+	if writePrefix {
+		wrotePayload = true
+		handshakeTimeout = C.TCPTimeout
+	}
 	if serverFirst {
-		_ = destination.SetWriteDeadline(time.Now().Add(C.ReadPayloadTimeout))
+		_ = destination.SetWriteDeadline(time.Now().Add(handshakeTimeout))
 		_, err = destination.Write(nil)
 		_ = destination.SetWriteDeadline(time.Time{})
 	} else {
@@ -408,7 +388,7 @@ func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.C
 				}
 			}
 		} else {
-			_ = destination.SetWriteDeadline(time.Now().Add(C.ReadPayloadTimeout))
+			_ = destination.SetWriteDeadline(time.Now().Add(handshakeTimeout))
 			_, err = destinationWriter.Write(nil)
 			_ = destination.SetWriteDeadline(time.Time{})
 		}
@@ -494,6 +474,41 @@ func (o *socketOwner) close() bool {
 	}
 	owner.Close()
 	return true
+}
+
+type prefixConn struct {
+	net.Conn
+	prefix []byte
+}
+
+func (c *prefixConn) Write(b []byte) (int, error) {
+	if len(c.prefix) == 0 {
+		return c.Conn.Write(b)
+	}
+	prefixLen := len(c.prefix)
+	buffer := buf.NewSize(prefixLen + len(b))
+	defer buffer.Release()
+	common.Must1(buffer.Write(c.prefix))
+	common.Must1(buffer.Write(b))
+	n, err := c.Conn.Write(buffer.Bytes())
+	c.prefix = c.prefix[min(n, prefixLen):]
+	return max(n-prefixLen, 0), err
+}
+
+func (c *prefixConn) NeedHandshakeForWrite() bool {
+	return len(c.prefix) > 0
+}
+
+func (c *prefixConn) ReaderReplaceable() bool {
+	return true
+}
+
+func (c *prefixConn) WriterReplaceable() bool {
+	return len(c.prefix) == 0
+}
+
+func (c *prefixConn) Upstream() any {
+	return c.Conn
 }
 
 type trackedConn struct {
@@ -583,6 +598,9 @@ func (c *trackedPacketConn) WriterReplaceable() bool {
 }
 
 var (
-	_ tun.SpliceSocket = (*trackedConn)(nil)
-	_ tun.SpliceSocket = (*trackedPacketConn)(nil)
+	_ tun.SpliceSocket     = (*trackedConn)(nil)
+	_ tun.SpliceSocket     = (*trackedPacketConn)(nil)
+	_ N.EarlyWriter        = (*prefixConn)(nil)
+	_ N.ReaderWithUpstream = (*prefixConn)(nil)
+	_ N.WriterWithUpstream = (*prefixConn)(nil)
 )

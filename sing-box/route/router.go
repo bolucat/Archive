@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -152,12 +153,19 @@ func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 					return nil
 				})
 			}
-			ruleSetStartGroup.Concurrency(5)
+			if C.IsIos {
+				ruleSetStartGroup.Concurrency(1)
+			} else {
+				ruleSetStartGroup.Concurrency(5)
+			}
 			ruleSetStartGroup.FastFail()
 			err := ruleSetStartGroup.Run(r.ctx)
 			monitor.Finish()
 			if err != nil {
 				return err
+			}
+			if C.IsIos {
+				debug.FreeOSMemory()
 			}
 		}
 		if startContext != nil {
@@ -204,7 +212,6 @@ func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 			processCache.SetLifetime(200 * time.Millisecond)
 			r.processCache = processCache
 		}
-	case adapter.StartStatePostStart:
 		for i, rule := range r.rules {
 			scope.Add(rule.Close)
 			monitor.Start("initialize rule[", i, "]")
@@ -214,6 +221,7 @@ func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 				return E.Cause(err, "initialize rule[", i, "]")
 			}
 		}
+	case adapter.StartStatePostStart:
 		if r.ruleSetUpdater != nil {
 			r.ruleSetUpdater.Start()
 		}

@@ -52,6 +52,7 @@ type resolvedServerSet struct {
 	specifications  []resolvedScopeSpecification
 	scopes          []*resolvedScope
 	serverAddresses []netip.Addr
+	searchDomains   []string
 	signature       []string
 	serverScope     *adapter.Scope
 }
@@ -93,6 +94,7 @@ type resolvedScopeSpecification struct {
 	interfaceName  string
 	dnsOverTLSMode string
 	domains        []string
+	search         []string
 	defaultRoute   bool
 	fallback       bool
 	servers        []resolvedServerSpecification
@@ -235,6 +237,14 @@ func (t *DBusResolvedResolver) ServerAddresses() []netip.Addr {
 		return nil
 	}
 	return serverSet.serverAddresses
+}
+
+func (t *DBusResolvedResolver) SearchDomains() []string {
+	serverSet := t.savedServerSet.Load()
+	if serverSet == nil {
+		return nil
+	}
+	return serverSet.searchDomains
 }
 
 func (t *DBusResolvedResolver) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
@@ -522,13 +532,17 @@ func (t *DBusResolvedResolver) checkResolved(ctx context.Context) ([]resolvedSco
 	}
 	for _, domain := range managerDomains {
 		domainName := mDNS.Fqdn(domain.Domain)
-		if domain.InterfaceIndex == 0 {
-			globalScope.domains = append(globalScope.domains, domainName)
-			continue
+		scope := &globalScope
+		if domain.InterfaceIndex != 0 {
+			scopeIndex, loaded := linkScopeIndexes[domain.InterfaceIndex]
+			if !loaded || scopeIndex < 0 {
+				continue
+			}
+			scope = &linkScopes[scopeIndex]
 		}
-		scopeIndex, loaded := linkScopeIndexes[domain.InterfaceIndex]
-		if loaded && scopeIndex >= 0 {
-			linkScopes[scopeIndex].domains = append(linkScopes[scopeIndex].domains, domainName)
+		scope.domains = append(scope.domains, domainName)
+		if !domain.RoutingOnly && domainName != "." {
+			scope.search = append(scope.search, domainName)
 		}
 	}
 	if len(globalScope.servers) == 0 && !slices.ContainsFunc(linkScopes, func(it resolvedScopeSpecification) bool {
@@ -559,6 +573,7 @@ func (s resolvedScopeSpecification) equal(other resolvedScopeSpecification) bool
 	return s.interfaceName == other.interfaceName &&
 		s.dnsOverTLSMode == other.dnsOverTLSMode &&
 		slices.Equal(s.domains, other.domains) &&
+		slices.Equal(s.search, other.search) &&
 		s.defaultRoute == other.defaultRoute &&
 		s.fallback == other.fallback &&
 		slices.Equal(s.servers, other.servers)
@@ -576,11 +591,14 @@ func (t *DBusResolvedResolver) createResolvedServerSet(scopeSpecifications []res
 			return nil, createErr
 		}
 		serverSet.scopes = append(serverSet.scopes, scope)
+		serverSet.searchDomains = append(serverSet.searchDomains, scopeSpecification.search...)
 		for _, serverSpecification := range scopeSpecification.servers {
 			serverSet.serverAddresses = append(serverSet.serverAddresses, serverSpecification.address)
 			serverSet.signature = append(serverSet.signature, scopeSpecification.interfaceName+"/"+M.SocksaddrFrom(serverSpecification.address, serverSpecification.port).String())
 		}
 	}
+	serverSet.searchDomains = common.Uniq(serverSet.searchDomains)
+	serverSet.signature = append(serverSet.signature, serverSet.searchDomains...)
 	return serverSet, nil
 }
 
@@ -797,7 +815,7 @@ func shouldUpdateResolvedServerSet(signal *dbus.Signal) bool {
 	}
 	for propertyName := range changedProperties {
 		switch propertyName {
-		case "DNS", "DNSEx", "DNSOverTLS":
+		case "DNS", "DNSEx", "DNSOverTLS", "Domains", "FallbackDNS":
 			return true
 		}
 	}
@@ -807,7 +825,7 @@ func shouldUpdateResolvedServerSet(signal *dbus.Signal) bool {
 	}
 	for _, propertyName := range invalidatedProperties {
 		switch propertyName {
-		case "DNS", "DNSEx", "DNSOverTLS":
+		case "DNS", "DNSEx", "DNSOverTLS", "Domains", "FallbackDNS":
 			return true
 		}
 	}

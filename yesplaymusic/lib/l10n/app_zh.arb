@@ -23,6 +23,18 @@
   "actionMore": "更多",
   "actionBack": "返回",
   "actionClose": "关闭",
+  "windowMinimize": "最小化",
+  "@windowMinimize": {
+    "description": "Windows title bar button"
+  },
+  "windowMaximize": "最大化",
+  "@windowMaximize": {
+    "description": "Windows title bar button"
+  },
+  "windowRestore": "向下还原",
+  "@windowRestore": {
+    "description": "Windows title bar button, shown instead of Maximize when the window is maximized"
+  },
   "actionCancel": "取消",
   "actionConfirm": "确定",
   "actionClear": "清除",
@@ -153,8 +165,24 @@
   "settingsAccentColor": "主题色",
   "settingsLanguage": "语言",
   "langSystem": "跟随系统",
-  "settingsMiniLyric": "在迷你播放器显示当前歌词",
-  "settingsMinimizeToTray": "关闭窗口时最小化到托盘",
+  "settingsMiniLyric": "迷你播放器始终显示歌词",
+  "@settingsMiniLyric": {
+    "description": "Settings toggle: on, the mini player always shows the current lyric; off, only while hovering its progress bar"
+  },
+  "settingsKeepRunning": "关闭窗口后继续在后台运行",
+  "@settingsKeepRunning": {
+    "description": "Settings toggle: closing the window hides it and the app keeps running (macOS: reopen from the Dock; Windows: from the tray icon; Linux: the window is minimized)"
+  },
+  "trayShowWindow": "显示窗口",
+  "@trayShowWindow": {
+    "description": "Windows tray icon menu item that brings the hidden window back"
+  },
+  "trayQuit": "退出",
+  "@trayQuit": {
+    "description": "Windows tray icon menu item that quits the app"
+  },
+  "settingsDynamicIsland": "灵动岛",
+  "settingsDynamicIslandHint": "在屏幕顶部的刘海处显示正在播放，鼠标移上去展开控制",
 
   "aboutDownloadVersion": "下载 {version}",
   "@aboutDownloadVersion": {
@@ -257,6 +285,28 @@
   },
   "sourceFolderAlreadyScanned": "这个文件夹已经在扫描范围里了",
   "sourceNoMusicFound": "没有找到音乐",
+  "sourceScanningCount": "正在扫描… 已读取 {count} 首",
+  "@sourceScanningCount": {
+    "description": "Scan progress: number of audio files read so far",
+    "placeholders": {
+      "count": { "type": "int", "format": "decimalPattern" }
+    }
+  },
+  "sourceFoldersUnreadable": "{count} 个文件夹无法读取，已跳过",
+  "@sourceFoldersUnreadable": {
+    "description": "Toast after a scan: music folders that failed or stopped responding were skipped",
+    "placeholders": {
+      "count": { "type": "int", "format": "decimalPattern" }
+    }
+  },
+  "sourceFolderUnreadable": "无法读取，已跳过",
+  "@sourceFolderUnreadable": {
+    "description": "Shown under a music folder the last scan skipped"
+  },
+  "sourceCancelScan": "取消扫描",
+  "@sourceCancelScan": {
+    "description": "Button that stops a running local music scan"
+  },
   "sourceNotFound": "没有找到这个音乐源",
 
   "pluginsLoadedToast": "已加载 {count} 个插件",
@@ -331,6 +381,12 @@
   "pluginEmptyTitle": "还没有安装插件",
   "pluginEmptyHint": "支持 GitHub 链接",
   "pluginSettingsTitle": "插件设置",
+  "pluginTestConnection": "测试连接",
+  "@pluginTestConnection": { "description": "Button in plugin settings that tries the unsaved settings" },
+  "pluginTesting": "正在测试…",
+  "@pluginTesting": { "description": "Shown on the Test Connection button while the test runs" },
+  "pluginTestOk": "连接成功",
+  "@pluginTestOk": { "description": "Result of Test Connection when it succeeds without a message" },
   "pluginSectionAccount": "账号",
   "pluginSectionCapabilities": "能力",
   "pluginSectionPermissions": "权限",
@@ -392,6 +448,15 @@
       "programs": { "type": "String" }
     }
   },
+  "pluginPermIpc": "连接本机应用",
+  "@pluginPermIpc": { "description": "Install dialog permission row: the plugin connects to local apps over IPC" },
+  "pluginPermIpcDetail": "和本机其他应用通信：{names}",
+  "@pluginPermIpcDetail": {
+    "description": "Install dialog permission detail; names are the IPC channel names the plugin may use",
+    "placeholders": {
+      "names": { "type": "String" }
+    }
+  },
   "pluginPermStorage": "保存数据",
   "pluginPermStorageDetail": "保存设置、登录状态和缓存",
   "pluginCapabilitiesProvided": "提供这些能力",
@@ -424,6 +489,14 @@
   "officialPlexDesc": "连接 Plex Media Server",
   "officialSubsonicDesc": "连接 Navidrome 等 Subsonic 服务器",
   "officialEmbyDesc": "连接 Emby 服务器",
+  "officialLastfmDesc": "把听过的歌记到 Last.fm",
+  "@officialLastfmDesc": { "description": "Description of the official Last.fm plugin" },
+  "officialListenbrainzDesc": "把听过的歌记到 ListenBrainz 或自建服务",
+  "@officialListenbrainzDesc": { "description": "Description of the official ListenBrainz plugin" },
+  "officialDiscordDesc": "在 Discord 上显示正在听的歌",
+  "@officialDiscordDesc": { "description": "Description of the official Discord plugin" },
+  "officialWebdavDesc": "播放 NAS、Nextcloud、OpenList 等 WebDAV 服务器上的音乐",
+  "@officialWebdavDesc": { "description": "Description of the official WebDAV plugin" },
 
   "capSuggest": "搜索建议",
   "capLyrics": "歌词",
@@ -435,6 +508,10 @@
   "capRadio": "电台",
   "capSimilar": "相似推荐",
   "capHistory": "播放记录",
+  "capScrobble": "听歌上报",
+  "@capScrobble": { "description": "Plugin capability chip: reports listens to services like Last.fm" },
+  "capPlaybackStatus": "播放状态",
+  "@capPlaybackStatus": { "description": "Plugin capability chip: receives playback state (e.g. for Discord status)" },
   "capDislike": "不感兴趣",
   "capTrackMenu": "歌曲菜单",
 
@@ -1067,5 +1144,163 @@
     "placeholders": {
       "source": { "type": "String" }
     }
-  }
+  },
+  "actionReplace": "替换",
+  "@actionReplace": {
+    "description": "Install button when it replaces a different plugin that has the same id"
+  },
+  "pluginIdConflict": "已安装的「{name}」来自 {source}，和这个插件 id 相同但来源不同。替换后会清除它的设置、登录状态和已授予的权限。",
+  "@pluginIdConflict": {
+    "description": "Install dialog warning: a plugin with the same id from a different source is installed",
+    "placeholders": {
+      "name": { "type": "String" },
+      "source": { "type": "String" }
+    }
+  },
+  "pluginIdConflictUnknown": "已安装的「{name}」和这个插件 id 相同，但无法确认来自同一个地方。替换后会清除它的设置、登录状态和已授予的权限。",
+  "@pluginIdConflictUnknown": {
+    "description": "Install dialog warning: a plugin with the same id is installed and its source is unknown (local folder or placed manually)",
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "pluginCheckUpdate": "检查更新",
+  "@pluginCheckUpdate": {
+    "description": "Plugin card menu item: check this plugin for a new Release now"
+  },
+  "pluginUpToDate": "「{name}」已是最新版本",
+  "@pluginUpToDate": {
+    "description": "Toast after checking: the plugin is already the latest version",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginUpdateFoundToast": "「{name}」可更新到 {version}",
+  "@pluginUpdateFoundToast": {
+    "description": "Toast after checking: a new version of the plugin is available",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginUpdateCheckFailed": "检查更新失败：{error}",
+  "@pluginUpdateCheckFailed": {
+    "description": "Toast when the update check could not reach GitHub",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginSectionUpdates": "更新",
+  "@pluginSectionUpdates": {
+    "description": "Section title in the plugin settings dialog"
+  },
+  "pluginAutoUpdate": "自动更新",
+  "@pluginAutoUpdate": {
+    "description": "Toggle in plugin settings: install new versions in the background"
+  },
+  "pluginAutoUpdateDetail": "有新版本时在后台安装。需要新权限的版本仍要你手动确认。",
+  "@pluginAutoUpdateDetail": {
+    "description": "Explains the auto update toggle"
+  },
+  "pluginAutoUpdateUnsupported": "仅支持从 GitHub 安装或在 plugin.json 中声明了 GitHub 仓库的插件。",
+  "@pluginAutoUpdateUnsupported": {
+    "description": "Explains why auto update is disabled for non-GitHub plugins"
+  },
+  "pluginAutoUpdatedToast": "已自动更新「{name}」到 {version}",
+  "@pluginAutoUpdatedToast": {
+    "description": "Toast after a plugin was updated in the background",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsReplayGain": "音量均衡",
+  "@settingsReplayGain": { "description": "Settings > Playback row title: volume normalization (ReplayGain)" },
+  "settingsReplayGainHint": "让不同歌曲听起来一样响",
+  "@settingsReplayGainHint": { "description": "First line of the volume normalization info dialog: what the feature does" },
+  "gainModeOff": "关闭",
+  "@gainModeOff": { "description": "Volume normalization mode: off" },
+  "gainModeTrack": "按单曲",
+  "@gainModeTrack": { "description": "Volume normalization mode: per-track gain" },
+  "gainModeAlbum": "按专辑",
+  "@gainModeAlbum": { "description": "Volume normalization mode: per-album gain" },
+  "gainModeSmart": "智能",
+  "@gainModeSmart": { "description": "Volume normalization mode: album gain when an album plays in order, track gain otherwise" },
+  "gainModeOffInfo": "按歌曲本来的音量播放，不做调整。",
+  "@gainModeOffInfo": { "description": "Info dialog: explains the Off mode" },
+  "gainModeTrackInfo": "每首歌各自调到差不多的响度。适合随机播放，或者歌单里的歌来自不同专辑。",
+  "@gainModeTrackInfo": { "description": "Info dialog: explains the Per Track mode" },
+  "gainModeAlbumInfo": "整张专辑一起调，专辑里歌曲之间的轻重对比保持原样。适合完整地听专辑。",
+  "@gainModeAlbumInfo": { "description": "Info dialog: explains the Per Album mode" },
+  "gainModeSmartInfo": "按顺序播放一张专辑时用「按专辑」，其他时候（随机、歌单、电台）用「按单曲」。",
+  "@gainModeSmartInfo": { "description": "Info dialog: explains the Smart mode" },
+  "gainModeNote": "歌曲文件里要有 ReplayGain 标签，或者插件提供了响度信息；都没有的歌曲不调整。",
+  "@gainModeNote": { "description": "Info dialog footnote: which tracks can be normalized" },
+  "settingsEqualizer": "均衡器",
+  "@settingsEqualizer": { "description": "Settings section title for the 10-band equalizer" },
+  "eqPresetFlat": "平直",
+  "@eqPresetFlat": { "description": "Equalizer preset: flat (all bands at 0 dB)" },
+  "eqPresetPop": "流行",
+  "@eqPresetPop": { "description": "Equalizer preset: pop" },
+  "eqPresetRock": "摇滚",
+  "@eqPresetRock": { "description": "Equalizer preset: rock" },
+  "eqPresetVocal": "人声",
+  "@eqPresetVocal": { "description": "Equalizer preset: vocal" },
+  "eqPresetBassBoost": "低音增强",
+  "@eqPresetBassBoost": { "description": "Equalizer preset: bass boost" },
+  "eqPresetTrebleBoost": "高音增强",
+  "@eqPresetTrebleBoost": { "description": "Equalizer preset: treble boost" },
+  "eqPresetClassical": "古典",
+  "@eqPresetClassical": { "description": "Equalizer preset: classical" },
+  "eqPresetJazz": "爵士",
+  "@eqPresetJazz": { "description": "Equalizer preset: jazz" },
+  "eqPresetElectronic": "电子",
+  "@eqPresetElectronic": { "description": "Equalizer preset: electronic" },
+  "eqPresetCustom": "自定义",
+  "@eqPresetCustom": { "description": "Equalizer preset: the user's own band settings" },
+  "sleepTimer": "睡眠定时",
+  "@sleepTimer": { "description": "Now Playing more menu: sleep timer submenu" },
+  "sleepMinutes": "{n} 分钟",
+  "@sleepMinutes": {
+    "description": "Sleep timer menu item: stop playback after n minutes (abbreviated unit, no plural)",
+    "placeholders": { "n": { "type": "int" } }
+  },
+  "sleepCustom": "自定义…",
+  "@sleepCustom": { "description": "Sleep timer menu item: enter a custom number of minutes" },
+  "sleepAfterTrack": "放完这首",
+  "@sleepAfterTrack": { "description": "Sleep timer menu item: stop when the current track ends" },
+  "sleepOff": "关闭定时",
+  "@sleepOff": { "description": "Sleep timer menu item: cancel the timer" },
+  "sleepLeft": "剩余 {time}",
+  "@sleepLeft": {
+    "description": "Appended to the cancel item: time left, e.g. 23:41",
+    "placeholders": { "time": { "type": "String" } }
+  },
+  "sleepCustomTitle": "定时停止播放",
+  "@sleepCustomTitle": { "description": "Custom sleep timer dialog title" },
+  "sleepCustomPlaceholder": "分钟数",
+  "@sleepCustomPlaceholder": { "description": "Custom sleep timer dialog input placeholder: number of minutes" },
+  "sleepCustomAction": "开始",
+  "@sleepCustomAction": { "description": "Custom sleep timer dialog confirm button" },
+  "toastSleepIn": "{n} 分钟后停止播放",
+  "@toastSleepIn": {
+    "description": "Toast after starting the sleep timer",
+    "placeholders": { "n": { "type": "int" } }
+  },
+  "toastSleepAfterTrack": "放完这首后停止播放",
+  "@toastSleepAfterTrack": { "description": "Toast after choosing to stop after the current track" },
+  "toastSleepOff": "已关闭睡眠定时",
+  "@toastSleepOff": { "description": "Toast after cancelling the sleep timer" }
 }

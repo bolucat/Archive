@@ -49,6 +49,7 @@ type Inbound struct {
 	udpNATMax               uint32
 	dnsHijackAddress        []netip.Addr
 	dnsHijackByPort         bool
+	redirectDNSAddress      netip.Addr
 	stack                   string
 	tunIf                   tun.Tun
 	tunStack                tun.Stack
@@ -279,7 +280,13 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		inbound.usePlatformAutoRedirect = platformInterface != nil && platformInterface.UsePlatformAutoRedirect()
 		inbound.disableNFTables = parseErr == nil && disableNFTables
 		inbound.tunOptions.AutoRedirectMarkMode = true
-		inbound.dnsHijackByPort = inbound.tunOptions.DNSModeOrDefault() == tun.DNSModeHijack
+		inbound.dnsHijackByPort = inbound.tunOptions.DNSModeOrDefault() == tun.DNSModeHijack && len(options.DNSAddress) == 0
+		if inbound.tunOptions.DNSModeOrDefault() == tun.DNSModeHijack && len(options.DNSAddress) > 0 {
+			inet6DNSAddress, _ := inbound.tunOptions.Inet6DNSAddress()
+			if len(inet6DNSAddress) > 0 {
+				inbound.redirectDNSAddress = inet6DNSAddress[0]
+			}
+		}
 		if !inbound.usePlatformAutoRedirect && options.NetNs == "" {
 			err = networkManager.RegisterAutoRedirectOutputMark(inbound.tunOptions.AutoRedirectOutputMarkOrDefault())
 			if err != nil {
@@ -596,6 +603,13 @@ func (t *Inbound) JudgeFlow(network uint8, source netip.AddrPort, destination ne
 		}
 		return tun.FlowVerdict{Action: tun.ActionAccept}
 	}
+	if t.dnsHijackByPort && destination.Port() == 53 &&
+		(network == uint8(header.TCPProtocolNumber) || network == uint8(header.UDPProtocolNumber)) {
+		if network == uint8(header.UDPProtocolNumber) {
+			return tun.FlowVerdict{Action: tun.ActionHijackDNS}
+		}
+		return tun.FlowVerdict{Action: tun.ActionAccept}
+	}
 	t.routeAddressSetAccess.RLock()
 	routeAddressSet := t.routeAddressSet
 	routeExcludeAddressSet := t.routeExcludeAddressSet
@@ -610,13 +624,6 @@ func (t *Inbound) JudgeFlow(network uint8, source netip.AddrPort, destination ne
 		return it.Contains(destinationAddress)
 	}) {
 		return tun.FlowVerdict{Action: tun.ActionBypass}
-	}
-	if t.dnsHijackByPort && destination.Port() == 53 &&
-		(network == uint8(header.TCPProtocolNumber) || network == uint8(header.UDPProtocolNumber)) {
-		if network == uint8(header.UDPProtocolNumber) {
-			return tun.FlowVerdict{Action: tun.ActionHijackDNS}
-		}
-		return tun.FlowVerdict{Action: tun.ActionAccept}
 	}
 	return adapter.JudgeFlow(t.router, adapter.InboundContext{Inbound: t.tag, InboundType: C.TypeTun}, network, source, destination, firstPacket)
 }
@@ -683,7 +690,14 @@ func (t *autoRedirectHandler) JudgeFlow(network uint8, source netip.AddrPort, de
 }
 
 func (t *autoRedirectHandler) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {
-	(*Inbound)(t).NewDNSPacket(payload, source, destination, writer)
+	(*Inbound)(t).NewDNSPacket(payload, source, t.redirectDNSDestination(source, destination), writer)
+}
+
+func (t *autoRedirectHandler) redirectDNSDestination(source M.Socksaddr, destination M.Socksaddr) M.Socksaddr {
+	if t.redirectDNSAddress.IsValid() && destination.Port == 53 && source.Addr.Is6() && source.Addr.IsLinkLocalUnicast() {
+		return M.SocksaddrFrom(t.redirectDNSAddress, 53)
+	}
+	return destination
 }
 
 func (t *autoRedirectHandler) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -692,8 +706,8 @@ func (t *autoRedirectHandler) NewConnectionEx(ctx context.Context, conn net.Conn
 	metadata.Inbound = t.tag
 	metadata.InboundType = C.TypeTun
 	metadata.Source = source
-	metadata.Destination = destination
-	if (*Inbound)(t).isDNSHijackDestination(destination) {
+	metadata.Destination = t.redirectDNSDestination(source, destination)
+	if (*Inbound)(t).isDNSHijackDestination(metadata.Destination) {
 		metadata.Protocol = C.ProtocolDNS
 	}
 	if metadata.Protocol == C.ProtocolDNS {

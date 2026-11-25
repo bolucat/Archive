@@ -76,6 +76,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get actionClose => '閉じる';
 
   @override
+  String get windowMinimize => '最小化';
+
+  @override
+  String get windowMaximize => '最大化';
+
+  @override
+  String get windowRestore => '元に戻す (縮小)';
+
+  @override
   String get actionCancel => 'キャンセル';
 
   @override
@@ -419,10 +428,23 @@ class AppLocalizationsJa extends AppLocalizations {
   String get langSystem => 'システムに従う';
 
   @override
-  String get settingsMiniLyric => 'ミニプレイヤーに現在の歌詞を表示';
+  String get settingsMiniLyric => 'ミニプレイヤーに常に歌詞を表示';
 
   @override
-  String get settingsMinimizeToTray => 'ウィンドウを閉じる時にトレイに最小化';
+  String get settingsKeepRunning => 'ウィンドウを閉じてもバックグラウンドで実行';
+
+  @override
+  String get trayShowWindow => 'ウィンドウを表示';
+
+  @override
+  String get trayQuit => '終了';
+
+  @override
+  String get settingsDynamicIsland => 'ダイナミックアイランド';
+
+  @override
+  String get settingsDynamicIslandHint =>
+      '画面上部のノッチ周りに再生中の曲を表示。マウスを重ねると操作パネルが開きます';
 
   @override
   String aboutDownloadVersion(String version) {
@@ -576,6 +598,30 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sourceNoMusicFound => '音楽が見つかりませんでした';
 
   @override
+  String sourceScanningCount(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'スキャン中… $countString 曲';
+  }
+
+  @override
+  String sourceFoldersUnreadable(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString 個のフォルダを読み取れなかったため、スキップしました';
+  }
+
+  @override
+  String get sourceFolderUnreadable => '読み取れないためスキップしました';
+
+  @override
+  String get sourceCancelScan => 'スキャンをキャンセル';
+
+  @override
   String get sourceNotFound => 'この音楽ソースが見つかりません';
 
   @override
@@ -691,6 +737,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get pluginSettingsTitle => 'プラグイン設定';
 
   @override
+  String get pluginTestConnection => '接続をテスト';
+
+  @override
+  String get pluginTesting => 'テスト中…';
+
+  @override
+  String get pluginTestOk => '接続できました';
+
+  @override
   String get pluginSectionAccount => 'アカウント';
 
   @override
@@ -798,6 +853,14 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get pluginPermIpc => 'ローカルアプリに接続';
+
+  @override
+  String pluginPermIpcDetail(String names) {
+    return 'このコンピューター上の他のアプリと通信：$names';
+  }
+
+  @override
   String get pluginPermStorage => 'データの保存';
 
   @override
@@ -852,6 +915,19 @@ class AppLocalizationsJa extends AppLocalizations {
   String get officialEmbyDesc => 'Emby サーバーに接続';
 
   @override
+  String get officialLastfmDesc => '再生した曲を Last.fm に記録';
+
+  @override
+  String get officialListenbrainzDesc => '再生した曲を ListenBrainz やセルフホストに記録';
+
+  @override
+  String get officialDiscordDesc => '聴いている曲を Discord に表示';
+
+  @override
+  String get officialWebdavDesc =>
+      'NAS、Nextcloud、OpenList などの WebDAV サーバーの音楽を再生';
+
+  @override
   String get capSuggest => '検索候補';
 
   @override
@@ -880,6 +956,12 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get capHistory => '再生履歴';
+
+  @override
+  String get capScrobble => 'Scrobble';
+
+  @override
+  String get capPlaybackStatus => '再生状態';
 
   @override
   String get capDislike => '興味なし';
@@ -1667,4 +1749,166 @@ class AppLocalizationsJa extends AppLocalizations {
   String sourceErrNotFound(String source) {
     return 'ソースが見つかりません：$source';
   }
+
+  @override
+  String get actionReplace => '置き換え';
+
+  @override
+  String pluginIdConflict(String name, String source) {
+    return '「$name」は $source からインストール済みで、id は同じですが入手元が異なります。置き換えると、その設定・ログイン状態・許可した権限は消去されます。';
+  }
+
+  @override
+  String pluginIdConflictUnknown(String name) {
+    return '「$name」は同じ id でインストール済みですが、同じ入手元か確認できません。置き換えると、その設定・ログイン状態・許可した権限は消去されます。';
+  }
+
+  @override
+  String get pluginCheckUpdate => 'アップデートを確認';
+
+  @override
+  String pluginUpToDate(String name) {
+    return '「$name」は最新です';
+  }
+
+  @override
+  String pluginUpdateFoundToast(String name, String version) {
+    return '「$name」を $version にアップデートできます';
+  }
+
+  @override
+  String pluginUpdateCheckFailed(String error) {
+    return 'アップデートを確認できませんでした：$error';
+  }
+
+  @override
+  String get pluginSectionUpdates => 'アップデート';
+
+  @override
+  String get pluginAutoUpdate => '自動アップデート';
+
+  @override
+  String get pluginAutoUpdateDetail =>
+      '新しいバージョンをバックグラウンドでインストールします。新しい権限を求めるバージョンは手動で確認が必要です。';
+
+  @override
+  String get pluginAutoUpdateUnsupported =>
+      'GitHub からインストールされたプラグイン、または plugin.json に GitHub リポジトリが記載されたプラグインのみ対応しています。';
+
+  @override
+  String pluginAutoUpdatedToast(String name, String version) {
+    return '「$name」を $version にアップデートしました';
+  }
+
+  @override
+  String get settingsReplayGain => '音量の均一化';
+
+  @override
+  String get settingsReplayGainHint => '曲ごとの音量差をなくします';
+
+  @override
+  String get gainModeOff => 'オフ';
+
+  @override
+  String get gainModeTrack => '曲ごと';
+
+  @override
+  String get gainModeAlbum => 'アルバムごと';
+
+  @override
+  String get gainModeSmart => 'スマート';
+
+  @override
+  String get gainModeOffInfo => '曲本来の音量のまま再生します。';
+
+  @override
+  String get gainModeTrackInfo =>
+      '曲ごとに同じくらいの音量にそろえます。シャッフル再生や、いろいろなアルバムの曲が入ったプレイリストに向いています。';
+
+  @override
+  String get gainModeAlbumInfo =>
+      'アルバム全体をまとめて調整するので、曲同士の音量の強弱はそのまま保たれます。アルバムを通して聴くときに向いています。';
+
+  @override
+  String get gainModeSmartInfo =>
+      'アルバムを順番に再生するときは「アルバムごと」、それ以外（シャッフル、プレイリスト、ラジオ）は「曲ごと」を使います。';
+
+  @override
+  String get gainModeNote =>
+      'ファイルに ReplayGain タグがあるか、プラグインが音量情報を提供している必要があります。どちらもない曲は調整されません。';
+
+  @override
+  String get settingsEqualizer => 'イコライザ';
+
+  @override
+  String get eqPresetFlat => 'フラット';
+
+  @override
+  String get eqPresetPop => 'ポップ';
+
+  @override
+  String get eqPresetRock => 'ロック';
+
+  @override
+  String get eqPresetVocal => 'ボーカル';
+
+  @override
+  String get eqPresetBassBoost => '低音ブースト';
+
+  @override
+  String get eqPresetTrebleBoost => '高音ブースト';
+
+  @override
+  String get eqPresetClassical => 'クラシック';
+
+  @override
+  String get eqPresetJazz => 'ジャズ';
+
+  @override
+  String get eqPresetElectronic => 'エレクトロニック';
+
+  @override
+  String get eqPresetCustom => 'カスタム';
+
+  @override
+  String get sleepTimer => 'スリープタイマー';
+
+  @override
+  String sleepMinutes(int n) {
+    return '$n 分';
+  }
+
+  @override
+  String get sleepCustom => 'カスタム…';
+
+  @override
+  String get sleepAfterTrack => 'この曲の終わりまで';
+
+  @override
+  String get sleepOff => 'タイマーをオフ';
+
+  @override
+  String sleepLeft(String time) {
+    return '残り $time';
+  }
+
+  @override
+  String get sleepCustomTitle => '再生を停止するまで';
+
+  @override
+  String get sleepCustomPlaceholder => '分';
+
+  @override
+  String get sleepCustomAction => '開始';
+
+  @override
+  String toastSleepIn(int n) {
+    return '$n 分後に再生を停止します';
+  }
+
+  @override
+  String get toastSleepAfterTrack => 'この曲の終わりで再生を停止します';
+
+  @override
+  String get toastSleepOff => 'スリープタイマーをオフにしました';
 }

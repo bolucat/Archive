@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:file_selector/file_selector.dart';
@@ -10,7 +11,10 @@ import '../cache/image_cache.dart';
 import '../l10n/l10n.dart';
 import '../log.dart';
 import '../mcp/config.dart';
+import '../music/eq.dart';
+import '../music/replay_gain.dart';
 import '../music/source.dart';
+import '../plugin/installer.dart';
 import '../plugin/manifest.dart';
 import '../plugin/plugin_source.dart';
 import '../shortcuts.dart';
@@ -25,9 +29,10 @@ import 'plugin_install.dart';
 import 'plugin_settings.dart';
 import 'plugin_ui.dart';
 
-int _nav = 0; // 换主题会重建整棵树，分类选择放在外面保留
+// Changing the theme rebuilds the whole tree, so the selected category lives outside
+int _nav = 0;
 
-/// 打开设置的「插件」分类（空音乐库的「添加音乐源」用）。
+/// Opens the "Plugins" category of Settings (used by "Add music source" in the empty library).
 void openPluginSettings(AppState app) {
   _nav = 2;
   app.go('/settings');
@@ -73,8 +78,8 @@ class _SettingsPageState extends State<SettingsPage> {
         Positioned(
           left: 38,
           top: 72,
-          // 行高按 Archivo 固定：中日韩文字回退到苹方等字体时行高不同，换语言标题会上下跳
-          child: Text(
+          // Line height fixed to Archivo: CJK fallback fonts like PingFang have different line heights, so titles would jump when switching languages
+          child: CjkText(
             l.navSettings,
             maxLines: 1,
             softWrap: false,
@@ -122,12 +127,9 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            tx(
-                              it.$2,
-                              15,
-                              w: sel ? w700 : w500,
-                              f: F.semi,
-                              c: fg,
+                            // Long labels (e.g. Russian) ellipsize instead of overflowing
+                            Flexible(
+                              child: tx(it.$2, 15, w: w500, f: F.semi, c: fg),
                             ),
                           ],
                         ),
@@ -184,6 +186,8 @@ class _GeneralTab extends StatelessWidget {
               _Section(title: l.settingsAppearance, child: const _Appearance()),
               const SizedBox(height: 28),
               _Section(title: l.settingsLyrics, child: const _LyricsCard()),
+              const SizedBox(height: 28),
+              _Section(title: l.settingsStorage, child: const _Storage()),
             ],
           ),
         ),
@@ -194,7 +198,7 @@ class _GeneralTab extends StatelessWidget {
             children: [
               _Section(title: l.settingsPlayback, child: const _Playback()),
               const SizedBox(height: 28),
-              _Section(title: l.settingsStorage, child: const _Storage()),
+              _Section(title: l.settingsEqualizer, child: const _Equalizer()),
             ],
           ),
         ),
@@ -203,7 +207,7 @@ class _GeneralTab extends StatelessWidget {
   }
 }
 
-/// 快捷键说明（定稿 v30a / 设置 · 快捷键（列表））：左边播放，右边界面和媒体键。
+/// Shortcut reference (final v30a / 设置 · 快捷键（列表）): playback on the left, UI and media keys on the right.
 class _ShortcutsTab extends StatelessWidget {
   const _ShortcutsTab({super.key});
 
@@ -265,7 +269,7 @@ class _ShortcutsTab extends StatelessWidget {
   }
 }
 
-/// 一组键帽；`null` 是中间的「到」。[icons] 为真时每个键帽里画图标。
+/// A group of keycaps; `null` is the "to" in the middle. When [icons] is true each keycap draws an icon.
 class _Keys extends StatelessWidget {
   const _Keys(this.keys, {this.icons = false});
   final List<String?> keys;
@@ -283,7 +287,7 @@ class _Keys extends StatelessWidget {
           else
             Container(
               height: 26,
-              // 单个字符和图标是正方形，「空格」「Esc」这类按文字撑宽
+              // Single characters and icons are square; "Space", "Esc" and the like widen to fit their text
               width: icons || k.characters.length == 1 ? 26 : null,
               padding: icons || k.characters.length == 1
                   ? EdgeInsets.zero
@@ -331,28 +335,93 @@ class _Section extends StatelessWidget {
 
 Widget _rule() => Container(height: 1, color: P.line);
 
-Widget _row(double h, String label, Widget right, {String hint = ''}) =>
-    SizedBox(
-      height: h,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                tx(label, 15, w: w700),
-                if (hint.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  tx(hint, 12, w: w500, c: P.faint),
+Widget _row(
+  double h,
+  String label,
+  Widget right, {
+  String hint = '',
+  VoidCallback? onInfo,
+}) => SizedBox(
+  height: h,
+  child: Row(
+    children: [
+      Expanded(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (onInfo == null)
+              tx(label, 15, w: w700)
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  tx(label, 15, w: w700),
+                  const SizedBox(width: 6),
+                  _InfoDot(onTap: onInfo),
                 ],
-              ],
+              ),
+            if (hint.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              tx(hint, 12, w: w500, c: P.faint),
+            ],
+          ],
+        ),
+      ),
+      right,
+    ],
+  ),
+);
+
+/// Small info icon next to a title; opens an explanation dialog.
+class _InfoDot extends StatelessWidget {
+  const _InfoDot({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tap(
+    semanticLabel: context.l10n.settingsReplayGain,
+    onTap: onTap,
+    builder: (_, h, _) => Ico('info', size: 16, color: h ? P.ink : P.faint),
+  );
+}
+
+/// Explains the volume normalization modes.
+void _showGainInfo(BuildContext context) {
+  final l = context.l10n;
+  final rows = [
+    (GainMode.smart, l.gainModeSmartInfo),
+    (GainMode.track, l.gainModeTrackInfo),
+    (GainMode.album, l.gainModeAlbumInfo),
+    (GainMode.off, l.gainModeOffInfo),
+  ];
+  showDialogCard(
+    context,
+    title: l.settingsReplayGain,
+    body: (_) => SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          tx(l.settingsReplayGainHint, 14, w: w500, c: P.muted),
+          for (final (m, info) in rows) ...[
+            const SizedBox(height: 18),
+            tx(_gainModeName(l, m), 14, w: w700),
+            const SizedBox(height: 4),
+            Text(
+              info,
+              style: ts(14, w: w500, c: P.muted, h: 22 / 14),
             ),
+          ],
+          const SizedBox(height: 20),
+          Text(
+            l.gainModeNote,
+            style: ts(12, w: w500, c: P.faint, h: 18 / 12),
           ),
-          right,
         ],
       ),
-    );
+    ),
+  );
+}
 
 class _Appearance extends StatelessWidget {
   const _Appearance();
@@ -505,16 +574,321 @@ class _Playback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.app;
+    final l = context.l10n;
     return Column(
       children: [
-        // 音质由各插件在自己的设置里决定，这里不再放
+        // Audio quality is decided by each plugin in its own settings, so it's no longer here
         _row(
           66,
-          context.l10n.settingsMinimizeToTray,
+          context.l10n.settingsKeepRunning,
           Toggle(
-            value: app.tray,
-            onChanged: (v) => app.update(() => app.tray = v),
+            value: app.keepRunning,
+            onChanged: (v) => app.update(() => app.keepRunning = v),
           ),
+        ),
+        if (Platform.isMacOS)
+          _row(
+            66,
+            context.l10n.settingsDynamicIsland,
+            Toggle(value: app.island, onChanged: app.setIsland),
+            hint: context.l10n.settingsDynamicIslandHint,
+          ),
+        _rule(),
+        _row(
+          66,
+          l.settingsReplayGain,
+          onInfo: () => _showGainInfo(context),
+          _Pick(
+            label: _gainModeName(l, app.gainMode),
+            items: [
+              for (final m in GainMode.values)
+                MenuItem(
+                  '',
+                  _gainModeName(l, m),
+                  checked: app.gainMode == m,
+                  onTap: () => app.setGainMode(m),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _gainModeName(AppLocalizations l, GainMode m) => switch (m) {
+  GainMode.off => l.gainModeOff,
+  GainMode.track => l.gainModeTrack,
+  GainMode.album => l.gainModeAlbum,
+  GainMode.smart => l.gainModeSmart,
+};
+
+String _eqPresetName(AppLocalizations l, EqPreset p) => switch (p) {
+  EqPreset.flat => l.eqPresetFlat,
+  EqPreset.pop => l.eqPresetPop,
+  EqPreset.rock => l.eqPresetRock,
+  EqPreset.vocal => l.eqPresetVocal,
+  EqPreset.bassBoost => l.eqPresetBassBoost,
+  EqPreset.trebleBoost => l.eqPresetTrebleBoost,
+  EqPreset.classical => l.eqPresetClassical,
+  EqPreset.jazz => l.eqPresetJazz,
+  EqPreset.electronic => l.eqPresetElectronic,
+  EqPreset.custom => l.eqPresetCustom,
+};
+
+/// Pill dropdown (styled like the language picker) that opens the [items] menu.
+/// Long names (German, Russian) are truncated.
+class _Pick extends StatelessWidget {
+  const _Pick({required this.label, required this.items});
+  final String label;
+  final List<MenuItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (ctx) => Tap(
+        onTap: () => menuBelow(ctx, MenuSpec(groups: [items])),
+        builder: (_, h, _) => AnimatedContainer(
+          duration: fast,
+          width: 172,
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: squircle(
+            20,
+            color: P.dark
+                ? (h ? wa(0.12) : wa(0.08))
+                : (h ? ba(0.10) : ba(0.06)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: tx(label, 13, w: w700, f: F.semi),
+              ),
+              Ico('chevron-down', size: 16, color: P.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Equalizer: preset and toggle, then 10 vertical sliders (dragging shows the 2px
+/// accent edge line, like the volume bar). Faded and locked when off.
+class _Equalizer extends StatelessWidget {
+  const _Equalizer();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final l = context.l10n;
+    final eq = app.eq;
+    final canReset = eq.enabled && eq.gains.any((g) => g != 0);
+    return Column(
+      children: [
+        SizedBox(
+          height: 72,
+          child: Row(
+            children: [
+              _Pick(
+                label: _eqPresetName(l, eq.preset),
+                items: [
+                  for (final p in EqPreset.values)
+                    MenuItem(
+                      '',
+                      _eqPresetName(l, p),
+                      checked: eq.preset == p,
+                      onTap: () =>
+                          app.setEq(eq.copyWith(preset: p, enabled: true)),
+                    ),
+                ],
+              ),
+              const Spacer(),
+              if (canReset) ...[
+                Tap(
+                  onTap: () => app.setEq(
+                    eq.copyWith(
+                      preset: EqPreset.flat,
+                      custom: eqPresetGains[EqPreset.flat],
+                    ),
+                  ),
+                  builder: (_, h, _) => AnimatedContainer(
+                    duration: fast,
+                    height: 32,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    decoration: squircle(
+                      16,
+                      color: h ? P.hover : const Color(0x00000000),
+                    ),
+                    child: tx(l.actionReset, 13, w: w700, c: P.muted),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Toggle(
+                value: eq.enabled,
+                onChanged: (v) => app.setEq(eq.copyWith(enabled: v)),
+              ),
+            ],
+          ),
+        ),
+        _rule(),
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 16),
+          child: AnimatedOpacity(
+            duration: fast,
+            opacity: eq.enabled ? 1 : 0.4,
+            child: IgnorePointer(
+              ignoring: !eq.enabled,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (var i = 0; i < eqBands.length; i++)
+                    _EqBand(
+                      freq: eqBands[i],
+                      db: eq.gains[i],
+                      onChanged: (v) {
+                        // A band changed: switch to custom, starting from the current preset
+                        final g = [...app.eq.gains];
+                        g[i] = v;
+                        app.setEq(
+                          app.eq.copyWith(preset: EqPreset.custom, custom: g),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One equalizer band: the bar fills up or down from the 0 dB midline. Adjust by
+/// dragging, tapping or scrolling; double-tap resets to 0. Steps of 0.5 dB.
+class _EqBand extends StatefulWidget {
+  const _EqBand({
+    required this.freq,
+    required this.db,
+    required this.onChanged,
+  });
+  final int freq;
+  final double db;
+  final ValueChanged<double> onChanged;
+
+  @override
+  State<_EqBand> createState() => _EqBandState();
+}
+
+class _EqBandState extends State<_EqBand> {
+  bool _drag = false;
+  static const _h = 160.0, _w = 28.0;
+
+  void _setFrom(double dy) {
+    final v = (1 - dy / _h) * 2 * eqMaxDb - eqMaxDb;
+    final snapped = clampEqDb((v * 2).round() / 2);
+    if (snapped != widget.db) widget.onChanged(snapped);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final db = widget.db;
+    final f = widget.freq;
+    final label = db == 0
+        ? '0'
+        : '${db > 0 ? '+' : ''}${db == db.roundToDouble() ? db.toInt() : db}';
+    // 0 dB is in the middle; higher values raise the top of the fill
+    final mid = _h / 2;
+    final edge = mid - db / eqMaxDb * mid;
+    final top = db >= 0 ? edge : mid;
+    final height = (edge - mid).abs();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 40,
+          child: tx(
+            label,
+            12,
+            w: w700,
+            tnum: true,
+            align: TextAlign.center,
+            c: _drag ? P.ink : P.muted,
+          ),
+        ),
+        const SizedBox(height: 8),
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Listener(
+            onPointerSignal: (e) {
+              if (e is PointerScrollEvent) {
+                widget.onChanged(
+                  clampEqDb(db + (e.scrollDelta.dy < 0 ? 0.5 : -0.5)),
+                );
+              }
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) => _setFrom(d.localPosition.dy),
+              onDoubleTap: () => widget.onChanged(0),
+              onVerticalDragStart: (d) {
+                setState(() => _drag = true);
+                _setFrom(d.localPosition.dy);
+              },
+              onVerticalDragUpdate: (d) => _setFrom(d.localPosition.dy),
+              onVerticalDragEnd: (_) => setState(() => _drag = false),
+              onVerticalDragCancel: () => setState(() => _drag = false),
+              child: Container(
+                width: _w,
+                height: _h,
+                decoration: squircle(12, color: P.dark ? wa(0.06) : ba(0.05)),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  children: [
+                    // 0 dB midline
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: mid - 0.5,
+                      height: 1,
+                      child: Container(color: P.line),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: top,
+                      height: height,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 90),
+                        color: P.dark ? wa(0.18) : ba(0.1),
+                      ),
+                    ),
+                    if (_drag)
+                      Positioned(
+                        left: 6,
+                        right: 6,
+                        top: edge - 1,
+                        height: 2,
+                        child: Container(
+                          decoration: squircle(1, color: accent),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        tx(
+          f >= 1000 ? '${f ~/ 1000}k' : '$f',
+          12,
+          w: w600,
+          tnum: true,
+          c: P.faint,
         ),
       ],
     );
@@ -526,7 +900,7 @@ class _AboutTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // logo 和名字在卡片外，整体水平居中
+    // Logo and name sit outside the card, centered horizontally as a whole
     return SizedBox(
       width: double.infinity,
       child: FadeIn(
@@ -544,11 +918,11 @@ class _AboutTab extends StatelessWidget {
   }
 }
 
-/// 版本、检查更新、匿名统计、项目链接和日志文件，一张卡片。
+/// Version, update check, anonymous stats, project links and log files, in one card.
 class _About extends StatelessWidget {
   const _About();
 
-  // 行和分隔线之间留 18
+  // 18 between rows and dividers
   static const _gap = SizedBox(height: 18);
 
   static Widget _line(String label, Widget right, {String hint = ''}) => Row(
@@ -645,14 +1019,9 @@ class _About extends StatelessWidget {
   }
 }
 
-String _mb(int bytes) {
-  final gb = bytes / (1 << 30);
-  if (gb >= 1) return '${gb.toStringAsFixed(1)} GB';
-  final mb = bytes / (1 << 20);
-  return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
-}
+String _mb(int bytes) => formatBytes(bytes, currentLocale);
 
-// 缓存条三种颜色：API、音频、图片
+// Three colors in the cache bar: API, audio, images
 const _cacheApi = Color(0xFF2F7DE1);
 const _cacheImg = Color(0xFF6E56CF);
 const _cacheAudio = Color(0xFFE0892B);
@@ -740,7 +1109,7 @@ class _StorageState extends State<_Storage> {
             ],
           ),
           const SizedBox(height: 20),
-          // 一条普通进度条：各部分首尾相接，只有整条两端是圆角
+          // A plain progress bar: segments butt end to end, only the two ends of the whole bar are rounded
           ClipRSuperellipse(
             borderRadius: BorderRadius.circular(5),
             child: Container(
@@ -802,7 +1171,7 @@ class _StorageState extends State<_Storage> {
   );
 }
 
-// ───────────── 插件设置页（Sketch 定稿「v31 / 设置 · 插件（卡片）」） ─────────────
+// ───────────── Plugin settings page (Sketch final "v31 / 设置 · 插件（卡片）") ─────────────
 
 const _docsUrl =
     'https://github.com/qier222/YesPlayMusic/blob/main/docs/plugins.md';
@@ -813,6 +1182,20 @@ void _openPluginsDir() {
   final dir = AppState.pluginsDir();
   Directory(dir).createSync(recursive: true);
   openExternal(dir);
+}
+
+/// "Check for updates" in a plugin's menu: reports the result in a toast; a new version shows on the card.
+Future<void> _checkPluginUpdate(AppState app, String id, String name) async {
+  try {
+    final v = await app.checkPluginUpdate(id);
+    showToast(
+      v == null
+          ? L.pluginUpToDate(name)
+          : L.pluginUpdateFoundToast(name, versionLabel(v)),
+    );
+  } on InstallError catch (e) {
+    showToast(L.pluginUpdateCheckFailed(e.message));
+  }
 }
 
 Future<void> _reloadPlugins(AppState app) async {
@@ -849,7 +1232,7 @@ class _PluginsTab extends StatefulWidget {
 }
 
 class _PluginsTabState extends State<_PluginsTab> {
-  /// false：已安装；true：官方插件。
+  /// false: installed; true: official plugins.
   bool _official = false;
 
   @override
@@ -984,7 +1367,7 @@ class _PluginsTabState extends State<_PluginsTab> {
   }
 }
 
-/// 「已安装 / 官方插件」文字标签，后面跟数量。
+/// "Installed / Official plugins" text tab followed by a count.
 class _TextTab extends StatelessWidget {
   const _TextTab({
     required this.label,
@@ -1018,7 +1401,7 @@ class _TextTab extends StatelessWidget {
   }
 }
 
-/// 官方插件：一行三张，最后一张是「从链接安装」。
+/// Official plugins: three per row, the last one is "Install from link".
 class _OfficialGrid extends StatelessWidget {
   const _OfficialGrid();
 
@@ -1162,7 +1545,7 @@ class _LinkInstallCard extends StatelessWidget {
   }
 }
 
-/// 音乐来源：「音乐来源」后面一排单选胶囊，选中的是白色圆底加勾。
+/// Music source: a row of radio pills after "Music source"; the selected one has a white round background with a check.
 class _SourcePicker extends StatelessWidget {
   const _SourcePicker();
 
@@ -1266,11 +1649,11 @@ class _SourcePill extends StatelessWidget {
   }
 }
 
-/// 卡片底部左边的一句状态。
+/// A status line at the bottom left of the card.
 typedef _Status = ({String icon, String text, Color? color});
 
-/// 插件卡片（方案 A 信息卡）：图标、名字、徽章、作者、开关；介绍和能力；
-/// 底部状态、「设置」和更多菜单。同一行的两张卡片一样高。
+/// Plugin card (option A info card): icon, name, badges, author, switch; description and capabilities;
+/// status at the bottom, "Settings" and a more menu. Two cards in the same row have the same height.
 class _PluginCard extends StatelessWidget {
   const _PluginCard({
     required this.icon,
@@ -1341,7 +1724,7 @@ class _PluginCard extends StatelessWidget {
                 ),
                 if (description.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text(
+                  CjkText(
                     description,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -1350,7 +1733,7 @@ class _PluginCard extends StatelessWidget {
                 ],
                 if (error != null) ...[
                   const SizedBox(height: 16),
-                  Text(
+                  CjkText(
                     error!,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
@@ -1402,7 +1785,7 @@ class _PluginCard extends StatelessWidget {
   }
 }
 
-/// 本地音乐：内置的音乐源，不能停用。
+/// Local music: the built-in music source, can't be disabled.
 class _LocalCard extends StatelessWidget {
   const _LocalCard();
 
@@ -1425,7 +1808,7 @@ class _LocalCard extends StatelessWidget {
       status: (
         icon: 'folder',
         text: app.scanning
-            ? l.sourceScanning
+            ? scanningLabel(app)
             : app.musicFolders.isEmpty
             ? l.sourceNoFolders
             : l.sourceFolderAlbums(app.musicFolders.length, albums),
@@ -1440,7 +1823,10 @@ class _LocalCard extends StatelessWidget {
               l.sourceAddFolderEllipsis,
               onTap: () => _addFolder(app),
             ),
-            MenuItem('repeat', l.sourceRescan, onTap: app.rescanLibrary),
+            if (app.scanning)
+              MenuItem('close', l.sourceCancelScan, onTap: app.cancelScan)
+            else
+              MenuItem('repeat', l.sourceRescan, onTap: app.rescanLibrary),
           ],
         ],
       ),
@@ -1453,7 +1839,7 @@ Future<void> _addFolder(AppState app) async {
   if (dir != null) await app.addMusicFolder(dir);
 }
 
-/// 本地音乐的设置：要扫描的文件夹。
+/// Local music settings: folders to scan.
 void _showLocalSettings(BuildContext context) {
   final l = context.l10n;
   showDialogCard(
@@ -1495,6 +1881,18 @@ void _showLocalSettings(BuildContext context) {
                                     tx(f, 13, w: w500, c: h ? P.ink : P.muted),
                               ),
                             ),
+                            if (!app.scanning &&
+                                app.unreadableFolders.contains(f)) ...[
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: tx(
+                                  l.sourceFolderUnreadable,
+                                  12,
+                                  w: w500,
+                                  c: warnColor,
+                                ),
+                              ),
+                            ],
                             const SizedBox(width: 12),
                             IconBtn(
                               'close',
@@ -1526,6 +1924,14 @@ void _showLocalSettings(BuildContext context) {
                   enabled: !app.scanning,
                   onTap: app.rescanLibrary,
                 ),
+                if (app.scanning) ...[
+                  const SizedBox(width: 8),
+                  Btn(
+                    label: l.sourceCancelScan,
+                    size: BtnSize.s,
+                    onTap: app.cancelScan,
+                  ),
+                ],
               ],
             ),
           ],
@@ -1535,7 +1941,7 @@ void _showLocalSettings(BuildContext context) {
   );
 }
 
-/// 在运行的插件。
+/// A running plugin.
 class _RunningCard extends StatelessWidget {
   const _RunningCard({required this.plugin});
   final PluginSource plugin;
@@ -1550,7 +1956,7 @@ class _RunningCard extends StatelessWidget {
     final isCurrent = app.sourceId == s.id;
     final account = app.accounts[s.id];
     final update = app.pluginUpdates[s.id];
-    final origin = app.pluginOrigins[s.id];
+    final origin = app.pluginUpdateOrigin(s.id);
     final ver = versionLabel(s.info.version);
     final missing = missingServer(mf, s.setting);
     final _Status status = update != null
@@ -1618,6 +2024,12 @@ class _RunningCard extends StatelessWidget {
           [
             MenuItem('pause', l.pluginDisable, onTap: disable),
             MenuItem(
+              'download',
+              l.pluginCheckUpdate,
+              enabled: app.canCheckPluginUpdate(s.id),
+              onTap: () => _checkPluginUpdate(app, s.id, name),
+            ),
+            MenuItem(
               'folder',
               l.sourceShowInFileManager,
               onTap: () => openExternal(s.dir),
@@ -1642,7 +2054,7 @@ class _RunningCard extends StatelessWidget {
   }
 }
 
-/// 用户停用的插件：不运行，只能启用、设置、卸载。
+/// A plugin the user disabled: not running; can only be enabled, configured or uninstalled.
 class _DisabledCard extends StatelessWidget {
   const _DisabledCard({required this.dir, required this.manifest});
   final String dir;
@@ -1655,7 +2067,7 @@ class _DisabledCard extends StatelessWidget {
     final mf = manifest;
     final name = pluginTr(dir, mf.info.name);
     final update = app.pluginUpdates[mf.id];
-    final origin = app.pluginOrigins[mf.id];
+    final origin = app.pluginUpdateOrigin(mf.id);
     final ver = versionLabel(mf.info.version);
     return _PluginCard(
       icon: PluginIcon(
@@ -1700,6 +2112,12 @@ class _DisabledCard extends StatelessWidget {
         groups: [
           [
             MenuItem(
+              'download',
+              l.pluginCheckUpdate,
+              enabled: app.canCheckPluginUpdate(mf.id),
+              onTap: () => _checkPluginUpdate(app, mf.id, name),
+            ),
+            MenuItem(
               'folder',
               l.sourceShowInFileManager,
               onTap: () => openExternal(dir),
@@ -1719,7 +2137,7 @@ class _DisabledCard extends StatelessWidget {
   }
 }
 
-/// 没能加载的插件：显示原因。
+/// A plugin that failed to load: shows the reason.
 class _FailedCard extends StatelessWidget {
   const _FailedCard({required this.dir, required this.reason});
   final String dir, reason;
@@ -1771,7 +2189,7 @@ class _FailedCard extends StatelessWidget {
   }
 }
 
-/// 还没装插件时占在本地音乐旁边。
+/// Placeholder next to local music when no plugins are installed.
 class _EmptyCard extends StatelessWidget {
   const _EmptyCard();
 
@@ -1804,7 +2222,7 @@ class _EmptyCard extends StatelessWidget {
   }
 }
 
-// ───────────── MCP Server 设置页 ─────────────
+// ───────────── MCP server settings page ─────────────
 
 class _McpTab extends StatefulWidget {
   const _McpTab({super.key});

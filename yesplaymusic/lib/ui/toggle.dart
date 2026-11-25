@@ -1,72 +1,76 @@
-// 通用组件：开关、分段。
+// Common widgets: switch, segments.
 
 import 'package:flutter/widgets.dart';
 
 import '../theme.dart';
 import 'tap.dart';
 
-// ───────────── 开关 / 分段 ─────────────
+// ───────────── Switch / segments ─────────────
 
-/// 44×26 的开关，滑块弹簧移动，按下时拉长。
+/// A 44×26 switch whose knob moves with a spring and stretches when pressed.
 class Toggle extends StatelessWidget {
   const Toggle({super.key, required this.value, required this.onChanged});
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final cb = onChanged;
     return Tap(
-      onTap: () => onChanged(!value),
+      onTap: cb == null ? null : () => cb(!value),
       toggled: value,
-      builder: (_, h, p) => TweenAnimationBuilder<double>(
-        tween: Tween(end: value ? 1 : 0),
-        duration: const Duration(milliseconds: 320),
-        curve: const SpringCurve(bounce: 0.2),
-        builder: (_, k, _) {
-          final kc = k.clamp(0.0, 1.0);
-          final w = p ? 24.0 : 20.0;
-          return Container(
-            width: 44,
-            height: 26,
-            decoration: squircle(13, color: Color.lerp(P.raised, accent, kc)),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 3,
-                  left: 3 + (18 + 20 - w) * k,
-                  child: AnimatedContainer(
-                    duration: fast,
-                    width: w,
-                    height: 20,
-                    decoration: squircle(
-                      10,
-                      color: Color.lerp(
-                        P.dark ? P.muted : white,
-                        P.dark ? P.ground : white,
-                        kc,
+      builder: (_, h, p) => Opacity(
+        opacity: cb == null ? 0.45 : 1,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: value ? 1 : 0),
+          duration: const Duration(milliseconds: 320),
+          curve: const SpringCurve(bounce: 0.2),
+          builder: (_, k, _) {
+            final kc = k.clamp(0.0, 1.0);
+            final w = p && cb != null ? 24.0 : 20.0;
+            return Container(
+              width: 44,
+              height: 26,
+              decoration: squircle(13, color: Color.lerp(P.raised, accent, kc)),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 3,
+                    left: 3 + (18 + 20 - w) * k,
+                    child: AnimatedContainer(
+                      duration: fast,
+                      width: w,
+                      height: 20,
+                      decoration: squircle(
+                        10,
+                        color: Color.lerp(
+                          P.dark ? P.muted : white,
+                          P.dark ? P.ground : white,
+                          kc,
+                        ),
+                        shadows: P.dark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  color: ba(0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
                       ),
-                      shadows: P.dark
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: ba(0.2),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-/// 带白色滑块的分段选择。
+/// Segmented control with a white knob.
 class Segmented extends StatelessWidget {
   const Segmented({
     super.key,
@@ -130,7 +134,7 @@ class Segmented extends StatelessWidget {
                             f: F.semi,
                             c: i == selected ? darkInk : (h ? P.ink : P.muted),
                           ),
-                          child: Text(labels[i]),
+                          child: CjkText(labels[i]),
                         ),
                       ),
                     ),

@@ -230,7 +230,7 @@ func (l *Listener) loopUDPOut() {
 		packets = packets[:0]
 		buffers = buffers[:0]
 		destinations = destinations[:0]
-		if err != nil {
+		if err != nil && !N.IsPacketTooBig(err) {
 			if l.shutdown.Load() && E.IsClosed(err) {
 				return
 			}

@@ -76,6 +76,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actionClose => '关闭';
 
   @override
+  String get windowMinimize => '最小化';
+
+  @override
+  String get windowMaximize => '最大化';
+
+  @override
+  String get windowRestore => '向下还原';
+
+  @override
   String get actionCancel => '取消';
 
   @override
@@ -419,10 +428,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get langSystem => '跟随系统';
 
   @override
-  String get settingsMiniLyric => '在迷你播放器显示当前歌词';
+  String get settingsMiniLyric => '迷你播放器始终显示歌词';
 
   @override
-  String get settingsMinimizeToTray => '关闭窗口时最小化到托盘';
+  String get settingsKeepRunning => '关闭窗口后继续在后台运行';
+
+  @override
+  String get trayShowWindow => '显示窗口';
+
+  @override
+  String get trayQuit => '退出';
+
+  @override
+  String get settingsDynamicIsland => '灵动岛';
+
+  @override
+  String get settingsDynamicIslandHint => '在屏幕顶部的刘海处显示正在播放，鼠标移上去展开控制';
 
   @override
   String aboutDownloadVersion(String version) {
@@ -576,6 +597,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sourceNoMusicFound => '没有找到音乐';
 
   @override
+  String sourceScanningCount(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '正在扫描… 已读取 $countString 首';
+  }
+
+  @override
+  String sourceFoldersUnreadable(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString 个文件夹无法读取，已跳过';
+  }
+
+  @override
+  String get sourceFolderUnreadable => '无法读取，已跳过';
+
+  @override
+  String get sourceCancelScan => '取消扫描';
+
+  @override
   String get sourceNotFound => '没有找到这个音乐源';
 
   @override
@@ -691,6 +736,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pluginSettingsTitle => '插件设置';
 
   @override
+  String get pluginTestConnection => '测试连接';
+
+  @override
+  String get pluginTesting => '正在测试…';
+
+  @override
+  String get pluginTestOk => '连接成功';
+
+  @override
   String get pluginSectionAccount => '账号';
 
   @override
@@ -797,6 +851,14 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get pluginPermIpc => '连接本机应用';
+
+  @override
+  String pluginPermIpcDetail(String names) {
+    return '和本机其他应用通信：$names';
+  }
+
+  @override
   String get pluginPermStorage => '保存数据';
 
   @override
@@ -851,6 +913,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get officialEmbyDesc => '连接 Emby 服务器';
 
   @override
+  String get officialLastfmDesc => '把听过的歌记到 Last.fm';
+
+  @override
+  String get officialListenbrainzDesc => '把听过的歌记到 ListenBrainz 或自建服务';
+
+  @override
+  String get officialDiscordDesc => '在 Discord 上显示正在听的歌';
+
+  @override
+  String get officialWebdavDesc => '播放 NAS、Nextcloud、OpenList 等 WebDAV 服务器上的音乐';
+
+  @override
   String get capSuggest => '搜索建议';
 
   @override
@@ -879,6 +953,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get capHistory => '播放记录';
+
+  @override
+  String get capScrobble => '听歌上报';
+
+  @override
+  String get capPlaybackStatus => '播放状态';
 
   @override
   String get capDislike => '不感兴趣';
@@ -1663,6 +1743,163 @@ class AppLocalizationsZh extends AppLocalizations {
   String sourceErrNotFound(String source) {
     return '找不到源 $source';
   }
+
+  @override
+  String get actionReplace => '替换';
+
+  @override
+  String pluginIdConflict(String name, String source) {
+    return '已安装的「$name」来自 $source，和这个插件 id 相同但来源不同。替换后会清除它的设置、登录状态和已授予的权限。';
+  }
+
+  @override
+  String pluginIdConflictUnknown(String name) {
+    return '已安装的「$name」和这个插件 id 相同，但无法确认来自同一个地方。替换后会清除它的设置、登录状态和已授予的权限。';
+  }
+
+  @override
+  String get pluginCheckUpdate => '检查更新';
+
+  @override
+  String pluginUpToDate(String name) {
+    return '「$name」已是最新版本';
+  }
+
+  @override
+  String pluginUpdateFoundToast(String name, String version) {
+    return '「$name」可更新到 $version';
+  }
+
+  @override
+  String pluginUpdateCheckFailed(String error) {
+    return '检查更新失败：$error';
+  }
+
+  @override
+  String get pluginSectionUpdates => '更新';
+
+  @override
+  String get pluginAutoUpdate => '自动更新';
+
+  @override
+  String get pluginAutoUpdateDetail => '有新版本时在后台安装。需要新权限的版本仍要你手动确认。';
+
+  @override
+  String get pluginAutoUpdateUnsupported =>
+      '仅支持从 GitHub 安装或在 plugin.json 中声明了 GitHub 仓库的插件。';
+
+  @override
+  String pluginAutoUpdatedToast(String name, String version) {
+    return '已自动更新「$name」到 $version';
+  }
+
+  @override
+  String get settingsReplayGain => '音量均衡';
+
+  @override
+  String get settingsReplayGainHint => '让不同歌曲听起来一样响';
+
+  @override
+  String get gainModeOff => '关闭';
+
+  @override
+  String get gainModeTrack => '按单曲';
+
+  @override
+  String get gainModeAlbum => '按专辑';
+
+  @override
+  String get gainModeSmart => '智能';
+
+  @override
+  String get gainModeOffInfo => '按歌曲本来的音量播放，不做调整。';
+
+  @override
+  String get gainModeTrackInfo => '每首歌各自调到差不多的响度。适合随机播放，或者歌单里的歌来自不同专辑。';
+
+  @override
+  String get gainModeAlbumInfo => '整张专辑一起调，专辑里歌曲之间的轻重对比保持原样。适合完整地听专辑。';
+
+  @override
+  String get gainModeSmartInfo => '按顺序播放一张专辑时用「按专辑」，其他时候（随机、歌单、电台）用「按单曲」。';
+
+  @override
+  String get gainModeNote => '歌曲文件里要有 ReplayGain 标签，或者插件提供了响度信息；都没有的歌曲不调整。';
+
+  @override
+  String get settingsEqualizer => '均衡器';
+
+  @override
+  String get eqPresetFlat => '平直';
+
+  @override
+  String get eqPresetPop => '流行';
+
+  @override
+  String get eqPresetRock => '摇滚';
+
+  @override
+  String get eqPresetVocal => '人声';
+
+  @override
+  String get eqPresetBassBoost => '低音增强';
+
+  @override
+  String get eqPresetTrebleBoost => '高音增强';
+
+  @override
+  String get eqPresetClassical => '古典';
+
+  @override
+  String get eqPresetJazz => '爵士';
+
+  @override
+  String get eqPresetElectronic => '电子';
+
+  @override
+  String get eqPresetCustom => '自定义';
+
+  @override
+  String get sleepTimer => '睡眠定时';
+
+  @override
+  String sleepMinutes(int n) {
+    return '$n 分钟';
+  }
+
+  @override
+  String get sleepCustom => '自定义…';
+
+  @override
+  String get sleepAfterTrack => '放完这首';
+
+  @override
+  String get sleepOff => '关闭定时';
+
+  @override
+  String sleepLeft(String time) {
+    return '剩余 $time';
+  }
+
+  @override
+  String get sleepCustomTitle => '定时停止播放';
+
+  @override
+  String get sleepCustomPlaceholder => '分钟数';
+
+  @override
+  String get sleepCustomAction => '开始';
+
+  @override
+  String toastSleepIn(int n) {
+    return '$n 分钟后停止播放';
+  }
+
+  @override
+  String get toastSleepAfterTrack => '放完这首后停止播放';
+
+  @override
+  String get toastSleepOff => '已关闭睡眠定时';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -1734,6 +1971,15 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get actionClose => '關閉';
+
+  @override
+  String get windowMinimize => '最小化';
+
+  @override
+  String get windowMaximize => '最大化';
+
+  @override
+  String get windowRestore => '還原';
 
   @override
   String get actionCancel => '取消';
@@ -1879,10 +2125,10 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get miniShuffleOn => '隨機播放：開';
 
   @override
-  String get miniRepeatOn => '列表循環';
+  String get miniRepeatOn => '重複播放全部';
 
   @override
-  String get miniRepeatOff => '不循環';
+  String get miniRepeatOff => '不重複播放';
 
   @override
   String get miniQueue => '播放佇列';
@@ -1989,7 +2235,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get shortcutMute => '靜音';
 
   @override
-  String get shortcutRepeat => '循環模式';
+  String get shortcutRepeat => '重複播放模式';
 
   @override
   String get shortcutLikeCurrent => '喜歡目前歌曲';
@@ -2079,10 +2325,22 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get langSystem => '跟隨系統';
 
   @override
-  String get settingsMiniLyric => '在迷你播放器顯示目前歌詞';
+  String get settingsMiniLyric => '迷你播放器一律顯示歌詞';
 
   @override
-  String get settingsMinimizeToTray => '關閉視窗時最小化到系統匣';
+  String get settingsKeepRunning => '關閉視窗後繼續在背景執行';
+
+  @override
+  String get trayShowWindow => '顯示視窗';
+
+  @override
+  String get trayQuit => '結束';
+
+  @override
+  String get settingsDynamicIsland => '動態島';
+
+  @override
+  String get settingsDynamicIslandHint => '在螢幕頂部的瀏海處顯示正在播放，滑鼠移上去展開控制';
 
   @override
   String aboutDownloadVersion(String version) {
@@ -2110,16 +2368,16 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
-  String get aboutLogs => '日誌檔案';
+  String get aboutLogs => '記錄檔';
 
   @override
   String get aboutLogsHint => '回報問題時附上';
 
   @override
-  String get aboutOpenFolder => '打開資料夾';
+  String get aboutOpenFolder => '開啟資料夾';
 
   @override
-  String get aboutOpen => '打開';
+  String get aboutOpen => '開啟';
 
   @override
   String updaterNewVersion(String version) {
@@ -2234,6 +2492,30 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get sourceNoMusicFound => '找不到音樂';
+
+  @override
+  String sourceScanningCount(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '正在掃描… 已讀取 $countString 首';
+  }
+
+  @override
+  String sourceFoldersUnreadable(int count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '有 $countString 個資料夾無法讀取，已略過';
+  }
+
+  @override
+  String get sourceFolderUnreadable => '無法讀取，已略過';
+
+  @override
+  String get sourceCancelScan => '取消掃描';
 
   @override
   String get sourceNotFound => '找不到此音樂來源';
@@ -2351,6 +2633,15 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get pluginSettingsTitle => '外掛設定';
 
   @override
+  String get pluginTestConnection => '測試連線';
+
+  @override
+  String get pluginTesting => '正在測試…';
+
+  @override
+  String get pluginTestOk => '連線成功';
+
+  @override
   String get pluginSectionAccount => '帳號';
 
   @override
@@ -2457,6 +2748,14 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   }
 
   @override
+  String get pluginPermIpc => '連線本機應用程式';
+
+  @override
+  String pluginPermIpcDetail(String names) {
+    return '和本機其他應用程式通訊：$names';
+  }
+
+  @override
   String get pluginPermStorage => '儲存資料';
 
   @override
@@ -2511,6 +2810,18 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get officialEmbyDesc => '連線至 Emby 伺服器';
 
   @override
+  String get officialLastfmDesc => '把聽過的歌記到 Last.fm';
+
+  @override
+  String get officialListenbrainzDesc => '把聽過的歌記到 ListenBrainz 或自架服務';
+
+  @override
+  String get officialDiscordDesc => '在 Discord 上顯示正在聽的歌';
+
+  @override
+  String get officialWebdavDesc => '播放 NAS、Nextcloud、OpenList 等 WebDAV 伺服器上的音樂';
+
+  @override
   String get capSuggest => '搜尋建議';
 
   @override
@@ -2539,6 +2850,12 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get capHistory => '播放紀錄';
+
+  @override
+  String get capScrobble => '聽歌上報';
+
+  @override
+  String get capPlaybackStatus => '播放狀態';
 
   @override
   String get capDislike => '不感興趣';
@@ -3272,7 +3589,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String pluginErrProcessExited(String name) {
-    return '$name：外掛程序意外結束';
+    return '$name：外掛處理程序意外結束';
   }
 
   @override
@@ -3323,4 +3640,161 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String sourceErrNotFound(String source) {
     return '找不到來源 $source';
   }
+
+  @override
+  String get actionReplace => '取代';
+
+  @override
+  String pluginIdConflict(String name, String source) {
+    return '已安裝的「$name」來自 $source，與這個外掛 id 相同但來源不同。取代後會清除它的設定、登入狀態和已授予的權限。';
+  }
+
+  @override
+  String pluginIdConflictUnknown(String name) {
+    return '已安裝的「$name」與這個外掛 id 相同，但無法確認來自同一個地方。取代後會清除它的設定、登入狀態和已授予的權限。';
+  }
+
+  @override
+  String get pluginCheckUpdate => '檢查更新';
+
+  @override
+  String pluginUpToDate(String name) {
+    return '「$name」已是最新版本';
+  }
+
+  @override
+  String pluginUpdateFoundToast(String name, String version) {
+    return '「$name」可更新至 $version';
+  }
+
+  @override
+  String pluginUpdateCheckFailed(String error) {
+    return '檢查更新失敗：$error';
+  }
+
+  @override
+  String get pluginSectionUpdates => '更新';
+
+  @override
+  String get pluginAutoUpdate => '自動更新';
+
+  @override
+  String get pluginAutoUpdateDetail => '有新版本時在背景安裝。需要新權限的版本仍須由你手動確認。';
+
+  @override
+  String get pluginAutoUpdateUnsupported =>
+      '僅支援從 GitHub 安裝或在 plugin.json 中宣告 GitHub 儲存庫的外掛。';
+
+  @override
+  String pluginAutoUpdatedToast(String name, String version) {
+    return '已自動將「$name」更新至 $version';
+  }
+
+  @override
+  String get settingsReplayGain => '音量均衡';
+
+  @override
+  String get settingsReplayGainHint => '讓不同歌曲聽起來一樣響';
+
+  @override
+  String get gainModeOff => '關閉';
+
+  @override
+  String get gainModeTrack => '依單曲';
+
+  @override
+  String get gainModeAlbum => '依專輯';
+
+  @override
+  String get gainModeSmart => '智慧';
+
+  @override
+  String get gainModeOffInfo => '依歌曲原本的音量播放，不做調整。';
+
+  @override
+  String get gainModeTrackInfo => '每首歌各自調到差不多的響度。適合隨機播放，或者歌單裡的歌來自不同專輯。';
+
+  @override
+  String get gainModeAlbumInfo => '整張專輯一起調，專輯裡歌曲之間的輕重對比保持原樣。適合完整地聽專輯。';
+
+  @override
+  String get gainModeSmartInfo => '依順序播放一張專輯時用「依專輯」，其他時候（隨機、歌單、電台）用「依單曲」。';
+
+  @override
+  String get gainModeNote => '歌曲檔案裡要有 ReplayGain 標籤，或者外掛提供了響度資訊；都沒有的歌曲不調整。';
+
+  @override
+  String get settingsEqualizer => '等化器';
+
+  @override
+  String get eqPresetFlat => '平直';
+
+  @override
+  String get eqPresetPop => '流行';
+
+  @override
+  String get eqPresetRock => '搖滾';
+
+  @override
+  String get eqPresetVocal => '人聲';
+
+  @override
+  String get eqPresetBassBoost => '低音增強';
+
+  @override
+  String get eqPresetTrebleBoost => '高音增強';
+
+  @override
+  String get eqPresetClassical => '古典';
+
+  @override
+  String get eqPresetJazz => '爵士';
+
+  @override
+  String get eqPresetElectronic => '電子';
+
+  @override
+  String get eqPresetCustom => '自訂';
+
+  @override
+  String get sleepTimer => '睡眠定時';
+
+  @override
+  String sleepMinutes(int n) {
+    return '$n 分鐘';
+  }
+
+  @override
+  String get sleepCustom => '自訂…';
+
+  @override
+  String get sleepAfterTrack => '播完這首';
+
+  @override
+  String get sleepOff => '關閉定時';
+
+  @override
+  String sleepLeft(String time) {
+    return '剩餘 $time';
+  }
+
+  @override
+  String get sleepCustomTitle => '定時停止播放';
+
+  @override
+  String get sleepCustomPlaceholder => '分鐘數';
+
+  @override
+  String get sleepCustomAction => '開始';
+
+  @override
+  String toastSleepIn(int n) {
+    return '$n 分鐘後停止播放';
+  }
+
+  @override
+  String get toastSleepAfterTrack => '播完這首後停止播放';
+
+  @override
+  String get toastSleepOff => '已關閉睡眠定時';
 }

@@ -243,6 +243,24 @@ abstract class AppLocalizations {
   /// **'关闭'**
   String get actionClose;
 
+  /// Windows title bar button
+  ///
+  /// In zh, this message translates to:
+  /// **'最小化'**
+  String get windowMinimize;
+
+  /// Windows title bar button
+  ///
+  /// In zh, this message translates to:
+  /// **'最大化'**
+  String get windowMaximize;
+
+  /// Windows title bar button, shown instead of Maximize when the window is maximized
+  ///
+  /// In zh, this message translates to:
+  /// **'向下还原'**
+  String get windowRestore;
+
   /// No description provided for @actionCancel.
   ///
   /// In zh, this message translates to:
@@ -921,17 +939,41 @@ abstract class AppLocalizations {
   /// **'跟随系统'**
   String get langSystem;
 
-  /// No description provided for @settingsMiniLyric.
+  /// Settings toggle: on, the mini player always shows the current lyric; off, only while hovering its progress bar
   ///
   /// In zh, this message translates to:
-  /// **'在迷你播放器显示当前歌词'**
+  /// **'迷你播放器始终显示歌词'**
   String get settingsMiniLyric;
 
-  /// No description provided for @settingsMinimizeToTray.
+  /// Settings toggle: closing the window hides it and the app keeps running (macOS: reopen from the Dock; Windows: from the tray icon; Linux: the window is minimized)
   ///
   /// In zh, this message translates to:
-  /// **'关闭窗口时最小化到托盘'**
-  String get settingsMinimizeToTray;
+  /// **'关闭窗口后继续在后台运行'**
+  String get settingsKeepRunning;
+
+  /// Windows tray icon menu item that brings the hidden window back
+  ///
+  /// In zh, this message translates to:
+  /// **'显示窗口'**
+  String get trayShowWindow;
+
+  /// Windows tray icon menu item that quits the app
+  ///
+  /// In zh, this message translates to:
+  /// **'退出'**
+  String get trayQuit;
+
+  /// No description provided for @settingsDynamicIsland.
+  ///
+  /// In zh, this message translates to:
+  /// **'灵动岛'**
+  String get settingsDynamicIsland;
+
+  /// No description provided for @settingsDynamicIslandHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'在屏幕顶部的刘海处显示正在播放，鼠标移上去展开控制'**
+  String get settingsDynamicIslandHint;
 
   /// No description provided for @aboutDownloadVersion.
   ///
@@ -1191,6 +1233,30 @@ abstract class AppLocalizations {
   /// **'没有找到音乐'**
   String get sourceNoMusicFound;
 
+  /// Scan progress: number of audio files read so far
+  ///
+  /// In zh, this message translates to:
+  /// **'正在扫描… 已读取 {count} 首'**
+  String sourceScanningCount(int count);
+
+  /// Toast after a scan: music folders that failed or stopped responding were skipped
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个文件夹无法读取，已跳过'**
+  String sourceFoldersUnreadable(int count);
+
+  /// Shown under a music folder the last scan skipped
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取，已跳过'**
+  String get sourceFolderUnreadable;
+
+  /// Button that stops a running local music scan
+  ///
+  /// In zh, this message translates to:
+  /// **'取消扫描'**
+  String get sourceCancelScan;
+
   /// No description provided for @sourceNotFound.
   ///
   /// In zh, this message translates to:
@@ -1389,6 +1455,24 @@ abstract class AppLocalizations {
   /// **'插件设置'**
   String get pluginSettingsTitle;
 
+  /// Button in plugin settings that tries the unsaved settings
+  ///
+  /// In zh, this message translates to:
+  /// **'测试连接'**
+  String get pluginTestConnection;
+
+  /// Shown on the Test Connection button while the test runs
+  ///
+  /// In zh, this message translates to:
+  /// **'正在测试…'**
+  String get pluginTesting;
+
+  /// Result of Test Connection when it succeeds without a message
+  ///
+  /// In zh, this message translates to:
+  /// **'连接成功'**
+  String get pluginTestOk;
+
   /// No description provided for @pluginSectionAccount.
   ///
   /// In zh, this message translates to:
@@ -1575,6 +1659,18 @@ abstract class AppLocalizations {
   /// **'{programs}，默认关闭，可在插件设置中开启'**
   String pluginPermProcessDetail(String programs);
 
+  /// Install dialog permission row: the plugin connects to local apps over IPC
+  ///
+  /// In zh, this message translates to:
+  /// **'连接本机应用'**
+  String get pluginPermIpc;
+
+  /// Install dialog permission detail; names are the IPC channel names the plugin may use
+  ///
+  /// In zh, this message translates to:
+  /// **'和本机其他应用通信：{names}'**
+  String pluginPermIpcDetail(String names);
+
   /// No description provided for @pluginPermStorage.
   ///
   /// In zh, this message translates to:
@@ -1671,6 +1767,30 @@ abstract class AppLocalizations {
   /// **'连接 Emby 服务器'**
   String get officialEmbyDesc;
 
+  /// Description of the official Last.fm plugin
+  ///
+  /// In zh, this message translates to:
+  /// **'把听过的歌记到 Last.fm'**
+  String get officialLastfmDesc;
+
+  /// Description of the official ListenBrainz plugin
+  ///
+  /// In zh, this message translates to:
+  /// **'把听过的歌记到 ListenBrainz 或自建服务'**
+  String get officialListenbrainzDesc;
+
+  /// Description of the official Discord plugin
+  ///
+  /// In zh, this message translates to:
+  /// **'在 Discord 上显示正在听的歌'**
+  String get officialDiscordDesc;
+
+  /// Description of the official WebDAV plugin
+  ///
+  /// In zh, this message translates to:
+  /// **'播放 NAS、Nextcloud、OpenList 等 WebDAV 服务器上的音乐'**
+  String get officialWebdavDesc;
+
   /// No description provided for @capSuggest.
   ///
   /// In zh, this message translates to:
@@ -1730,6 +1850,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'播放记录'**
   String get capHistory;
+
+  /// Plugin capability chip: reports listens to services like Last.fm
+  ///
+  /// In zh, this message translates to:
+  /// **'听歌上报'**
+  String get capScrobble;
+
+  /// Plugin capability chip: receives playback state (e.g. for Discord status)
+  ///
+  /// In zh, this message translates to:
+  /// **'播放状态'**
+  String get capPlaybackStatus;
 
   /// No description provided for @capDislike.
   ///
@@ -2978,6 +3110,282 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'找不到源 {source}'**
   String sourceErrNotFound(String source);
+
+  /// Install button when it replaces a different plugin that has the same id
+  ///
+  /// In zh, this message translates to:
+  /// **'替换'**
+  String get actionReplace;
+
+  /// Install dialog warning: a plugin with the same id from a different source is installed
+  ///
+  /// In zh, this message translates to:
+  /// **'已安装的「{name}」来自 {source}，和这个插件 id 相同但来源不同。替换后会清除它的设置、登录状态和已授予的权限。'**
+  String pluginIdConflict(String name, String source);
+
+  /// Install dialog warning: a plugin with the same id is installed and its source is unknown (local folder or placed manually)
+  ///
+  /// In zh, this message translates to:
+  /// **'已安装的「{name}」和这个插件 id 相同，但无法确认来自同一个地方。替换后会清除它的设置、登录状态和已授予的权限。'**
+  String pluginIdConflictUnknown(String name);
+
+  /// Plugin card menu item: check this plugin for a new Release now
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新'**
+  String get pluginCheckUpdate;
+
+  /// Toast after checking: the plugin is already the latest version
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」已是最新版本'**
+  String pluginUpToDate(String name);
+
+  /// Toast after checking: a new version of the plugin is available
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」可更新到 {version}'**
+  String pluginUpdateFoundToast(String name, String version);
+
+  /// Toast when the update check could not reach GitHub
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新失败：{error}'**
+  String pluginUpdateCheckFailed(String error);
+
+  /// Section title in the plugin settings dialog
+  ///
+  /// In zh, this message translates to:
+  /// **'更新'**
+  String get pluginSectionUpdates;
+
+  /// Toggle in plugin settings: install new versions in the background
+  ///
+  /// In zh, this message translates to:
+  /// **'自动更新'**
+  String get pluginAutoUpdate;
+
+  /// Explains the auto update toggle
+  ///
+  /// In zh, this message translates to:
+  /// **'有新版本时在后台安装。需要新权限的版本仍要你手动确认。'**
+  String get pluginAutoUpdateDetail;
+
+  /// Explains why auto update is disabled for non-GitHub plugins
+  ///
+  /// In zh, this message translates to:
+  /// **'仅支持从 GitHub 安装或在 plugin.json 中声明了 GitHub 仓库的插件。'**
+  String get pluginAutoUpdateUnsupported;
+
+  /// Toast after a plugin was updated in the background
+  ///
+  /// In zh, this message translates to:
+  /// **'已自动更新「{name}」到 {version}'**
+  String pluginAutoUpdatedToast(String name, String version);
+
+  /// Settings > Playback row title: volume normalization (ReplayGain)
+  ///
+  /// In zh, this message translates to:
+  /// **'音量均衡'**
+  String get settingsReplayGain;
+
+  /// First line of the volume normalization info dialog: what the feature does
+  ///
+  /// In zh, this message translates to:
+  /// **'让不同歌曲听起来一样响'**
+  String get settingsReplayGainHint;
+
+  /// Volume normalization mode: off
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get gainModeOff;
+
+  /// Volume normalization mode: per-track gain
+  ///
+  /// In zh, this message translates to:
+  /// **'按单曲'**
+  String get gainModeTrack;
+
+  /// Volume normalization mode: per-album gain
+  ///
+  /// In zh, this message translates to:
+  /// **'按专辑'**
+  String get gainModeAlbum;
+
+  /// Volume normalization mode: album gain when an album plays in order, track gain otherwise
+  ///
+  /// In zh, this message translates to:
+  /// **'智能'**
+  String get gainModeSmart;
+
+  /// Info dialog: explains the Off mode
+  ///
+  /// In zh, this message translates to:
+  /// **'按歌曲本来的音量播放，不做调整。'**
+  String get gainModeOffInfo;
+
+  /// Info dialog: explains the Per Track mode
+  ///
+  /// In zh, this message translates to:
+  /// **'每首歌各自调到差不多的响度。适合随机播放，或者歌单里的歌来自不同专辑。'**
+  String get gainModeTrackInfo;
+
+  /// Info dialog: explains the Per Album mode
+  ///
+  /// In zh, this message translates to:
+  /// **'整张专辑一起调，专辑里歌曲之间的轻重对比保持原样。适合完整地听专辑。'**
+  String get gainModeAlbumInfo;
+
+  /// Info dialog: explains the Smart mode
+  ///
+  /// In zh, this message translates to:
+  /// **'按顺序播放一张专辑时用「按专辑」，其他时候（随机、歌单、电台）用「按单曲」。'**
+  String get gainModeSmartInfo;
+
+  /// Info dialog footnote: which tracks can be normalized
+  ///
+  /// In zh, this message translates to:
+  /// **'歌曲文件里要有 ReplayGain 标签，或者插件提供了响度信息；都没有的歌曲不调整。'**
+  String get gainModeNote;
+
+  /// Settings section title for the 10-band equalizer
+  ///
+  /// In zh, this message translates to:
+  /// **'均衡器'**
+  String get settingsEqualizer;
+
+  /// Equalizer preset: flat (all bands at 0 dB)
+  ///
+  /// In zh, this message translates to:
+  /// **'平直'**
+  String get eqPresetFlat;
+
+  /// Equalizer preset: pop
+  ///
+  /// In zh, this message translates to:
+  /// **'流行'**
+  String get eqPresetPop;
+
+  /// Equalizer preset: rock
+  ///
+  /// In zh, this message translates to:
+  /// **'摇滚'**
+  String get eqPresetRock;
+
+  /// Equalizer preset: vocal
+  ///
+  /// In zh, this message translates to:
+  /// **'人声'**
+  String get eqPresetVocal;
+
+  /// Equalizer preset: bass boost
+  ///
+  /// In zh, this message translates to:
+  /// **'低音增强'**
+  String get eqPresetBassBoost;
+
+  /// Equalizer preset: treble boost
+  ///
+  /// In zh, this message translates to:
+  /// **'高音增强'**
+  String get eqPresetTrebleBoost;
+
+  /// Equalizer preset: classical
+  ///
+  /// In zh, this message translates to:
+  /// **'古典'**
+  String get eqPresetClassical;
+
+  /// Equalizer preset: jazz
+  ///
+  /// In zh, this message translates to:
+  /// **'爵士'**
+  String get eqPresetJazz;
+
+  /// Equalizer preset: electronic
+  ///
+  /// In zh, this message translates to:
+  /// **'电子'**
+  String get eqPresetElectronic;
+
+  /// Equalizer preset: the user's own band settings
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义'**
+  String get eqPresetCustom;
+
+  /// Now Playing more menu: sleep timer submenu
+  ///
+  /// In zh, this message translates to:
+  /// **'睡眠定时'**
+  String get sleepTimer;
+
+  /// Sleep timer menu item: stop playback after n minutes (abbreviated unit, no plural)
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 分钟'**
+  String sleepMinutes(int n);
+
+  /// Sleep timer menu item: enter a custom number of minutes
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义…'**
+  String get sleepCustom;
+
+  /// Sleep timer menu item: stop when the current track ends
+  ///
+  /// In zh, this message translates to:
+  /// **'放完这首'**
+  String get sleepAfterTrack;
+
+  /// Sleep timer menu item: cancel the timer
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭定时'**
+  String get sleepOff;
+
+  /// Appended to the cancel item: time left, e.g. 23:41
+  ///
+  /// In zh, this message translates to:
+  /// **'剩余 {time}'**
+  String sleepLeft(String time);
+
+  /// Custom sleep timer dialog title
+  ///
+  /// In zh, this message translates to:
+  /// **'定时停止播放'**
+  String get sleepCustomTitle;
+
+  /// Custom sleep timer dialog input placeholder: number of minutes
+  ///
+  /// In zh, this message translates to:
+  /// **'分钟数'**
+  String get sleepCustomPlaceholder;
+
+  /// Custom sleep timer dialog confirm button
+  ///
+  /// In zh, this message translates to:
+  /// **'开始'**
+  String get sleepCustomAction;
+
+  /// Toast after starting the sleep timer
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 分钟后停止播放'**
+  String toastSleepIn(int n);
+
+  /// Toast after choosing to stop after the current track
+  ///
+  /// In zh, this message translates to:
+  /// **'放完这首后停止播放'**
+  String get toastSleepAfterTrack;
+
+  /// Toast after cancelling the sleep timer
+  ///
+  /// In zh, this message translates to:
+  /// **'已关闭睡眠定时'**
+  String get toastSleepOff;
 }
 
 class _AppLocalizationsDelegate

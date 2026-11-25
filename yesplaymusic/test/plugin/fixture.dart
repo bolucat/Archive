@@ -1,4 +1,4 @@
-// 测试用的插件和本地 HTTP 服务器。插件只是测试夹具，不随应用分发。
+// Test plugins and a local HTTP server. The plugins are only test fixtures and aren't shipped with the app.
 
 import 'dart:convert';
 import 'dart:io';
@@ -61,6 +61,26 @@ export async function abort() {
   setTimeout(() => c.abort(), 20);
   try { await f; return "not aborted"; } catch (e) { return e.name; }
 }
+export async function testConnection({ settings }) {
+  const r = await fetch(settings.server + "/bin");
+  return { message: `ok ${(await r.arrayBuffer()).byteLength}` };
+}
+export async function fetchAt({ url }) { return (await fetch(url)).status; }
+export function files() {
+  const bin = host.files.write("covers/a.jpg", new Uint8Array([1, 2, 3]));
+  const text = host.files.write("index.json", '{"a":"中"}');
+  const bad = [];
+  for (const n of ["../x", "/abs", "a//b", "", "a/./b", "C:x"]) {
+    try { host.files.write(n, "no"); bad.push("written"); } catch (e) { bad.push(e.message.includes("invalid name")); }
+  }
+  const got = [...host.files.read("covers/a.jpg")];
+  const read = host.files.readText("index.json");
+  const missing = [host.files.read("nope"), host.files.readText("nope"), host.files.url("nope")];
+  const url = host.files.url("covers/a.jpg");
+  host.files.remove("covers/a.jpg");
+  host.files.remove("covers/a.jpg");
+  return { bin, text, bad, got, read, missing, url, gone: host.files.url("covers/a.jpg") };
+}
 export function misc() {
   return {
     md5: host.crypto.md5("abc"),
@@ -81,9 +101,11 @@ export function stream({ id, quality }) {
   return { url: id === "bad" ? "file:///etc/hosts" : id === "own" ? `file://${host.dir}/index.js` : host.setting("server") + "/bin?q=" + quality };
 }
 export function escape() { return import("../../outside.js"); }
+export function nowPlaying({ track }) { host.storage.set("k", ["now", track]); }
+export function scrobble(args) { host.storage.set("k", ["scrobble", args]); }
 ''';
 
-/// 在 [root] 下写一个插件，返回插件目录。
+/// Writes a plugin under [root] and returns the plugin directory.
 String writeFixture(
   String root, {
   String id = 'fixture',
@@ -118,7 +140,7 @@ String writeFixture(
   return dir;
 }
 
-/// 本地测试服务器。
+/// Local test server.
 Future<HttpServer> fixtureServer() async {
   final s = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   s.listen((req) async {

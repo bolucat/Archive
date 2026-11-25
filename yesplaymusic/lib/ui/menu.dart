@@ -1,4 +1,4 @@
-// 通用组件：右键菜单。
+// Common widgets: context menus.
 
 import 'dart:async';
 
@@ -10,15 +10,17 @@ import '../theme.dart';
 import 'icons.dart';
 import 'tap.dart';
 
-// ───────────── 右键菜单 ─────────────
+// ───────────── Context menu ─────────────
 
 class MenuItem {
   const MenuItem(
     this.icon,
     this.label, {
     this.onTap,
+    this.enabled = true,
     this.danger = false,
     this.sub,
+    this.subGroups,
     this.checked = false,
     this.subSplit = true,
     this.subLoad,
@@ -27,23 +29,27 @@ class MenuItem {
   final String icon;
   final String label;
   final VoidCallback? onTap;
+  final bool enabled;
   final bool danger;
   final List<MenuItem>? sub;
+
+  /// A grouped submenu with dividers between groups. When set, [sub] / [subSplit] are ignored.
+  final List<List<MenuItem>>? subGroups;
   final bool checked;
 
-  /// 子菜单第一项和其余之间画分隔线（「新建歌单」和已有歌单）。
+  /// Draws a divider between a submenu's first item and the rest ("New playlist" and existing playlists).
   final bool subSplit;
 
-  /// 要等一下才知道的子菜单（比如自己的歌单），悬停时显示「正在加载…」。
+  /// Submenus only known after a wait (e.g. the user's playlists) show "Loading…" on hover.
   final Future<List<MenuItem>> Function()? subLoad;
 
-  /// 自带条目的名字，插件可以按它藏起来（见 [MenuSpec.more]）。
+  /// Name of a built-in item, which plugins can use to hide it (see [MenuSpec.more]).
   final String? id;
 
-  bool get hasSub => sub != null || subLoad != null;
+  bool get hasSub => sub != null || subGroups != null || subLoad != null;
 }
 
-/// 晚到的菜单补充：要插进去的组，和要藏起来的条目 id。
+/// Late menu additions: groups to insert and item ids to hide.
 typedef MenuMore = ({List<List<MenuItem>> groups, Set<String> hide});
 
 class MenuSpec {
@@ -60,13 +66,13 @@ class MenuSpec {
   final bool round;
   final List<List<MenuItem>> groups;
 
-  /// 晚一点才知道的条目（比如插件自定义的），到了就插在第 [moreAt] 组前
-  /// （默认最后）。出错或为空就什么都不加。
+  /// Items known only a little later (e.g. plugin-defined ones), inserted before group [moreAt] when they arrive
+  /// (last by default). Nothing is added on error or when empty.
   final Future<MenuMore>? more;
   final int? moreAt;
 }
 
-/// 打开当前菜单的那个元素（右键的那一行）。菜单开着时它保持悬停样式。
+/// The element that opened the current menu (the right-clicked row). It keeps its hover style while the menu is open.
 final menuOwner = ValueNotifier<Object?>(null);
 
 OverlayEntry? _menuEntry;
@@ -77,19 +83,26 @@ void closeMenu() {
   menuOwner.value = null;
 }
 
-void showMenu(BuildContext context, Offset global, MenuSpec spec) {
+/// [above]: open the menu above [global] (for buttons on the bottom player bar).
+void showMenu(
+  BuildContext context,
+  Offset global,
+  MenuSpec spec, {
+  bool above = false,
+}) {
   closeMenu();
   final overlay = Overlay.of(context, rootOverlay: true);
   _menuEntry = OverlayEntry(
-    builder: (_) => _MenuLayer(at: global, spec: spec),
+    builder: (_) => _MenuLayer(at: global, spec: spec, above: above),
   );
   overlay.insert(_menuEntry!);
 }
 
 class _MenuLayer extends StatelessWidget {
-  const _MenuLayer({required this.at, required this.spec});
+  const _MenuLayer({required this.at, required this.spec, this.above = false});
   final Offset at;
   final MenuSpec spec;
+  final bool above;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +116,7 @@ class _MenuLayer extends StatelessWidget {
           ),
         ),
         CustomSingleChildLayout(
-          delegate: _MenuPos(at, size),
+          delegate: _MenuPos(at, size, above: above),
           child: Shortcuts(
             shortcuts: const {
               SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
@@ -127,9 +140,10 @@ class _MenuLayer extends StatelessWidget {
 }
 
 class _MenuPos extends SingleChildLayoutDelegate {
-  _MenuPos(this.at, this.size);
+  _MenuPos(this.at, this.size, {this.above = false});
   final Offset at;
   final Size size;
+  final bool above;
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints c) =>
@@ -138,8 +152,9 @@ class _MenuPos extends SingleChildLayoutDelegate {
   @override
   Offset getPositionForChild(Size s, Size child) {
     var x = at.dx + 2;
-    var y = at.dy + 2;
+    var y = above ? at.dy - child.height - 2 : at.dy + 2;
     if (x + child.width > size.width - 8) x = at.dx - child.width - 2;
+    if (y < 8) y = 8;
     if (y + child.height > size.height - 8) {
       y = (size.height - 8 - child.height).clamp(8, double.infinity);
     }
@@ -147,7 +162,8 @@ class _MenuPos extends SingleChildLayoutDelegate {
   }
 
   @override
-  bool shouldRelayout(_MenuPos old) => old.at != at || old.size != size;
+  bool shouldRelayout(_MenuPos old) =>
+      old.at != at || old.size != size || old.above != above;
 }
 
 class _MenuPanel extends StatefulWidget {
@@ -293,11 +309,12 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final col = item.danger ? heart : P.ink;
-    final icol = item.danger ? heart : P.muted;
+    final enabled = item.enabled;
+    final col = !enabled ? P.faint : (item.danger ? heart : P.ink);
+    final icol = !enabled ? P.faint : (item.danger ? heart : P.muted);
     Widget row = Tap(
-      onHover: onHover,
-      onTap: item.hasSub
+      onHover: enabled ? onHover : null,
+      onTap: !enabled || item.hasSub
           ? null
           : () {
               closeMenu();
@@ -310,13 +327,13 @@ class _MenuRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: squircle(
           8,
-          color: (h || subOpen)
+          color: enabled && (h || subOpen)
               ? (P.dark ? const Color(0xFF232327) : P.surface)
               : const Color(0x00000000),
         ),
         child: Row(
           children: [
-            // 图标为空时不占位（比如只用勾表示选中的单选菜单）
+            // No space reserved when the icon is null (e.g. radio menus that only use a check for selection)
             if (item.icon.isNotEmpty) ...[
               Ico(item.icon, size: 20, color: icol),
               const SizedBox(width: 10),
@@ -337,6 +354,7 @@ class _MenuRow extends StatelessWidget {
         link: link,
         open: subOpen,
         items: item.sub ?? const [],
+        groups: item.subGroups,
         load: item.subLoad,
         split: item.subSplit,
         child: row,
@@ -352,11 +370,13 @@ class _SubMenuHost extends StatefulWidget {
     required this.items,
     required this.child,
     this.split = true,
+    this.groups,
     this.load,
   });
   final LayerLink link;
   final bool open, split;
   final List<MenuItem> items;
+  final List<List<MenuItem>>? groups;
   final Future<List<MenuItem>> Function()? load;
   final Widget child;
 
@@ -367,13 +387,30 @@ class _SubMenuHost extends StatefulWidget {
 class _SubMenuHostState extends State<_SubMenuHost> {
   final _ctrl = OverlayPortalController();
   Future<List<MenuItem>>? _loading;
+  bool _left = false, _up = false;
 
   @override
   void didUpdateWidget(covariant _SubMenuHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (widget.open && !_ctrl.isShowing) _ctrl.show();
+      if (widget.open && !_ctrl.isShowing) {
+        // No room on the right (e.g. the menu is at the right edge): open to the left
+        final box = context.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          final at = box.localToGlobal(Offset.zero);
+          final screen = MediaQuery.sizeOf(context);
+          _left = at.dx + box.size.width + 10 + 248 + 8 > screen.width;
+          // No room below (e.g. the menu is at the bottom): open upwards, bottom aligned with this row
+          final g = widget.groups;
+          final rows = g == null
+              ? widget.items.length
+              : g.fold(0, (n, x) => n + x.length);
+          final h = 12 + rows * 34 + (g == null ? 0 : (g.length - 1) * 9);
+          _up = at.dy - 6 + h > screen.height - 8;
+        }
+        _ctrl.show();
+      }
       if (!widget.open && _ctrl.isShowing) _ctrl.hide();
     });
   }
@@ -386,8 +423,9 @@ class _SubMenuHostState extends State<_SubMenuHost> {
         alignment: Alignment.topLeft,
         child: CompositedTransformFollower(
           link: widget.link,
-          targetAnchor: Alignment.topRight,
-          offset: const Offset(10, -6),
+          targetAnchor: Alignment(_left ? -1 : 1, _up ? 1 : -1),
+          followerAnchor: Alignment(_left ? 1 : -1, _up ? 1 : -1),
+          offset: Offset(_left ? -10 : 10, _up ? 6 : -6),
           child: widget.load == null
               ? _panel(widget.items)
               : FutureBuilder<List<MenuItem>>(
@@ -413,7 +451,9 @@ class _SubMenuHostState extends State<_SubMenuHost> {
 
   Widget _panel(List<MenuItem> items) => _MenuPanel(
     spec: MenuSpec(
-      groups: widget.split && items.length > 1
+      groups: widget.groups != null && widget.load == null
+          ? widget.groups!
+          : widget.split && items.length > 1
           ? [items.take(1).toList(), items.skip(1).toList()]
           : [items],
     ),

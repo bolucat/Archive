@@ -1,10 +1,11 @@
-// 本地音乐源：扫描用户选的文件夹，读取标签、封面和 .lrc 歌词。
+// Local music source: scans folders the user picked and reads tags, covers and .lrc lyrics.
 //
-// ID 约定（只在本源内有意义）：
-//   歌曲  = 文件绝对路径
-//   专辑  = 'al:' + 专辑艺人 + '\x01' + 专辑名（都做了大小写折叠）
-//   艺人  = 'ar:' + 艺人名（折叠）
+// ID conventions (meaningful only within this source):
+//   song   = absolute file path
+//   album  = 'al:' + album artist + '\x01' + album name (both case-folded)
+//   artist = 'ar:' + artist name (folded)
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -16,7 +17,7 @@ import '../lrc.dart';
 import '../models.dart';
 import '../source.dart';
 
-/// 本地源能播放的扩展名 → Stream.type。
+/// Extensions the local source can play → Stream.type.
 const audioTypes = {
   '.mp3': 'mp3',
   '.flac': 'flac',
@@ -32,14 +33,14 @@ const audioTypes = {
   '.ape': 'ape',
 };
 
-/// 文件夹里会被当作专辑封面的图片（不区分大小写）。
+/// Images in a folder treated as the album cover (case-insensitive).
 const _coverNames = ['cover', 'folder', 'front', 'album', 'albumart'];
 const _coverExts = ['.jpg', '.jpeg', '.png', '.webp'];
 
-/// 搜索、分组用的折叠：小写、去首尾空白、合并空白。
+/// Folding for search and grouping: lowercase, trim, collapse whitespace.
 String fold(String s) => s.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
 
-/// 扫描结果里的一首歌。只含基本类型，可以跨 isolate 传递。
+/// A song in the scan results. Only primitive types, so it can cross isolates.
 class LocalEntry {
   LocalEntry({
     required this.path,
@@ -57,7 +58,7 @@ class LocalEntry {
 
   final String path, title, album, cover;
 
-  /// 标签里没写时，扫描结束后由 [_fillAlbumArtists] 补上。
+  /// Filled in by [_fillAlbumArtists] after the scan when the tags don't have it.
   String albumArtist;
   final List<String> artists;
   final int year, disc, number, durationMs;
@@ -65,7 +66,7 @@ class LocalEntry {
 }
 
 class LocalSource extends Source {
-  /// [folders]：要扫描的文件夹；[cacheDir]：存放从标签里提取出的封面。
+  /// [folders]: folders to scan; [cacheDir]: where covers extracted from tags are stored.
   LocalSource({required this.folders, required this.cacheDir});
 
   final List<String> folders;
@@ -94,16 +95,57 @@ class LocalSource extends Source {
   Map<String, List<LocalEntry>> _byAlbum = const {};
   Map<String, List<LocalEntry>> _byArtist = const {};
 
-  /// 专辑加进来的时间：里面最新的那个文件的修改时间。
+  /// When the album was added: the modification time of its newest file.
   Map<String, String> _albumAdded = const {};
 
   List<LocalEntry> get entries => _entries;
   int get trackCount => _entries.length;
 
-  /// 重新扫描所有文件夹。读标签是同步 IO，放到后台 isolate 里做。
-  Future<void> scan() async {
-    final folders = List.of(this.folders), cacheDir = this.cacheDir;
-    final list = await Isolate.run(() => scanFolders(folders, cacheDir));
+  /// How long a folder may go without progress before its scan is abandoned. Calls like listing a
+  /// directory or reading a file are synchronous, so on a stuck network drive they can block forever.
+  static const stallTimeout = Duration(seconds: 30);
+
+  final _cancel = Completer<void>();
+
+  /// Folders skipped by the last [scan] because they couldn't be read or stopped making progress.
+  List<String> unreadable = const [];
+
+  /// Stops a running [scan]: it throws [ScanCancelled] and the index stays as it was.
+  void cancelScan() {
+    if (!_cancel.isCompleted) _cancel.complete();
+  }
+
+  /// Rescans all folders. Reading tags is synchronous IO, so each folder runs in its own
+  /// background isolate. A folder that fails or stalls for [stall] is skipped and listed in
+  /// [unreadable]; the others still make it into the index. [onProgress] gets the number of files read so far.
+  Future<void> scan({
+    void Function(int files)? onProgress,
+    Duration stall = stallTimeout,
+  }) async {
+    final folders = {for (final f in this.folders) p.normalize(f)};
+    var done = 0;
+    final results = await Future.wait([
+      for (final folder in folders)
+        _scanFolder(folder, cacheDir, stall, _cancel.future, () {
+          onProgress?.call(++done);
+        }),
+    ]);
+    if (_cancel.isCompleted) throw ScanCancelled();
+    final failed = <String>[];
+    final seen = <String>{};
+    final list = <LocalEntry>[];
+    for (final (i, folder) in folders.indexed) {
+      final r = results[i];
+      if (r == null) {
+        failed.add(folder);
+        continue;
+      }
+      for (final e in r) {
+        if (seen.add(e.path)) list.add(e);
+      }
+    }
+    _fillAlbumArtists(list);
+    unreadable = failed;
     _index(list);
   }
 
@@ -248,7 +290,7 @@ class LocalSource extends Source {
     }
   }
 
-  /// 本地的整个曲库一次给完。
+  /// The whole local library is returned at once.
   @override
   Future<SearchResult> library(SearchKind kind, {int offset = 0}) async {
     if (offset > 0) return const SearchResult();
@@ -297,7 +339,7 @@ class LocalSource extends Source {
     );
   }
 
-  /// 先找同名 .lrc（以及 .trans.lrc 翻译），没有再读标签里内嵌的歌词。
+  /// Looks for a .lrc with the same name (and a .trans.lrc translation) first, then lyrics embedded in the tags.
   @override
   Future<Lyrics> lyrics(String id) async {
     final base = p.withoutExtension(id);
@@ -312,7 +354,7 @@ class LocalSource extends Source {
         return '';
       }
     });
-    // 内嵌的可能只是纯文本（没有时间戳），这时当作没有逐行歌词。
+    // Embedded lyrics may be plain text (no timestamps); then treat it as having no line-by-line lyrics.
     if (parseLrc(embedded).isEmpty) return const Lyrics();
     return Lyrics(lrc: embedded);
   }
@@ -323,44 +365,128 @@ class LocalSource extends Source {
     try {
       return f.readAsStringSync();
     } on FormatException {
-      return null; // 非 UTF-8（比如 GBK）的 LRC，暂不支持
+      return null; // non-UTF-8 LRC (e.g. GBK) isn't supported yet
     }
   }
 }
 
-// ───────────── 扫描（在后台 isolate 里跑） ─────────────
+// ───────────── Scanning (runs in background isolates) ─────────────
 
-/// 扫描文件夹，返回所有能识别的音频文件。读不出标签的文件也收录，用文件名兜底。
-List<LocalEntry> scanFolders(List<String> folders, String cacheDir) {
-  final out = <LocalEntry>[];
-  final seen = <String>{};
+/// Thrown by [LocalSource.scan] after [LocalSource.cancelScan].
+class ScanCancelled implements Exception {}
+
+/// Worker → main isolate: the finished folder.
+class _Done {
+  const _Done(this.entries);
+  final List<LocalEntry> entries;
+}
+
+/// Scans one folder in its own isolate. Returns null when it fails or makes no progress for [stall];
+/// the isolate is killed then, since a call blocked on IO can't be interrupted any other way.
+Future<List<LocalEntry>?> _scanFolder(
+  String folder,
+  String cacheDir,
+  Duration stall,
+  Future<void> cancel,
+  void Function() onFile,
+) async {
+  final port = ReceivePort();
+  final result = Completer<List<LocalEntry>?>();
+  Isolate? iso;
+  Timer? watchdog;
+  void finish(List<LocalEntry>? r) {
+    if (result.isCompleted) return;
+    watchdog?.cancel();
+    port.close();
+    iso?.kill(priority: Isolate.immediate);
+    result.complete(r);
+  }
+
+  void arm() {
+    watchdog?.cancel();
+    watchdog = Timer(stall, () => finish(null));
+  }
+
+  unawaited(cancel.then((_) => finish(null)));
+  arm();
+  port.listen((msg) {
+    switch (msg) {
+      case _Done(:final entries):
+        finish(entries);
+      case 1:
+        onFile();
+        arm();
+      case 0:
+        arm();
+      default:
+        finish(null); // uncaught error (a [message, stack] list) or exit without a result (null)
+    }
+  });
+  try {
+    iso = await Isolate.spawn(
+      _folderWorker,
+      (port.sendPort, folder, cacheDir),
+      onError: port.sendPort,
+      onExit: port.sendPort,
+    );
+    if (result.isCompleted) iso.kill(priority: Isolate.immediate);
+  } catch (_) {
+    finish(null);
+  }
+  return result.future;
+}
+
+/// Runs in the worker isolate. Sends 0 for each directory listed and 1 for each file read
+/// (both reset the watchdog), then [_Done] with every recognised audio file. Files whose tags
+/// can't be read are included too, falling back to the file name.
+void _folderWorker((SendPort, String, String) args) {
+  final (out, folder, cacheDir) = args;
+  final root = Directory(folder);
+  // A missing folder (e.g. an unplugged drive or a default that doesn't exist) is just empty.
+  if (!root.existsSync()) return out.send(const _Done([]));
+  final files = <File>[];
+  _walk(root, files, () => out.send(0), isRoot: true);
+  files.sort((a, b) => a.path.compareTo(b.path));
   final folderCovers = <String, String>{};
-  final tagCovers = <String, String>{}; // 专辑键 → 已提取的封面
-  for (final folder in folders) {
-    final dir = Directory(folder);
-    if (!dir.existsSync()) continue;
-    final files =
-        dir
-            .listSync(recursive: true, followLinks: false)
-            .whereType<File>()
-            .where(
-              (f) => audioTypes.containsKey(p.extension(f.path).toLowerCase()),
-            )
-            .where((f) => !p.basename(f.path).startsWith('._')) // macOS 资源分叉文件
-            .toList()
-          ..sort((a, b) => a.path.compareTo(b.path));
-    for (final f in files) {
-      final path = p.normalize(f.absolute.path);
-      if (!seen.add(path)) continue;
-      out.add(_entry(f, path, cacheDir, folderCovers, tagCovers));
-    }
+  final tagCovers = <String, String>{}; // album key → extracted cover
+  final entries = <LocalEntry>[];
+  for (final f in files) {
+    final path = p.normalize(f.absolute.path);
+    entries.add(_entry(f, path, cacheDir, folderCovers, tagCovers));
+    out.send(1);
   }
-  _fillAlbumArtists(out);
-  return out;
+  out.send(_Done(entries));
 }
 
-/// 同一张专辑所在的文件夹。CD1、Disc 2 这类分碟子文件夹算作上一级，
-/// 这样多碟专辑不会被拆开。
+/// Collects audio files under [dir]. An unreadable subfolder is skipped; an unreadable root throws.
+void _walk(
+  Directory dir,
+  List<File> out,
+  void Function() onDir, {
+  bool isRoot = false,
+}) {
+  final List<FileSystemEntity> items;
+  try {
+    items = dir.listSync(followLinks: false);
+  } on FileSystemException {
+    if (isRoot) rethrow;
+    return;
+  }
+  onDir();
+  for (final e in items) {
+    if (e is Directory) {
+      _walk(e, out, onDir);
+    } else if (e is File &&
+        audioTypes.containsKey(p.extension(e.path).toLowerCase()) &&
+        // macOS resource fork files
+        !p.basename(e.path).startsWith('._')) {
+      out.add(e);
+    }
+  }
+}
+
+/// The folder an album lives in. Per-disc subfolders like CD1 or Disc 2 count as the parent,
+/// so multi-disc albums aren't split.
 String albumDir(String path) {
   final dir = p.dirname(path);
   return RegExp(
@@ -371,9 +497,9 @@ String albumDir(String path) {
       : dir;
 }
 
-/// 标签里没有专辑艺人时，不能拿每首歌自己的艺人当专辑艺人，否则原声带、
-/// 合辑里有一首歌是别的艺人，就会被拆成两张同名专辑。
-/// 这里按"同一文件夹 + 同一专辑名"分组，取组里出现最多的艺人作为专辑艺人。
+/// When the tags have no album artist, each song's own artist can't be used as the album artist, or a soundtrack
+/// or compilation with one song by another artist would split into two albums with the same name.
+/// So group by "same folder + same album name" and take the most frequent artist in the group as the album artist.
 void _fillAlbumArtists(List<LocalEntry> entries) {
   final groups = <String, List<LocalEntry>>{};
   for (final e in entries) {
@@ -424,7 +550,7 @@ LocalEntry _entry(
   final dir = p.dirname(path);
   var cover = folderCovers.putIfAbsent(dir, () => _folderCover(dir));
   if (cover.isEmpty && m != null && m.pictures.isNotEmpty) {
-    // 专辑艺人此时可能还没确定，按文件夹 + 专辑名去重。
+    // The album artist may not be settled yet, so deduplicate by folder + album name.
     final key = album.isEmpty ? path : '${albumDir(path)}\x01${fold(album)}';
     cover = tagCovers[key] ??= _saveCover(m.pictures, key, cacheDir);
   }
@@ -449,7 +575,7 @@ String? _clean(String? s) {
   return t == null || t.isEmpty ? null : t;
 }
 
-/// 没有标签时从文件名猜："01. 艺人 - 歌名" → (艺人, 歌名)。
+/// Guesses from the file name when there are no tags: "01. Artist - Title" → (artist, title).
 (String, String) _fromFilename(String name) {
   final n = name.replaceFirst(RegExp(r'^\d{1,3}[\s.\-_]+'), '');
   final i = n.indexOf(' - ');
@@ -457,7 +583,7 @@ String? _clean(String? s) {
   return (n.substring(0, i).trim(), n.substring(i + 3).trim());
 }
 
-/// 拆分多位艺人。只按明确的分隔符拆，不拆 "&"、"and"（太多乐队名里有）。
+/// Splits multiple artists. Only splits on unambiguous separators, not "&" or "and" (too many band names contain them).
 List<String> splitArtists(String s) => [
   for (final part in s.split(RegExp(r'\s*(?:;|/|、|\x00)\s*')))
     if (part.trim().isNotEmpty) part.trim(),
@@ -471,12 +597,12 @@ String _folderCover(String dir) {
       if (_coverExts.contains(ext) && _coverNames.contains(base)) return f.path;
     }
   } on FileSystemException {
-    // 没权限之类，当作没有封面
+    // No permission or similar: treat as no cover
   }
   return '';
 }
 
-/// 把标签里的封面写到缓存目录，同一张专辑只写一次。优先用"封面"类型的图。
+/// Writes the cover from the tags to the cache directory, once per album. Prefers images of the "cover" type.
 String _saveCover(List<tags.Picture> pics, String key, String cacheDir) {
   final pic = pics.firstWhere(
     (x) => x.pictureType == tags.PictureType.coverFront,
@@ -499,14 +625,14 @@ String _saveCover(List<tags.Picture> pics, String key, String cacheDir) {
   }
 }
 
-/// 64 位 FNV-1a，用来给缓存文件起稳定的名字。
+/// 64-bit FNV-1a, used to give cache files stable names.
 String fnv1a(String s) {
   var h = 0xcbf29ce484222325;
   for (final c in s.codeUnits) {
     h ^= c;
-    h *= 0x100000001b3; // 按 64 位回绕
+    h *= 0x100000001b3; // wraps at 64 bits
   }
-  // Dart 的 int 是有符号的，分成高低 32 位输出，避免出现负号。
+  // Dart ints are signed; output high and low 32 bits separately to avoid a minus sign.
   String hex(int v) => v.toRadixString(16).padLeft(8, '0');
   return hex((h >>> 32) & 0xFFFFFFFF) + hex(h & 0xFFFFFFFF);
 }

@@ -28,8 +28,8 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  // 插件在独立 isolate 里跑：搜索结果转成模型，歌曲标上插件 id；
-  // 设置写进数据目录，重启后还在；没导出的操作 can() 为 false。
+  // Plugins run in their own isolate: search results become models, songs are tagged with the plugin id;
+  // settings are written to the data directory and survive restarts; ops not exported have can() false.
   test('plugin as a Source', () async {
     final s = await PluginSource.start(writeFixture(plugins), dataRoot: data);
     addTearDown(s.close);
@@ -64,7 +64,37 @@ void main() {
     );
   });
 
-  // 评论：分页取、发评论带上被回复的 id、点赞；源报错时 CommentFeed 改回去。
+  // Scrobbling: the track (with its source), start time (UTC ISO 8601) and listened time reach the plugin.
+  test('nowPlaying / scrobble', () async {
+    final s = await PluginSource.start(writeFixture(plugins), dataRoot: data);
+    addTearDown(s.close);
+    expect(s.can(Op.nowPlaying), isTrue);
+    expect(s.can(Op.scrobble), isTrue);
+    const t = Track(id: '7', name: '晚风', source: 'local', duration: 200000);
+    await s.nowPlaying(t);
+    expect(await s.invoke('store', {'v': null}), [
+      'now',
+      {
+        'id': '7',
+        'source': 'local',
+        'name': '晚风',
+        'album': <String, Object?>{},
+        'duration': 200000,
+      },
+    ]);
+    await s.scrobble(
+      t,
+      startedAt: DateTime.utc(2026, 11, 24, 8, 30),
+      playedMs: 100000,
+    );
+    final got = await s.invoke('store', {'v': null}) as List;
+    expect(got[0], 'scrobble');
+    expect((got[1] as Map)['startedAt'], '2026-11-24T08:30:00.000Z');
+    expect((got[1] as Map)['played'], 100000);
+    expect(((got[1] as Map)['track'] as Map)['source'], 'local');
+  });
+
+  // Comments: paged fetching, posting with the replied-to id, likes; CommentFeed reverts when the source errors.
   test('comments', () async {
     final s = await PluginSource.start(writeFixture(plugins), dataRoot: data);
     addTearDown(s.close);
@@ -107,7 +137,7 @@ void main() {
     expect(feed.total, 4);
   });
 
-  // 加载插件目录：坏的插件、重复 id 不影响其他插件，原因记下来。
+  // Loading the plugin directory: broken plugins and duplicate ids don't affect other plugins, and the reasons are recorded.
   test('startPlugins skips bad ones', () async {
     writeFixture(plugins, id: 'good');
     Directory(p.join(plugins, 'broken')).createSync(recursive: true);
@@ -129,7 +159,7 @@ void main() {
     expect(failed[p.join(plugins, 'bad-main')], contains('SyntaxError'));
   });
 
-  // plugin.json 字段类型不对只算这一个插件失败，后面的照常启动。
+  // A wrong field type in plugin.json fails only that plugin; later ones start as usual.
   test('startPlugins: odd manifest fails alone', () async {
     Directory(p.join(plugins, 'a-odd')).createSync(recursive: true);
     File(p.join(plugins, 'a-odd', 'plugin.json'))
@@ -144,7 +174,7 @@ void main() {
     expect(failed.keys.map(p.basename), ['a-odd']);
   });
 
-  // 插件死循环被停用：调用方拿到原因，onStopped 告诉应用，之后的调用都失败。
+  // A plugin disabled for an infinite loop: the caller gets the reason, onStopped tells the app, and later calls all fail.
   test('runaway plugin reports why it stopped', () async {
     final s = await PluginSource.start(writeFixture(plugins), dataRoot: data);
     addTearDown(s.close);
@@ -155,7 +185,7 @@ void main() {
     expect(stopped, hasLength(1));
     expect(stopped.single, contains('5'));
     await expectLater(s.invoke('wait', {'ms': 1}), throwsA(anything));
-    // 主动关闭不算「中途停掉」
+    // Closing on purpose doesn't count as "stopping mid-run"
     await s.close();
     expect(stopped, hasLength(1));
   }, timeout: const Timeout(Duration(seconds: 30)));
