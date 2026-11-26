@@ -137,6 +137,8 @@ type HTTP2Conn struct {
 	err     error
 	cancel  context.CancelFunc
 	onClose func()
+	access  sync.Mutex
+	closed  bool
 }
 
 func NewHTTPConn(reader io.Reader, writer io.Writer) HTTP2Conn {
@@ -155,9 +157,19 @@ func NewLateHTTPConn(writer io.Writer, cancel context.CancelFunc) *HTTP2Conn {
 }
 
 func (c *HTTP2Conn) Setup(reader io.Reader, err error) {
-	c.reader = reader
-	c.err = err
+	c.access.Lock()
+	closed := c.closed
+	if closed {
+		c.err = net.ErrClosed
+	} else {
+		c.reader = reader
+		c.err = err
+	}
 	close(c.create)
+	c.access.Unlock()
+	if closed {
+		common.Close(reader)
+	}
 }
 
 func (c *HTTP2Conn) Read(b []byte) (n int, err error) {
@@ -177,16 +189,14 @@ func (c *HTTP2Conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *HTTP2Conn) Close() error {
-	var reader io.Reader
-	if c.create != nil {
-		select {
-		case <-c.create:
-			reader = c.reader
-		default:
-		}
-	} else {
-		reader = c.reader
+	c.access.Lock()
+	if c.closed {
+		c.access.Unlock()
+		return net.ErrClosed
 	}
+	c.closed = true
+	reader := c.reader
+	c.access.Unlock()
 	err := common.Close(reader, c.writer)
 	if c.cancel != nil {
 		c.cancel()
@@ -223,15 +233,15 @@ func (c *HTTP2Conn) NeedAdditionalReadDeadline() bool {
 
 type ServerHTTPConn struct {
 	HTTP2Conn
-	Controller  *http.ResponseController
-	writeAccess sync.Mutex
-	writing     bool
-	closed      bool
+	Controller   *http.ResponseController
+	writeAccess  sync.Mutex
+	writing      bool
+	serverClosed bool
 }
 
 func (c *ServerHTTPConn) Write(b []byte) (n int, err error) {
 	c.writeAccess.Lock()
-	if c.closed {
+	if c.serverClosed {
 		c.writeAccess.Unlock()
 		return 0, net.ErrClosed
 	}
@@ -243,13 +253,17 @@ func (c *ServerHTTPConn) Write(b []byte) (n int, err error) {
 	}
 	c.writeAccess.Lock()
 	c.writing = false
+	closed := c.serverClosed
 	c.writeAccess.Unlock()
-	return
+	if err != nil && closed {
+		return n, net.ErrClosed
+	}
+	return n, baderror.WrapH2(err)
 }
 
 func (c *ServerHTTPConn) Close() error {
 	c.writeAccess.Lock()
-	c.closed = true
+	c.serverClosed = true
 	writing := c.writing
 	c.writeAccess.Unlock()
 	var err error
@@ -294,6 +308,7 @@ func (w *HTTP2ConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
 func (w *HTTP2ConnWrapper) CloseWrapper() {
 	w.Close()
 	w.access.Lock()
+	w.closed.Store(true)
 	w.access.Unlock()
 }
 

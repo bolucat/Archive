@@ -90,6 +90,11 @@ func (p *addressPool) next(current netip.Addr) netip.Addr {
 	return address
 }
 
+func (p *addressPool) resetReservation() {
+	p.reservedCount = 0
+	p.reservedEnd = p.current
+}
+
 func (s *Store) Start() error {
 	var storage adapter.FakeIPStorage
 	cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
@@ -128,6 +133,8 @@ func (s *Store) Close() error {
 	}
 	s.addressAccess.Lock()
 	defer s.addressAccess.Unlock()
+	s.inet4.resetReservation()
+	s.inet6.resetReservation()
 	return s.storage.FakeIPSaveMetadata(&adapter.FakeIPMetadata{
 		Inet4Range:   s.inet4.addressRange,
 		Inet6Range:   s.inet6.addressRange,
@@ -195,5 +202,7 @@ func (s *Store) Lookup(address netip.Addr) (string, bool) {
 func (s *Store) Reset() error {
 	s.addressAccess.Lock()
 	defer s.addressAccess.Unlock()
+	s.inet4.resetReservation()
+	s.inet6.resetReservation()
 	return s.storage.FakeIPReset()
 }

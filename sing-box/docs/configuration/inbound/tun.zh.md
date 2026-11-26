@@ -6,6 +6,7 @@ icon: material/new-box
 
     :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
     :material-plus: [multi_queue](#multi_queue)  
+    :material-alert: [route_address_set](#route_address_set)  
     :material-delete-clock: [stack](#stack)
 
 !!! quote "sing-box 1.14.0 中的更改"
@@ -193,9 +194,7 @@ icon: material/new-box
   ],
   "inet6_route_exclude_address": [
     "fc00::/7"
-  ],
-  
-  ... // 监听字段
+  ]
 }
 ```
 
@@ -507,7 +506,7 @@ TUN 接口上 DNS 的处理方式。
     
         仅支持 Linux，且需要 `auto_route` 和 `auto_redirect` 已启用。
     
-    在预匹配中匹配指定规则集中的目标 IP CIDR 规则。
+    在预匹配中匹配指定规则集中的目标 IP CIDR 规则和 `route_address`。
     不匹配的流量将绕过 sing-box 路由。
 
 === "`auto_redirect` 未启用"
@@ -562,6 +561,8 @@ TUN 接口上 DNS 的处理方式。
 !!! quote "sing-box 1.15.0 中的更改"
 
     自 1.15.0 起，sing-tun 使用自有 TCP/IP stack，极限性能、能效以及内存占用均大幅领先于所有旧实现。
+
+    :material-delete-alert: `gvisor` 和 `mixed` 栈需要 `with_gvisor` [构建标记](/zh/installation/build-from-source/#构建标记)，该标记已不再默认启用。
 
 !!! quote "sing-box 1.8.0 中的更改"
 
@@ -711,7 +712,3 @@ TCP/IP 栈。
 ### UDP NAT 字段
 
 参阅 [UDP NAT 字段](/zh/configuration/shared/udp-nat/)。
-
-### 监听字段
-
-参阅 [监听字段](/zh/configuration/shared/listen/)。

@@ -207,28 +207,22 @@ func (c *CacheFile) start() error {
 	var db *bbolt.DB
 	for range 10 {
 		db, err = bbolt.Open(c.path, fileMode, &databaseOptions)
-		if err != nil {
-			if errors.Is(err, bboltErrors.ErrTimeout) {
-				continue
+		if err == nil {
+			err = checkDatabase(db)
+			if err == nil {
+				break
 			}
-			if E.IsMulti(err, bboltErrors.ErrInvalid, bboltErrors.ErrChecksum, bboltErrors.ErrVersionMismatch) {
-				rmErr := filemanager.Remove(c.ctx, c.path)
-				if rmErr != nil {
-					return err
-				}
-			}
+			db.Close()
+		} else if errors.Is(err, bboltErrors.ErrTimeout) {
+			continue
+		} else if !E.IsMulti(err, bboltErrors.ErrInvalid, bboltErrors.ErrChecksum, bboltErrors.ErrVersionMismatch) {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		err = checkDatabase(db)
-		if err == nil {
-			break
-		}
 		c.logger.Error("database corrupted: ", err, ": resetting")
-		db.Close()
 		rmErr := filemanager.Remove(c.ctx, c.path)
 		if rmErr != nil {
-			return err
+			return E.Errors(err, E.Cause(rmErr, "reset database"))
 		}
 	}
 	if err != nil {
@@ -345,15 +339,18 @@ func (c *CacheFile) resetDB(failedDB *bbolt.DB, reason any) {
 	failedDB.Close()
 	err := filemanager.Remove(c.ctx, c.path)
 	if err != nil {
-		c.logger.Error("remove corrupted database: ", err)
+		c.logger.Error(E.Cause(err, "reset database"))
 		c.DB = nil
 		return
 	}
 	db, err := bbolt.Open(c.path, 0o666, &databaseOptions)
-	if err == nil {
-		_ = filemanager.Chown(c.ctx, c.path)
-		c.DB = db
+	if err != nil {
+		c.logger.Error(E.Cause(err, "reset database"))
+		c.DB = nil
+		return
 	}
+	_ = filemanager.Chown(c.ctx, c.path)
+	c.DB = db
 }
 
 func (c *CacheFile) StoreFakeIP() bool {

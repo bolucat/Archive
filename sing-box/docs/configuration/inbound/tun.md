@@ -6,6 +6,7 @@ icon: material/new-box
 
     :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
     :material-plus: [multi_queue](#multi_queue)  
+    :material-alert: [route_address_set](#route_address_set)  
     :material-delete-clock: [stack](#stack)
 
 !!! quote "Changes in sing-box 1.14.0"
@@ -191,9 +192,7 @@ icon: material/new-box
   ],
   "inet6_route_exclude_address": [
     "fc00::/7"
-  ],
-  ...
-  // Listen Fields
+  ]
 }
 ```
 
@@ -517,7 +516,7 @@ Exclude custom routes when `auto_route` is enabled.
     
         Only supported on Linux and requires `auto_route` and `auto_redirect` enabled.
     
-    Match the destination IP CIDR rules in the specified rule-sets during pre-matching.
+    Match the destination IP CIDR rules in the specified rule-sets and `route_address` during pre-matching.
     Unmatched traffic will bypass the sing-box routes.
     
     Conflict with `route.default_mark` and `[dialOptions].routing_mark`.
@@ -576,6 +575,9 @@ to customize the mapping and filtering behavior.
 
     Since 1.15.0, sing-tun uses its own TCP/IP stack, with substantial improvements over all previous
     implementations in peak performance, energy efficiency, and memory usage.
+
+    :material-delete-alert: The `gvisor` and `mixed` stacks require the `with_gvisor` [build tag](/installation/build-from-source/#build-tags),
+    which is no longer included by default.
 
 !!! quote "Changes in sing-box 1.8.0"
 
@@ -725,7 +727,3 @@ Hostnames that use the HTTP proxy.
 ### UDP NAT Fields
 
 See [UDP NAT Fields](/configuration/shared/udp-nat/) for details.
-
-### Listen Fields
-
-See [Listen Fields](/configuration/shared/listen/) for details.
