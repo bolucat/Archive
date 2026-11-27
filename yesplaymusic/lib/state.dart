@@ -442,6 +442,7 @@ class AppState extends ChangeNotifier {
           id: a.id,
           title: a.name,
           artist: a.artists.map((x) => x.name).join(', '),
+          artistImage: a.artists.firstOrNull?.imageUrl ?? '',
           cover: a.imageUrl,
           year: a.year ?? 0,
           added: DateTime.tryParse(a.added)?.toLocal(),
@@ -1285,6 +1286,7 @@ class AppState extends ChangeNotifier {
         id: id,
         title: a.name,
         artist: a.artists.map((x) => x.name).join(', '),
+        artistImage: first?.imageUrl ?? '',
         cover: a.imageUrl,
         year: a.year ?? 0,
         released: DateTime.tryParse(a.released),
@@ -1639,6 +1641,7 @@ class AppState extends ChangeNotifier {
         id: id,
         title: a.name,
         artist: a.artists.map((x) => x.name).join(', '),
+        artistImage: first?.imageUrl ?? '',
         cover: a.imageUrl,
         year: a.year ?? 0,
         added: DateTime.tryParse(a.added)?.toLocal(),
@@ -2717,11 +2720,13 @@ class AppState extends ChangeNotifier {
     position = seconds.clamp(0.0, total);
     _playbackSoon(force: true);
     if (_engineOnTrack) {
-      _seeking++;
-      _eng
-          .seek(Duration(milliseconds: (position * 1000).round()))
-          .whenComplete(() => _seeking--);
+      _seekEngine(Duration(milliseconds: (position * 1000).round()));
     }
+  }
+
+  void _seekEngine(Duration to) {
+    _seeking++;
+    _eng.seek(to).whenComplete(() => _seeking--);
   }
 
   /// Seeks forward / back [s] seconds.
@@ -2843,9 +2848,16 @@ class AppState extends ChangeNotifier {
 
   void playQueueAt(int i) {
     if (queue.isEmpty) return;
+    final previous = index;
     index = i.clamp(0, queue.length - 1);
     position = 0;
     playing = true;
+    if (index != previous && _engineOnTrack) {
+      _scrubbing = false;
+      _scrobbler.reset();
+      _seekEngine(Duration.zero);
+      _playbackSoon(force: true);
+    }
     notifyListeners();
     _sync();
   }
@@ -3388,6 +3400,7 @@ class AppState extends ChangeNotifier {
           year: al.year,
           kind: al.kind,
           artistRoute: al.artistRoute,
+          artistImage: al.artistImage,
           added: DateTime.now(),
           spine: 42 + (al.id.hashCode % 23).abs().toDouble(),
         ),
@@ -3486,12 +3499,13 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  /// The line being sung. Reads [position], so use it inside a [pos] listener.
+  /// The line being sung, or -1 before the first line starts (or when there are no lyrics).
+  /// Reads [position], so use it inside a [pos] listener.
   int get lyricIndex {
     final ls = lyricLines;
-    if (ls.isEmpty) return 0;
+    if (ls.isEmpty) return -1;
     final ms = (position * 1000).round();
-    var lo = 0, hi = ls.length - 1, ans = 0;
+    var lo = 0, hi = ls.length - 1, ans = -1;
     while (lo <= hi) {
       final mid = (lo + hi) >> 1;
       if (ls[mid].start <= ms) {

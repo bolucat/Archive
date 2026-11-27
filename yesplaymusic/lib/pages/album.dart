@@ -1,8 +1,12 @@
 import 'package:flutter/widgets.dart';
 
 import '../data.dart';
+import '../cache/requests.dart';
 import '../l10n/l10n.dart';
 import '../menus.dart';
+import '../music/models.dart' as m;
+import '../music/source.dart';
+import '../shell.dart' show MiniPlayer;
 import '../state.dart';
 import '../theme.dart';
 import '../ui.dart';
@@ -56,7 +60,6 @@ class AlbumPage extends StatelessWidget {
           bottom: 0,
           child: CoverWash(coverId: al.cover),
         ),
-        // The cover info on the left stays fixed; only the track list on the right scrolls
         Positioned.fill(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -65,103 +68,98 @@ class AlbumPage extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 400,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 20),
-                      BackBtn(onTap: app.back),
-                      const SizedBox(height: 36),
-                      FadeIn(
-                        dy: 20,
-                        child: Container(
-                          decoration: squircle(
-                            20,
-                            shadows: [
-                              BoxShadow(
-                                color: ba(0.67),
-                                blurRadius: 60,
-                                offset: const Offset(0, 24),
-                                spreadRadius: -10,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: app.hasQueue ? MiniPlayer.bottomInset : 0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 20),
+                        BackBtn(onTap: app.back),
+                        const SizedBox(height: 36),
+                        Flexible(child: _AlbumCover(id: al.cover)),
+                        const SizedBox(height: 16),
+                        tx(
+                          al.year > 0 ? '$kind · ${al.year}' : kind,
+                          13,
+                          w: w700,
+                          f: F.semi,
+                          c: _muted,
+                        ),
+                        const SizedBox(height: 8),
+                        Transform.translate(
+                          offset: const Offset(-3, 0),
+                          child: SizedBox(
+                            width: 440,
+                            child: tx(
+                              al.title,
+                              al.title.length > 9 ? 44 : 72,
+                              w: w900,
+                              f: F.wide,
+                              lines: 2,
+                              h: 1.05,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Tap(
+                          onTap: al.artistRoute.isEmpty
+                              ? null
+                              : () => app.go(al.artistRoute),
+                          builder: (_, h, _) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _AlbumArtistAvatar(
+                                image: al.artistImage,
+                                route: al.artistRoute,
+                              ),
+                              const SizedBox(width: 10),
+                              AnimatedDefaultTextStyle(
+                                duration: fast,
+                                style: ts(
+                                  15,
+                                  w: w700,
+                                  f: F.semi,
+                                  c: h ? accent : P.ink,
+                                ),
+                                child: CjkText(al.artist),
                               ),
                             ],
                           ),
-                          child: Cover(al.cover, w: 400, h: 400, r: 20),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      tx(
-                        al.year > 0 ? '$kind · ${al.year}' : kind,
-                        13,
-                        w: w700,
-                        f: F.semi,
-                        c: _muted,
-                      ),
-                      const SizedBox(height: 8),
-                      Transform.translate(
-                        offset: const Offset(-3, 0),
-                        child: SizedBox(
-                          width: 440,
-                          child: tx(
-                            al.title,
-                            al.title.length > 9 ? 44 : 72,
-                            w: w900,
-                            f: F.wide,
-                            lines: 2,
-                            h: 1.05,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Tap(
-                        onTap: al.artistRoute.isEmpty
-                            ? null
-                            : () => app.go(al.artistRoute),
-                        builder: (_, h, _) => Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 24),
+                        Row(
                           children: [
-                            Cover(al.cover, w: 28, h: 28, r: 14),
+                            PlayPill(
+                              onTap: () =>
+                                  app.playAlbum(al.id, shuffled: false),
+                            ),
                             const SizedBox(width: 10),
-                            AnimatedDefaultTextStyle(
-                              duration: fast,
-                              style: ts(
-                                15,
-                                w: w700,
-                                f: F.semi,
-                                c: h ? accent : P.ink,
-                              ),
-                              child: CjkText(al.artist),
+                            RoundBtn(
+                              icon: 'shuffle',
+                              tip: l.actionShuffle,
+                              onTap: (_) =>
+                                  app.playAlbum(al.id, shuffled: true),
+                            ),
+                            const SizedBox(width: 10),
+                            RoundBtn(
+                              icon: saved ? 'heart-filled' : 'heart',
+                              tip: saved ? l.actionUnsave : l.actionSaveAlbum,
+                              on: saved,
+                              onTap: (_) => app.toggleSaveAlbum(al),
+                            ),
+                            const SizedBox(width: 10),
+                            RoundBtn(
+                              icon: 'more',
+                              tip: l.actionMore,
+                              onTap: (ctx) =>
+                                  menuBelow(ctx, albumMenu(ctx, al)),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          PlayPill(
-                            onTap: () => app.playAlbum(al.id, shuffled: false),
-                          ),
-                          const SizedBox(width: 10),
-                          RoundBtn(
-                            icon: 'shuffle',
-                            tip: l.actionShuffle,
-                            onTap: (_) => app.playAlbum(al.id, shuffled: true),
-                          ),
-                          const SizedBox(width: 10),
-                          RoundBtn(
-                            icon: saved ? 'heart-filled' : 'heart',
-                            tip: saved ? l.actionUnsave : l.actionSaveAlbum,
-                            on: saved,
-                            onTap: (_) => app.toggleSaveAlbum(al),
-                          ),
-                          const SizedBox(width: 10),
-                          RoundBtn(
-                            icon: 'more',
-                            tip: l.actionMore,
-                            onTap: (ctx) => menuBelow(ctx, albumMenu(ctx, al)),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 64),
@@ -230,6 +228,41 @@ class AlbumPage extends StatelessWidget {
   }
 }
 
+class _AlbumCover extends StatelessWidget {
+  const _AlbumCover({required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context) => AspectRatio(
+    aspectRatio: 1,
+    child: LayoutBuilder(
+      builder: (_, constraints) {
+        final size = constraints.maxWidth;
+        final scale = size / 400;
+        final radius = 20 * scale;
+        return FadeIn(
+          dy: 20,
+          child: Container(
+            decoration: squircle(
+              radius,
+              shadows: [
+                BoxShadow(
+                  color: ba(0.67),
+                  blurRadius: 60 * scale,
+                  offset: Offset(0, 24 * scale),
+                  spreadRadius: -10 * scale,
+                ),
+              ],
+            ),
+            child: Cover(id, w: size, h: size, r: radius),
+          ),
+        );
+      },
+    ),
+  );
+}
+
 /// Bottom of the list: release date (just the year when only the year is known), copyright on the next line.
 String _footer(Album al, AppLocalizations l) {
   final d = al.released;
@@ -239,6 +272,62 @@ String _footer(Album al, AppLocalizations l) {
       ? l.albumReleasedIn(al.year)
       : '';
   return [date, al.copyright].where((s) => s.isNotEmpty).join('\n');
+}
+
+class _AlbumArtistAvatar extends StatefulWidget {
+  const _AlbumArtistAvatar({required this.image, required this.route});
+  final String image, route;
+
+  @override
+  State<_AlbumArtistAvatar> createState() => _AlbumArtistAvatarState();
+}
+
+class _AlbumArtistAvatarState extends State<_AlbumArtistAvatar> {
+  String? _target;
+  Future<m.ArtistPage>? _request;
+
+  Widget _avatar(String image) => image.isNotEmpty
+      ? Cover(image, w: 28, h: 28, r: 14)
+      : Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: squircle(14, color: P.raised),
+          child: Ico('user', size: 16, color: _faint),
+        );
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    // Use the same artist identity as the adjacent navigation link. Album responses
+    // often omit the avatar or supply the service's generic artist image.
+    final parts = Uri.tryParse(widget.route)?.pathSegments ?? const <String>[];
+    if (parts.length != 3 ||
+        parts[0] != 'artist' ||
+        !parts[1].startsWith('@')) {
+      return _avatar(widget.image);
+    }
+    final source = parts[1].substring(1), artist = parts[2];
+    if (artist.isEmpty || !(app.sources[source]?.can(Op.artist) ?? false)) {
+      return _avatar(widget.image);
+    }
+    final target = '${app.cacheSpace(source)}/$artist';
+    if (_target != target) {
+      _target = target;
+      _request = null;
+    }
+    final req = DataReq.artist(source, artist);
+    _request ??= app.getData(req);
+    return FutureBuilder<m.ArtistPage>(
+      key: ValueKey(target),
+      future: _request,
+      builder: (context, snapshot) {
+        final image =
+            (app.peekData(req) ?? snapshot.data)?.artist.imageUrl ?? '';
+        return _avatar(image.isNotEmpty ? image : widget.image);
+      },
+    );
+  }
 }
 
 class _AlbumTrackRow extends StatelessWidget {

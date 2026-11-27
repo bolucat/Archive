@@ -75,8 +75,11 @@ import io.nekohasekai.sfa.compose.model.Group
 import io.nekohasekai.sfa.compose.model.GroupItem
 import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsUiState
 import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsViewModel
+import io.nekohasekai.sfa.compose.theme.LocalStatusColors
+import io.nekohasekai.sfa.compose.theme.StatusColors
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
+import io.nekohasekai.sfa.compose.util.ensureContrast
 import io.nekohasekai.sfa.compose.util.rememberSheetDismissFromContentOnlyIfGestureStartedAtTopModifier
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.CommandClient
@@ -319,40 +322,22 @@ private val GroupCardBottomShape = RoundedCornerShape(bottomStart = 16.dp, botto
 
 @Immutable
 private data class UrlTestPalette(
-    val good: Color,
-    val medium: Color,
-    val bad: Color,
+    val status: StatusColors,
     val neutral: Color,
 ) {
     fun forDelay(delay: Int): Color = when {
         delay <= 0 -> neutral
-        delay < 800 -> good
-        delay < 1500 -> medium
-        else -> bad
+        delay < 800 -> status.good
+        delay < 1500 -> status.medium
+        else -> status.bad
     }
 }
 
 @Composable
 private fun rememberUrlTestPalette(): UrlTestPalette {
-    val darkTheme = isSystemInDarkTheme()
-    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = if (darkTheme) 0.09f else 0.07f)
-    return remember(darkTheme, neutral) {
-        if (darkTheme) {
-            UrlTestPalette(
-                good = Color(0xFF7CB89E),
-                medium = Color(0xFFD3A45E),
-                bad = Color(0xFFDB8A62),
-                neutral = neutral,
-            )
-        } else {
-            UrlTestPalette(
-                good = Color(0xFF3D8168),
-                medium = Color(0xFFA8742F),
-                bad = Color(0xFFC25E32),
-                neutral = neutral,
-            )
-        }
-    }
+    val status = LocalStatusColors.current
+    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.09f else 0.07f)
+    return remember(status, neutral) { UrlTestPalette(status, neutral) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -608,7 +593,7 @@ private fun ProxyChip(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -616,17 +601,25 @@ private fun ProxyChip(
                         style = MaterialTheme.typography.labelSmall,
                         color =
                         if (isSelected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            MaterialTheme.colorScheme.onPrimaryContainer
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
                     if (item.urlTestDelay > 0) {
                         Text(
                             text = "${item.urlTestDelay}ms",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = palette.forDelay(item.urlTestDelay),
+                            color =
+                            if (isSelected) {
+                                palette.forDelay(item.urlTestDelay).ensureContrast(MaterialTheme.colorScheme.primaryContainer)
+                            } else {
+                                palette.forDelay(item.urlTestDelay)
+                            },
                         )
                     }
                 }

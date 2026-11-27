@@ -9,8 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <hev-sys.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -83,7 +82,7 @@ hev_socks5_destruct (HevObject *base)
 
     if (self->fd >= 0) {
         hev_task_del_fd (hev_task_self (), self->fd);
-        close (self->fd);
+        hev_task_io_close (self->fd);
     }
 
     HEV_OBJECT_TYPE->destruct (base);

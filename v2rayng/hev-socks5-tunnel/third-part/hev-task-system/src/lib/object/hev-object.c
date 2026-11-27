@@ -2,23 +2,14 @@
  ============================================================================
  Name        : hev-object.c
  Author      : hev <r@hev.cc>
- Copyright   : Copyright (c) 2024 hev
+ Copyright   : Copyright (c) 2024 - 2026 hev
  Description : Object
  ============================================================================
  */
 
+#include <hev-object.h>
+
 #include "lib/misc/hev-compiler.h"
-
-#include "hev-object.h"
-
-EXPORT_SYMBOL int
-hev_object_construct (HevObject *self)
-{
-    self->klass = HEV_OBJECT_TYPE;
-    self->ref_count = 1;
-
-    return 0;
-}
 
 static void
 _hev_object_destruct (HevObject *self)
@@ -55,4 +46,13 @@ hev_object_class (void)
     }
 
     return kptr;
+}
+
+EXPORT_SYMBOL int
+hev_object_construct (HevObject *self)
+{
+    self->klass = HEV_OBJECT_TYPE;
+    self->ref_count = 1;
+
+    return 0;
 }

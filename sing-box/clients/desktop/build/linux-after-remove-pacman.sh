@@ -1,11 +1,5 @@
 #!/bin/bash
 
-if type update-alternatives >/dev/null 2>&1; then
-    update-alternatives --remove '${executable}' '/opt/${sanitizedProductName}/${executable}'
-else
-    rm -f '/usr/bin/${executable}'
-fi
-
 APPARMOR_PROFILE_DEST='/etc/apparmor.d/${executable}'
 if [ -f "$APPARMOR_PROFILE_DEST" ]; then
     if apparmor_status --enabled > /dev/null 2>&1; then

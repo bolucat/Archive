@@ -1,8 +1,8 @@
 /*
  ============================================================================
  Name        : hev-task-system-schedule.c
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2025 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2017 - 2026 hev
  Description :
  ============================================================================
  */
@@ -14,7 +14,8 @@
 
 #include <stdlib.h>
 
-#include "hev-task-system.h"
+#include <hev-task-system.h>
+
 #include "hev-task-system-private.h"
 #include "kern/task/hev-task-private.h"
 #include "kern/task/hev-task-executer.h"
@@ -167,13 +168,28 @@ hev_task_system_io_poll (HevTaskSystemContext *ctx, int timeout)
 
     count = hev_task_io_reactor_wait (ctx->reactor, events, 1024, timeout);
     for (i = 0; i < count; i++) {
-        HevTaskSchedEntity *sched_entity;
-
-        sched_entity = hev_task_io_reactor_wait_event_get_data (&events[i]);
-        hev_task_system_wakeup_task_with_context (ctx, sched_entity->task);
+        void *data = hev_task_io_reactor_wait_event_get_data (&events[i]);
+        hev_task_system_wakeup_task_with_context (ctx,
+                                                  hev_task_from_data (data));
     }
 
     hev_task_timer_wake (ctx->timer);
+
+#if CONFIG_SCHED_IO_POLL_INTERVAL > 0
+    /* Re-arm the deadline for throttling the next non-blocking poll. */
+    hev_task_timer_poll_rearm (ctx->timer, CONFIG_SCHED_IO_POLL_INTERVAL);
+#endif
+}
+
+static inline void
+hev_task_system_io_poll_maybe (HevTaskSystemContext *ctx)
+{
+#if CONFIG_SCHED_IO_POLL_INTERVAL > 0
+    if (!hev_task_timer_poll_due (ctx->timer))
+        return;
+#endif
+
+    hev_task_system_io_poll (ctx, 0);
 }
 
 static inline void
@@ -183,7 +199,7 @@ hev_task_system_pick_current_task (HevTaskSystemContext *ctx)
 
     if (ctx->running_task_count < ctx->total_task_count) {
         if (ctx->running_task_count) {
-            hev_task_system_io_poll (ctx, 0);
+            hev_task_system_io_poll_maybe (ctx);
         } else {
             do {
                 hev_task_system_io_poll (ctx, -1);
@@ -209,7 +225,8 @@ hev_task_system_schedule (HevTaskYieldType type)
             return; /* resume to task context */
 
         /* resume to kernel context */
-        _longjmp (ctx->kernel_context, type);
+        hev_sys_task_stack_leave (&ctx->sys_task_stack);
+        hev_longjmp (ctx->kernel_context, type);
     }
 
     /* NOTE: in kernel context */
@@ -242,7 +259,10 @@ hev_task_system_schedule (HevTaskYieldType type)
     hev_task_system_update_sched_time (ctx);
 
     /* switch to task */
-    _longjmp (ctx->current_task->context, 1);
+    hev_sys_task_stack_enter (
+        &ctx->sys_task_stack, ctx->current_task->stack_bottom,
+        hev_task_stack_get_base (ctx->current_task->stack));
+    hev_longjmp (ctx->current_task->context, 1);
 }
 
 void
@@ -259,7 +279,9 @@ hev_task_system_run_new_task (HevTask *task)
 {
     HevTaskSystemContext *ctx = hev_task_system_get_context ();
 
-    hev_task_execute (task, hev_task_executer);
+    hev_sys_task_execute (task, task->stack_bottom,
+                          hev_task_stack_get_base (task->stack),
+                          hev_task_executer);
 
     if (ctx->current_task)
         task->sched_key += hev_task_system_get_min_sched_key (ctx);
@@ -277,5 +299,6 @@ hev_task_system_kill_current_task (void)
      * NOTE: remove current task in kernel context, because current
      * task stack may be freed.
      */
-    _longjmp (ctx->kernel_context, HEV_TASK_SCHED_REMOVE);
+    hev_sys_task_stack_leave (&ctx->sys_task_stack);
+    hev_longjmp (ctx->kernel_context, HEV_TASK_SCHED_REMOVE);
 }

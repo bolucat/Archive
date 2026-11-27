@@ -291,7 +291,7 @@ void *hev_calloc (size_t nmemb, size_t size);
  */
 #define LWIP_IPV6                       1
 
-#ifdef __LP64__
+#if defined(__LP64__) || defined(_WIN64)
 #define IPV6_FRAG_COPYHEADER            1
 #endif
 

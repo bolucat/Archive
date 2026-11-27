@@ -10,11 +10,12 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <time.h>
-#include <unistd.h>
 
-#include <hev-task-system.h>
+#include <hev-sys.h>
 #include <hev-task.h>
+#include <hev-task-system.h>
 #include <hev-task-io.h>
+#include <hev-task-io-pipe.h>
 
 #define NOPS (200000)
 
@@ -26,7 +27,7 @@ get_time (void)
 {
     struct timespec ts;
 
-    clock_gettime (CLOCK_MONOTONIC, &ts);
+    timespec_get (&ts, TIME_UTC);
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
 }
 
@@ -52,7 +53,7 @@ sleep_yielder (HevTaskYieldType type, void *data)
 static void
 writer_entry (void *data)
 {
-    long i, n = (long)data;
+    long i, n = (intptr_t)data;
     char buf[64];
 
     for (i = 0; i < n; i++)
@@ -62,7 +63,7 @@ writer_entry (void *data)
 static void
 reader_entry (void *data)
 {
-    long i, n = (long)data;
+    long i, n = (intptr_t)data;
     char buf[64];
 
     for (i = 0; i < n; i++)
@@ -72,7 +73,7 @@ reader_entry (void *data)
 static void
 mod_entry (void *data)
 {
-    long i, n = (long)data;
+    long i, n = (intptr_t)data;
 
     for (i = 0; i < n; i++)
         hev_task_mod_fd (hev_task_self (), pipe_fds[0], POLLIN);
@@ -85,17 +86,15 @@ bench_pipe_io (HevTaskIOYielder yielder, const char *name)
     double t0, t1;
 
     bench_yielder = yielder;
-    if (pipe (pipe_fds) < 0)
+    if (hev_task_io_pipe_pipe (pipe_fds) < 0)
         return;
-    fcntl (pipe_fds[0], F_SETFL, O_NONBLOCK);
-    fcntl (pipe_fds[1], F_SETFL, O_NONBLOCK);
 
     tasks[0] = hev_task_new (-1);
     hev_task_add_fd (tasks[0], pipe_fds[0], POLLIN);
-    hev_task_run (tasks[0], reader_entry, (void *)(long)NOPS);
+    hev_task_run (tasks[0], reader_entry, (void *)(intptr_t)NOPS);
     tasks[1] = hev_task_new (-1);
     hev_task_add_fd (tasks[1], pipe_fds[1], POLLOUT);
-    hev_task_run (tasks[1], writer_entry, (void *)(long)NOPS);
+    hev_task_run (tasks[1], writer_entry, (void *)(intptr_t)NOPS);
 
     t0 = get_time ();
     hev_task_system_run ();
@@ -104,8 +103,8 @@ bench_pipe_io (HevTaskIOYielder yielder, const char *name)
 
     hev_task_del_fd (tasks[0], pipe_fds[0]);
     hev_task_del_fd (tasks[1], pipe_fds[1]);
-    close (pipe_fds[0]);
-    close (pipe_fds[1]);
+    hev_task_io_close (pipe_fds[0]);
+    hev_task_io_close (pipe_fds[1]);
     hev_task_unref (tasks[0]);
     hev_task_unref (tasks[1]);
 }
@@ -116,13 +115,12 @@ bench_fd_mod (void)
     HevTask *task;
     double t0, t1;
 
-    if (pipe (pipe_fds) < 0)
+    if (hev_task_io_pipe_pipe (pipe_fds) < 0)
         return;
-    fcntl (pipe_fds[0], F_SETFL, O_NONBLOCK);
 
     task = hev_task_new (-1);
     hev_task_add_fd (task, pipe_fds[0], POLLIN);
-    hev_task_run (task, mod_entry, (void *)(long)NOPS);
+    hev_task_run (task, mod_entry, (void *)(intptr_t)NOPS);
 
     t0 = get_time ();
     hev_task_system_run ();
@@ -130,8 +128,8 @@ bench_fd_mod (void)
     report ("fd mod (epoll_ctl)", NOPS, t0, t1);
 
     hev_task_del_fd (task, pipe_fds[0]);
-    close (pipe_fds[0]);
-    close (pipe_fds[1]);
+    hev_task_io_close (pipe_fds[0]);
+    hev_task_io_close (pipe_fds[1]);
     hev_task_unref (task);
 }
 

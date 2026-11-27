@@ -9,11 +9,11 @@
 
 #include <stdlib.h>
 #include <assert.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -27,8 +27,8 @@ task_entry (void *data)
     unlink (path);
     fd = hev_task_io_creat (path, 0644);
     assert (fd >= 0);
-    assert ((fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
-    close (fd);
+    assert ((hev_task_io_fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    hev_task_io_close (fd);
     assert (unlink (path) == 0);
 }
 

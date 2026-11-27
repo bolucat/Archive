@@ -1,26 +1,20 @@
 /*
  ============================================================================
  Name        : hev-task-channel.c
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2019 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2019 - 2026 hev
  Description : Channel
  ============================================================================
  */
 
-#include "kern/task/hev-task.h"
-#include "lib/misc/hev-compiler.h"
-#include "mem/api/hev-memory-allocator-api.h"
+#include <hev-task.h>
+#include <hev-task-channel.h>
+#include <hev-memory-allocator.h>
 
+#include "lib/misc/hev-compiler.h"
 #include "hev-task-channel-select-private.h"
 
-#include "hev-task-channel.h"
 #include "hev-task-channel-private.h"
-
-EXPORT_SYMBOL int
-hev_task_channel_new (HevTaskChannel **chan1, HevTaskChannel **chan2)
-{
-    return hev_task_channel_new_with_buffers (chan1, chan2, 0, 0);
-}
 
 EXPORT_SYMBOL int
 hev_task_channel_new_with_buffers (HevTaskChannel **chan1,
@@ -60,8 +54,10 @@ hev_task_channel_new_with_buffers (HevTaskChannel **chan1,
         unsigned int i;
 
         for (i = 0; i < buffers; i++) {
-            c1->buffers[i].data = (void *)c1->buffers + buffers_size + size * i;
-            c2->buffers[i].data = (void *)c2->buffers + buffers_size + size * i;
+            c1->buffers[i].data =
+                (void *)((char *)c1->buffers + buffers_size + size * i);
+            c2->buffers[i].data =
+                (void *)((char *)c2->buffers + buffers_size + size * i);
         }
     }
 
@@ -74,6 +70,12 @@ err1:
     hev_free (c1);
 err0:
     return -1;
+}
+
+EXPORT_SYMBOL int
+hev_task_channel_new (HevTaskChannel **chan1, HevTaskChannel **chan2)
+{
+    return hev_task_channel_new_with_buffers (chan1, chan2, 0, 0);
 }
 
 static void

@@ -15828,21 +15828,6 @@
             "fallback_delay": {
               "$ref": "#/$defs/Duration"
             },
-            "tcp_prefix": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 255
-                  }
-                }
-              ]
-            },
             "udp_disable_domain_unmapping": {
               "type": "boolean"
             },
@@ -15900,21 +15885,6 @@
             },
             "fallback_delay": {
               "$ref": "#/$defs/Duration"
-            },
-            "tcp_prefix": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 255
-                  }
-                }
-              ]
             },
             "udp_disable_domain_unmapping": {
               "type": "boolean"
@@ -15980,21 +15950,6 @@
             },
             "fallback_delay": {
               "$ref": "#/$defs/Duration"
-            },
-            "tcp_prefix": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 255
-                  }
-                }
-              ]
             },
             "udp_disable_domain_unmapping": {
               "type": "boolean"

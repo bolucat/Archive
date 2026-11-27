@@ -9,7 +9,7 @@
 
 #include <stdlib.h>
 
-#if defined(_WIN32) || defined(_WIN64)
+#if (defined(_WIN32) || defined(_WIN64)) && !defined(__clang__)
 #define WEAK
 #else
 #define WEAK __attribute__((weak))

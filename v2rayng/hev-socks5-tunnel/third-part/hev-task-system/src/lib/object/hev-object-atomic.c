@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-object-atomic.c
  Author      : hev <r@hev.cc>
- Copyright   : Copyright (c) 2024 hev
+ Copyright   : Copyright (c) 2024 - 2026 hev
  Description : Object with atomic ref-count
  ============================================================================
  */
@@ -10,23 +10,9 @@
 #include <string.h>
 #include <stdatomic.h>
 
+#include <hev-object-atomic.h>
+
 #include "lib/misc/hev-compiler.h"
-
-#include "hev-object-atomic.h"
-
-EXPORT_SYMBOL int
-hev_object_atomic_construct (HevObjectAtomic *self)
-{
-    int res;
-
-    res = hev_object_construct (&self->base);
-    if (res < 0)
-        return res;
-
-    HEV_OBJECT (self)->klass = HEV_OBJECT_ATOMIC_TYPE;
-
-    return 0;
-}
 
 static void
 _hev_object_atomic_destruct (HevObject *base)
@@ -70,4 +56,18 @@ hev_object_atomic_class (void)
     }
 
     return okptr;
+}
+
+EXPORT_SYMBOL int
+hev_object_atomic_construct (HevObjectAtomic *self)
+{
+    int res;
+
+    res = hev_object_construct (&self->base);
+    if (res < 0)
+        return res;
+
+    HEV_OBJECT (self)->klass = HEV_OBJECT_ATOMIC_TYPE;
+
+    return 0;
 }

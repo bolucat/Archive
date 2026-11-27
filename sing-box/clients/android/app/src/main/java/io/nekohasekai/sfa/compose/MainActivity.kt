@@ -167,7 +167,6 @@ class MainActivity :
     private var showBackgroundLocationDialog by mutableStateOf(false)
     private var showLocalNetworkPermissionDialog by mutableStateOf(false)
     private var notificationPermissionRequested = false
-    private var localNetworkPermissionRequested = false
     private var showImportProfileDialog by mutableStateOf(false)
     private var pendingImportProfile by mutableStateOf<Triple<String, String, String>?>(null)
     private var showImportLocalProfileDialog by mutableStateOf(false)
@@ -203,9 +202,7 @@ class MainActivity :
         }
 
     private val localNetworkPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            startService()
-        }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     private val prepareLauncher =
         registerForActivityResult(
@@ -229,6 +226,17 @@ class MainActivity :
             }
         }
         enableEdgeToEdge()
+
+        if (savedInstanceState == null &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN &&
+            !hasPermission(Manifest.permission.ACCESS_LOCAL_NETWORK)
+        ) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_LOCAL_NETWORK)) {
+                showLocalNetworkPermissionDialog = true
+            } else {
+                localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+            }
+        }
 
         lifecycleScope.launch {
             Settings.dataStore.initialize()
@@ -290,7 +298,7 @@ class MainActivity :
                 pendingImportProfile = Triple(profile.name, profile.host, profile.url)
                 showImportProfileDialog = true
             } catch (e: Exception) {
-                pendingIntentErrorMessage = e.message ?: "Failed to parse profile link"
+                pendingIntentErrorMessage = e.message ?: getString(R.string.error_parse_profile_link)
             }
             return
         }
@@ -335,18 +343,6 @@ class MainActivity :
                     onServiceAlert(Alert.RequestNotificationPermission, null)
                     return@launch
                 }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN &&
-                !hasPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) &&
-                !localNetworkPermissionRequested
-            ) {
-                localNetworkPermissionRequested = true
-                if (ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, Manifest.permission.ACCESS_LOCAL_NETWORK)) {
-                    showLocalNetworkPermissionDialog = true
-                } else {
-                    localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
-                }
-                return@launch
             }
             startService0()
         }
@@ -549,10 +545,7 @@ class MainActivity :
             LocalNetworkPermissionDialog(onConfirm = {
                 showLocalNetworkPermissionDialog = false
                 localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
-            }, onDismiss = {
-                showLocalNetworkPermissionDialog = false
-                startService()
-            })
+            }, onDismiss = { showLocalNetworkPermissionDialog = false })
         }
 
         // Handle import remote profile dialog
@@ -1459,10 +1452,6 @@ class MainActivity :
                 }
             }
 
-            BackHandler(enabled = selectedConnectionId != null) {
-                selectedConnectionId = null
-            }
-
             ModalBottomSheet(
                 onDismissRequest = {
                     showConnectionsSheet = false
@@ -1478,6 +1467,9 @@ class MainActivity :
                         .fillMaxHeight(),
                 ) {
                     if (displayConnection != null) {
+                        BackHandler {
+                            selectedConnectionId = null
+                        }
                         ConnectionDetailsScreen(
                             connection = displayConnection,
                             onBack = { selectedConnectionId = null },

@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <string.h>
 #include <stdatomic.h>
-#include <sys/ioctl.h>
+#include <hev-sys.h>
 
 #ifdef __GLIBC__
 #include <malloc.h>
@@ -28,13 +28,16 @@
 
 #include <hev-task.h>
 #include <hev-task-io.h>
+#include <hev-task-io-socket.h>
 #include <hev-task-mutex.h>
 #include <hev-task-system.h>
 #include <hev-memory-allocator.h>
 
 #include "hev-exec.h"
 #include "hev-config.h"
+#include "hev-utils.h"
 #include "hev-logger.h"
+#include "hev-compat.h"
 #include "hev-tunnel.h"
 #include "hev-compiler.h"
 #include "hev-mapped-dns.h"
@@ -58,6 +61,7 @@ static atomic_int tsync;
 static int tun_fd = -1;
 static int tun_fd_local;
 static int session_count;
+static int evicted_count;
 static int event_fds[2] = { -1, -1 };
 
 static size_t stat_tx_packets;
@@ -128,27 +132,62 @@ netif_init_handler (struct netif *netif)
     return ERR_OK;
 }
 
+static inline void
+hev_socks5_tunnel_mark_evicted (HevListNode *node)
+{
+    node->next = node->prev = node;
+}
+
+static inline int
+hev_socks5_tunnel_is_evicted (HevListNode *node)
+{
+    return node->next == node;
+}
+
+/*
+ * Over max-session-count the least recently active session is evicted. It is
+ * taken off the set right away: a terminated session lingers until its task
+ * runs again, and a burst of accepts handled in one go would otherwise
+ * terminate that same head over and over while the set keeps growing (iOS NE
+ * jetsam, 30.10: 190 sessions at a cap of 130).
+ */
+static void
+hev_socks5_tunnel_evict_session (HevListNode *node)
+{
+    HevSocks5SessionData *sd;
+
+    sd = container_of (node, HevSocks5SessionData, node);
+    hev_list_del (&session_set, node);
+    hev_socks5_tunnel_mark_evicted (node);
+    session_count--;
+    evicted_count++;
+    hev_socks5_session_terminate (sd->self);
+}
+
 static void
 hev_socks5_tunnel_insert_session (HevListNode *node)
 {
-    HevSocks5SessionData *sd;
     int max_session_count;
 
     hev_list_add_tail (&session_set, node);
     session_count++;
 
     max_session_count = hev_config_get_misc_max_session_count ();
-    if (!max_session_count || session_count < max_session_count)
+    if (!max_session_count)
         return;
 
-    node = hev_list_first (&session_set);
-    sd = container_of (node, HevSocks5SessionData, node);
-    hev_socks5_session_terminate (sd->self);
+    while (session_count >= max_session_count)
+        hev_socks5_tunnel_evict_session (hev_list_first (&session_set));
 }
 
 static void
 hev_socks5_tunnel_delete_session (HevListNode *node)
 {
+    if (hev_socks5_tunnel_is_evicted (node)) {
+        evicted_count--;
+        return;
+    }
+
     hev_list_del (&session_set, node);
     session_count--;
 }
@@ -160,6 +199,9 @@ hev_socks5_tunnel_update_session (HevListNode *node)
 
     max_session_count = hev_config_get_misc_max_session_count ();
     if (!max_session_count)
+        return;
+
+    if (hev_socks5_tunnel_is_evicted (node))
         return;
 
     hev_list_del (&session_set, node);
@@ -208,14 +250,18 @@ tcp_accept_handler (void *arg, struct tcp_pcb *pcb, err_t err)
     if (!READ_ONCE (run))
         return ERR_RST;
 
-    tcp = hev_socks5_session_tcp_new (pcb, &mutex);
-    if (!tcp)
-        return ERR_MEM;
-
+    /*
+     * The task goes first: the session can't be destroyed here, its destructor
+     * takes the mutex that is held while lwIP calls us.
+     */
     stack_size = hev_config_get_misc_task_stack_size ();
     task = hev_task_new (stack_size);
-    if (!task) {
-        hev_object_unref (HEV_OBJECT (tcp));
+    if (!task)
+        return ERR_MEM;
+
+    tcp = hev_socks5_session_tcp_new (pcb, &mutex);
+    if (!tcp) {
+        hev_task_unref (task);
         return ERR_MEM;
     }
 
@@ -262,6 +308,19 @@ exit:
     udp_remove (pcb);
 }
 
+/*
+ * The datagram that created the pcb is delivered to it after we return. The
+ * pcb must not be removed before, lwIP would create a new one for it again.
+ */
+static void
+udp_drop_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
+                  const ip_addr_t *addr, u16_t port)
+{
+    pbuf_free (p);
+    udp_recv (pcb, NULL, NULL);
+    udp_remove (pcb);
+}
+
 static void
 udp_recv_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
                   const ip_addr_t *addr, u16_t port)
@@ -273,7 +332,7 @@ udp_recv_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
     HevTask *task;
 
     if (!READ_ONCE (run)) {
-        udp_remove (pcb);
+        udp_recv (pcb, udp_drop_handler, NULL);
         return;
     }
 
@@ -287,16 +346,18 @@ udp_recv_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
         }
     }
 
-    udp = hev_socks5_session_udp_new (pcb, &mutex);
-    if (!udp) {
-        udp_remove (pcb);
-        return;
-    }
-
+    /* As for TCP, the session can't be destroyed here. */
     stack_size = hev_config_get_misc_task_stack_size ();
     task = hev_task_new (stack_size);
     if (!task) {
-        hev_object_unref (HEV_OBJECT (udp));
+        udp_recv (pcb, udp_drop_handler, NULL);
+        return;
+    }
+
+    udp = hev_socks5_session_udp_new (pcb, &mutex);
+    if (!udp) {
+        hev_task_unref (task);
+        udp_recv (pcb, udp_drop_handler, NULL);
         return;
     }
 
@@ -428,7 +489,7 @@ lwip_timer_task_entry (void *data)
         }
         hev_task_mutex_unlock (&mutex);
 
-        if (hev_list_first (&session_set))
+        if (hev_list_first (&session_set) || evicted_count)
             hev_task_sleep (TCP_TMR_INTERVAL);
         else {
 #if defined(__GLIBC__) && !defined(ENABLE_LIBRARY)
@@ -450,6 +511,7 @@ tunnel_init (int extern_tun_fd)
     offload = hev_config_get_tunnel_offload ();
 
     if (extern_tun_fd >= 0) {
+#ifndef _WIN32
         int nonblock = 1;
 
         res = ioctl (extern_tun_fd, FIONBIO, (char *)&nonblock);
@@ -457,6 +519,7 @@ tunnel_init (int extern_tun_fd)
             LOG_E ("socks5 tunnel non-blocking");
             return -1;
         }
+#endif
 
         tun_fd = extern_tun_fd;
         hev_tunnel_set_offload (tun_fd, offload);
@@ -518,8 +581,12 @@ tunnel_fini (void)
 {
     const char *script_path;
 
-    if (!tun_fd_local)
+    if (!tun_fd_local) {
+        /* The fd belongs to the caller, only release what we hold for it. */
+        hev_tunnel_set_offload (-1, 0);
+        tun_fd = -1;
         return;
+    }
 
     script_path = hev_config_get_tunnel_pre_down_script ();
     if (script_path)
@@ -612,18 +679,17 @@ gateway_fini (void)
 static int
 event_task_init (void)
 {
-    int nonblock = 1;
     int res;
 
-    res = socketpair (PF_LOCAL, SOCK_STREAM, 0, event_fds);
+    res = hev_task_io_socket_socketpair (PF_LOCAL, SOCK_STREAM, 0, event_fds);
     if (res < 0) {
         LOG_E ("socks5 tunnel event");
         return -1;
     }
 
-    res = ioctl (event_fds[0], FIONBIO, (char *)&nonblock);
-    if (res < 0) {
-        LOG_E ("socks5 tunnel event nonblock");
+    if ((hev_task_io_fcntl (event_fds[0], F_SETFD, FD_CLOEXEC) < 0) ||
+        (hev_task_io_fcntl (event_fds[1], F_SETFD, FD_CLOEXEC) < 0)) {
+        LOG_E ("socks5 tunnel event cloexec");
         return -1;
     }
 
@@ -645,11 +711,11 @@ event_task_fini (void)
     }
 
     if (event_fds[0] >= 0) {
-        close (event_fds[0]);
+        hev_task_io_close (event_fds[0]);
         event_fds[0] = -1;
     }
     if (event_fds[1] >= 0) {
-        close (event_fds[1]);
+        hev_task_io_close (event_fds[1]);
         event_fds[1] = -1;
     }
 }
@@ -765,7 +831,9 @@ hev_socks5_tunnel_init (int tun_fd)
     if (res < 0)
         goto exit;
 
+#ifdef SIGPIPE
     signal (SIGPIPE, SIG_IGN);
+#endif
 
     hev_task_mutex_init (&mutex);
 
@@ -842,7 +910,8 @@ retry:
     if (res & SYNC_SEND) {
         res = atomic_fetch_or (&tsync, SYNC_SENT);
         if (!(res & SYNC_SENT)) {
-            res = write (event_fds[1], &res, 1);
+            res = hev_task_io_write (event_fds[1], &res, 1, hev_task_io_nowait,
+                                     NULL);
             assert (res > 0 && "socks5 tunnel write event");
         }
     } else {
@@ -852,7 +921,7 @@ retry:
     atomic_fetch_and (&tsync, ~SYNC_WAIT);
 }
 
-void
+EXPORT_SYMBOL void
 hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
                          size_t *rx_packets, size_t *rx_bytes)
 {

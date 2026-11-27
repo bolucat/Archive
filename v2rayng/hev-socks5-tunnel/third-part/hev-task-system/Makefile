@@ -22,11 +22,50 @@ TESTDIR=tests
 BENCHDIR=benches
 BUILDDIR=build
 
+EXEEXT=
 STATIC_TARGET=$(BINDIR)/lib$(PROJECT).a
 SHARED_TARGET=$(BINDIR)/lib$(PROJECT).so
 
+# Native Windows: clang targeting MSVC, built with the very same rules.
+# Run make from a Visual Studio developer prompt (x64, x86 or arm64) with
+# a POSIX sh.exe on PATH, e.g. Git for Windows:
+#   make ARCH=x64 tests
+ifeq ($(OS),Windows_NT)
+WIN_NATIVE=1
+ARCH?=x64
+CROSS_TARGET_x64=x86_64
+CROSS_TARGET_x86=i686
+CROSS_TARGET_arm64=aarch64
+CC=clang --target=$(CROSS_TARGET_$(ARCH))-pc-windows-msvc
+PP=$(CC)
+AR=llvm-ar
+EXEEXT=.exe
+STATIC_TARGET=$(BINDIR)/$(PROJECT).lib
+SHARED_TARGET=$(BINDIR)/$(PROJECT).dll
+SHARED_IMPLIB=$(BINDIR)/$(PROJECT).dll.lib
+EXPORT_SYMBOL=
+CCFLAGS+=-DEXPORT_SYMBOL="$(EXPORT_SYMBOL)" -D_CRT_SECURE_NO_WARNINGS \
+         -D_WINSOCK_DEPRECATED_NO_WARNINGS -Wno-microsoft-enum-forward-reference
+APP_LDFLAGS=$(LDFLAGS) -L $(BINDIR) -l $(PROJECT) -lkernel32 -lws2_32
+ifneq ($(ARCH),arm64)
+# Coroutine switching is incompatible with the CET shadow stack.
+APP_LDFLAGS+=-Wl,/CETCOMPAT:NO
+endif
+endif
+
+ifneq ($(WIN_NATIVE),1)
 $(SHARED_TARGET) : CCFLAGS+=-fPIC -fvisibility=hidden
 $(SHARED_TARGET) : LDFLAGS+=-shared -pthread
+else
+# The DLL exports what EXPORT_SYMBOL marks.
+$(SHARED_TARGET) : EXPORT_SYMBOL=__declspec(dllexport)
+$(SHARED_TARGET) : CCFLAGS+=-Wno-dll-attribute-on-redeclaration
+$(SHARED_TARGET) : LDFLAGS+=-shared -lkernel32 -lws2_32 \
+                    -Wl,/IMPLIB:$(SHARED_IMPLIB)
+ifneq ($(ARCH),arm64)
+$(SHARED_TARGET) : LDFLAGS+=-Wl,/CETCOMPAT:NO
+endif
+endif
 
 -include build.mk
 -include configs.mk
@@ -43,10 +82,6 @@ LINKMSG="\e[1;34mLINK\e[0m  \e[1;32m%s\e[0m\n"
 CLEANMSG="\e[1;34mCLEAN\e[0m %s\n"
 TESTMSG="\e[1;34mTEST\e[0m  \e[1;32m%s\e[0m\n"
 BENCHMSG="\e[1;35mBENCH\e[0m \e[1;32m%s\e[0m\n"
-
-ifeq ($(MSYSTEM),MSYS)
-	LDFLAGS+=-lmsys-2.0 -lws2_32
-endif
 
 V:=
 ECHO_PREFIX:=@
@@ -97,55 +132,57 @@ ifneq ($(MAKECMDGOALS),clean)
 endif
 
 
-tests : $(patsubst $(TESTDIR)/%.c,$(BINDIR)/test-%,$(wildcard $(TESTDIR)/*.c))
+TESTS=$(patsubst $(TESTDIR)/%.c,%,$(wildcard $(TESTDIR)/*.c))
+BENCHES=$(patsubst $(BENCHDIR)/%.c,%,$(wildcard $(BENCHDIR)/*.c))
+ifeq ($(WIN_NATIVE),1)
+# Skip what needs POSIX /dev, openat, UDP socketpair or a peer pthread.
+TESTS:=$(filter-out io-open io-openat io-creat io-socket \
+	task-dns-fork task-dns-shared task-dns-signal,$(TESTS))
+BENCHES:=$(filter-out poll-latency,$(BENCHES))
+endif
+
+tests : $(patsubst %,$(BINDIR)/test-%$(EXEEXT),$(TESTS))
 	$(ECHO_PREFIX) for test in $^; do printf $(TESTMSG) $$test; $$test; done
 
-$(BINDIR)/test-% : $(TESTDIR)/%.c $(STATIC_TARGET)
+$(BINDIR)/test-%$(EXEEXT) : $(TESTDIR)/%.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-benches : $(patsubst $(BENCHDIR)/%.c,$(BINDIR)/bench-%,$(wildcard $(BENCHDIR)/*.c))
+benches : $(patsubst %,$(BINDIR)/bench-%$(EXEEXT),$(BENCHES))
 	$(ECHO_PREFIX) for bench in $^; do printf $(BENCHMSG) $$bench; $$bench; done
 
-$(BINDIR)/bench-% : $(BENCHDIR)/%.c $(STATIC_TARGET)
+$(BINDIR)/bench-%$(EXEEXT) : $(BENCHDIR)/%.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
 apps : \
-	$(BINDIR)/simple \
-	$(BINDIR)/wakeup \
-	$(BINDIR)/channel \
-	$(BINDIR)/timeout \
-	$(BINDIR)/echo-server \
-	$(BINDIR)/curl \
-	$(BINDIR)/gtk
+	$(BINDIR)/simple$(EXEEXT) \
+	$(BINDIR)/wakeup$(EXEEXT) \
+	$(BINDIR)/channel$(EXEEXT) \
+	$(BINDIR)/timeout$(EXEEXT) \
+	$(BINDIR)/echo-server$(EXEEXT) \
+	$(BINDIR)/call$(EXEEXT)
 
-$(BINDIR)/simple : $(APPDIR)/simple.c $(STATIC_TARGET)
+$(BINDIR)/simple$(EXEEXT) : $(APPDIR)/simple.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-$(BINDIR)/wakeup : $(APPDIR)/wakeup.c $(STATIC_TARGET)
+$(BINDIR)/wakeup$(EXEEXT) : $(APPDIR)/wakeup.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-$(BINDIR)/channel : $(APPDIR)/channel.c $(STATIC_TARGET)
+$(BINDIR)/channel$(EXEEXT) : $(APPDIR)/channel.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-$(BINDIR)/timeout : $(APPDIR)/timeout.c $(STATIC_TARGET)
+$(BINDIR)/timeout$(EXEEXT) : $(APPDIR)/timeout.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-$(BINDIR)/echo-server : $(APPDIR)/echo-server.c $(STATIC_TARGET)
+$(BINDIR)/echo-server$(EXEEXT) : $(APPDIR)/echo-server.c $(STATIC_TARGET)
 	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@
 
-$(BINDIR)/curl : $(APPDIR)/curl.c $(STATIC_TARGET)
-	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS) \
-		`pkg-config --cflags --libs libcurl` -ldl
-	@printf $(LINKMSG) $@
-
-$(BINDIR)/gtk : $(APPDIR)/gtk.c $(STATIC_TARGET)
-	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS) \
-		`pkg-config --cflags --libs gtk+-3.0`
+$(BINDIR)/call$(EXEEXT) : $(APPDIR)/call.c $(STATIC_TARGET)
+	$(ECHO_PREFIX) $(CC) -o $@ $^ $(APP_CCFLAGS) $(APP_LDFLAGS)
 	@printf $(LINKMSG) $@

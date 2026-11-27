@@ -59,6 +59,15 @@ typedef int sys_prot_t;
 /* define _INTPTR for Win32 MSVC stdint.h */
 #define _INTPTR 2
 
+/* ssize_t is not provided by MSVC, share the one of the platform layer. */
+#include <basetsd.h>
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+typedef SSIZE_T ssize_t;
+#endif
+#define SSIZE_MAX MAXLONG_PTR
+#define LWIP_NO_UNISTD_H 1
+
 /* Do not use lwIP default definitions for format strings
  * because these do not work with MSVC 2010 compiler (no inttypes.h)
  */

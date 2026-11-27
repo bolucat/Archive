@@ -1,8 +1,8 @@
 /*
  ============================================================================
  Name        : hev-task-io.c
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2018 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2018 - 2026 hev
  Description : Task I/O operations
  ============================================================================
  */
@@ -16,19 +16,14 @@
 #endif /* ENABLE_IO_SPLICE_SYSCALL */
 
 #include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdarg.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
 
-#include "kern/task/hev-task.h"
-#include "lib/io/buffer/hev-circular-buffer.h"
+#include "sys/hev-sys-private.h"
+#include <hev-task.h>
+#include <hev-task-io.h>
+#include <hev-circular-buffer.h>
+
 #include "lib/misc/hev-compiler.h"
-
-#include "hev-task-io.h"
 
 typedef struct _HevTaskIOSplicer HevTaskIOSplicer;
 
@@ -88,6 +83,12 @@ hev_task_io_openat (int dirfd, const char *pathname, int flags, ...)
 }
 
 EXPORT_SYMBOL int
+hev_task_io_close (int fd)
+{
+    return close (fd);
+}
+
+EXPORT_SYMBOL int
 hev_task_io_dup (int oldfd)
 {
     int newfd;
@@ -98,7 +99,7 @@ hev_task_io_dup (int oldfd)
         return -1;
 
     if (0 > ioctl (newfd, FIONBIO, (char *)&nonblock)) {
-        close (newfd);
+        hev_task_io_close (newfd);
         return -2;
     }
 
@@ -115,11 +116,33 @@ hev_task_io_dup2 (int oldfd, int newfd)
         return -1;
 
     if (0 > ioctl (newfd, FIONBIO, (char *)&nonblock)) {
-        close (newfd);
+        hev_task_io_close (newfd);
         return -2;
     }
 
     return newfd;
+}
+
+EXPORT_SYMBOL int
+hev_task_io_fcntl (int fd, int cmd, ...)
+{
+    va_list ap;
+    int arg;
+
+    switch (cmd) {
+    case F_GETFD:
+    case F_GETFL:
+        return fcntl (fd, cmd);
+    case F_SETFD:
+    case F_SETFL:
+        va_start (ap, cmd);
+        arg = va_arg (ap, int);
+        va_end (ap);
+        return fcntl (fd, cmd, arg);
+    default:
+        errno = EINVAL;
+        return -1;
+    }
 }
 
 EXPORT_SYMBOL ssize_t
@@ -236,8 +259,8 @@ task_io_splicer_init (HevTaskIOSplicer *self, size_t buf_size)
     return 0;
 
 exit_close:
-    close (self->fd[0]);
-    close (self->fd[1]);
+    hev_task_io_close (self->fd[0]);
+    hev_task_io_close (self->fd[1]);
 exit:
     return res;
 }
@@ -245,8 +268,8 @@ exit:
 static void
 task_io_splicer_fini (HevTaskIOSplicer *self)
 {
-    close (self->fd[0]);
-    close (self->fd[1]);
+    hev_task_io_close (self->fd[0]);
+    hev_task_io_close (self->fd[1]);
 }
 
 static int

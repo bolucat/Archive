@@ -1,22 +1,22 @@
 /*
  ============================================================================
  Name        : hev-task-system.c
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2025 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2017 - 2026 hev
  Description :
  ============================================================================
  */
 
 #include <stdlib.h>
 
+#include <hev-task-system.h>
+#include <hev-memory-allocator.h>
+
 #include "lib/misc/hev-compiler.h"
 #include "lib/misc/hev-task-stack-detector.h"
-#include "mem/api/hev-memory-allocator-api.h"
 #include "mem/slice/hev-memory-allocator-slice.h"
 
 #include "hev-task-system-private.h"
-
-#include "hev-task-system.h"
 
 __thread HevTaskSystemContext *hev_task_system_tls_context;
 
@@ -32,15 +32,18 @@ hev_task_system_init (void)
     HevMemoryAllocator *allocator = NULL;
     HevTaskSystemContext *context;
 
+    if (hev_task_system_get_context ())
+        return -1;
+
+    if (hev_sys_init () < 0)
+        return -1;
+
 #ifdef ENABLE_MEMALLOC_SLICE
     allocator = hev_memory_allocator_slice_new ();
 #endif
     allocator = hev_memory_allocator_set_default (allocator);
     if (allocator)
         hev_memory_allocator_unref (allocator);
-
-    if (hev_task_system_get_context ())
-        goto exit;
 
     context = hev_malloc0 (sizeof (HevTaskSystemContext));
     if (!context)
@@ -73,6 +76,10 @@ free_reactor:
 free_context:
     hev_free (context);
 exit:
+    allocator = hev_memory_allocator_set_default (NULL);
+    if (allocator)
+        hev_memory_allocator_unref (allocator);
+    hev_sys_fini ();
     return -1;
 }
 
@@ -81,15 +88,22 @@ hev_task_system_fini (void)
 {
     HevMemoryAllocator *allocator;
     HevTaskSystemContext *context;
+    HevListNode *node;
 
     context = hev_task_system_get_context ();
     if (!context)
         return;
 
+    /* Free tasks that were never run or are still referenced. */
+    while ((node = hev_list_first (&context->all_tasks)))
+        hev_task_destroy (container_of (node, HevTask, list_node));
+
     if (context->dns_proxy)
         hev_task_dns_proxy_destroy (context->dns_proxy);
+#ifdef ENABLE_STACK_OVERFLOW_DETECTOR
     if (context->stack_detector)
         hev_task_stack_detector_destroy (context->stack_detector);
+#endif
     hev_task_timer_destroy (context->timer);
     hev_task_io_reactor_destroy (context->reactor);
     hev_free (context);
@@ -98,6 +112,8 @@ hev_task_system_fini (void)
     allocator = hev_memory_allocator_set_default (NULL);
     if (allocator)
         hev_memory_allocator_unref (allocator);
+
+    hev_sys_fini ();
 }
 
 EXPORT_SYMBOL void

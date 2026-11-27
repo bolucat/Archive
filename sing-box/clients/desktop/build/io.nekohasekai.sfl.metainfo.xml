@@ -19,7 +19,6 @@
   <url type="bugtracker">https://github.com/SagerNet/sing-box/issues</url>
   <url type="vcs-browser">https://github.com/SagerNet/sing-box</url>
   <provides>
-    <binary>sing-box</binary>
     <mediatype>application/x-sing-box-profile</mediatype>
   </provides>
   <supports>

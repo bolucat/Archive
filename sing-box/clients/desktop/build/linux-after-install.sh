@@ -1,14 +1,5 @@
 #!/bin/bash
 
-if type update-alternatives >/dev/null 2>&1; then
-    if [ -L '/usr/bin/${executable}' -a -e '/usr/bin/${executable}' -a "`readlink '/usr/bin/${executable}'`" != '/etc/alternatives/${executable}' ]; then
-        rm -f '/usr/bin/${executable}'
-    fi
-    update-alternatives --install '/usr/bin/${executable}' '${executable}' '/opt/${sanitizedProductName}/${executable}' 100 || ln -sf '/opt/${sanitizedProductName}/${executable}' '/usr/bin/${executable}'
-else
-    ln -sf '/opt/${sanitizedProductName}/${executable}' '/usr/bin/${executable}'
-fi
-
 if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
     chmod 4755 '/opt/${sanitizedProductName}/chrome-sandbox' || true
 else

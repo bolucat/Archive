@@ -9,13 +9,9 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <unistd.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -41,7 +37,7 @@ task_client_entry (void *data)
     }
 
 quit:
-    close (fd);
+    hev_task_io_close (fd);
 }
 
 static void
@@ -57,11 +53,11 @@ task_listener_entry (void *data)
         return;
     }
 
-    ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
-                      sizeof (reuseaddr));
+    ret = hev_task_io_socket_setsockopt (fd, SOL_SOCKET, SO_REUSEADDR,
+                                         &reuseaddr, sizeof (reuseaddr));
     if (ret == -1) {
         fprintf (stderr, "Set reuse address failed!\n");
-        close (fd);
+        hev_task_io_close (fd);
         return;
     }
 
@@ -69,16 +65,17 @@ task_listener_entry (void *data)
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons (8000);
-    ret = bind (fd, (struct sockaddr *)&addr, (socklen_t)sizeof (addr));
+    ret = hev_task_io_socket_bind (fd, (struct sockaddr *)&addr,
+                                   (socklen_t)sizeof (addr));
     if (ret == -1) {
         fprintf (stderr, "Bind address failed!\n");
-        close (fd);
+        hev_task_io_close (fd);
         return;
     }
-    ret = listen (fd, 100);
+    ret = hev_task_io_socket_listen (fd, 100);
     if (ret == -1) {
         fprintf (stderr, "Listen failed!\n");
-        close (fd);
+        hev_task_io_close (fd);
         return;
     }
 
@@ -106,7 +103,7 @@ task_listener_entry (void *data)
         hev_task_run (task, task_client_entry, (void *)(intptr_t)client_fd);
     }
 
-    close (fd);
+    hev_task_io_close (fd);
 }
 
 int

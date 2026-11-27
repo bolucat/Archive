@@ -20,12 +20,38 @@ BUILDDIR=build
 STATIC_TARGET=$(BINDIR)/lib$(PROJECT).a
 SHARED_TARGET=$(BINDIR)/lib$(PROJECT).so
 
+# Native Windows: clang targeting MSVC, built with the very same rules.
+# Run make from a Visual Studio developer prompt (x64, x86 or arm64) with
+# a POSIX sh.exe on PATH, e.g. Git for Windows:
+#   make ARCH=x64
+ifeq ($(OS),Windows_NT)
+WIN_NATIVE=1
+ARCH?=x64
+CROSS_TARGET_x64=x86_64
+CROSS_TARGET_x86=i686
+CROSS_TARGET_arm64=aarch64
+CC=clang --target=$(CROSS_TARGET_$(ARCH))-pc-windows-msvc
+PP=$(CC)
+AR=llvm-ar
+STATIC_TARGET=$(BINDIR)/$(PROJECT).lib
+SHARED_TARGET=$(BINDIR)/$(PROJECT).dll
+SHARED_IMPLIB=$(BINDIR)/$(PROJECT).dll.lib
+YAML_DECLARE_FLAG=-DYAML_DECLARE_STATIC
+CCFLAGS+=-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS \
+         $(YAML_DECLARE_FLAG)
+endif
+
+ifneq ($(WIN_NATIVE),1)
 $(SHARED_TARGET) : CCFLAGS+=-fPIC
 $(SHARED_TARGET) : LDFLAGS+=-shared
+else
+$(SHARED_TARGET) : YAML_DECLARE_FLAG=-DYAML_DECLARE_EXPORT
+$(SHARED_TARGET) : LDFLAGS+=-shared -Wl,/IMPLIB:$(SHARED_IMPLIB)
+endif
 
 -include build.mk
 -include configs.mk
-CCFLAGS+=-I$(SRCDIR) $(CONFIG_CFLAGS)
+CCFLAGS+=-I$(SRCDIR) -Iinclude $(CONFIG_CFLAGS)
 
 CCSRCS=$(filter %.c,$(SRCFILES))
 ASSRCS=$(filter %.S,$(SRCFILES))

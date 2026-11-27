@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +25,11 @@ class _Local extends Source {
 
   @override
   final Set<String> ops = {Op.stream};
+
+  final listens = <String>[];
+
+  @override
+  Future<void> played(m.Track track) async => listens.add(track.id);
 
   @override
   Future<m.AudioStream> stream(String id, {String quality = 'high'}) async =>
@@ -167,6 +173,21 @@ void main() {
     expect(engine.current, _key(ids.first));
   }
 
+  Future<void> waitForLyrics() async {
+    if (!app.lyricsLoading) return;
+    final ready = Completer<void>();
+    void onUpdate() {
+      if (!app.lyricsLoading && !ready.isCompleted) ready.complete();
+    }
+
+    app.addListener(onUpdate);
+    try {
+      await ready.future.timeout(const Duration(seconds: 5));
+    } finally {
+      app.removeListener(onUpdate);
+    }
+  }
+
   test('rescan refreshes cached and currently playing local lyrics', () async {
     final music = await Directory.systemTemp.createTemp('ypm_rescan_');
     addTearDown(() => music.delete(recursive: true));
@@ -182,6 +203,7 @@ void main() {
     expect(await app.loadLibrary(), isTrue);
     app.playList([_t(first.path), _t(second.path)]);
     await _tick();
+    await waitForLyrics();
     engine.at(30);
     expect(app.lyricLines.single.text, 'First before');
     final secondRequest = DataReq.lyrics('local', second.path);
@@ -191,6 +213,7 @@ void main() {
     secondLyrics.writeAsStringSync('[00:00.00]Second after');
     await app.rescanLibrary();
 
+    await waitForLyrics();
     expect(app.lyricLines.single.text, 'First after');
     expect(app.track.key, _key(first.path));
     expect(app.playing, isTrue);
@@ -216,6 +239,7 @@ void main() {
       expect(await app.loadLibrary(), isTrue);
       app.playTrack(_t(song.path));
       await _tick();
+      await waitForLyrics();
       expect(app.lyricLines.single.text, 'Before');
 
       lyrics.writeAsStringSync('[00:00.00]After');
@@ -271,6 +295,39 @@ void main() {
       expect(nowPlayingSnapshot(app)['duration'], 30);
     },
   );
+
+  test('selecting a queued copy restarts the loaded song', () async {
+    await start(['a', 'b', 'a']);
+    engine.at(20);
+    expect(app.index, 0);
+    expect(app.position, 20);
+
+    app.playQueueAt(2);
+
+    expect(app.index, 2);
+    expect(app.playing, isTrue);
+    expect(app.position, 0);
+    expect(engine.sought, Duration.zero);
+    expect(engine.opened, [_key('a')]);
+  });
+
+  test('selecting a queued copy counts as a new listen', () async {
+    final local = app.sources['local'] as _Local;
+    await start(['a', 'b', 'a']);
+    for (var second = 0; second <= 90; second++) {
+      engine.at(second.toDouble());
+    }
+    expect(local.listens, ['a']);
+
+    app.playQueueAt(2);
+    await _tick();
+    for (var second = 0; second < 90; second++) {
+      engine.at(second.toDouble());
+    }
+    expect(local.listens, ['a']);
+    engine.at(90);
+    expect(local.listens, ['a', 'a']);
+  });
 
   test('快放完时才排下一首，接上后不重新打开', () async {
     await start(['a', 'b', 'c']);

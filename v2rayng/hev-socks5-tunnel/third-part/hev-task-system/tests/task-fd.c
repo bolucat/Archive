@@ -8,16 +8,27 @@
  */
 
 #include <errno.h>
-#include <unistd.h>
 #include <stddef.h>
 #include <assert.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
 #include <hev-task-io-socket.h>
 
 static int fds[2];
+
+static int
+yielder (HevTaskYieldType type, void *data)
+{
+    int *count = data;
+
+    hev_task_yield (type);
+    (*count)++;
+
+    return 0;
+}
 
 static void
 task1_entry (void *data)
@@ -27,12 +38,8 @@ task1_entry (void *data)
 
     assert (hev_task_add_fd (task, fds[0], POLLOUT) == 0);
     assert (hev_task_mod_fd (task, fds[0], POLLIN) == 0);
-retry:
-    if (read (fds[0], &val, sizeof (val)) == -1 && errno == EAGAIN) {
-        hev_task_yield (HEV_TASK_WAITIO);
-        assert (count++ == 0);
-        goto retry;
-    }
+    assert (hev_task_io_read (fds[0], &val, sizeof (val), yielder, &count) > 0);
+    assert (count == 1);
     assert (hev_task_del_fd (task, fds[0]) == 0);
 }
 
@@ -40,7 +47,7 @@ static void
 task2_entry (void *data)
 {
     HevTask *task = hev_task_self ();
-    int val;
+    int val = 0;
 
     assert (hev_task_sleep (50) == 0);
     assert (hev_task_add_fd (task, fds[1], POLLOUT) == 0);
@@ -67,8 +74,8 @@ main (int argc, char *argv[])
 
     hev_task_system_run ();
 
-    close (fds[0]);
-    close (fds[1]);
+    hev_task_io_close (fds[0]);
+    hev_task_io_close (fds[1]);
 
     hev_task_system_fini ();
 

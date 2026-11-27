@@ -1,8 +1,8 @@
 /*
  ============================================================================
  Name        : hev-task-system-private.h
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2025 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2017 - 2026 hev
  Description :
  ============================================================================
  */
@@ -13,8 +13,10 @@
 #include <time.h>
 #include <setjmp.h>
 
-#include "hev-task-system.h"
-#include "kern/task/hev-task.h"
+#include <hev-task.h>
+#include <hev-task-system.h>
+
+#include "sys/hev-sys-private.h"
 #include "kern/task/hev-task-private.h"
 #include "kern/time/hev-task-timer.h"
 #include "kern/io/hev-task-io-reactor.h"
@@ -51,9 +53,9 @@ struct _HevTaskSystemContext
     HevRBTreeCached running_tasks;
 
     struct timespec sched_time;
-
     jmp_buf kernel_context;
 
+    HevSysTaskStack sys_task_stack;
     HevList all_tasks;
 };
 
@@ -65,11 +67,10 @@ void hev_task_system_kill_current_task (void);
 void hev_task_system_wakeup_task_with_context (HevTaskSystemContext *ctx,
                                                HevTask *task);
 
-extern __thread HevTaskSystemContext *hev_task_system_tls_context;
-
 static inline HevTaskSystemContext *
 hev_task_system_get_context (void)
 {
+    extern __thread HevTaskSystemContext *hev_task_system_tls_context;
     return hev_task_system_tls_context;
 }
 

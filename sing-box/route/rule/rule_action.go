@@ -32,7 +32,6 @@ func newRuleActionRouteOptions(options option.RawRouteOptionsActionOptions) (Rul
 		OverridePort:              options.OverridePort,
 		NetworkStrategy:           (*C.NetworkStrategy)(options.NetworkStrategy),
 		FallbackDelay:             time.Duration(options.FallbackDelay),
-		TCPPrefix:                 options.TCPPrefix,
 		UDPDisableDomainUnmapping: options.UDPDisableDomainUnmapping,
 		UDPConnect:                options.UDPConnect,
 		UDPTimeout:                time.Duration(options.UDPTimeout),
@@ -64,9 +63,6 @@ func NewRuleAction(logger logger.ContextLogger, action option.RuleAction) (adapt
 		}
 		return &routeOptions, nil
 	case C.RuleActionTypeBypass:
-		if action.BypassOptions.Outbound == "" && len(action.BypassOptions.TCPPrefix) > 0 {
-			return nil, E.New("tcp_prefix requires an outbound for bypass")
-		}
 		routeOptions, err := newRuleActionRouteOptions(action.BypassOptions.RawRouteOptionsActionOptions)
 		if err != nil {
 			return nil, err
@@ -209,7 +205,6 @@ type RuleActionRouteOptions struct {
 	NetworkType               []C.InterfaceType
 	FallbackNetworkType       []C.InterfaceType
 	FallbackDelay             time.Duration
-	TCPPrefix                 []byte
 	UDPDisableDomainUnmapping bool
 	UDPConnect                bool
 	UDPTimeout                time.Duration
@@ -247,9 +242,6 @@ func (r *RuleActionRouteOptions) Descriptions() []string {
 	}
 	if r.FallbackDelay > 0 {
 		descriptions = append(descriptions, F.ToString("fallback-delay=", r.FallbackDelay.String()))
-	}
-	if len(r.TCPPrefix) > 0 {
-		descriptions = append(descriptions, "tcp-prefix")
 	}
 	if r.UDPDisableDomainUnmapping {
 		descriptions = append(descriptions, "udp-disable-domain-unmapping")

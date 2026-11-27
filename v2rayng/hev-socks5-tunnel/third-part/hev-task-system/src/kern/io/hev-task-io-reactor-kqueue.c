@@ -7,12 +7,12 @@
  ============================================================================
  */
 
-#if !defined(__linux__) && !defined(__MSYS__)
+#if !defined(__linux__) && !defined(_WIN32)
 
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "mem/api/hev-memory-allocator-api.h"
+#include <hev-memory-allocator.h>
 
 #include "kern/io/hev-task-io-reactor.h"
 
@@ -73,4 +73,4 @@ hev_task_io_reactor_setup (HevTaskIOReactor *self,
     return res;
 }
 
-#endif /* !defined(__linux__) && !defined(__MSYS__) */
+#endif /* !defined(__linux__) && !defined(_WIN32) */

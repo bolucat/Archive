@@ -10,12 +10,10 @@
 #define _GNU_SOURCE
 #include <stddef.h>
 #include <assert.h>
-#include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -39,24 +37,25 @@ task_tcp_server_entry (void *data)
     /* socket */
     fd = hev_task_io_socket_socket (AF_INET, SOCK_STREAM, 0);
     assert (fd >= 0);
-    assert ((fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    assert ((hev_task_io_fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
 
     memset (&addr, 0, sizeof (addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     for (port = 1024; port < 65536; port++) {
         addr.sin_port = htons (port);
-        if (bind (fd, (struct sockaddr *)&addr, sizeof (addr)) == 0)
+        if (hev_task_io_socket_bind (fd, (struct sockaddr *)&addr,
+                                     sizeof (addr)) == 0)
             break;
     }
-    assert (listen (fd, 5) == 0);
+    assert (hev_task_io_socket_listen (fd, 5) == 0);
 
     assert (hev_task_add_fd (task, fd, POLLIN) == 0);
 
     /* accept */
     cfd = hev_task_io_socket_accept (fd, NULL, NULL, NULL, NULL);
     assert (cfd >= 0);
-    assert ((fcntl (cfd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    assert ((hev_task_io_fcntl (cfd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
 
     assert (hev_task_add_fd (task, cfd, POLLIN | POLLOUT) == 0);
 
@@ -85,8 +84,8 @@ task_tcp_server_entry (void *data)
     assert (hev_task_del_fd (task, cfd) == 0);
     assert (hev_task_del_fd (task, fd) == 0);
 
-    close (cfd);
-    close (fd);
+    hev_task_io_close (cfd);
+    hev_task_io_close (fd);
 }
 
 static void
@@ -103,7 +102,7 @@ task_tcp_client_entry (void *data)
     /* socket */
     fd = hev_task_io_socket_socket (AF_INET, SOCK_STREAM, 0);
     assert (fd >= 0);
-    assert ((fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    assert ((hev_task_io_fcntl (fd, F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
 
     assert (hev_task_add_fd (task, fd, POLLIN | POLLOUT) == 0);
 
@@ -139,7 +138,7 @@ task_tcp_client_entry (void *data)
 
     assert (hev_task_del_fd (task, fd) == 0);
 
-    close (fd);
+    hev_task_io_close (fd);
 }
 
 static void
@@ -179,7 +178,7 @@ task_udp_server_entry (void *data)
     }
 
     assert (hev_task_del_fd (task, fds[0]) == 0);
-    close (fds[0]);
+    hev_task_io_close (fds[0]);
 }
 
 static void
@@ -213,7 +212,7 @@ task_udp_client_entry (void *data)
         assert (msgv[i].msg_len == strlen (msg));
 
     assert (hev_task_del_fd (task, fds[1]) == 0);
-    close (fds[1]);
+    hev_task_io_close (fds[1]);
 }
 
 int

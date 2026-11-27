@@ -8,7 +8,7 @@
  */
 
 #include <string.h>
-#include <unistd.h>
+#include <hev-sys.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -369,7 +369,7 @@ hev_socks5_server_connect (HevSocks5Server *self, struct sockaddr_in6 *addr)
     if (res < 0) {
         LOG_W ("%p socks5 server bind", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -381,7 +381,7 @@ hev_socks5_server_connect (HevSocks5Server *self, struct sockaddr_in6 *addr)
     if (res < 0) {
         LOG_I ("%p socks5 server connect", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -420,11 +420,12 @@ hev_socks5_server_bind (HevSocks5Server *self, struct sockaddr_in6 *addr)
         return -1;
     }
 
-    res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
+    res = hev_task_io_socket_setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one,
+                                         sizeof (one));
     if (res < 0) {
         LOG_W ("%p socks5 server socket reuse", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -432,7 +433,7 @@ hev_socks5_server_bind (HevSocks5Server *self, struct sockaddr_in6 *addr)
     if (res < 0) {
         LOG_W ("%p socks5 server bind", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -451,20 +452,21 @@ hev_socks5_server_udp_bind (HevSocks5Server *self, int sock,
     LOG_D ("%p socks5 server udp bind", self);
 
     alen = sizeof (struct sockaddr_in6);
-    res = getsockname (HEV_SOCKS5 (self)->fd, (struct sockaddr *)src, &alen);
+    res = hev_task_io_socket_getsockname (HEV_SOCKS5 (self)->fd,
+                                          (struct sockaddr *)src, &alen);
     if (res < 0) {
         LOG_W ("%p socks5 server tcp socket name", self);
         return -1;
     }
 
     src->sin6_port = 0;
-    res = bind (sock, (struct sockaddr *)src, alen);
+    res = hev_task_io_socket_bind (sock, (struct sockaddr *)src, alen);
     if (res < 0) {
         LOG_W ("%p socks5 server socket bind", self);
         return -1;
     }
 
-    res = getsockname (sock, (struct sockaddr *)src, &alen);
+    res = hev_task_io_socket_getsockname (sock, (struct sockaddr *)src, &alen);
     if (res < 0) {
         LOG_W ("%p socks5 server udp socket name", self);
         return -1;
@@ -629,11 +631,11 @@ hev_socks5_server_destruct (HevObject *base)
 
     if (self->fds[0] >= 0) {
         hev_task_del_fd (task, self->fds[0]);
-        close (self->fds[0]);
+        hev_task_io_close (self->fds[0]);
     }
     if (self->fds[1] >= 0) {
         hev_task_del_fd (task, self->fds[1]);
-        close (self->fds[1]);
+        hev_task_io_close (self->fds[1]);
     }
 
     if (self->obj)

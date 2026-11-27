@@ -1,6 +1,6 @@
 # YAML
 
-[![status][PIPELINE_STATUS]][PROJECT_URL]
+[![status](https://github.com/heiher/yaml/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/yaml)
 
 This is a branch of libyaml with a simple build system.
 
@@ -23,6 +23,3 @@ ndk-build
 
 ## Upstream
 'https://github.com/yaml/libyaml'
-
-[PROJECT_URL]: https://gitlab.com/hev/yaml/commits/main
-[PIPELINE_STATUS]: https://gitlab.com/hev/yaml/badges/main/pipeline.svg

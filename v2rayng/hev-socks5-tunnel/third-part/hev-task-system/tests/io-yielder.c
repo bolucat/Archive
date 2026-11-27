@@ -9,12 +9,12 @@
 
 #include <stdlib.h>
 #include <assert.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -46,8 +46,8 @@ task_entry (void *data)
     assert (size == -2);
 
     assert (hev_task_del_fd (task, fds[0]) == 0);
-    close (fds[0]);
-    close (fds[1]);
+    hev_task_io_close (fds[0]);
+    hev_task_io_close (fds[1]);
 }
 
 int

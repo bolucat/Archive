@@ -8,9 +8,9 @@
  */
 
 #include <assert.h>
-#include <unistd.h>
 #include <fcntl.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -29,10 +29,10 @@ task_entry (void *data)
 
     assert (hev_task_io_socket_socketpair (PF_LOCAL, SOCK_STREAM, 0, fds) == 0);
 
-    flags = fcntl (fds[1], F_GETFL);
+    flags = hev_task_io_fcntl (fds[1], F_GETFL);
     assert (flags >= 0);
-    assert (fcntl (fds[1], F_SETFL, flags & ~O_NONBLOCK) == 0);
-    assert (write (fds[1], buf, 4) == 4);
+    assert (hev_task_io_fcntl (fds[1], F_SETFL, flags & ~O_NONBLOCK) == 0);
+    assert (hev_task_io_write (fds[1], buf, 4, NULL, NULL) == 4);
 
     assert (hev_task_add_fd (task, fds[0], POLLIN) == 0);
 
@@ -44,8 +44,8 @@ task_entry (void *data)
     assert (size >= 0);
 
     assert (hev_task_del_fd (task, fds[0]) == 0);
-    close (fds[0]);
-    close (fds[1]);
+    hev_task_io_close (fds[0]);
+    hev_task_io_close (fds[1]);
 }
 
 int

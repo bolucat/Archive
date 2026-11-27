@@ -49,6 +49,9 @@ type Endpoint struct {
 	loopContext        context.Context
 	cancelLoop         context.CancelFunc
 	dnsRouter          adapter.DNSRouter
+	outboundManager    adapter.OutboundManager
+	detour             string
+	clientOptions      openconnect.ClientOptions
 	client             *openconnect.Client
 	deviceOptions      *device.Options
 	device             device.Device
@@ -114,11 +117,13 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			system:  options.System,
 			network: service.FromContext[adapter.NetworkManager](ctx),
 		},
-		loopContext:   loopContext,
-		cancelLoop:    cancelLoop,
-		dnsRouter:     service.FromContext[adapter.DNSRouter](ctx),
-		statusUpdated: make(chan struct{}),
-		onDemand:      options.OnDemand,
+		loopContext:     loopContext,
+		cancelLoop:      cancelLoop,
+		dnsRouter:       service.FromContext[adapter.DNSRouter](ctx),
+		outboundManager: service.FromContext[adapter.OutboundManager](ctx),
+		detour:          options.Detour,
+		statusUpdated:   make(chan struct{}),
+		onDemand:        options.OnDemand,
 	}
 	openConnectEndpoint.state.Store(new(clientState))
 	success := false
@@ -190,6 +195,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	openConnectEndpoint.clientOptions = clientOptions
 	openConnectEndpoint.client = client
 	success = true
 	return openConnectEndpoint, nil
@@ -339,6 +345,7 @@ func (e *Endpoint) buildClientOptions(options option.OpenConnectEndpointOptions,
 		},
 		FormEntries:           formEntries,
 		Dialer:                outboundDialer,
+		ProxiedDialer:         options.Detour != "",
 		Logger:                e.logger,
 		OnTunnelConfiguration: e.handleTunnelConfiguration,
 	}, nil
@@ -421,6 +428,21 @@ func (e *Endpoint) updateState(update func(state *clientState)) {
 func (e *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
 	case adapter.StartStateInitialize:
+		if e.clientOptions.ProxiedDialer {
+			detour, loaded := e.outboundManager.Outbound(e.detour)
+			if loaded && detour.Type() == C.TypeDirect {
+				e.clientOptions.ProxiedDialer = false
+				client, err := openconnect.NewClient(e.clientOptions)
+				if err != nil {
+					return err
+				}
+				err = e.client.Close()
+				if err != nil {
+					return E.Cause(err, "close client")
+				}
+				e.client = client
+			}
+		}
 		scope.Add(func() error {
 			e.notifyStatusUpdated()
 			return nil

@@ -81,6 +81,75 @@ jobs:
           sudo tar xf ${{ matrix.tool }}.tar.xz -C /opt/x-tools
           make CROSS_PREFIX=/opt/x-tools/${{ matrix.tool }}/bin/${{ matrix.tool }}- CFLAGS=${{ matrix.env.CFLAGS }} ENABLE_STATIC=1 -j`nproc`
 
+  windows-msvc-x64:
+    name: Windows (MSVC, x64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Setup GNU make for Win32
+        shell: pwsh
+        run: |
+          choco install make --no-progress -y
+          Add-Content $env:GITHUB_PATH "C:\Program Files\Git\usr\bin"
+      - name: Build
+        shell: cmd
+        run: |
+          make -j4
+
+  windows-msvc-x86:
+    name: Windows (MSVC, x86)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Setup GNU make for Win32
+        shell: pwsh
+        run: |
+          choco install make --no-progress -y
+          Add-Content $env:GITHUB_PATH "C:\Program Files\Git\usr\bin"
+      - name: Build
+        shell: cmd
+        run: |
+          make -j4 ARCH=x86
+
+  windows-msvc-arm64:
+    name: Windows (MSVC, arm64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+      - name: Setup GNU make for Win32
+        shell: pwsh
+        run: |
+          choco install make --no-progress -y
+          Add-Content $env:GITHUB_PATH "C:\Program Files\Git\usr\bin"
+      - name: Build
+        shell: cmd
+        run: |
+          make -j4 ARCH=arm64
+
   macos:
     name: macOS
     runs-on: macos-latest

@@ -3,6 +3,7 @@
     <!-- App -->
     <string name="app_name" translatable="false">sing-box</string>
     <string name="app_version_title">App version</string>
+    <string name="badge_new">New</string>
     <string name="language">Language</string>
     <string name="system_default">System default</string>
 
@@ -25,6 +26,7 @@
     <string name="action_deselect">Deselect</string>
     <string name="action_reload">Reload</string>
     <string name="action_restart">Restart</string>
+    <string name="action_toggle">Toggle</string>
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>
     <string name="expand_all">Expand All</string>
@@ -41,7 +43,7 @@
     <string name="enabled">Enabled</string>
     <string name="disabled">Disabled</string>
     <string name="loading">Loading…</string>
-    <string name="calculating">Calculating...</string>
+    <string name="calculating">Calculating…</string>
     <string name="auto">Auto</string>
     <string name="success">Success</string>
     <string name="default_text">Default</string>
@@ -137,7 +139,7 @@
     <string name="import_from_file_description">Import configuration from a local file</string>
     <string name="scan_qr_code_description">Scan a configuration QR code</string>
     <string name="create_new_profile_description">Create a new profile from scratch</string>
-    <string name="icloud_profile_unsupported">iCloud profile is not support on current platform</string>
+    <string name="icloud_profile_unsupported">iCloud profile is not supported on current platform</string>
     <string name="profile_name">Name</string>
     <string name="profile_type">Type</string>
     <string name="profile_source">Source</string>
@@ -252,7 +254,7 @@
     <string name="per_app_proxy_manage">Manage</string>
     <string name="content_description_app_icon">App icon</string>
     <string name="per_app_proxy_managed_mode">Managed Mode</string>
-    <string name="per_app_proxy_managed_mode_description">Automatically Exclude China apps</string>
+    <string name="per_app_proxy_managed_mode_description">Automatically exclude China apps</string>
     <string name="per_app_proxy_package_query_mode">Mode</string>
     <string name="per_app_proxy_shizuku_required">When installed from the Play Store, per-app proxy requires Shizuku. Google Play refuses to allow us to use the QUERY_ALL_PACKAGES permission (while not prohibiting other similar apps from doing so), which is required for listing apps.</string>
     <string name="per_app_proxy_root_required">When installed from the Play Store, per-app proxy requires ROOT. Google Play refuses to allow us to use the QUERY_ALL_PACKAGES permission (while not prohibiting other similar apps from doing so), which is required for listing apps.</string>
@@ -356,11 +358,15 @@
 
     <!-- Errors -->
     <string name="error_title">Error</string>
-    <string name="error_missing_vpn_permission">Missiong VPN permission</string>
+    <string name="error_missing_vpn_permission">Missing VPN permission</string>
     <string name="error_empty_configuration">Empty configuration</string>
     <string name="error_empty_file">Empty file</string>
     <string name="error_decode_profile">Failed to decode profile: %s</string>
     <string name="error_invalid_configuration">Invalid sing-box configuration: %s</string>
+    <string name="error_profile_not_found">Profile not found</string>
+    <string name="error_configuration_file_not_found">Configuration file not found</string>
+    <string name="error_invalid_remote_profile_uri">Not a valid sing-box remote profile URI</string>
+    <string name="error_parse_profile_link">Failed to parse profile link</string>
     <string name="error_start_command_server">Start command server</string>
     <string name="error_create_service">Create service</string>
     <string name="error_start_service">Start service</string>
@@ -374,11 +380,14 @@
     <string name="failed_save_logs">Failed to save logs: %s</string>
     <string name="failed_share_logs">Failed to share logs: %s</string>
     <string name="failed_read_configuration">Failed to read configuration: %s</string>
+    <string name="failed_export_configuration">Failed to export configuration: %s</string>
+    <string name="failed_update_profile">Failed to update profile: %s</string>
 
     <!-- Success Messages -->
     <string name="success_profile_saved">Profile saved successfully</string>
     <string name="success_logs_saved">Logs saved successfully</string>
     <string name="success_configuration_saved">Configuration saved</string>
+    <string name="success_configuration_exported">Configuration exported successfully</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
 
     <!-- Toast Messages -->
@@ -396,13 +405,16 @@
 
     <!-- Icon Selection -->
     <string name="icon">Icon</string>
-    <string name="icon_count_format">%d icons</string>
+    <plurals name="icon_count">
+        <item quantity="one">%d icon</item>
+        <item quantity="other">%d icons</item>
+    </plurals>
     <string name="no_icons_found">No icons found</string>
     <string name="no_icons_match">No icons match \"%s\"</string>
     <string name="profile_icon">Profile Icon</string>
     <string name="select_icon">Select Icon</string>
     <string name="select_profile_icon">Select Profile Icon</string>
-    <string name="search_icons_placeholder">Search icons...</string>
+    <string name="search_icons_placeholder">Search icons…</string>
     <string name="search_icons">Search icons</string>
     <string name="close_search">Close search</string>
     <string name="current_icon_format">Current: %s</string>
@@ -614,7 +626,7 @@
     <string name="oom_report_description">When memory limit is enabled, you will receive a report if the service memory exceeds the limit. You can also manually trigger report collection.</string>
     <string name="oom_report_fetch">Fetch Memory Report</string>
     <string name="oom_report_enable_memory_limit">Enable Memory Limit</string>
-    <string name="oom_report_enable_memory_limit_description">Provide a soft memory limit for the service. The service will perform multiple processes to try to stay within this memory limit.</string>
+    <string name="oom_report_enable_memory_limit_description">Provide a soft memory limit for the service. The service will take multiple measures to try to stay within this memory limit.</string>
     <string name="oom_report_memory_limit">Memory Limit</string>
     <string name="oom_report_kill_connections">Kill Connections</string>
     <string name="oom_report_kill_connections_description">Kill all connections to free memory when the service memory exceeds the limit.</string>
@@ -647,6 +659,11 @@
     <string name="privilege_settings_view_logs">View logs</string>
     <string name="privilege_settings_export_debug">Export debug info</string>
     <string name="privilege_settings_hook_logs_empty">No logs</string>
+    <string name="hook_log_error_service_unavailable">Connectivity service unavailable. Reboot or activate LSPosed module.</string>
+    <string name="hook_log_error_transaction_failed">Hook transaction rejected. Reboot to load LSPosed module.</string>
+    <string name="hook_log_error_remote">Remote error while reading logs.</string>
+    <string name="hook_log_error_protocol">Log protocol mismatch. Reboot to update LSPosed module.</string>
+    <string name="hook_log_error_unknown">Unknown error.</string>
     <string name="privilege_settings_export_debug_complete">Export complete</string>
     <string name="privilege_settings_export_debug_message">This file contains private information and should not be shared publicly. Size: %s</string>
     <string name="privilege_settings_export_debug_failed">Failed to export debug info: %s</string>
@@ -681,8 +698,8 @@
     <string name="remote_unavailable">Unavailable</string>
 
     <string name="title_services">Services</string>
-    <string name="title_usbip">USB/IP</string>
-    <string name="usbip_with_tag">USB/IP: %1$s</string>
+    <string name="title_usbip" translatable="false">USB/IP</string>
+    <string name="usbip_with_tag" translatable="false">USB/IP: %1$s</string>
     <string name="usbip_no_server">No usbip-server found</string>
     <string name="usbip_no_devices">Pick a USB device to share it through this usbip-server.</string>
     <string name="usbip_no_usb_devices">No USB devices connected</string>

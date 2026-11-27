@@ -8,7 +8,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
@@ -68,7 +67,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = "Profile not found",
+                            errorMessage = getApplication<Application>().getString(R.string.error_profile_not_found),
                         )
                     }
                     return@launch
@@ -206,18 +205,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 profile.icon = state.icon
                 profile.typed.remoteURL = state.remoteUrl
 
-                // Handle auto-update changes
-                val autoUpdateChanged = state.autoUpdate != state.originalAutoUpdate
                 profile.typed.autoUpdate = state.autoUpdate
                 profile.typed.autoUpdateInterval = state.autoUpdateInterval
 
                 // Save to database
                 ProfileManager.update(profile)
-
-                // Reconfigure updater if auto-update was enabled
-                if (autoUpdateChanged && state.autoUpdate) {
-                    UpdateProfileWork.reconfigureUpdater()
-                }
 
                 // Update UI state with new original values
                 _uiState.update {
@@ -315,7 +307,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
             // Read the configuration file
             val configFile = File(profile.typed.path)
             if (!configFile.exists()) {
-                Toast.makeText(context, "Configuration file not found", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.error_configuration_file_not_found, Toast.LENGTH_SHORT).show()
                 return null
             }
 
@@ -353,13 +345,17 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
-                        "Configuration exported successfully",
+                        R.string.success_configuration_exported,
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.failed_export_configuration, e.message),
+                        Toast.LENGTH_LONG,
+                    ).show()
                 }
             } finally {
                 // Clear pending export data

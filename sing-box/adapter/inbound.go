@@ -77,7 +77,6 @@ type InboundContext struct {
 	LastInbound               string
 	OriginDestination         M.Socksaddr
 	RouteOriginalDestination  M.Socksaddr
-	TCPPrefix                 []byte
 	UDPDisableDomainUnmapping bool
 	UDPConnect                bool
 	UDPTimeout                time.Duration

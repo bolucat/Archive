@@ -10,12 +10,14 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart' as tags;
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../../l10n/l10n.dart';
 import '../lrc.dart';
 import '../models.dart';
 import '../source.dart';
+import 'mp3_info.dart';
 
 /// Extensions the local source can play → Stream.type.
 const audioTypes = {
@@ -94,6 +96,7 @@ class LocalSource extends Source {
   Map<String, LocalEntry> _byPath = const {};
   Map<String, List<LocalEntry>> _byAlbum = const {};
   Map<String, List<LocalEntry>> _byArtist = const {};
+  Map<String, List<LocalEntry>> _byAlbumArtist = const {};
 
   /// When the album was added: the modification time of its newest file.
   Map<String, String> _albumAdded = const {};
@@ -154,8 +157,14 @@ class LocalSource extends Source {
     _byPath = {for (final e in list) e.path: e};
     final byAlbum = <String, List<LocalEntry>>{};
     final byArtist = <String, List<LocalEntry>>{};
+    final byAlbumArtist = <String, List<LocalEntry>>{};
     for (final e in list) {
-      if (e.album.isNotEmpty) (byAlbum[albumId(e)] ??= []).add(e);
+      if (e.album.isNotEmpty) {
+        (byAlbum[albumId(e)] ??= []).add(e);
+        if (e.albumArtist.isNotEmpty) {
+          (byAlbumArtist[artistId(e.albumArtist)] ??= []).add(e);
+        }
+      }
       for (final a in e.artists) {
         (byArtist[artistId(a)] ??= []).add(e);
       }
@@ -170,6 +179,7 @@ class LocalSource extends Source {
     }
     _byAlbum = byAlbum;
     _byArtist = byArtist;
+    _byAlbumArtist = byAlbumArtist;
     _albumAdded = {
       for (final MapEntry(:key, :value) in byAlbum.entries)
         key: value
@@ -185,12 +195,20 @@ class LocalSource extends Source {
 
   String _uri(String path) => path.isEmpty ? '' : Uri.file(path).toString();
 
-  Album _album(LocalEntry e) => e.album.isEmpty
+  String _albumCover(LocalEntry e) {
+    if (e.cover.isNotEmpty) return e.cover;
+    for (final track in _byAlbum[albumId(e)] ?? const <LocalEntry>[]) {
+      if (track.cover.isNotEmpty) return track.cover;
+    }
+    return '';
+  }
+
+  Album _album(LocalEntry e, {bool withAlbumCover = false}) => e.album.isEmpty
       ? const Album(id: '', name: '')
       : Album(
           id: albumId(e),
           name: e.album,
-          imageUrl: _uri(e.cover),
+          imageUrl: _uri(withAlbumCover ? _albumCover(e) : e.cover),
           artists: e.albumArtist.isEmpty
               ? const []
               : [Artist(id: artistId(e.albumArtist), name: e.albumArtist)],
@@ -212,7 +230,8 @@ class LocalSource extends Source {
     final seen = <String>{};
     return [
       for (final e in es)
-        if (e.album.isNotEmpty && seen.add(albumId(e))) _album(e),
+        if (e.album.isNotEmpty && seen.add(albumId(e)))
+          _album(e, withAlbumCover: true),
     ];
   }
 
@@ -315,17 +334,23 @@ class LocalSource extends Source {
   Future<AlbumPage> album(String id) async {
     final es = _byAlbum[id];
     if (es == null) throw SourceError(SourceErrorKind.failed, L.albumNotFound);
-    return AlbumPage(album: _album(es.first), tracks: es.map(track).toList());
+    return AlbumPage(
+      album: _album(es.first, withAlbumCover: true),
+      tracks: es.map(track).toList(),
+    );
   }
 
   @override
   Future<ArtistPage> artist(String id) async {
-    final es = _byArtist[id];
-    if (es == null) {
+    final es = _byArtist[id] ?? const [];
+    final albumEs = _byAlbumArtist[id] ?? const [];
+    if (es.isEmpty && albumEs.isEmpty) {
       throw SourceError(SourceErrorKind.failed, L.localArtistNotFound);
     }
-    final name = es.first.artists.firstWhere((a) => artistId(a) == id);
-    final albums = _albums(es)
+    final name = es.isNotEmpty
+        ? es.first.artists.firstWhere((a) => artistId(a) == id)
+        : albumEs.first.albumArtist;
+    final albums = _albums([...es, ...albumEs])
       ..sort((a, b) => b.released.compareTo(a.released));
     return ArtistPage(
       artist: Artist(id: id, name: name),
@@ -350,29 +375,54 @@ class LocalSource extends Source {
 
   /// Looks for a .lrc with the same name (and a .trans.lrc translation) first, then lyrics embedded in the tags.
   @override
-  Future<Lyrics> lyrics(String id) async {
+  Future<Lyrics> lyrics(String id) => Isolate.run(() {
     final base = p.withoutExtension(id);
-    final lrc = _readText('$base.lrc');
+    final lrc = _readSidecar(base, '.lrc');
     if (lrc != null) {
-      return Lyrics(lrc: lrc, translation: _readText('$base.trans.lrc') ?? '');
+      return Lyrics(
+        lrc: lrc,
+        translation: _readSidecar(base, '.trans.lrc') ?? '',
+      );
     }
-    final embedded = await Isolate.run(() {
-      try {
-        return tags.readMetadata(File(id)).lyrics ?? '';
-      } catch (_) {
-        return '';
-      }
-    });
+    final String embedded;
+    try {
+      embedded = tags.readMetadata(File(id)).lyrics ?? '';
+    } catch (_) {
+      return const Lyrics();
+    }
     // Embedded lyrics may be plain text (no timestamps); then treat it as having no line-by-line lyrics.
     if (parseLrc(embedded).isEmpty) return const Lyrics();
     return Lyrics(lrc: embedded);
+  });
+
+  static String? _readSidecar(String base, String extension) {
+    final exactPath = '$base$extension';
+    final exact = _readText(exactPath);
+    if (exact != null) return exact;
+
+    final stem = p.basename(base);
+    try {
+      for (final entry in Directory(
+        p.dirname(base),
+      ).listSync(followLinks: false)) {
+        final name = p.basename(entry.path);
+        if (name == '$stem$extension' || !name.startsWith(stem)) continue;
+        if (name.substring(stem.length).toLowerCase() != extension) continue;
+        final text = _readText(entry.path);
+        if (text != null) return text;
+      }
+    } on FileSystemException {
+      return null;
+    }
+    return null;
   }
 
   static String? _readText(String path) {
     final f = File(path);
-    if (!f.existsSync()) return null;
     try {
-      return f.readAsStringSync();
+      return f.existsSync() ? f.readAsStringSync() : null;
+    } on FileSystemException {
+      return null;
     } on FormatException {
       return null; // non-UTF-8 LRC (e.g. GBK) isn't supported yet
     }
@@ -494,40 +544,74 @@ void _walk(
   }
 }
 
-/// The folder an album lives in. Per-disc subfolders like CD1 or Disc 2 count as the parent,
-/// so multi-disc albums aren't split.
-String albumDir(String path) {
-  final dir = p.dirname(path);
-  return RegExp(
-        r'^(cd|disc|disk)\s*\d+$',
-        caseSensitive: false,
-      ).hasMatch(p.basename(dir))
-      ? p.dirname(dir)
-      : dir;
+final _discFolder = RegExp(r'^(?:cd|disc|disk)\s*(\d+)$', caseSensitive: false);
+
+({String folder, int? disc}) _albumLocation(String dir) {
+  final number = _discFolder.firstMatch(p.basename(dir))?.group(1);
+  return number == null
+      ? (folder: dir, disc: null)
+      : (folder: p.dirname(dir), disc: int.tryParse(number));
 }
 
-/// When the tags have no album artist, each song's own artist can't be used as the album artist, or a soundtrack
-/// or compilation with one song by another artist would split into two albums with the same name.
-/// So group by "same folder + same album name" and take the most frequent artist in the group as the album artist.
+/// The folder an album lives in. Per-disc subfolders like CD1 or Disc 2 count as the parent,
+/// so multi-disc albums aren't split.
+String albumDir(String path) => _albumLocation(p.dirname(path)).folder;
+
+/// Fill missing album artists from an unambiguous tag in the same folder and album.
+/// Otherwise, use the most frequent track artist among the untagged tracks so compilations stay together.
 void _fillAlbumArtists(List<LocalEntry> entries) {
-  final groups = <String, List<LocalEntry>>{};
+  final groups = <(String, String), List<LocalEntry>>{};
   for (final e in entries) {
-    if (e.album.isEmpty || e.albumArtist.isNotEmpty) continue;
-    (groups['${albumDir(e.path)}\x01${fold(e.album)}'] ??= []).add(e);
+    if (e.album.isEmpty) continue;
+    (groups[(albumDir(e.path), fold(e.album))] ??= []).add(e);
   }
   for (final g in groups.values) {
+    final tagged = <String, String>{};
+    final untagged = <LocalEntry>[];
     final counts = <String, int>{};
     for (final e in g) {
-      if (e.artists.isNotEmpty) {
-        counts[e.artists.first] = (counts[e.artists.first] ?? 0) + 1;
+      if (e.albumArtist.isNotEmpty) {
+        tagged.putIfAbsent(fold(e.albumArtist), () => e.albumArtist);
+      } else {
+        untagged.add(e);
+        if (e.artists.isNotEmpty) {
+          counts[e.artists.first] = (counts[e.artists.first] ?? 0) + 1;
+        }
       }
     }
-    if (counts.isEmpty) continue;
-    final top = counts.entries.reduce((a, b) => b.value > a.value ? b : a).key;
-    for (final e in g) {
-      e.albumArtist = top;
+    final artist = tagged.length == 1
+        ? tagged.values.single
+        : counts.isEmpty
+        ? ''
+        : counts.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+    for (final e in untagged) {
+      e.albumArtist = artist;
     }
   }
+}
+
+tags.AudioMetadata _readScanMetadata(File file) {
+  // The generic MP3 mapping treats TPE2 as the track artist. The public
+  // format-specific metadata keeps TPE1 and TPE2 separate.
+  final mp3 = p.extension(file.path).toLowerCase() == '.mp3'
+      ? tags.readAllMetadata(file, getImage: true)
+      : null;
+  if (mp3 is tags.Mp3Metadata) {
+    return tags.AudioMetadata(
+        file: file,
+        title: mp3.songName,
+        artist: _clean(mp3.leadPerformer) ?? mp3.originalArtist,
+        album: mp3.album,
+        albumArtist: mp3.bandOrOrchestra,
+        year: DateTime(mp3.originalReleaseYear ?? mp3.year ?? 0),
+        discNumber: mp3.discNumber,
+        trackNumber: mp3.trackNumber,
+        duration: mp3.duration,
+      )
+      ..pictures = mp3.pictures
+      ..performers.addAll(mp3.customMetadata['GUEST ARTIST']?.split('/') ?? []);
+  }
+  return tags.readMetadata(file, getImage: true);
 }
 
 LocalEntry _entry(
@@ -539,7 +623,7 @@ LocalEntry _entry(
 ) {
   tags.AudioMetadata? m;
   try {
-    m = tags.readMetadata(f, getImage: true);
+    m = _readScanMetadata(f);
   } catch (_) {
     m = null;
   }
@@ -556,8 +640,11 @@ LocalEntry _entry(
   final album = _clean(m?.album) ?? '';
   final albumArtist = _clean(m?.albumArtist) ?? '';
 
+  final isMp3 = p.extension(path).toLowerCase() == '.mp3';
+  final duration = (isMp3 ? infoHeaderDuration(f) : null) ?? m?.duration;
+
   final dir = p.dirname(path);
-  final albumFolder = albumDir(path);
+  final (folder: albumFolder, disc: folderDisc) = _albumLocation(dir);
   String coverIn(String folder) =>
       folderCovers.putIfAbsent(folder, () => _folderCover(folder));
   var cover = coverIn(dir);
@@ -575,9 +662,9 @@ LocalEntry _entry(
     album: album,
     albumArtist: album.isEmpty ? '' : albumArtist,
     year: m?.year?.year ?? 0,
-    disc: m?.discNumber ?? 0,
+    disc: m?.discNumber ?? folderDisc ?? 0,
     number: m?.trackNumber ?? 0,
-    durationMs: m?.duration?.inMilliseconds ?? 0,
+    durationMs: duration?.inMilliseconds ?? 0,
     cover: cover,
     modified: f.statSync().modified,
   );
@@ -626,7 +713,8 @@ String _saveCover(List<tags.Picture> pics, String key, String cacheDir) {
     'image/webp' => '.webp',
     _ => '.jpg',
   };
-  final file = File(p.join(cacheDir, 'covers', '${fnv1a(key)}$ext'));
+  final digest = sha256.convert(pic.bytes);
+  final file = File(p.join(cacheDir, 'covers', '${fnv1a(key)}-$digest$ext'));
   try {
     if (!file.existsSync() || file.lengthSync() != pic.bytes.length) {
       file.parent.createSync(recursive: true);

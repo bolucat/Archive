@@ -10,9 +10,11 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <string.h>
-#include <unistd.h>
-#include <netinet/in.h>
+
+#include <hev-sys.h>
+#ifndef _WIN32
 #include <netinet/udp.h>
+#endif
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -111,11 +113,12 @@ hev_socks5_udp_gso_probe (void)
     int fd, res;
 
     /* Kernels without UDP GSO would send the coalesced datagrams as one. */
-    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    fd = hev_task_io_socket_socket (AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
         return 0;
-    res = setsockopt (fd, SOL_UDP, UDP_SEGMENT, &size, sizeof (size));
-    close (fd);
+    res = hev_task_io_socket_setsockopt (fd, SOL_UDP, UDP_SEGMENT, &size,
+                                         sizeof (size));
+    hev_task_io_close (fd);
 
     return (res == 0) ? 65535 : 0;
 }
@@ -378,7 +381,8 @@ hev_socks5_udp_recvmmsg_udp (HevSocks5UDP *self, HevSocks5UDPMsg *msgv,
     if (!HEV_SOCKS5 (self)->udp_associated) {
         struct sockaddr *saddr = mvec[0].msg_hdr.msg_name;
         socklen_t alen = mvec[0].msg_hdr.msg_namelen;
-        if (connect (fd, saddr, alen) < 0)
+        if (hev_task_io_socket_connect (fd, saddr, alen, task_io_yielder,
+                                        self) < 0)
             return -1;
         HEV_SOCKS5 (self)->udp_associated = 1;
     }
@@ -587,7 +591,7 @@ hev_socks5_udp_splicer (HevSocks5UDP *self, int fd_b)
             if (res_f >= 0)
                 res_f = hev_socks5_udp_fwd_f (self, fd_b, buf, num, &bind);
             if (res_b >= 0)
-                res_b = hev_socks5_udp_fwd_b (self, fd_b, vec, num);
+                res_b = bind ? hev_socks5_udp_fwd_b (self, fd_b, vec, num) : 0;
 
             if (res_f > 0 || res_b > 0)
                 type = HEV_TASK_YIELD;

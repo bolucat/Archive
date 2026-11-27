@@ -33,6 +33,20 @@ CONFIG_MEMALLOC_SLICE_MAX_COUNT := 1000
 # }
 CONFIG_SCHED_CLOCK := CLOCK_NONE
 
+# Schedule non-blocking I/O poll interval (nanoseconds)
+# The scheduler defers reactor polls while tasks are runnable until
+# this interval elapses or the nearest task timer expires. It also
+# bounds the extra I/O wakeup latency while a task keeps the CPU busy.
+# 0 polls on every schedule pass (previous behavior).
+CONFIG_SCHED_IO_POLL_INTERVAL := 50000
+
+# Native Windows has no mmap, splice(2) or SIGBUS/SIGSEGV handling.
+ifeq ($(WIN_NATIVE),1)
+CONFIG_STACK_BACKEND := STACK_HEAP
+ENABLE_IO_SPLICE_SYSCALL := 0
+ENABLE_STACK_OVERFLOW_DETECTOR := 0
+endif
+
 CONFIG_CFLAGS :=
 
 ifeq ($(ENABLE_DEBUG),1)
@@ -61,3 +75,4 @@ CONFIG_CFLAGS+=-DCONFIG_MEMALLOC_SLICE_ALIGN=$(CONFIG_MEMALLOC_SLICE_ALIGN)
 CONFIG_CFLAGS+=-DCONFIG_MEMALLOC_SLICE_MAX_SIZE=$(CONFIG_MEMALLOC_SLICE_MAX_SIZE)
 CONFIG_CFLAGS+=-DCONFIG_MEMALLOC_SLICE_MAX_COUNT=$(CONFIG_MEMALLOC_SLICE_MAX_COUNT)
 CONFIG_CFLAGS+=-DCONFIG_SCHED_CLOCK=$(CONFIG_SCHED_CLOCK)
+CONFIG_CFLAGS+=-DCONFIG_SCHED_IO_POLL_INTERVAL=$(CONFIG_SCHED_IO_POLL_INTERVAL)

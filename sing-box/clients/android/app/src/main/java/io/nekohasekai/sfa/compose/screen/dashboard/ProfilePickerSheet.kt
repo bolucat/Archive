@@ -52,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -172,8 +171,7 @@ fun ProfilePickerSheet(
                 profile.typed.remoteURL,
             )
         }
-        val surfaceColor = MaterialTheme.colorScheme.surface.toArgb()
-        val qrBitmap = QRCodeGenerator.rememberPrimaryBitmap(link, backgroundColor = surfaceColor)
+        val qrBitmap = QRCodeGenerator.rememberPrimaryBitmap(link, backgroundColor = MaterialTheme.colorScheme.surface)
 
         QRCodeDialog(
             bitmap = qrBitmap,
@@ -267,7 +265,7 @@ private fun ProfilePickerRow(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         color = when {
-            isDragging -> MaterialTheme.colorScheme.tertiaryContainer
+            isDragging -> MaterialTheme.colorScheme.surfaceContainerHighest
             isSelected -> if (isSystemInDarkTheme()) {
                 lerp(
                     MaterialTheme.colorScheme.surfaceContainerLow,
@@ -316,7 +314,7 @@ private fun ProfilePickerRow(
                     text = profile.name,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -330,7 +328,7 @@ private fun ProfilePickerRow(
                         )
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 

@@ -274,7 +274,8 @@ again:
     LWIP_DEBUGF(UDP_DEBUG, (", %"U16_F")\n", pcb->remote_port));
 
     if (pcb->pretend_netif_idx != NETIF_NO_INDEX) {
-      if ((pcb->remote_port == src) && ip_addr_cmp(&pcb->remote_ip, ip_current_src_addr())) {
+      if ((pcb->pretend_netif_idx == netif_get_index(inp)) &&
+          (pcb->remote_port == src) && ip_addr_cmp(&pcb->remote_ip, ip_current_src_addr())) {
         break;
       }
       prev = pcb;

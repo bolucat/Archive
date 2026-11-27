@@ -7,41 +7,25 @@
  ============================================================================
  */
 
-#if defined(__MSYS__)
+#ifdef _WIN32
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <arpa/inet.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-io.h>
-#include <hev-memory-allocator.h>
 
+#include "hev-config.h"
 #include "hev-wintun.h"
 
 #include "hev-tunnel.h"
-
-typedef struct _HevPBuf HevPBuf;
-
-struct _HevPBuf
-{
-    struct pbuf_custom base;
-    void *mem;
-};
 
 static HevWinTun *wintun;
 static HevWinTunAdapter *adapter;
 static HevWinTunSession *session;
 static char tun_name[IFNAMSIZ];
-
-static void
-hev_pbuf_free (struct pbuf *p)
-{
-    HevPBuf *buf = (HevPBuf *)p;
-
-    hev_wintun_session_release (session, buf->mem);
-    hev_free (buf);
-}
 
 int
 hev_tunnel_open (const char *name, int multi_queue, const char *guid)
@@ -92,7 +76,8 @@ int
 hev_tunnel_set_state (int state)
 {
     if (state) {
-        session = hev_wintun_session_start (adapter);
+        session = hev_wintun_session_start (
+            adapter, hev_config_get_misc_wintun_ring_capacity ());
         if (!session)
             return -1;
     } else {
@@ -168,7 +153,7 @@ hev_tunnel_del_task (int fd, HevTask *task)
 struct pbuf *
 hev_tunnel_read (int fd, int mtu, HevTaskIOYielder yielder, void *yielder_data)
 {
-    HevPBuf *buf;
+    struct pbuf *buf;
     void *packet;
     int spin = 0;
     int size;
@@ -179,7 +164,12 @@ retry:
         if (hev_wintun_get_last_error () == HEV_WINTUN_EAGAIN) {
             if (spin++ < 1000) {
                 hev_task_yield (HEV_TASK_YIELD);
-            } else if (yielder) {
+                goto retry;
+            }
+
+            /* The wait of a handle is one-shot, arm it before each sleep. */
+            hev_tunnel_add_task (fd, hev_task_self ());
+            if (yielder) {
                 if (yielder (HEV_TASK_WAITIO, yielder_data))
                     return NULL;
             } else {
@@ -191,15 +181,14 @@ retry:
         }
     }
 
-    buf = hev_malloc (sizeof (HevPBuf));
-    if (!buf)
-        return NULL;
+    /* Copy and release at once: pbufs pointing into the ring are held by lwip
+     * until consumed and, once the ring is full, no packet is received. */
+    buf = pbuf_alloc (PBUF_RAW, size, PBUF_RAM);
+    if (buf)
+        pbuf_take (buf, packet, size);
+    hev_wintun_session_release (session, packet);
 
-    buf->mem = packet;
-    buf->base.custom_free_function = hev_pbuf_free;
-    pbuf_alloced_custom (PBUF_RAW, size, PBUF_RAM, &buf->base, packet, size);
-
-    return &buf->base.pbuf;
+    return buf;
 }
 
 ssize_t
@@ -210,8 +199,12 @@ hev_tunnel_write (int fd, struct pbuf *buf)
     size_t size;
 
     packet = hev_wintun_session_allocate (session, p->tot_len);
-    if (!packet)
+    if (!packet) {
+        /* The send ring is full, the packet is dropped. */
+        if (hev_wintun_get_last_error () == HEV_WINTUN_ENOBUFS)
+            errno = ENOBUFS;
         return -1;
+    }
 
     for (size = 0; p; p = p->next) {
         memcpy (packet + size, p->payload, p->len);
@@ -222,4 +215,4 @@ hev_tunnel_write (int fd, struct pbuf *buf)
     return size;
 }
 
-#endif /* __MSYS__ */
+#endif /* _WIN32 */

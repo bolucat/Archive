@@ -10,7 +10,7 @@
 #ifndef __HEV_SOCKS5_MISC_PRIV_H__
 #define __HEV_SOCKS5_MISC_PRIV_H__
 
-#include <netinet/in.h>
+#include <hev-sys.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>

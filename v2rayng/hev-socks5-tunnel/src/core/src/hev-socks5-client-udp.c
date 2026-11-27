@@ -8,7 +8,7 @@
  */
 
 #include <string.h>
-#include <unistd.h>
+#include <hev-sys.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -104,7 +104,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     if (res < 0) {
         LOG_W ("%p socks5 client udp bind", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -113,7 +113,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     if (res < 0) {
         LOG_I ("%p socks5 client udp connect", self);
         hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
+        hev_task_io_close (fd);
         return -1;
     }
 
@@ -169,7 +169,7 @@ hev_socks5_client_udp_destruct (HevObject *base)
 
     if (self->fd >= 0) {
         hev_task_del_fd (hev_task_self (), self->fd);
-        close (self->fd);
+        hev_task_io_close (self->fd);
     }
 
     HEV_SOCKS5_CLIENT_TYPE->destruct (base);

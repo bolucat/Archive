@@ -18,9 +18,18 @@ m.Track _track(int i) => m.Track(
 );
 
 class _Demo extends Source {
-  _Demo({this.fail = false, this.albumCount = 0});
+  _Demo({
+    this.fail = false,
+    this.albumCount = 0,
+    this.artistImage = '',
+    this.profileImage = '',
+    this.failArtist = false,
+  });
   final bool fail;
   final int albumCount;
+  final String artistImage, profileImage;
+  final bool failArtist;
+  int artistCalls = 0;
 
   @override
   final info = const m.SourceInfo(id: 'demo', name: 'Demo');
@@ -61,10 +70,11 @@ class _Demo extends Source {
   Future<m.AlbumPage> album(String id) async => fail
       ? _boom()
       : m.AlbumPage(
-          album: const m.Album(
+          album: m.Album(
             id: 'al1',
             name: '测试专辑',
-            artists: [m.Artist(id: 'a1', name: '测试歌手')],
+            imageUrl: 'test-album-cover',
+            artists: [m.Artist(id: 'a1', name: '测试歌手', imageUrl: artistImage)],
             released: '2022-12-09',
             copyright: '℗ 2022 Demo Records',
           ),
@@ -72,21 +82,24 @@ class _Demo extends Source {
         );
 
   @override
-  Future<m.ArtistPage> artist(String id) async => fail
-      ? _boom()
-      : m.ArtistPage(
-          artist: const m.Artist(id: 'a1', name: '测试歌手'),
-          tracks: [for (var i = 0; i < 10; i++) _track(i)],
-          albums: [
-            for (var i = 0; i < albumCount; i++)
-              m.Album(
-                id: 'disc$i',
-                name: '发行 $i',
-                released:
-                    '${2026 - i ~/ 12}-${(12 - i % 12).toString().padLeft(2, '0')}-01',
-              ),
-          ],
-        );
+  Future<m.ArtistPage> artist(String id) async {
+    artistCalls++;
+    return fail || failArtist
+        ? _boom()
+        : m.ArtistPage(
+            artist: m.Artist(id: id, name: '测试歌手', imageUrl: profileImage),
+            tracks: [for (var i = 0; i < 10; i++) _track(i)],
+            albums: [
+              for (var i = 0; i < albumCount; i++)
+                m.Album(
+                  id: 'disc$i',
+                  name: '发行 $i',
+                  released:
+                      '${2026 - i ~/ 12}-${(12 - i % 12).toString().padLeft(2, '0')}-01',
+                ),
+            ],
+          );
+  }
 
   @override
   Future<m.SearchResult> search(
@@ -97,6 +110,23 @@ class _Demo extends Source {
     ('午夜', m.SearchKind.tracks) => m.SearchResult(tracks: [_track(0)]),
     ('夜晚', m.SearchKind.artists) => const m.SearchResult(
       artists: [m.Artist(id: 'a1', name: '测试歌手')],
+    ),
+    ('Atlas', m.SearchKind.albums) => m.SearchResult(
+      albums: [
+        for (var i = 1; i <= 5; i++)
+          m.Album(id: 'atlas$i', name: 'Atlas Volume $i'),
+      ],
+      total: 5,
+    ),
+    ('Atlas', m.SearchKind.artists) => const m.SearchResult(
+      artists: [m.Artist(id: 'a2', name: 'Atlas Artist')],
+    ),
+    ('Paged', m.SearchKind.albums) => m.SearchResult(
+      albums: [
+        for (var i = 1; i <= 8; i++)
+          m.Album(id: 'paged$i', name: 'Paged Album $i'),
+      ],
+      more: true,
     ),
     _ => const m.SearchResult(),
   };
@@ -115,13 +145,24 @@ void main() {
     WidgetTester t, {
     bool fail = false,
     int albumCount = 0,
+    String artistImage = '',
+    String profileImage = '',
+    bool failArtist = false,
   }) async {
     t.view.physicalSize = const Size(1280, 800);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     final app = AppState()..clearQueue();
     addTearDown(app.dispose);
-    app.sources.add(_Demo(fail: fail, albumCount: albumCount));
+    app.sources.add(
+      _Demo(
+        fail: fail,
+        albumCount: albumCount,
+        artistImage: artistImage,
+        profileImage: profileImage,
+        failArtist: failArtist,
+      ),
+    );
     app.setSource('demo');
     await t.pumpWidget(appFor(app));
     await _frames(t);
@@ -180,6 +221,39 @@ void main() {
     expect(find.text('歌单'), findsNothing);
   });
 
+  testWidgets('search All offers View all only when album matches are hidden', (
+    t,
+  ) async {
+    final app = await boot(t);
+    app.open('/search');
+    await _frames(t);
+    await t.enterText(find.byType(EditableText), 'Atlas');
+    await _frames(t);
+
+    final cards = find.textContaining('Atlas Volume ');
+    final viewAll = find.text('查看全部 5 张专辑');
+    expect(cards, findsNWidgets(4));
+    expect(viewAll, findsOneWidget);
+
+    t.view.physicalSize = const Size(1440, 800);
+    await _frames(t);
+    expect(cards, findsNWidgets(5));
+    expect(viewAll, findsNothing);
+  });
+
+  testWidgets('search All offers View all when more album pages exist', (
+    t,
+  ) async {
+    final app = await boot(t);
+    app.open('/search');
+    await _frames(t);
+    await t.enterText(find.byType(EditableText), 'Paged');
+    await _frames(t);
+
+    expect(find.textContaining('Paged Album '), findsNWidgets(8));
+    expect(find.text('查看全部 8 张专辑'), findsOneWidget);
+  });
+
   testWidgets('专辑页底部：完整发行日期和版权', (t) async {
     final app = await boot(t);
     app.open('/album/@demo/al1');
@@ -189,6 +263,134 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'album artist avatar uses the artist image and preserves its route',
+    (t) async {
+      final app = await boot(t, artistImage: 'test-artist-avatar');
+      app.open('/album/@demo/al1');
+      await _frames(t);
+
+      final album = app.albumOf('@demo/al1')!;
+      expect(album.cover, 'test-album-cover');
+      expect(album.artistImage, 'test-artist-avatar');
+      expect(album.artistRoute, AppState.remoteRoute('artist', 'demo', 'a1'));
+      expect(
+        album.withReleased(DateTime(2022)).artistImage,
+        'test-artist-avatar',
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 28 && w.id == 'test-artist-avatar',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 400 && w.id == 'test-album-cover',
+        ),
+        findsOneWidget,
+      );
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'missing album artist avatar shows a person instead of album art',
+    (t) async {
+      final app = await boot(t);
+      app.open('/album/@demo/al1');
+      await _frames(t);
+
+      expect(app.albumOf('@demo/al1')!.artistImage, isEmpty);
+      expect(
+        find.byWidgetPredicate((w) => w is Cover && w.w == 28),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Ico && w.name == 'user' && w.size == 16,
+        ),
+        findsOneWidget,
+      );
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'album fetches a missing artist avatar from the artist page once',
+    (t) async {
+      final app = await boot(t, profileImage: 'profile-avatar');
+      app.open('/album/@demo/al1');
+      await _frames(t);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 28 && w.id == 'profile-avatar',
+        ),
+        findsOneWidget,
+      );
+      final source = app.sources['demo'] as _Demo;
+      expect(source.artistCalls, 1);
+      app.update(() {});
+      await _frames(t);
+      expect(source.artistCalls, 1);
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'artist profile replaces the generic image supplied by an album',
+    (t) async {
+      final app = await boot(
+        t,
+        artistImage: 'generic-avatar',
+        profileImage: 'real-artist-avatar',
+      );
+      app.open('/album/@demo/al1');
+      await _frames(t);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 28 && w.id == 'real-artist-avatar',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 28 && w.id == 'generic-avatar',
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Cover && w.w == 400 && w.id == 'test-album-cover',
+        ),
+        findsOneWidget,
+      );
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'artist fetch failure leaves the album usable and does not loop',
+    (t) async {
+      final app = await boot(t, failArtist: true);
+      app.open('/album/@demo/al1');
+      await _frames(t);
+      expect(find.text('测试专辑'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Ico && w.name == 'user' && w.size == 16,
+        ),
+        findsOneWidget,
+      );
+      final source = app.sources['demo'] as _Demo;
+      expect(source.artistCalls, 1);
+      app.update(() {});
+      await _frames(t);
+      expect(source.artistCalls, 1);
+      expect(t.takeException(), isNull);
+    },
+  );
 
   testWidgets('歌手页按需构建专辑卡片，翻页后显示下一屏', (t) async {
     final app = await boot(t, albumCount: 100);

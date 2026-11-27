@@ -9,11 +9,12 @@
 
 #include <stddef.h>
 #include <assert.h>
-#include <unistd.h>
 #include <fcntl.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
+#include <hev-task-io.h>
 #include <hev-task-io-pipe.h>
 
 static void
@@ -24,10 +25,10 @@ task_entry (void *data)
     assert (hev_task_io_pipe_pipe (fds) == 0);
     assert (fds[0] >= 0);
     assert (fds[1] >= 0);
-    assert ((fcntl (fds[0], F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
-    assert ((fcntl (fds[1], F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
-    close (fds[0]);
-    close (fds[1]);
+    assert ((hev_task_io_fcntl (fds[0], F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    assert ((hev_task_io_fcntl (fds[1], F_GETFL) & O_NONBLOCK) == O_NONBLOCK);
+    hev_task_io_close (fds[0]);
+    hev_task_io_close (fds[1]);
 }
 
 int

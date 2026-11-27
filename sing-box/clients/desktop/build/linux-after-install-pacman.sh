@@ -1,7 +1,5 @@
 #!/bin/bash
 
-ln -sf /opt/sing-box/sing-box /usr/bin/sing-box
-
 if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
     chmod 4755 /opt/sing-box/chrome-sandbox || true
 else

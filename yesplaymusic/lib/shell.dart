@@ -607,6 +607,10 @@ class _Seg extends StatelessWidget {
 
 class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key, this.onDark = false, this.collapse = false});
+
+  /// Clear space below page controls, including the fade above the bar.
+  static const bottomInset = 110.0;
+
   final bool onDark;
 
   /// In Coverflow, "Collapse" is added at the far left (final v33); with an empty queue only this part remains
@@ -641,7 +645,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
             left: 0,
             right: 0,
             bottom: 0,
-            height: 110,
+            height: MiniPlayer.bottomInset,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -1027,10 +1031,15 @@ class _LyricSegState extends State<_LyricSeg> {
             onChanged: app.scrub,
             onCommit: app.seek,
             builder: (_, at, dragging) {
+              final lyricIdx = app.lyricIndex;
+              final activeLyric = lyricIdx >= 0
+                  ? app.lyricLines[lyricIdx].text
+                  : null;
               // With the mini lyric setting on, the lyric is always shown; off, only while the mouse is over the
               // progress bar (or dragging). Hovering other player bar buttons doesn't count.
               final showLyric =
-                  app.hasLyrics && (app.miniLyric || at != null || dragging);
+                  activeLyric != null &&
+                  (app.miniLyric || at != null || dragging);
               // While dragging, the time on the left follows the hand.
               final elapsed = dragging && at != null
                   ? at * duration
@@ -1103,9 +1112,7 @@ class _LyricSegState extends State<_LyricSeg> {
                                 duration: _lyricAnim,
                                 curve: Curves.easeOutCubic,
                                 child: tx(
-                                  app.hasLyrics
-                                      ? app.lyricLines[app.lyricIndex].text
-                                      : '',
+                                  activeLyric ?? '',
                                   14,
                                   w: w600,
                                   c: pal.ink,

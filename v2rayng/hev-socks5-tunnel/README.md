@@ -1,6 +1,6 @@
 # HevSocks5Tunnel
 
-[![status](https://github.com/heiher/hev-socks5-tunnel/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tunnel)
+[![status](https://github.com/heiher/hev-socks5-tunnel/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tunnel)
 
 A simple, lightweight tunnel over Socks5 proxy (tun2socks).
 
@@ -59,13 +59,32 @@ cd hev-socks5-tunnel
 ./build-apple.sh
 ```
 
-### Windows (MSYS2)
-```bash
-export MSYS=winsymlinks:native
+### Windows (MSVC + Clang)
+
+The same `Makefile` builds with clang targeting MSVC. Open a Visual
+Studio developer prompt (clang from the VS LLVM component or `PATH`), make
+sure GNU make and a POSIX `sh.exe` (for example the one of Git for Windows,
+`C:\Program Files\Git\usr\bin`) are on `PATH`, then:
+
+```bat
 git clone --recursive https://github.com/heiher/hev-socks5-tunnel
 cd hev-socks5-tunnel
 make
+make ARCH=x86
+make ARCH=arm64
+make shared
 ```
+
+`ARCH` is `x64` (default), `x86` or `arm64` and must match the developer
+prompt architecture. The executable is `bin/hev-socks5-tunnel.exe`; the shared
+library is `bin/hev-socks5-tunnel.dll` with the import library
+`bin/hev-socks5-tunnel.dll.lib`, it embeds the third-parts. Run `make clean`
+when switching between the executable and the shared library.
+
+The [Wintun](https://www.wintun.net/) driver is loaded at runtime, put the
+`wintun.dll` of the same architecture next to the executable and run it as
+Administrator. On Windows there is no daemon mode (`pid-file` only writes
+the process id), no `limit-nofile` and no `mark`. Stop the tunnel with Ctrl+C.
 
 ### Library
 
@@ -149,6 +168,9 @@ socks5:
 #misc:
   # task stack size (bytes)
 # task-stack-size: 86016
+  # wintun ring buffer capacity (bytes, windows only, power of two,
+  # range: 131072 - 67108864)
+# wintun-ring-capacity: 524288
   # tcp buffer size (bytes)
 # tcp-buffer-size: 65536
   # udp socket recv buffer (SO_RCVBUF) size (bytes)
@@ -289,10 +311,24 @@ services:
       CONFIG_ROUTES: 1 # optional, set 0 to ignore TABLE, IPV4_INCLUDED_ROUTES and IPV4_EXCLUDED_ROUTES, with MARK defaults to 0
       IPV4_INCLUDED_ROUTES: 0.0.0.0/0 # optional, demo means proxy all traffic. for multiple network segments, join with `,` or `\n`
       IPV4_EXCLUDED_ROUTES: a.b.c.d # optional, demo means exclude traffic from the proxy itself. for multiple network segments, join with `,` or `\n`
+      DNS_CACHE: 1 # optional, enable the lightweight caching resolver (dnsmasq) for use with mapdns disabled, default `0`
+      DNS_CACHE_SERVERS: 8.8.8.8,1.1.1.1 # optional, upstream resolvers of the cache, they are queried via the tun device, default `8.8.8.8,1.1.1.1`
+      DNS_CACHE_SIZE: 10000 # optional, number of cached DNS records, default `10000`
       LOG_LEVEL: warn # optional, default `warn`, other option `debug`/`info`/`error`
     dns:
-      - 8.8.8.8
+      - 127.0.0.1 # point clients at the caching resolver when DNS_CACHE=1, or a remote resolver like 8.8.8.8 otherwise
 ```
+
+#### DNS caching
+
+The tunnel has no built-in DNS cache when mapdns is disabled, but the Docker
+image ships an optional lightweight caching resolver (dnsmasq). Enable it with
+`DNS_CACHE=1`, no entrypoint override needed. It listens on `127.0.0.1` and the
+tun interface addresses, so clients sharing the network namespace
+(`network_mode: "service:tun"`) use it with `dns: 127.0.0.1` (or the tun IPv4,
+e.g. `dns: 198.18.0.1`). Upstream servers (`DNS_CACHE_SERVERS`) are queried
+through the tun device, i.e. resolved remotely via the Socks5 server, and
+successful answers are cached locally (`DNS_CACHE_SIZE` records).
 
 You can also set the route rules with multiple network segments like:
 
@@ -455,25 +491,32 @@ still override `PKGNAME`/`CLSNAME` in `Application.mk` as shown above and build 
 
 ## Contributors
 
+* **acidroper** - https://github.com/acidroper
 * **arror** - https://github.com/arror
 * **bazuchan** - https://github.com/bazuchan
+* **bitmold** - https://github.com/bitmold
 * **codewithtamim** - https://github.com/codewithtamim
+* **daemooon** - https://github.com/daemooon
 * **dovecoteescapee** - https://github.com/dovecoteescapee
 * **ebrahimtahernejad** - https://github.com/ebrahimtahernejad
 * **egavr** - https://github.com/egavr
+* **fwx** - https://github.com/fwx
 * **heiby** - https://github.com/heiby
 * **hev** - https://hev.cc
 * **ihipop** - https://ihipop.com
 * **katana** - https://github.com/officialkatana
+* **mmjvox** - https://github.com/mmjvox
 * **nange** - https://github.com/nange
 * **plangto** - https://github.com/plangto
+* **popsiclelmlm** - https://github.com/popsiclelmlm
 * **pronebird** - https://github.com/pronebird
 * **saeeddev94** - https://github.com/saeeddev94
+* **simplerick-simplefun** - https://github.com/simplerick-simplefun
 * **sskaje** - https://github.com/sskaje
 * **wankkoree** - https://github.com/wankkoree
 * **xiguagua** - https://github.com/xiguagua
 * **xz-dev** - https://github.com/xz-dev
-* **yiguous** - https://github.com/yiguous
+* **yiguodev** - https://github.com/yiguodev
 * **yujinpan** - https://github.com/yujinpan
 * **zheshinicheng** - https://github.com/zheshinicheng
 

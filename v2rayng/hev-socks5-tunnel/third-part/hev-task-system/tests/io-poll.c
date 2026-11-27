@@ -9,9 +9,9 @@
 
 #include <stddef.h>
 #include <assert.h>
-#include <unistd.h>
 #include <fcntl.h>
 
+#include <hev-sys.h>
 #include <hev-task.h>
 #include <hev-task-system.h>
 #include <hev-task-io.h>
@@ -33,7 +33,7 @@ task1_entry (void *data)
     assert (val == 1);
     assert (pfds[0].revents & POLLIN);
 
-    close (fds[0]);
+    hev_task_io_close (fds[0]);
 }
 
 static void
@@ -51,19 +51,16 @@ task2_entry (void *data)
     assert (val == 1);
     assert (pfds[0].revents & POLLOUT);
 
-    assert (write (fds[1], &val, sizeof (val)) == sizeof (val));
+    assert (hev_task_io_write (fds[1], &val, sizeof (val), NULL, NULL) ==
+            sizeof (val));
 
-    close (fds[1]);
+    hev_task_io_close (fds[1]);
 }
 
 int
 main (int argc, char *argv[])
 {
     HevTask *task;
-
-#if defined(__MSYS__)
-    return 0;
-#endif
 
     assert (hev_task_system_init () == 0);
 

@@ -1,23 +1,21 @@
 /*
  ============================================================================
  Name        : hev-task-io-socket.c
- Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2018 everyone.
+ Author      : hev <r@hev.cc>
+ Copyright   : Copyright (c) 2018 - 2026 hev
  Description : Task socket I/O operations
  ============================================================================
  */
 
 #define _GNU_SOURCE
 #include <errno.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
 
-#include "kern/task/hev-task.h"
-#include "lib/io/basic/hev-task-io.h"
+#include "sys/hev-sys-private.h"
+#include <hev-task.h>
+#include <hev-task-io.h>
+#include <hev-task-io-socket.h>
+
 #include "lib/misc/hev-compiler.h"
-
-#include "hev-task-io-socket.h"
 
 EXPORT_SYMBOL int
 hev_task_io_socket_socket (int domain, int type, int protocol)
@@ -35,7 +33,7 @@ hev_task_io_socket_socket (int domain, int type, int protocol)
         int nonblock = 1;
 
         if (ioctl (fd, FIONBIO, (char *)&nonblock) < 0) {
-            close (fd);
+            hev_task_io_close (fd);
             return -2;
         }
     }
@@ -61,20 +59,70 @@ hev_task_io_socket_socketpair (int domain, int type, int protocol,
         int nonblock = 1;
 
         if (ioctl (socket_vector[0], FIONBIO, (char *)&nonblock) < 0) {
-            close (socket_vector[0]);
-            close (socket_vector[1]);
+            hev_task_io_close (socket_vector[0]);
+            hev_task_io_close (socket_vector[1]);
             return -2;
         }
 
         if (ioctl (socket_vector[1], FIONBIO, (char *)&nonblock) < 0) {
-            close (socket_vector[0]);
-            close (socket_vector[1]);
+            hev_task_io_close (socket_vector[0]);
+            hev_task_io_close (socket_vector[1]);
             return -3;
         }
     }
 #endif
 
     return res;
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_bind (int fd, const struct sockaddr *addr,
+                         socklen_t addr_len)
+{
+    return bind (fd, addr, addr_len);
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_listen (int fd, int backlog)
+{
+    return listen (fd, backlog);
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_setsockopt (int fd, int level, int optname,
+                               const void *optval, socklen_t optlen)
+{
+    return setsockopt (fd, level, optname, optval, optlen);
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_getsockname (int fd, struct sockaddr *addr,
+                                socklen_t *addr_len)
+{
+    return getsockname (fd, addr, addr_len);
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_getpeername (int fd, struct sockaddr *addr,
+                                socklen_t *addr_len)
+{
+    return getpeername (fd, addr, addr_len);
+}
+
+EXPORT_SYMBOL int
+hev_task_io_socket_shutdown (int fd, int how)
+{
+    return shutdown (fd, how);
+}
+
+EXPORT_SYMBOL uintptr_t
+hev_task_io_socket_get_handle (int fd)
+{
+#if defined(_WIN32)
+    return (uintptr_t)hev_sys_fd_to_socket (fd);
+#else
+    return fd >= 0 ? (uintptr_t)fd : (uintptr_t)-1;
+#endif
 }
 
 EXPORT_SYMBOL int
@@ -130,7 +178,7 @@ retry:
         int nonblock = 1;
 
         if (ioctl (new_fd, FIONBIO, (char *)&nonblock) < 0) {
-            close (new_fd);
+            hev_task_io_close (new_fd);
             return -3;
         }
     }
@@ -147,7 +195,7 @@ hev_task_io_socket_recv (int fd, void *buf, size_t len, int flags,
     ssize_t s;
 
 retry:
-    s = recv (fd, buf + size, len - size, flags & ~MSG_WAITALL);
+    s = recv (fd, (char *)buf + size, len - size, flags & ~MSG_WAITALL);
     if (s < 0 && errno == EAGAIN && !(flags & MSG_DONTWAIT)) {
         if (yielder) {
             if (yielder (HEV_TASK_WAITIO, yielder_data))
@@ -179,7 +227,7 @@ hev_task_io_socket_send (int fd, const void *buf, size_t len, int flags,
     ssize_t s;
 
 retry:
-    s = send (fd, buf + size, len - size, flags & ~MSG_WAITALL);
+    s = send (fd, (const char *)buf + size, len - size, flags & ~MSG_WAITALL);
     if (s < 0 && errno == EAGAIN && !(flags & MSG_DONTWAIT)) {
         if (yielder) {
             if (yielder (HEV_TASK_WAITIO, yielder_data))
@@ -212,8 +260,8 @@ hev_task_io_socket_recvfrom (int fd, void *buf, size_t len, int flags,
     ssize_t s;
 
 retry:
-    s = recvfrom (fd, buf + size, len - size, flags & ~MSG_WAITALL, addr,
-                  addr_len);
+    s = recvfrom (fd, (char *)buf + size, len - size, flags & ~MSG_WAITALL,
+                  addr, addr_len);
     if (s < 0 && errno == EAGAIN && !(flags & MSG_DONTWAIT)) {
         if (yielder) {
             if (yielder (HEV_TASK_WAITIO, yielder_data))
@@ -246,8 +294,8 @@ hev_task_io_socket_sendto (int fd, const void *buf, size_t len, int flags,
     ssize_t s;
 
 retry:
-    s = sendto (fd, buf + size, len - size, flags & ~MSG_WAITALL, addr,
-                addr_len);
+    s = sendto (fd, (const char *)buf + size, len - size, flags & ~MSG_WAITALL,
+                addr, addr_len);
     if (s < 0 && errno == EAGAIN && !(flags & MSG_DONTWAIT)) {
         if (yielder) {
             if (yielder (HEV_TASK_WAITIO, yielder_data))
@@ -321,7 +369,7 @@ retry:
     if (size < len) {
         for (i = 0; i < mh.msg_iovlen; i++) {
             if (s < mh.msg_iov[i].iov_len) {
-                mh.msg_iov[i].iov_base += s;
+                mh.msg_iov[i].iov_base = (char *)mh.msg_iov[i].iov_base + s;
                 mh.msg_iov[i].iov_len -= s;
                 break;
             }
@@ -382,7 +430,7 @@ retry:
     if (size < len) {
         for (i = 0; i < mh.msg_iovlen; i++) {
             if (s < mh.msg_iov[i].iov_len) {
-                mh.msg_iov[i].iov_base += s;
+                mh.msg_iov[i].iov_base = (char *)mh.msg_iov[i].iov_base + s;
                 mh.msg_iov[i].iov_len -= s;
                 break;
             }

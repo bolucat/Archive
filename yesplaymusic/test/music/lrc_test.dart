@@ -15,6 +15,14 @@ void main() {
     ]);
   });
 
+  test('repeated stamps separated by spaces expand into clean lyrics', () {
+    final ls = parseLrc('[00:02.00] [00:18.00]chorus');
+    expect(ls.map((l) => (l.start, l.text)), [
+      (2000, 'chorus'),
+      (18000, 'chorus'),
+    ]);
+  });
+
   // A positive offset makes lyrics earlier, but never before 0.
   test('offset shifts lines earlier and clamps at zero', () {
     final ls = parseLrc('[offset:+500]\n[00:00.20]a\n[00:02.00]b');
@@ -124,6 +132,21 @@ void main() {
       ('Wider', '更宽'),
     ]);
     expect(ls.first.end, 4000);
+  });
+
+  test('same-stamp lines keep file order in longer lyrics', () {
+    final rows = [
+      for (var i = 1; i <= 20; i++) ...[
+        '[00:${i.toString().padLeft(2, '0')}.00]Original line $i',
+        '[00:${i.toString().padLeft(2, '0')}.00]Translation $i',
+      ],
+    ];
+    final lines = lyricLines(Lyrics(lrc: rows.join('\n')));
+
+    expect(lines.map((l) => (l.start, l.text, l.translation)), [
+      for (var i = 1; i <= 20; i++)
+        (i * 1000, 'Original line $i', 'Translation $i'),
+    ]);
   });
 
   // A separate translation LRC is matched to the original by time, allowing tens of ms of error.
