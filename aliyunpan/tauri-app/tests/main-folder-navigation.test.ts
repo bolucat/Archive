@@ -1,0 +1,80 @@
+import {beforeEach,afterEach,expect,it,vi} from 'vitest'
+import {mount,flushPromises} from '@vue/test-utils'
+import {createPinia} from 'pinia'
+import Main from '@/entries/main/App.vue'
+import FileBrowser from '@/features/files/FileBrowser.vue'
+import {useFileSourcesStore} from '@/stores/fileSources'
+vi.mock('@/platform/native',async original=>({...await original<typeof import('@/platform/native')>(),isNative:()=>false,localList:vi.fn(async(sourceId,path)=>({sourceId,relativePath:path,parentPath:null,entries:[]}))}))
+vi.mock('vue-sonner',()=>({Toaster:{template:'<div/>'},toast:{info:vi.fn(),error:vi.fn()}}))
+beforeEach(()=>{const values=new Map<string,string>();vi.stubGlobal('localStorage',{getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>values.set(key,value),removeItem:(key:string)=>values.delete(key)})})
+afterEach(()=>{document.body.innerHTML='';vi.clearAllMocks()})
+it('keeps a favorite folder route when its source-selection notification follows',async()=>{
+ const pinia=createPinia(),sources=useFileSourcesStore(pinia)
+ sources.replaceSnapshot({localFolders:[{id:'local',name:'Videos'}],drives:[],mediaServers:[],hasDirectURLs:false})
+ sources.bookmark('local','sub/folder','Favorites',true)
+ const favorite=sources.preferences.favorites[0]!
+ const wrapper=mount(Main,{attachTo:document.body,global:{plugins:[pinia],stubs:{LibraryWorkspace:{template:'<div/>'}}}})
+ await wrapper.findAll('button').find(button=>button.text()==='文件')!.trigger('click');await flushPromises()
+ wrapper.getComponent(FileBrowser).vm.$emit('openFolder',{sourceId:'local',path:'sub/folder',local:true,favoriteId:favorite.id})
+ wrapper.getComponent(FileBrowser).vm.$emit('selectSource','local');await flushPromises()
+ expect(wrapper.getComponent(FileBrowser).props('source')).toMatchObject({sourceId:'local',favoriteId:favorite.id,kind:'favorite'})
+ expect(wrapper.get('.unified-toolbar h1').text()).toBe('Favorites')
+ wrapper.unmount()
+})
+
+it('returns a folder opened directly from the sidebar to Files before Home',async()=>{
+ const pinia=createPinia(),sources=useFileSourcesStore(pinia)
+ sources.replaceSnapshot({localFolders:[{id:'local',name:'Videos'}],drives:[],mediaServers:[],hasDirectURLs:false})
+ const wrapper=mount(Main,{attachTo:document.body,global:{plugins:[pinia],stubs:{LibraryWorkspace:{template:'<div/>'}}}})
+ await wrapper.get('[data-sidebar-root="files"] .nav-children button').trigger('click')
+ await flushPromises()
+ const directory = wrapper.getComponent(FileBrowser).element
+ await wrapper.get('[data-sidebar-root="files"] .nav-children button').trigger('click')
+ await flushPromises()
+ expect(wrapper.getComponent(FileBrowser).element).not.toBe(directory)
+ await wrapper.get('.unified-toolbar .back-button').trigger('click')
+ expect(wrapper.getComponent(FileBrowser).props('source')).toBeUndefined()
+ expect(wrapper.get('.unified-toolbar h1').text()).toBe('文件')
+ await wrapper.get('.unified-toolbar .back-button').trigger('click')
+ expect(wrapper.findComponent(FileBrowser).exists()).toBe(false)
+ wrapper.unmount()
+})
+
+it('returns to the already loaded parent directory without a native reload', async () => {
+ const { localList } = await import('@/platform/native')
+ const { encodeLocal } = await import('@/features/files/adapters/sourceServices')
+ const root = { sourceId:'local', relativePath:'', parentPath:null, entries:[
+   {id:'Nested', name:'Nested', relativePath:'Nested', isDirectory:true, playable:false, size:0, modified:0}
+ ] }
+ vi.mocked(localList).mockResolvedValueOnce(root).mockResolvedValueOnce({
+  sourceId:'local',relativePath:'Nested',parentPath:'',entries:[]
+ })
+ const pinia=createPinia()
+ useFileSourcesStore(pinia).replaceSnapshot({localFolders:[{id:'local',name:'Videos'}],drives:[],mediaServers:[],hasDirectURLs:false})
+ const wrapper=mount(Main,{attachTo:document.body,global:{plugins:[pinia],stubs:{LibraryWorkspace:{template:'<div/>'}}}})
+ try {
+  await wrapper.get('[data-sidebar-root="files"] .nav-children button').trigger('click')
+  await flushPromises()
+  wrapper.findComponent({name:'MediaPanRight'}).vm.$emit('enterFolder',{
+   file_id:encodeLocal('local','Nested'),name:'Nested',isDir:true
+  })
+  await flushPromises()
+  expect(wrapper.get('.unified-toolbar h1').text()).toBe('Nested')
+  await wrapper.get('.unified-toolbar .back-button').trigger('click')
+  expect(wrapper.get('.unified-toolbar h1').text()).toBe('Videos')
+  expect(wrapper.get('.files-browser').text()).toContain('Nested')
+  expect(localList).toHaveBeenCalledTimes(2)
+ } finally { wrapper.unmount() }
+})
+
+it('retains the home workspace when visiting files and library categories',async()=>{
+ const {defineComponent,onMounted,onActivated}=await import('vue')
+ const mounts:string[]=[]
+ const CachedWorkspace=defineComponent({props:{route:String},emits:['title','detailActive'],setup(props,{emit}){onMounted(()=>mounts.push(props.route||''));onActivated(()=>{emit('title',props.route==='home'?'主屏幕':'其他页面');emit('detailActive',false)});return{}},template:'<div class="cached-workspace">{{route}}</div>'})
+ const wrapper=mount(Main,{attachTo:document.body,global:{plugins:[createPinia()],stubs:{LibraryWorkspace:CachedWorkspace,MediaWorkspace:{template:'<div>Music</div>'}}}})
+ const visit=async(label:string)=>{await wrapper.findAll('button').find(button=>button.text()===label)!.trigger('click');await flushPromises()}
+ await flushPromises();expect(mounts).toEqual(['home'])
+ await visit('文件');await visit('主屏幕');expect(mounts).toEqual(['home'])
+ await visit('所有电影');await visit('主屏幕');expect(mounts.filter(route=>route==='home')).toHaveLength(1)
+ expect(wrapper.get('.unified-toolbar h1').text()).toBe('主屏幕');wrapper.unmount()
+})

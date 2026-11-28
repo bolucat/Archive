@@ -4,13 +4,15 @@
 
 发布前从真实二进制/渠道核对状态。TestFlight 成功上传也须记录独立 `testflight` 官网日志，不能标成 App Store 上架；这替代旧条目中 TF 不记录的限制。
 
+此处继承的 Electron 自动发布授权只在原平台和范围内有效，不授权 Tauri 公开发行或覆盖正式产物。
+
 ## CI
 
-Manual trigger only (`workflow_dispatch`) via `.github/workflows/release.yml`. Builds on `windows-latest` + `ubuntu-latest`, publishes draft GitHub Release.
+`main` 使用 [Tauri QA](../../.github/workflows/tauri-qa.yml) 验证新桌面端。旧 Electron 构建与发布工作流保留在 [`electron` 分支](https://github.com/gaozhangmin/boxplayer/tree/electron/.github/workflows)。GitHub 的手动触发要求工作流存在于默认分支。旧 Electron 流程从 `main` 移除后，原有手动发布入口停用。Tauri 正式产物须采用独立的发布流程。[GitHub 手动触发说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
-真实网盘播放验证保留阿里云盘、百度网盘、Dropbox、OneDrive、Google Drive 和独立的 Emby 验证。按用户 2026-11-17 要求，夸克从 CI 播放矩阵排除；默认值及手动输入均不得重新启用。此范围调整不移除客户端夸克能力，也不将此前播放超时归因为已证实的 token 过期。 No automatic CI on push/PR.
+三端 QA 稀疏检出 `tauri-app/`，用合成应用注册配置调用 Tauri CLI。Windows 使用 LZMA 生成 NSIS 安装程序，随包附带 libmpv 的 DLL 依赖。播放测试从安装器提取目录加载 DLL。Linux 生成依赖 `libmpv2` 的 deb，使用移除调试符号的优化构建，原生窗口测试运行从 deb 提取的程序。macOS 生成包含 libmpv 及其动态库的应用压缩包。工作流核对原生程序和 sidecar，并运行前端、sidecar、Rust、UI 与播放器测试。Actions 产物供调试验收，正式发行的签名、公证和可再分发依赖另按发布流程核对。
 
-签名凭据按目标隔离：既有 `CSC_LINK/CSC_KEY_PASSWORD` 只传入 macOS runner，Windows 只读取其独立 `WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD`。不能把 Apple 证书用于生成 Windows 发布者信息，也不能通过关闭更新器签名验证修补错误的旧安装包。源码隔离不代表已获得可信的 Windows 签名证书；实际证书与 Windows 二进制验签仍是交付检查项。旧安装包内的错误发布者元数据需要受信任的新安装包替换，不能声称修改 CI 就修好了已安装客户端。
+Linux deb 使用 `tauri-app/src-tauri/linux/boxplayer.desktop`，通过 `Exec` 的 `%u` 把浏览器交给桌面入口的 OAuth 回调 URL 传给应用。QA 校验安装包中生成的桌面入口。
 
 ### Release publication authorization
 
@@ -31,7 +33,3 @@ Manual trigger only (`workflow_dispatch`) via `.github/workflows/release.yml`. B
 - 定位官网仓库时核对 git remote；本机可有 `boxplayer-site`、`boxplayer-site-release-ci`、`boxplayer-site-changelog` 等工作区，不覆盖其他任务的脏文件。官网数据在 `src/content/changelog/releases.json`，字段与流程见 `docs/changelog.md`。运行 `node scripts/upsert-changelog.mjs <confirmed-release.json>`，按平台/版本/targets 幂等更新，保留其他端记录。
 - 完成正式发布后，提交并推送官网这一条版本记录，等待官网部署成功并检查对应公开页面；交付时分别报告客户端发布、官网提交和官网部署状态。不能仅改本地数据就声称官网已更新。如部署或权限受阻，完成可做步骤并明确报告，不能漏掉官网同步。
 - 用户说“触发 TF”时，Agent 先根据版本差异生成并保存文案供后续商店流程复用；该动作本身不触发官网正式发布记录。用户说“触发 App Store”时复用指定构建说明，待真正上架再同步官网；审核提交成功不等于上架。
-
-### 百度网盘真实账号验证
-
-发布矩阵及单平台真实播放诊断可读取仓库的 `BOXPLAYER_E2E_BAIDU_ACCOUNT_JSON`。该 Secret 只含一个百度账号，存在时替换共享测试配置中的百度条目，继续使用原有目标目录和文件。更新通过标准输入写入 GitHub Secret。

@@ -1,136 +1,125 @@
-<p align="center"><img src="screenshot/icon.svg" alt="BoxPlayer" width="112"></p>
+<div align="center">
+
+<a href="https://xbyvideohub.com/"><img src="screenshot/icon.svg" width="104" alt="BoxPlayer 图标"></a>
 
 # BoxPlayer
 
-<p align="center">跨手机、平板、电视与电脑的全平台播放器：把网盘、媒体服务器、音乐、阅读与 AI 放进同一个入口。</p>
+**把硬盘、网盘、NAS 和媒体服务器里的内容，放进同一座媒体库。**
 
-<p align="center">
-  中文 · <a href="./README.en.md">English</a> ·
-  <a href="https://xbyvideohub.com/">官网及全平台下载</a> ·
-  <a href="https://github.com/gaozhangmin/boxplayer/releases">桌面版 Releases</a> ·
-  <a href="./clouddrive-cli/README.md">CLI / MCP</a>
-</p>
+在电脑、手机、平板和电视上看电影、追剧、听歌、读书。全新的 Tauri 桌面端加入了网盘 Agent，可以把查找、归档和批量命名变成一份逐项可审的方案。
 
-BoxPlayer 是面向个人媒体资产的全平台播放器，支持 Apple 全家桶（iPhone、iPad、Mac、Apple TV）、Windows、Linux、Android 手机与平板，以及 Android TV。它把多个云盘、本地文件和 Jellyfin / Emby / Plex 内容放在统一入口中，支持文件管理、媒体刮削与播放、音乐库、电子书阅读及 AI 辅助操作。本仓库主要维护 Electron 桌面版；各平台客户端的界面、功能与发布节奏可能不同。
+[![GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/gaozhangmin/boxplayer)](https://github.com/gaozhangmin/boxplayer/stargazers)
 
-> 第一次使用？前往 [安装](#安装)，添加云盘或媒体服务器，然后在媒体库扫描内容。版本变更与已知限制见 [v5.0.37 更新说明](docs/releases/v5.0.37.md)。
+**[下载](#下载)** · **[快速开始](#快速开始)** · **[网盘 Agent](#网盘-agent)** · **[文档](#文档)** · **[社区](#社区)** · **简体中文** · [English](README.en.md)
 
-## 界面预览
+<img src="screenshot/readme/movie-detail.png" width="1000" alt="BoxPlayer Tauri 版的《机器人总动员》详情，展示剧照、影片资料、演员和播放入口">
 
-### 统一媒体库
+<sub>macOS Tauri 开发版实屏。影片资料与图片来自 TMDB。</sub>
 
-主屏幕汇集继续观看、收藏夹和媒体分类；详情页展示背景图、季集、演职员与播放进度。
+</div>
 
-![BoxPlayer 媒体库主屏幕](screenshot/library-home.png)
+> **Tauri 首版正在准备中。** 本页实屏展示开发版，Agent 和相关能力仍在整合。正式支持的平台、功能和安装包请查看 [首版发布跟踪 #540](https://github.com/gaozhangmin/boxplayer/issues/540)。
 
-<p>
-  <img src="screenshot/server-library.png" width="49%" alt="媒体服务器海报列表">
-  <img src="screenshot/episode-detail.png" width="49%" alt="剧集详情与集封面">
-</p>
+## 下载
 
-### 音乐库与粒子播放器
+| 设备 | 版本入口 |
+| --- | --- |
+| iPhone、iPad、Mac、Apple TV | [App Store](https://apps.apple.com/us/app/boxplayer/id6739804060) |
+| Android 手机、平板、Android TV | [BoxPlayer 官网](https://xbyvideohub.com/) |
+| Windows、Linux、macOS 桌面端 | [GitHub Releases · 已发布桌面版本](https://github.com/gaozhangmin/boxplayer/releases) |
+| Tauri 桌面开发版 | [首版发布跟踪](https://github.com/gaozhangmin/boxplayer/issues/540) · [本地启动](#tauri-桌面端) |
 
-按歌曲、歌手、专辑和自建歌单浏览；从音乐库播放后可进入粒子播放器，也能返回列表继续管理曲目。
+各客户端支持的来源、格式和功能以对应版本为准。
 
-<p>
-  <img src="screenshot/music_library.png" width="49%" alt="音乐库">
-  <img src="screenshot/music_player.png" width="49%" alt="粒子播放器">
-</p>
+## 快速开始
 
-### 文件、搜索与 AI
+1. **加一个来源。** 在文件页添加本地文件夹，登录一个网盘，或连接 Emby、Jellyfin、Plex 等媒体服务器。
+2. **打开一个文件，或建立媒体库。** 想马上看就直接点开视频。想按影视信息浏览，就选择影视目录进行扫描，随后在媒体库中按海报、季集和分类查看。
+3. **下次接着看。** 从「继续观看」恢复播放，或者把常看的内容加入收藏和播放列表。
 
-云盘文件管理与跨来源搜索共用一个工作区。AI 功能可辅助寻找媒体、整理文件和阅读文档。
+<img src="screenshot/readme/media-library.png" width="1000" alt="Tauri 桌面版媒体库，展示电影与系列的海报墙">
 
-<p>
-  <img src="screenshot/drive_home.png" width="49%" alt="网盘首页">
-  <img src="screenshot/ai_search.png" width="49%" alt="AI 搜索">
-</p>
+## 网盘 Agent
 
-<p>
-  <img src="screenshot/ai_agent.png" width="49%" alt="AI 工作台">
-  <img src="screenshot/pdf_ai.png" width="49%" alt="PDF 文档 AI">
-</p>
+在 Tauri 开发版的「文件」页打开 **AI 助手**，从当前目录和所选文件开始。也可以从影视详情把一部电影或剧集交给网盘助手。需要在浏览其他目录时保留当前任务范围，可以锁定上下文。
 
-更多画面：[本地搜索](screenshot/search_local.png) · [书架](screenshot/book_home.png) · [阅读器](screenshot/book_reader.png) · [AI 阅读](screenshot/book_reader_ai.png)
+<img src="screenshot/readme/drive-agent.png" width="1000" alt="Tauri 网盘助手实屏，左侧为会话、Recipes 和指令输入，右侧为方案 Diff、获取与巡检及运行证据">
 
-## 能做什么
+### 按季整理剧集的实例
 
-| 场景 | 主要能力 |
-|---|---|
-| 文件管理 | 多账号云盘浏览、搜索、上传下载、复制移动、分享与回收站；第三方云盘按其 API 能力展示操作。 |
-| 影视媒体库 | 扫描云盘和本地目录，补全海报与元数据；统一浏览电影、剧集、季集、演员和分类。 |
-| 媒体服务器 | 连接 Jellyfin、Emby、Plex，浏览媒体库、继续观看、搜索并播放。 |
-| 视频播放 | 内置播放器与 MPV / IINA 外部播放；支持音轨、字幕、ASS/SSA、倍速、连续播放和进度恢复。 |
-| 音乐 | 歌曲、歌手、专辑、自建歌单与播放队列；粒子播放器、歌词、音效和桌面歌词。 |
-| 阅读 | EPUB、PDF、TXT 等电子书；书签、笔记、高亮与 AI 阅读辅助。 |
-| AI 工作台 | 搜索与分析内容、规划文件整理、文档问答；执行写入操作前提供确认。 |
-| 自动化 | `clouddrive-cli` 和 MCP Server，适合终端及 AI Agent 调用云盘能力。 |
+> 检查当前剧集目录，按季分文件夹，把能确认的集数统一命名为 `剧名.S01E01.ext` 这种格式。先给我预览，把集数不确定的文件列出来。
 
-### 云盘与内容来源
+1. **限定目录。** 打开剧集所在目录并锁定上下文。只想处理几集时，先选中这些文件。
+2. **审阅方案。** 打开「方案 Diff」，核对原路径、目标目录与新文件名，取消勾选有疑问的条目。
+3. **执行并核对。** 点击「批准并执行所选」。执行前会重新检查来源和目标。完成后在「运行证据」中核对回执，符合条件的操作可撤销。
 
-- 云盘：阿里云盘 / Alipan、百度网盘、123 网盘、115、夸克、PikPak、OneDrive、Dropbox、Box、中国移动云盘 139、天翼云盘 189、光鸭云盘。
-- 媒体与目录：Jellyfin、Emby、Plex、WebDAV、AList、本地文件夹。
-- 不同服务的官方能力、账号权限和限速可能不同。App 会尽量只展示当前来源支持的操作。
+### Agent 可以帮你做什么
 
-### AI 与 Pro
+| 场景 | 使用方式 |
+| --- | --- |
+| 查找文件、盘点目录 | 查找指定片名，汇总文件结构、大小或可用空间。可搜索的范围取决于来源能力。 |
+| 媒体归档、批量命名 | 用电影归档、剧集分季或批量重命名 Recipe 生成方案，再逐项确认。 |
+| 导入分享 | 先浏览分享内容，选定文件和转存目标后提交方案。转存能力随网盘而异。 |
+| 找源、补集和跟进 | 把作品交给 MediaScout，在「获取与巡检」中跟踪候选及任务结果。 |
+| 重复处理目录 | 保存常用规则为 Recipe，或设置定时巡检，生成待审方案。 |
 
-核心的文件管理、媒体播放、音乐、阅读和 CLI 功能可直接使用。Pro 主要覆盖需要持续服务端成本的内置 AI、资源搜索额度与优先支持。也可以配置自己的 OpenAI 兼容服务或本地模型；第三方 API 费用由对应服务商收取。
+搜索、上传、转存和写入能力取决于网盘及账号权限。开发版支持自带模型密钥（BYOK）。可选的本地 MCP 服务默认关闭，开启后通过本机配对接入，外部客户端提交写入提案后仍需在 BoxPlayer 审批。
 
-### 命令行与 MCP
+## 影片、音乐、阅读与文件
 
-`clouddrive-cli` 提供文件遍历、搜索、媒体整理计划、dry-run 预览、操作记录等能力，并能作为 MCP Server 供 AI 客户端使用。详见 [独立文档](./clouddrive-cli/README.md)。
+### 播放与媒体库
 
-## 安装
+从网盘、局域网和媒体服务器直接打开视频。扫描影视目录可补齐海报、简介和季集信息。播放时可选择音轨、切换字幕和调整倍速，也可在支持的客户端使用外挂字幕或外部播放器。
 
-**官网：[xbyvideohub.com](https://xbyvideohub.com/)**，在「全部下载」中选择设备对应的版本：
+### 网盘、网络共享与传输
 
-| 设备 | 下载入口 |
-|---|---|
-| iPhone、iPad、Mac、Apple TV | [BoxPlayer App Store](https://apps.apple.com/us/app/boxplayer/id6739804060) |
-| Android 手机、平板、Android TV | [官网 Android APK 下载](https://xbyvideohub.com/) |
-| macOS、Windows、Linux 桌面版 | [官网下载安装包](https://xbyvideohub.com/) · [GitHub Releases](https://github.com/gaozhangmin/boxplayer/releases) |
+| 来源 | 示例 |
+| --- | --- |
+| 网盘 | 阿里云盘、百度网盘、115、123、夸克、天翼云盘、Google Drive、OneDrive、Dropbox |
+| 本地与网络文件 | 本地文件夹、SMB、NFS、WebDAV、AList |
+| 媒体服务器 | Emby、Jellyfin、Plex |
 
-请以下载页面实际列出的文件和架构为准；GitHub 草稿 Release 尚不能作为公开下载版本。Apple 平台 App Store 版与本仓库的 Electron 桌面版是不同客户端。
+多个来源可在文件页统一浏览。支持的网盘可上传、下载和转存分享，传输进度在应用内查看。
 
-macOS 如遇系统安全提示，请先确认下载来源，再通过系统设置允许打开；不要对来源不明的安装包解除隔离。
+<img src="screenshot/readme/connect-sources.png" width="680" alt="Tauri 添加共享窗口显示本地文件夹、网络协议和云服务入口">
 
-## 开发
+### 音乐、图书与文档
 
-要求 Node.js >= 22.12.0，使用 **pnpm** 管理依赖。
+在音乐库按歌曲、歌手、专辑或歌单浏览，管理播放队列，在支持的播放器里看歌词。书架可阅读 EPUB、PDF 等图书，保存书签、批注和阅读进度。支持的客户端也提供文档预览和问答，托管 AI 等服务可在对应的 BoxPlayer Pro 版本中使用。
 
-```bash
-pnpm install
-pnpm dev
+<img src="screenshot/readme/music-library.png" width="1000" alt="Tauri 音乐库实屏，显示分类、曲目列表和播放控制">
+
+## Tauri 桌面端
+
+新一代桌面端从 Electron 重构到 **Tauri 2**。Vue 界面运行在系统 WebView，Rust 原生层负责窗口、存储和媒体访问，macOS 开发版使用嵌入式 libmpv。新版源代码位于默认分支 `main` 的 [`tauri-app/`](tauri-app/)，Electron 工程的历史分支为 [`electron`](https://github.com/gaozhangmin/boxplayer/tree/electron)。
+
+要在本机运行原生开发版，需要 Node.js 22.12 或更新版本、pnpm 10.32.1、与 `@types/bun` 版本一致的 Bun、Rust 和系统对应的 Tauri 开发依赖。将应用注册配置放在 `tauri-app/.local/provider-registration.ts`，也可使用 `BOXPLAYER_REGISTRATION_FILE` 指定配置文件。macOS 开发签名和播放器运行库的准备步骤见 [桌面开发指南](tauri-app/README.md)。
+
+```sh
+cd tauri-app
+pnpm --ignore-workspace install --frozen-lockfile
+pnpm tauri dev
 ```
 
-检查与构建：
+开发实例使用独立的 Tauri 数据目录。前端检查可运行 `pnpm typecheck` 和 `pnpm test`。
 
-```bash
-CI=true pnpm exec vue-tsc --noEmit
-pnpm run test
-pnpm run test:clouddrive-cli
-pnpm run build
-```
+## 文档
 
-`pnpm run build` 会先通过 `version.mjs` 自动递增 patch 版本，再进行类型检查和打包；只需检查类型时请运行上面的 `vue-tsc` 命令。平台打包命令见 `package.json`。
+| 想了解什么 | 入口 |
+| --- | --- |
+| 首版什么时候可用 | [Tauri 首版发布跟踪](https://github.com/gaozhangmin/boxplayer/issues/540) |
+| 来源与扫描如何接入 | [来源与扫描](docs/subsystems/media-library.md) · [服务商适配](docs/subsystems/providers.md) |
+| 桌面播放如何工作 | [播放、原生网关与字幕](docs/subsystems/playback.md) |
+| 如何开发和调试 Tauri | [桌面开发指南](tauri-app/README.md) · [迁移进度](docs/tauri-migration/progress.md) |
+| 如何从终端整理文件 | [clouddrive-cli](clouddrive-cli/README.md)，含目录遍历、整理计划和 dry run |
 
-私有 client ID、secret 和 API key 放在忽略提交的 `.env.local` 中，运行 `pnpm run secrets:generate` 生成 `src/secrets.generated.ts`。不要提交真实凭据。
+## 社区
 
-```text
-electron/          主进程、窗口与系统集成
-src/               Vue 界面、云盘与媒体功能
-shared/            主进程与渲染端共享代码
-clouddrive-cli/    CLI 与 MCP Server
-scripts/           构建、密钥与发布脚本
-screenshot/        README 使用的当前界面截图
-```
+[GitHub Issues](https://github.com/gaozhangmin/boxplayer/issues) · [Telegram](https://t.me/+wjdFeQ7ZNNE1NmM1)
 
-## 社区与声明
+反馈问题时请附上客户端版本、操作系统、来源类型和复现步骤。Agent 问题可以附上已脱敏的方案或回执截图。
 
-- 问题与建议：[GitHub Issues](https://github.com/gaozhangmin/boxplayer/issues)
-- 官网：[xbyvideohub.com](https://xbyvideohub.com/)
-- Telegram：[BoxPlayer 社区](https://t.me/+wjdFeQ7ZNNE1NmM1)
-- 本项目基于 [liupan1890/aliyunpan](https://github.com/liupan1890/aliyunpan) 继续开发，感谢原作者及贡献者。
-- AI 媒体获取来自 [fancydirty/mediary-scout](https://github.com/fancydirty/mediary-scout)。
+## 许可与致谢
 
-请遵守所在地区法律法规、各云盘及媒体服务的条款，并确认自己有权访问和使用相关内容。第三方服务产生的额度消耗、费用与账号风险由使用者自行承担。
+本仓库采用 [GPL-3.0](LICENSE)。BoxPlayer 基于 [aliyunpan](https://github.com/liupan1890/aliyunpan) 继续开发，影视获取集成 [MediaScout](https://github.com/fancydirty/mediary-scout)。Tauri 的第三方组件见 [第三方声明](tauri-app/THIRD_PARTY_NOTICES.md)。请使用有权访问的媒体，并遵循所连接服务的条款。

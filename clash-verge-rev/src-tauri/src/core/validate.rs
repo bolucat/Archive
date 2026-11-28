@@ -1,15 +1,14 @@
 use anyhow::Result;
-use scopeguard::defer;
 use serde::Serialize;
-use smartstring::alias::String;
 use std::{
     fmt,
     hash::{DefaultHasher, Hash as _, Hasher as _},
+    mem::DropGuard,
     sync::LazyLock,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tauri_plugin_shell::ShellExt as _;
 use tokio::fs;
+use tristr::alias::String;
 
 use crate::config::Config;
 use crate::core::handle;
@@ -26,16 +25,14 @@ async fn validation_fingerprint(yaml: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     yaml.hash(&mut hasher);
     core.as_str().hash(&mut hasher);
-    let binary = std::env::current_exe()
-        .into_iter()
-        .map(|exe| exe.with_file_name(format!("{}{}", core.as_str(), std::env::consts::EXE_SUFFIX)));
+    let binary = dirs::clash_core_path(core.as_str());
     // The test run reads geo databases from the app dir; a geo update must revalidate.
     let geo = dirs::app_home_dir().into_iter().flat_map(|dir| {
         super::runtime_bundle::GEO_ASSETS
             .iter()
             .map(move |asset| dir.join(asset))
     });
-    for path in binary.chain(geo) {
+    for path in binary.into_iter().chain(geo) {
         match std::fs::metadata(&path) {
             Ok(meta) => {
                 meta.len().hash(&mut hasher);
@@ -114,14 +111,8 @@ impl fmt::Display for ValidationSkipReason {
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum ValidationOutcome {
     Valid,
-    Invalid {
-        kind: ValidationErrorKind,
-        #[specta(type = std::string::String)]
-        message: String,
-    },
-    Skipped {
-        reason: ValidationSkipReason,
-    },
+    Invalid { kind: ValidationErrorKind, message: String },
+    Skipped { reason: ValidationSkipReason },
     Busy,
 }
 
@@ -360,12 +351,11 @@ impl CoreConfigValidator {
         let clash_core = Config::verge().await.latest_arc().get_valid_clash_core();
         logging!(info, Type::Validate, "使用内核: {}", clash_core);
 
-        let app_handle = handle::Handle::app_handle();
         let app_dir = dirs::app_home_dir()?;
         let app_dir_str = dirs::path_to_str(&app_dir)?;
         logging!(info, Type::Validate, "验证目录: {}", app_dir_str);
 
-        let command = app_handle.shell().sidecar(clash_core.as_str()).map_err(|error| {
+        let command = crate::core::manager::core_command(clash_core.as_str()).map_err(|error| {
             anyhow::anyhow!("failed to build validation command for core {clash_core:?}: {error:#}")
         })?;
         let command = command.args(["-t", "-d", app_dir_str, "-f", config_path]);
@@ -421,9 +411,9 @@ impl CoreConfigValidator {
             logging!(info, Type::Validate, "验证已在进行中，跳过新的验证请求");
             return Ok(ValidationOutcome::Busy);
         }
-        defer! {
+        let _validation = DropGuard::new((), |()| {
             self.finish();
-        }
+        });
         logging!(info, Type::Validate, "生成临时配置文件用于验证");
 
         // The test run reads the app dir, which never sees updates made by a service core.
@@ -435,7 +425,7 @@ impl CoreConfigValidator {
         }
 
         let check_path = dirs::app_home_dir()?.join(crate::constants::files::CHECK_CONFIG);
-        help::save_yaml_str(&check_path, yaml).await?;
+        help::save_yaml_str(&check_path, yaml, None).await?;
         let outcome = Self::validate_config_internal_outcome(dirs::path_to_str(&check_path)?).await?;
         if outcome.is_valid() {
             *LAST_VALIDATED.lock() = Some(fingerprint);
@@ -449,8 +439,7 @@ fn has_ext<P: AsRef<std::path::Path>>(path: P, ext: &str) -> bool {
     path.as_ref()
         .extension()
         .and_then(|s| s.to_str())
-        .map(|s| s.eq_ignore_ascii_case(ext))
-        .unwrap_or(false)
+        .is_some_and(|s| s.eq_ignore_ascii_case(ext))
 }
 
 fn contains_any_keyword<'a>(buf: &'a [u8], keywords: &'a [&str]) -> bool {

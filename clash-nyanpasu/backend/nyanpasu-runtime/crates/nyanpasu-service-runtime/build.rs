@@ -1,4 +1,4 @@
-use chrono::prelude::*;
+use jiff::Timestamp;
 use rustc_version::version_meta;
 use std::{env, process::Command};
 
@@ -21,15 +21,11 @@ fn main() {
         .collect();
     println!("cargo:rustc-env=COMMIT_HASH={}", command_args[0]);
     println!("cargo:rustc-env=COMMIT_AUTHOR={}", command_args[1]);
-    let commit_date = DateTime::parse_from_rfc3339(command_args[2].as_str())
-        .unwrap()
-        .with_timezone(&Utc)
-        .to_rfc3339_opts(SecondsFormat::Millis, true);
-    println!("cargo:rustc-env=COMMIT_DATE={commit_date}");
+    let commit_date: Timestamp = command_args[2].parse().unwrap();
+    println!("cargo:rustc-env=COMMIT_DATE={commit_date:.3}");
 
     // Build Date
-    let build_date = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    println!("cargo:rustc-env=BUILD_DATE={build_date}");
+    println!("cargo:rustc-env=BUILD_DATE={:.3}", Timestamp::now());
 
     // Build Profile
     println!(

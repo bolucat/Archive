@@ -1,29 +1,34 @@
-# 账号与会话
+# 原生账号、设置与持久化
 
 路径按本仓库根目录解释。修改前核对当前源码和调用者；本文不宣称已完成运行验收。
 
+本文涉及的 Tauri 迁移源码随 `codex/dev-tauri` 分支版本管理。原生验收使用 `tauri-app/`，不能用旧 Electron 根工程代替；源码已提交不代表目标平台已验收。
+
 ## 职责与源码
 
-- [boxplayerAuth.ts](../../src/utils/boxplayerAuth.ts)：官网登录 code 换取 app session、Supabase 会话与访问 token、订阅读取、设备扫码登录。
-- [userdal.ts](../../src/user/userdal.ts)：网盘账号装载与 provider 分流；不等同于官网 Pro 会话。
-- [userstore.ts](../../src/user/userstore.ts)：网盘用户状态，检查 provider/account 标识的所有读写者。
+- `tauri-app/src-tauri/src/accounts.rs`（`codex/dev-tauri` 迁移源码）：Accounts、Account 和凭据关联。
+- `tauri-app/src-tauri/src/vault.rs`（`codex/dev-tauri` 迁移源码）：平台凭据保险库边界。
+- `tauri-app/src-tauri/src/settings.rs`（`codex/dev-tauri` 迁移源码）：SettingsStore、prepare、resolve_data_dir。
+- `tauri-app/src-tauri/src/storage.rs`（`codex/dev-tauri` 迁移源码）：迁移工程的数据存储。
 
 ## 运行路径与状态
 
-网页登录回调 → exchangeBoxPlayerLoginCode / restoreBoxPlayerAuth → 既有 session 存储 → getBoxPlayerAccessToken → API/订阅读取。设备登录的 pending/scanned 仍是等待，不等于认证失败；退出或取消后不能保存旧轮询结果。
+新 UI/适配层 → 原生命令 → Accounts/SettingsStore → 平台 vault 或本地存储。设置 prepare 接收 expected_revision；成功保存后推进 revision，旧 writer 收到 REVISION_CONFLICT 后应重新读取。
 
 ## 失败与兼容边界
 
-官网账号、网盘账号和订阅权限分开追踪。fetchBoxPlayerSubscription 的 invalid_auth_token 分支有会话重试逻辑；改 token 优先级时同时核对 AI、订阅与购买入口，不能只改登录按钮。
+SETTINGS_INVALID、SCHEMA_UNSUPPORTED 和读取错误必须保留原文件并报错；文件确实不存在才初始化默认值。不得把开发数据目录指向 Electron 真实数据。
 
-网盘容量独立于身份与会话刷新：夸克读取 `/1/clouddrive/member` 的 `total_capacity/use_capacity`，天翼通过当前账号签名请求 `portal/getUserSizeInfo.action` 的 `cloudCapacityInfo`（个人空间）。缺失、无效或失败的容量响应保留上次值并返回失败，身份/会话刷新不得把容量重置为零；不把家庭容量混入个人账号汇总。
-
-夸克身份与容量请求独立执行，身份接口失败不能阻止容量刷新；合并时先身份、后容量，避免较慢的身份响应覆盖新容量。账号刷新将失败结果传回调用者，不能把身份成功当作容量成功。账号弹窗从响应式账号列表读取当前账号容量；底层 `UserTokenMap` 不是响应式对象，不能只依赖其 Pinia getter 的缓存值显示刷新结果。
+Linux 登录使用桌面会话的 Secret Service 保存加密凭据的密钥。已有条目沿用各自的密钥环。若系统没有默认密钥环，首次保存时由 Secret Service 创建 BoxPlayer 专用密钥环，并由系统处理密码提示。默认密钥环锁定或授权被拒绝时仍按原有失败路径处理。
 
 ## 验证与维护
 
 先读 [开发与执行约束](../agent-development.md) 和 [代码标准](../code-standards.md)。验证按本次用户要求及平台限制执行；未运行的测试、构建和真实设备检查要明确标注。契约改变时同步本文，并核对旧调用者。
 
-## BoxPlayer 服务域名
+设置窗口独立读取原生 BoxPlayer 账号和会员权益。窗口聚焦、设备登录成功与账号移除时重新同步。
 
-Electron 的网页登录、购买、设备码、订阅和兑换都使用 `https://boxplayer.cc`。发布配置无需提供 `BOXPLAYER_SITE_URL`。搜索、刮削与 BoxPlayer 托管 AI 使用 `https://api.boxplayer.cc`。Supabase 项目、应用回调 scheme 和已保存会话的存储键沿用原协议。
+## macOS 原生开发启动签名（2026-11-20）
+
+`pnpm tauri dev` 在 Cargo runner 中对每次链接后的可执行文件签名并校验，通过后才执行。身份使用现有 `APPLE_SIGNING_IDENTITY` 或 ignored `.local/macos-signing.json`，Bundle ID 按 JSON 基础、macOS 与有效 Tauri 配置读取，默认 `com.boxplayer.migration.dev`。缺少身份、签名失败、替代 runner 或不能检查的配置会阻止启动。不要直接运行 adhoc 的 target/debug 文件来访问既有开发来源。
+
+开发 `.app` 和开发可执行文件必须复用同一身份及 identifier 才能满足原 Keychain designated requirement；本机制不扩大 ACL、不重建凭据、不保证跨证书迁移或锁定钥匙串可静默读取。实现与本机验证见 [签名启动验证](../tauri-migration/development-signing-validation.md)。仅适用于 Tauri macOS 开发流程，其他客户端与发行签名未修改。

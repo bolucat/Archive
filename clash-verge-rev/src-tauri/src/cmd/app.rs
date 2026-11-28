@@ -1,12 +1,15 @@
 use super::CmdResult;
 use crate::{
     cmd::StringifyErr as _,
-    core::{SilentUpdater, updater::DownloadEvent},
+    core::{
+        SilentUpdater,
+        updater::{DownloadEvent, InstallUpdateOutcome},
+    },
     feat,
     utils::dirs,
 };
-use smartstring::alias::String;
 use tauri::{AppHandle, Manager as _, ipc::Channel};
+use tristr::alias::String;
 
 #[tauri::command]
 #[specta::specta]
@@ -18,7 +21,9 @@ pub async fn open_app_dir() -> CmdResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn open_core_dir() -> CmdResult<()> {
-    let core_dir = tauri::utils::platform::current_exe().stringify_err()?;
+    // A downloaded core lives in its own data directory, not beside the app.
+    let core = crate::config::Config::verge().await.latest_arc().get_valid_clash_core();
+    let core_dir = dirs::clash_core_path(&core).stringify_err()?;
     let core_dir = core_dir.parent().ok_or("failed to get core dir")?;
     open::that(core_dir).stringify_err()
 }
@@ -61,8 +66,7 @@ pub async fn install_update(
     app_handle: AppHandle,
     version: std::string::String,
     on_event: Channel<DownloadEvent>,
-) -> CmdResult<bool> {
-    let version: String = version.into();
+) -> CmdResult<InstallUpdateOutcome> {
     SilentUpdater::global()
         .install_update(&app_handle, &version, |event| {
             let _ = on_event.send(event);

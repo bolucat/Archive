@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import {
   getCoreStartupError,
+  takeCoreFallbackNotice,
   takeDiscardedKeysNotice,
   takeDnsOverrideNotice,
   takeServiceFallbackNotice,
@@ -13,7 +14,6 @@ import { hideNotice, showNotice } from '@/services/notice-service'
 import { requestService } from '@/services/service-request'
 
 type NavigateFunction = (path: string, options?: any) => void
-type TranslateFunction = (key: string) => string
 
 let shownStartupError: string | null = null
 // Reads can settle out of order; only the newest may act, and a reset counts as one.
@@ -27,18 +27,18 @@ export const forgetShownStartupError = () => {
   settledStartupErrorRead = ++startupErrorReads
 }
 
+/** Polled by the window only: startup settles it before any event can be delivered. */
+type PolledNoticeStatus = 'config_core::fallback'
+
 /**
  * Exhaustive notice table: one entry per contract `NoticeStatus`. The Record
  * type makes a backend status without a frontend entry a compile error (and
  * contract regeneration keeps the union in sync).
  */
 const handlers: Record<
-  NoticeStatus,
+  NoticeStatus | PolledNoticeStatus,
   (msg: string, navigate: NavigateFunction) => void
 > = {
-  info: (msg) => {
-    if (msg) showNotice.info(msg)
-  },
   'import_sub_url::ok': (_msg, navigate) => {
     // 空 msg 传入，我们不希望导致 后端-前端-后端 死循环，这里只做提醒。
     // 未来细分事件通知时，可以考虑传入订阅 ID 或其他标识符
@@ -224,6 +224,17 @@ const handlers: Record<
     ),
   'config_core::change_error': (msg) =>
     showNotice.error('settings.feedback.notifications.clash.changeFailed', msg),
+  'config_core::fallback': () => {
+    void takeCoreFallbackNotice()
+      .then((pending) => {
+        if (pending) {
+          showNotice.info('settings.feedback.notifications.clash.coreFallback')
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to read the pending core fallback notice', error)
+      })
+  },
   'mixed_port::fallback': (msg) => {
     const [oldPort, newPort] = msg.split(',')
     showNotice.info('settings.modals.clashPort.messages.automaticFallback', {
@@ -241,10 +252,9 @@ const handlers: Record<
 export const handleNoticeMessage = (
   status: string,
   msg: string,
-  t: TranslateFunction,
   navigate: NavigateFunction,
 ) => {
-  const handler = handlers[status as NoticeStatus]
+  const handler = handlers[status as keyof typeof handlers]
   if (handler) {
     handler(msg, navigate)
   } else {

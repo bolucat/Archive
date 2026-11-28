@@ -1,6 +1,5 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.VisualStudio.Threading;
 using Netch.App.Services;
 using Netch.Enums;
 using Netch.Services;
@@ -61,8 +60,7 @@ public partial class App : Application
         _subscriptions.Start();
         UpdateSubscriptionsAsync(Global.Settings.UpdateServersWhenOpened).Forget();
 
-        if (Global.Settings.CheckUpdateWhenOpened)
-            Downloads.CheckAsync().Forget();
+        Downloads.CheckOnStartupAsync().Forget();
     }
 
     private async Task UpdateSubscriptionsAsync(bool all)

@@ -1,14 +1,15 @@
 import {
   ArrowDownwardRounded,
   ArrowUpwardRounded,
+  ErrorOutlineRounded,
   MemoryRounded,
 } from '@mui/icons-material'
 import type { BoxProps, SvgIconProps, TypographyProps } from '@mui/material'
 import { Box, Typography } from '@mui/material'
 import { useEffect, useRef } from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 import { useTranslation } from 'react-i18next'
 
-import { LightweightTrafficErrorBoundary } from '@/components/shared/traffic-error-boundary'
 import { useMemoryData } from '@/hooks/use-memory-data'
 import { useTrafficData } from '@/hooks/use-traffic-data'
 import { useVerge } from '@/hooks/use-verge'
@@ -16,6 +17,63 @@ import { useVisibility } from '@/hooks/use-visibility'
 import parseTraffic from '@/utils/parse-traffic'
 
 import { TrafficGraph, type TrafficRef } from './traffic-graph'
+
+const unavailableSx = {
+  p: 1,
+  minHeight: 60,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  bgcolor: 'error.light',
+  borderRadius: 1,
+  color: 'error.contrastText',
+}
+
+const TrafficUnavailableFallback = () => {
+  const { t } = useTranslation()
+
+  return (
+    <Box sx={unavailableSx}>
+      <ErrorOutlineRounded sx={{ mr: 1, fontSize: 20 }} />
+      <Typography variant="caption">
+        {t('shared.feedback.errors.trafficUnavailable')}
+      </Typography>
+    </Box>
+  )
+}
+
+// Stable identities keep the emotion sx cache effective across the ~1Hz
+// traffic-driven re-renders of LayoutTraffic.
+const boxStyle: Pick<BoxProps, 'sx'> = {
+  sx: {
+    display: 'flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+  },
+}
+const memoryBoxStyle: Pick<BoxProps, 'sx'> = {
+  sx: {
+    ...boxStyle.sx,
+    cursor: 'auto',
+  },
+}
+const iconStyle: Pick<SvgIconProps, 'sx'> = {
+  sx: { mr: '8px', fontSize: 16 },
+}
+const valStyle: Pick<TypographyProps, 'component' | 'sx'> = {
+  component: 'span',
+  sx: { flex: '1 1 56px', userSelect: 'none', textAlign: 'center' },
+}
+const unitStyle: Pick<TypographyProps, 'component' | 'color' | 'sx'> = {
+  component: 'span',
+  color: 'grey.500',
+  sx: {
+    flex: '0 1 27px',
+    userSelect: 'none',
+    fontSize: '12px',
+    textAlign: 'right',
+  },
+}
 
 export const LayoutTraffic = () => {
   const { t } = useTranslation()
@@ -49,33 +107,13 @@ export const LayoutTraffic = () => {
   const [down, downUnit] = parseTraffic(traffic?.down || 0)
   const [inuse, inuseUnit] = parseTraffic(memory?.inuse || 0)
 
-  const boxStyle: Pick<BoxProps, 'sx'> = {
-    sx: {
-      display: 'flex',
-      alignItems: 'center',
-      whiteSpace: 'nowrap',
-    },
-  }
-  const iconStyle: Pick<SvgIconProps, 'sx'> = {
-    sx: { mr: '8px', fontSize: 16 },
-  }
-  const valStyle: Pick<TypographyProps, 'component' | 'sx'> = {
-    component: 'span',
-    sx: { flex: '1 1 56px', userSelect: 'none', textAlign: 'center' },
-  }
-  const unitStyle: Pick<TypographyProps, 'component' | 'color' | 'sx'> = {
-    component: 'span',
-    color: 'grey.500',
-    sx: {
-      flex: '0 1 27px',
-      userSelect: 'none',
-      fontSize: '12px',
-      textAlign: 'right',
-    },
-  }
-
   return (
-    <LightweightTrafficErrorBoundary>
+    <ErrorBoundary
+      FallbackComponent={TrafficUnavailableFallback}
+      onError={(error, errorInfo) =>
+        console.error('[LayoutTraffic]', error, errorInfo)
+      }
+    >
       <Box sx={{ position: 'relative' }}>
         {trafficGraph && pageVisible && (
           <div
@@ -90,9 +128,6 @@ export const LayoutTraffic = () => {
           <Box
             title={`${t('home.components.traffic.metrics.uploadSpeed')}`}
             {...boxStyle}
-            sx={{
-              ...boxStyle.sx,
-            }}
           >
             <ArrowUpwardRounded
               {...iconStyle}
@@ -107,9 +142,6 @@ export const LayoutTraffic = () => {
           <Box
             title={`${t('home.components.traffic.metrics.downloadSpeed')}`}
             {...boxStyle}
-            sx={{
-              ...boxStyle.sx,
-            }}
           >
             <ArrowDownwardRounded
               {...iconStyle}
@@ -124,13 +156,8 @@ export const LayoutTraffic = () => {
           {displayMemory && (
             <Box
               title={`${t('home.components.traffic.metrics.memoryUsage')} `}
-              {...boxStyle}
-              sx={{
-                ...boxStyle.sx,
-                cursor: 'auto',
-              }}
+              {...memoryBoxStyle}
               color={'disabled'}
-              onClick={async () => {}}
             >
               <MemoryRounded {...iconStyle} />
               <Typography {...valStyle}>{inuse}</Typography>
@@ -139,6 +166,6 @@ export const LayoutTraffic = () => {
           )}
         </Box>
       </Box>
-    </LightweightTrafficErrorBoundary>
+    </ErrorBoundary>
   )
 }

@@ -4,10 +4,10 @@
 
 | 子系统 | 文档 |
 | --- | --- |
-| 账号与会话 | [account-and-sync.md](account-and-sync.md) |
-| 来源、收藏与媒体库 | [media-library.md](media-library.md) |
-| 播放、字幕与提供商请求头 | [playback.md](playback.md) |
-| 网盘接入与下载 | [providers.md](providers.md) |
+| 原生账号、设置与持久化 | [account-and-sync.md](account-and-sync.md) |
+| 来源与扫描适配 | [media-library.md](media-library.md) |
+| 原生播放、网关与字幕 | [playback.md](playback.md) |
+| provider 与旧工程边界 | [providers.md](providers.md) |
 | 发布、渠道与更新日志 | [releases.md](releases.md) |
 
 工程命令和执行限制见 [开发约束](../agent-development.md)，代码与评审要求见 [标准](../code-standards.md)。

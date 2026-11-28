@@ -8,7 +8,7 @@
 | ----------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | P1          | `job.rs` / `typed.rs` 定义与强类型 handle，`actor.rs` 控制面，`runner.rs` 单 Run owner | 多等待者、等待超时、同键删除重建、取消确认、panic/delegation、blocking 归属、无 redb 的 fake store      |
 | P2          | `storage/mod.rs` 窄端口、`journal.rs` 单个有界 blocking worker，`storage/redb.rs` 事务/索引/恢复/retention  | 接纳失败零副作用、接纳不确定读回、保存失败/阻塞保留真实结果、只重试 journal、重开恢复、索引清理         |
-| P3          | `schedule.rs` 的 jiff-cron 日历计算、jiff `Timestamp` 与 `Clock` 墙钟端口，actor 中的单调 deadline/scope reconcile | 首次完整间隔、手动不改 anchor、no-op、删改 fence、旧 revision、scope 隔离、休眠跳过、墙钟前跳/回退、DST |
+| P3          | `schedule.rs` 的 croner 日历计算、jiff `Timestamp` 与 `Clock` 墙钟端口，actor 中的单调 deadline/scope reconcile | 首次完整间隔、手动不改 anchor、no-op、删改 fence、旧 revision、scope 隔离、休眠跳过、墙钟前跳/回退、DST |
 | P5 通用部分 | `logging.rs` 有界 ingress/layer，Run owner 批次/封闭/终态屏障，`dto.rs` 有限 DTO       | 子任务及 blocking 日志关联、允许列表、队列溢出、游标、封闭后的迟到事件、写阻塞、Specta 大整数字符串导出 |
 
 ## 实施中收敛的选择
@@ -17,7 +17,7 @@
 - JobsActor 拥有业务生命周期状态；`storage` 模块公开同步 `JobStore` 端口与可选 redb adapter，`journal.rs` 的单个 blocking worker 通过有界通道接收存储操作。redb 文件完整路径由应用指定，缺失父目录自动创建。未来接入 Turso 时，同步端口与 async API 的适配仍需设计。没有第二份共享可变 Run 注册表，也不在 actor handle 内等待数据库。
 - Run 归属使用受管理子任务及显式 delegation token。父 handler 返回后封闭新子任务入口，再等已有工作完成。库无法追踪调用方自行创建的 detached task；跨 actor 委托必须遵循 token 协议。
 - 完成后的查询直接读 journal；仅活跃/待持久化的结果使用 watch 保留，不另建可能违反 retention 的历史缓存。内存结果不会在保存故障时因缓存容量被驱逐。
-- 墙钟时间使用 jiff `Timestamp`；Cron 使用 jiff-cron 原生 DST 与日历语义，外部仍支持 5/6 字段及常见 `@` 别名。单调间隔仍使用 Tokio `Instant`。
+- 墙钟时间使用 jiff `Timestamp`；Cron 使用 croner（`Seconds::Optional`、`Year::Disallowed`、`FixedTimeRule::NoWildcard`）的 POSIX 日历与 DST 语义，外部支持 5/6 字段及常见 `@` 别名。单调间隔仍使用 Tokio `Instant`。
 - 调度 Busy 记录也占全局在途上限。容量耗尽或 journal 降级时聚合 dropped trigger 数，不为历史记录建立无限队列。
 - 接纳错误区分保证未提交的 AdmissionFailed 与结果未知。后者只按原 ID 读回，不再执行 admission；确定存在记录后由原 owner 继续一次执行。终态写入不确定时也保留原 write，禁止堆积重复 blocking 调用。
 - shutdown 的等待范围包含 actor、Run、journal 队列和 blocking worker join。超时返回报告，下一次调用继续同一组资源的 drain，不将 abort 当停止。

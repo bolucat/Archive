@@ -1,14 +1,8 @@
 import { alpha, Box, Button, LinearProgress } from '@mui/material'
+import type { Update } from '@tauri-apps/plugin-updater'
 import { useLockFn } from 'ahooks'
 import type { Ref } from 'react'
-import {
-  lazy,
-  Suspense,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { lazy, Suspense, useImperativeHandle, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Options as ReactMarkdownOptions } from 'react-markdown'
 
@@ -120,6 +114,84 @@ const getAlertTypeFromClassName = (
   return match?.[1] as GitHubAlertType | null
 }
 
+const openUrlWithNotice = (url: string) => {
+  void openExternalUrl(url).catch(showNotice.error)
+}
+
+// Renderer map is static; a per-render identity would remount every link and
+// blockquote subtree while download progress re-renders the dialog.
+const MARKDOWN_COMPONENTS: ReactMarkdownOptions['components'] = {
+  a: ({ href, children, ...props }) => {
+    const isFragment = href?.startsWith('#') ?? false
+    const renderedHref = isFragment
+      ? `#${UPDATE_MARKDOWN_ID_PREFIX}${href?.slice(1)}`
+      : href
+        ? '#'
+        : undefined
+
+    return (
+      <a
+        {...props}
+        href={renderedHref}
+        target={undefined}
+        rel={undefined}
+        onClick={(event) => {
+          if (isFragment) return
+          event.preventDefault()
+          if (!href) return
+          openUrlWithNotice(href)
+        }}
+        onAuxClick={(event) => {
+          if (isFragment) return
+          event.preventDefault()
+          if (event.button === 1 && href) {
+            openUrlWithNotice(href)
+          }
+        }}
+      >
+        {children}
+      </a>
+    )
+  },
+  blockquote: ({ className, children }) => {
+    const alertType = getAlertTypeFromClassName(className)
+
+    if (!alertType) {
+      return <blockquote className={className}>{children}</blockquote>
+    }
+
+    return (
+      <Box
+        component="blockquote"
+        className={className}
+        sx={(theme) => {
+          const color = GITHUB_ALERTS[alertType].color
+          return {
+            m: '12px 0 18px',
+            px: 2,
+            py: 1,
+            borderLeft: `4px solid ${color}`,
+            borderRadius: 1,
+            bgcolor: alpha(color, theme.palette.mode === 'dark' ? 0.16 : 0.08),
+            '& p': {
+              my: 0.75,
+            },
+            '& .markdown-alert-title': {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              fontWeight: 700,
+              lineHeight: 1.4,
+            },
+          }
+        }}
+      >
+        {children}
+      </Box>
+    )
+  },
+}
+
 const findFirstTextNode = (node: MarkdownNode): MarkdownNode | null => {
   if (node.type === 'text') return node
   for (const child of node.children ?? []) {
@@ -173,31 +245,38 @@ const remarkGitHubAlerts = (labels: Record<GitHubAlertType, string>) => {
   return visit
 }
 
-export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
+export interface UpdateViewerRef extends DialogRef {
+  open: (update?: Update | null) => void
+}
+
+export function UpdateViewer({ ref }: { ref?: Ref<UpdateViewerRef> }) {
   const { t, i18n } = useTranslation()
 
   const [open, setOpen] = useState(false)
   const updateState = useUpdateState()
   const setUpdateState = useSetUpdateState()
 
-  const { updateInfo } = useUpdate()
+  const { updateInfo: detectedUpdate, checkUpdate } = useUpdate()
+  const [refreshedUpdate, setRefreshedUpdate] = useState<Update | null>()
+  const updateInfo =
+    refreshedUpdate === undefined ? detectedUpdate : refreshedUpdate
 
-  const [downloaded, setDownloaded] = useState(0)
-  const [total, setTotal] = useState(0)
-  const downloadedRef = useRef(0)
-  const totalRef = useRef(0)
+  const [download, setDownload] = useState({
+    downloaded: 0,
+    total: 0,
+  })
+  const { downloaded, total } = download
 
-  const openUrlWithNotice = (url: string) => {
-    void openExternalUrl(url).catch(showNotice.error)
-  }
+  // Install cannot be cancelled; only the download can.
+  const [installing, setInstalling] = useState(false)
 
-  const progress = useMemo(() => {
-    if (total <= 0) return 0
-    return Math.min((downloaded / total) * 100, 100)
-  }, [downloaded, total])
+  const progress = total <= 0 ? 0 : Math.min((downloaded / total) * 100, 100)
 
   useImperativeHandle(ref, () => ({
-    open: () => setOpen(true),
+    open: (update) => {
+      setRefreshedUpdate(update)
+      setOpen(true)
+    },
     close: () => setOpen(false),
   }))
 
@@ -211,8 +290,8 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
       ) as Record<GitHubAlertType, string>,
     [t],
   )
-  const remarkGitHubAlertsPlugin = useMemo(
-    () => () => remarkGitHubAlerts(githubAlertLabels),
+  const remarkPlugins = useMemo(
+    () => [() => remarkGitHubAlerts(githubAlertLabels)],
     [githubAlertLabels],
   )
 
@@ -227,47 +306,27 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
     return updateInfo?.body
   }, [activeLanguage, t, updateInfo])
 
-  const breakChangeFlag = useMemo(() => {
-    if (!updateInfo?.body) {
-      return false
-    }
-    return updateInfo?.body.toLowerCase().includes('break change')
-  }, [updateInfo])
-
   const onUpdate = useLockFn(async () => {
     if (!updateInfo?.body) return
-    if (breakChangeFlag) {
-      showNotice.error('settings.modals.update.messages.breakChangeError')
-      return
-    }
     if (updateState) return
     setUpdateState(true)
-    setDownloaded(0)
-    setTotal(0)
-    downloadedRef.current = 0
-    totalRef.current = 0
+    setDownload({ downloaded: 0, total: 0 })
 
     const onDownloadEvent = (event: DownloadEvent) => {
       if (event.event === 'Started') {
-        const contentLength = event.data.contentLength ?? 0
-        totalRef.current = contentLength
-        setTotal(contentLength)
-        setDownloaded(0)
-        downloadedRef.current = 0
-        return
-      }
-
-      if (event.event === 'Progress') {
-        setDownloaded((prev) => {
-          const next = prev + event.data.chunkLength
-          downloadedRef.current = next
-          return next
-        })
-      }
-
-      if (event.event === 'Finished' && totalRef.current === 0) {
-        totalRef.current = downloadedRef.current
-        setTotal(downloadedRef.current)
+        setDownload({ downloaded: 0, total: event.data.contentLength ?? 0 })
+      } else if (event.event === 'Progress') {
+        setDownload((prev) => ({
+          ...prev,
+          downloaded: prev.downloaded + event.data.chunkLength,
+        }))
+      } else if (event.event === 'Finished') {
+        setDownload((prev) => ({
+          ...prev,
+          total: prev.total || prev.downloaded,
+        }))
+      } else if (event.event === 'Installing') {
+        setInstalling(true)
       }
     }
 
@@ -279,7 +338,18 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
           errorNotice: false,
         },
       )
-      if (result.ok && result.value) {
+      if (result.ok && result.value === 'update_changed') {
+        const { data } = await checkUpdate()
+        setRefreshedUpdate(data)
+        if (data) {
+          showNotice.info('settings.modals.update.messages.available')
+        } else {
+          setOpen(false)
+          showNotice.info(
+            'settings.components.verge.advanced.notifications.latestVersion',
+          )
+        }
+      } else if (result.ok && result.value === 'installed') {
         await mutate(() => restartApp(), {
           id: 'restart-app',
           errorNotice: false,
@@ -289,10 +359,8 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
       showNotice.error(err)
     } finally {
       setUpdateState(false)
-      setDownloaded(0)
-      setTotal(0)
-      downloadedRef.current = 0
-      totalRef.current = 0
+      setDownload({ downloaded: 0, total: 0 })
+      setInstalling(false)
     }
   })
 
@@ -346,6 +414,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
       }}
       okBtn={t('settings.modals.update.actions.update')}
       cancelBtn={t('shared.actions.cancel')}
+      disableCancel={installing}
       onClose={() => setOpen(false)}
       onCancel={() => {
         if (updateState) {
@@ -477,83 +546,8 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
         {open && (
           <Suspense fallback={<LinearProgress />}>
             <LazyReactMarkdown
-              remarkPlugins={[remarkGitHubAlertsPlugin]}
-              components={{
-                a: ({ href, children, ...props }) => {
-                  const isFragment = href?.startsWith('#') ?? false
-                  const renderedHref = isFragment
-                    ? `#${UPDATE_MARKDOWN_ID_PREFIX}${href?.slice(1)}`
-                    : href
-                      ? '#'
-                      : undefined
-
-                  return (
-                    <a
-                      {...props}
-                      href={renderedHref}
-                      target={undefined}
-                      rel={undefined}
-                      onClick={(event) => {
-                        if (isFragment) return
-                        event.preventDefault()
-                        if (!href) return
-                        openUrlWithNotice(href)
-                      }}
-                      onAuxClick={(event) => {
-                        if (isFragment) return
-                        event.preventDefault()
-                        if (event.button === 1 && href) {
-                          openUrlWithNotice(href)
-                        }
-                      }}
-                    >
-                      {children}
-                    </a>
-                  )
-                },
-                blockquote: ({ className, children }) => {
-                  const alertType = getAlertTypeFromClassName(className)
-
-                  if (!alertType) {
-                    return (
-                      <blockquote className={className}>{children}</blockquote>
-                    )
-                  }
-
-                  return (
-                    <Box
-                      component="blockquote"
-                      className={className}
-                      sx={(theme) => {
-                        const color = GITHUB_ALERTS[alertType].color
-                        return {
-                          m: '12px 0 18px',
-                          px: 2,
-                          py: 1,
-                          borderLeft: `4px solid ${color}`,
-                          borderRadius: 1,
-                          bgcolor: alpha(
-                            color,
-                            theme.palette.mode === 'dark' ? 0.16 : 0.08,
-                          ),
-                          '& p': {
-                            my: 0.75,
-                          },
-                          '& .markdown-alert-title': {
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.75,
-                            fontWeight: 700,
-                            lineHeight: 1.4,
-                          },
-                        }
-                      }}
-                    >
-                      {children}
-                    </Box>
-                  )
-                },
-              }}
+              remarkPlugins={remarkPlugins}
+              components={MARKDOWN_COMPONENTS}
             >
               {markdownContent}
             </LazyReactMarkdown>
@@ -562,7 +556,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
       </Box>
       {updateState && (
         <LinearProgress
-          variant={total > 0 ? 'determinate' : 'indeterminate'}
+          variant={total > 0 && !installing ? 'determinate' : 'indeterminate'}
           value={progress}
           sx={{ mt: 1 }}
         />

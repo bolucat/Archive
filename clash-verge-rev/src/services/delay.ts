@@ -132,7 +132,7 @@ class DelayManager {
     const cached = this.groupSetSnapshots.get(groupKey)
     if (cached) return cached
 
-    const names = groupKey ? groupKey.split(' ') : []
+    const names: string[] = JSON.parse(groupKey)
     const snapshots = new Map(
       names.map((name) => [name, this.groupDelays(name)]),
     )
@@ -237,7 +237,9 @@ class DelayManager {
       return undefined
     }
 
-    return { ...entry }
+    // Entries are replaced, never mutated, so the cached object is shared
+    // directly; readers treat it as immutable.
+    return entry
   }
 
   getDelay(name: string, group: string) {
@@ -277,6 +279,8 @@ class DelayManager {
     group: string,
     timeout: number,
   ): Promise<DelayUpdate> {
+    // Entry points own the pending mark; measureDelay only writes results.
+    this.setDelay(member.ref.name, group, -2)
     const update = await this.measureDelay(member, group, timeout)
     this.queueGroupNotification(group)
     return update
@@ -286,6 +290,7 @@ class DelayManager {
     member: InteractableProxyMember,
     group: string,
     timeout: number,
+    onRetry?: () => void,
   ): Promise<DelayUpdate> {
     const name = member.ref.name
     const providerName =
@@ -298,22 +303,26 @@ class DelayManager {
       `[DelayManager] 开始测试延迟，代理: ${name}, 组: ${group}, 超时: ${timeout}ms`,
     )
 
-    this.setDelay(name, group, -2)
-
     const startTime = Date.now()
 
     try {
       const url = this.getUrl(group)
       debugLog(`[DelayManager] 调用API测试延迟，代理: ${name}, URL: ${url}`)
 
-      const timeoutPromise = new Promise<ProxyDelay>((resolve) => {
-        setTimeout(() => resolve({ delay: 0 }), timeout)
-      })
+      const attempt = () =>
+        Promise.race([
+          this.unifiedDelayCheck(apiName, url, timeout, providerName),
+          new Promise<ProxyDelay>((resolve) => {
+            setTimeout(() => resolve({ delay: 0 }), timeout)
+          }),
+        ])
 
-      const result = await Promise.race([
-        this.unifiedDelayCheck(apiName, url, timeout, providerName),
-        timeoutPromise,
-      ])
+      let result = await attempt()
+      // Retried once before anything is published, so a transient failure never surfaces.
+      if (classifyDelay(result.delay, timeout) === 'timeout') {
+        onRetry?.()
+        result = await attempt()
+      }
 
       const elapsedTime = Date.now() - startTime
       if (elapsedTime < 500) {
@@ -351,16 +360,17 @@ class DelayManager {
     })
 
     let index = 0
+    let detached = 0
     const startTime = Date.now()
 
     const help = async (): Promise<void> => {
       const currMember = proxies[index++]
       if (!currMember) return
       const currName = currMember.ref.name
+      // A retry frees its slot so dead nodes do not halve the throughput.
+      let next: Promise<void> | undefined
 
       try {
-        this.setDelay(currName, group, -2)
-
         // Stagger requests so a batch does not hit the core at once.
         if (index > 1) {
           await new Promise((resolve) =>
@@ -369,7 +379,12 @@ class DelayManager {
         }
 
         // Do not reorder a list around the pointer while batch results are arriving.
-        await this.measureDelay(currMember, group, timeout)
+        await this.measureDelay(currMember, group, timeout, () => {
+          // Bounds a batch to twice its concurrency.
+          if (detached >= actualConcurrency) return
+          detached++
+          next = help()
+        })
       } catch (error) {
         console.error(
           `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
@@ -378,7 +393,8 @@ class DelayManager {
         this.setDelay(currName, group, 1e6)
       }
 
-      return help()
+      if (next) detached--
+      return next ?? help()
     }
 
     const actualConcurrency = Math.min(concurrency, names.length, 10)

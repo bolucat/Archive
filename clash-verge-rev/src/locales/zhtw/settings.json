@@ -305,6 +305,11 @@
       "variants": {
         "release": "正式版",
         "alpha": "預覽版"
+      },
+      "download": {
+        "title": "下載內核",
+        "message": "{{name}} 內核未隨應用程式內建，需要下載後才能使用。",
+        "confirm": "下載"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "應用程式日誌最大大小",
         "appLogMaxCount": "應用程式日誌最大數量",
         "autoCloseConnections": "自動關閉連線",
+        "autoSwitchSelectorGroup": "選擇節點時聯動代理組",
         "autoCheckUpdate": "自動檢查更新",
         "enableBuiltinEnhanced": "內建增強功能",
         "proxyLayoutColumns": "代理頁面欄數",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "當代理組選中節點或代理模式變動時，關閉已建立的連線",
+        "autoSwitchSelectorGroup": "規則模式下，在規則流量未經過的代理組中選擇節點時，將首個包含該組的 select 代理組切換到該組",
         "enableBuiltinEnhanced": "配置檔案的相容性處理",
         "autoDelayDetection": "在背景定時偵測目前節點延遲",
         "defaultLatencyTest": "僅用於 HTTP 客戶端請求測試，不會對配置檔案產生影響"
@@ -443,7 +450,6 @@
         "update": "更新"
       },
       "messages": {
-        "breakChangeError": "此版本為重大更新，不支援應用程式內更新，請解除安裝後手動下載安裝",
         "available": "有新版本可用"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "已經是最新內核版本",
         "changeSuccess": "內核切換成功",
         "changeFailed": "無法切換內核",
+        "coreFallback": "Mihomo Alpha 內核不再隨應用程式內建，已切換回 Mihomo 內核。如需繼續使用，請在 Clash 內核設定中重新選擇並下載。",
         "geoDataUpdated": "已更新 GeoData"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "安裝服務中...",
       "uninstalling": "服務解除安裝中..."
     }
+  },
+  "search": {
+    "placeholder": "搜尋設定",
+    "clear": "清除搜尋",
+    "back": "返回結果",
+    "results": "搜尋結果",
+    "empty": "找不到設定"
   }
 }

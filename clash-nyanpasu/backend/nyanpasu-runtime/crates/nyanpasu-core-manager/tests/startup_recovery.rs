@@ -130,7 +130,7 @@ async fn unusable_startup_records_are_preserved_without_killing_and_never_redisc
             .split_once(".corrupt-")
             .unwrap()
             .1;
-        chrono::NaiveDateTime::parse_from_str(suffix, "%Y%m%dT%H%M%SZ").unwrap();
+        jiff::civil::DateTime::strptime("%Y%m%dT%H%M%SZ", suffix).unwrap();
         let store = RuntimeConfigStore::new(runtime.clone()).await.unwrap();
         assert!(store.artifact_epochs().await.unwrap().is_empty());
         store

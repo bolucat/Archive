@@ -296,6 +296,42 @@ void main() {
     },
   );
 
+  test('playing the album again restarts the loaded song and listen', () async {
+    final local = app.sources['local'] as _Local;
+    final album = app.putAlbum(
+      'local',
+      const m.AlbumPage(
+        album: m.Album(id: 'album', name: 'Album'),
+        tracks: [
+          m.Track(id: 'a', name: 'Song a', source: 'local', duration: 180000),
+          m.Track(id: 'b', name: 'Song b', source: 'local', duration: 180000),
+        ],
+      ),
+    );
+    app.playAlbum(album, shuffled: false);
+    await _tick();
+    for (var second = 0; second <= 90; second++) {
+      engine.at(second.toDouble());
+    }
+    expect(local.listens, ['a']);
+    expect(app.position, 90);
+
+    app.playAlbum(album, shuffled: false);
+
+    expect(app.index, 0);
+    expect(app.playing, isTrue);
+    expect(app.position, 0);
+    expect(engine.sought, Duration.zero);
+    expect(engine.opened, [_key('a')]);
+    await _tick();
+    for (var second = 0; second < 90; second++) {
+      engine.at(second.toDouble());
+    }
+    expect(local.listens, ['a']);
+    engine.at(90);
+    expect(local.listens, ['a', 'a']);
+  });
+
   test('selecting a queued copy restarts the loaded song', () async {
     await start(['a', 'b', 'a']);
     engine.at(20);
@@ -404,6 +440,26 @@ void main() {
     expect(engine.queuedKey, _key('c'));
   });
 
+  test('Next on the paused last track rewinds with repeat off', () async {
+    app.toggleRepeat();
+    await start(['a']);
+    engine.at(20);
+    app.pause();
+    expect(app.playing, isFalse);
+    expect(app.position, 20);
+
+    app.next();
+
+    expect(app.index, 0);
+    expect(app.playing, isFalse);
+    expect(app.position, 0);
+    expect(engine.sought, Duration.zero);
+
+    app.play();
+    expect(app.playing, isTrue);
+    expect(engine.opened, [_key('a')]);
+  });
+
   test('最后一首、不循环：不排，放完就停', () async {
     app.toggleRepeat();
     await start(['a', 'b']);
@@ -415,6 +471,7 @@ void main() {
     engine.finish();
     await _tick();
     expect(app.playing, isFalse);
+    expect(engine.sought, isNull);
   });
 
   test('循环：最后一首接回第一首', () async {

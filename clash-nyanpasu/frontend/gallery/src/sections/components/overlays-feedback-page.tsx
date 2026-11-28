@@ -1,8 +1,15 @@
+import CheckCircleRounded from '~icons/material-symbols/check-circle-rounded'
 import DeleteRounded from '~icons/material-symbols/delete-rounded'
+import DescriptionRounded from '~icons/material-symbols/description-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
+import HelpRounded from '~icons/material-symbols/help-rounded'
+import LanguageRounded from '~icons/material-symbols/language-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import NotificationsRounded from '~icons/material-symbols/notifications-rounded'
+import PaletteRounded from '~icons/material-symbols/palette-rounded'
+import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import ShareRounded from '~icons/material-symbols/share-rounded'
+import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { useState } from 'react'
 import {
   Button,
@@ -13,18 +20,34 @@ import {
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
+  Dialog,
+  DialogTrigger,
   Drawer,
   DrawerClose,
   DrawerContent,
   DrawerHandle,
   DrawerTitle,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPillTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  FormDialogContent,
+  FormDialogError,
+  Input,
+  ItemAction,
+  ItemGroup,
   LinearProgress,
+  LoadingIndicator,
   Modal,
   ModalAnchor,
   ModalClose,
@@ -32,6 +55,7 @@ import {
   ModalDescription,
   ModalTitle,
   ModalTrigger,
+  NumericInput,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -42,9 +66,136 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  useDialog,
   useModal,
 } from '@nyanpasu/ui'
 import { PageHeader, SpecimenCard } from '../../studio/stage'
+
+function DeviceNameEditRow() {
+  const { setOpen } = useDialog()
+  const [deviceName, setDeviceName] = useState('WayDroid x86_64 Device')
+  const [draft, setDraft] = useState(deviceName)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed) {
+      setError('Device name cannot be empty.')
+      return
+    }
+
+    setError(null)
+    setSaving(true)
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    setDeviceName(trimmed)
+    setSaving(false)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          title="Device Name"
+          description={deviceName}
+          showChevron={false}
+        />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title="Device Name"
+        submitLabel="Confirm"
+        cancelLabel="Cancel"
+        submitting={saving}
+        onOpen={() => {
+          setDraft(deviceName)
+          setError(null)
+        }}
+        onSubmit={handleSubmit}
+      >
+        <Input
+          variant="underlined"
+          aria-label="Device Name"
+          aria-invalid={Boolean(error)}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (error) setError(null)
+          }}
+          autoFocus
+        />
+        <FormDialogError message={error} />
+      </FormDialogContent>
+    </>
+  )
+}
+
+function PortEditRow() {
+  const { setOpen } = useDialog()
+  const [port, setPort] = useState<number>(7890)
+  const [draft, setDraft] = useState<number | null>(port)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = () => {
+    if (draft == null || draft < 1024 || draft > 65535) {
+      setError('Enter a valid port between 1024 and 65535.')
+      return
+    }
+
+    setError(null)
+    setPort(draft)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction title="Mixed Port" description={`Fixed · ${port}`} />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title="Mixed Port"
+        description="Configure the local listening port for HTTP and SOCKS5 traffic."
+        submitLabel="Apply"
+        cancelLabel="Cancel"
+        extraActions={
+          <Button
+            type="button"
+            variant="basic"
+            onClick={() => {
+              setDraft(7890)
+              setError(null)
+            }}
+          >
+            Reset
+          </Button>
+        }
+        onOpen={() => {
+          setDraft(port)
+          setError(null)
+        }}
+        onSubmit={handleSubmit}
+      >
+        <NumericInput
+          variant="outlined"
+          label="Port Number"
+          aria-invalid={Boolean(error)}
+          value={draft}
+          min={1}
+          max={65535}
+          allowNegative={false}
+          decimalScale={0}
+          onChange={(next) => {
+            setDraft(next)
+            if (error) setError(null)
+          }}
+        />
+        <FormDialogError message={error} />
+      </FormDialogContent>
+    </>
+  )
+}
 
 function AnchorMenuTrigger() {
   const { setOpen } = useModal()
@@ -77,6 +228,10 @@ export function OverlaysFeedbackPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [snackbarOpen, setSnackbarOpen] = useState(false)
   const [progress, setProgress] = useState(62)
+  const [sysProxy, setSysProxy] = useState(true)
+  const [tunMode, setTunMode] = useState(false)
+  const [proxyMode, setProxyMode] = useState('rule')
+  const [themeChoice, setThemeChoice] = useState('system')
 
   return (
     <div className="flex flex-col gap-6" data-slot="gallery-overlays-page">
@@ -85,6 +240,8 @@ export function OverlaysFeedbackPage() {
         title="Modals, Drawers, Menus, Tooltips & Feedback"
         description="Persistent modal lifecycle with shared-layout origin morphing, Android 17 surface-container-high overlays, start-aligned menu items, and M3 progress/snackbar feedback."
         badges={[
+          'Dialog',
+          'FormDialog',
           'Modal',
           'Drawer',
           'Popover',
@@ -92,10 +249,45 @@ export function OverlaysFeedbackPage() {
           'ContextMenu',
           'Tooltip',
           'SharedTooltip',
+          'LoadingIndicator',
           'Progress',
           'Snackbar',
         ]}
       />
+
+      <SpecimenCard
+        title="Dialog & FormDialog (Android 17 Edit-in-Dialog Pattern)"
+        description="Built on Modal to preserve shared-layout origin morphing, focus return, and persistent mounting. Uses surface-container-high, 28px corners, trailing Cancel/Confirm actions, and built-in async submission lock."
+        defaultSurface="canvas"
+        slots={['dialog-surface', 'form-dialog-form', 'form-dialog-error']}
+        code={`<Dialog>
+  <DialogTrigger asChild>
+    <ItemAction title="Device Name" description={name} />
+  </DialogTrigger>
+  <FormDialogContent
+    title="Device Name"
+    submitLabel="Confirm"
+    cancelLabel="Cancel"
+    submitting={saving}
+    onOpen={() => setDraft(name)}
+    onSubmit={handleSave}
+  >
+    <Input variant="underlined" value={draft} onChange={...} />
+    <FormDialogError message={error} />
+  </FormDialogContent>
+</Dialog>`}
+      >
+        <div className="mx-auto max-w-2xl">
+          <ItemGroup>
+            <Dialog>
+              <DeviceNameEditRow />
+            </Dialog>
+            <Dialog>
+              <PortEditRow />
+            </Dialog>
+          </ItemGroup>
+        </div>
+      </SpecimenCard>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SpecimenCard
@@ -107,7 +299,7 @@ export function OverlaysFeedbackPage() {
     <Button variant="flat">Open Dialog</Button>
   </ModalTrigger>
   <ModalContent>
-    <div className="bg-surface-container-high w-96 rounded-3xl p-6">
+    <div className="bg-surface-container-high w-96 rounded-extra-large p-6">
       <ModalTitle>Confirm Action</ModalTitle>
       <ModalClose variant="flat">Done</ModalClose>
     </div>
@@ -121,7 +313,7 @@ export function OverlaysFeedbackPage() {
               </ModalTrigger>
               <AnchorMenuTrigger />
               <ModalContent>
-                <div className="bg-surface-container-high text-on-surface flex w-[min(92vw,26rem)] flex-col gap-4 rounded-3xl p-6 shadow-xl">
+                <div className="bg-surface-container-high text-on-surface rounded-extra-large flex w-[min(92vw,26rem)] flex-col gap-4 p-6 shadow-xl">
                   <div className="flex flex-col gap-1.5">
                     <ModalTitle className="text-lg font-semibold">
                       Shared-Origin Modal
@@ -153,7 +345,8 @@ export function OverlaysFeedbackPage() {
                 </DrawerTitle>
                 <p className="text-on-surface-variant mt-2 text-sm leading-5">
                   Rises smoothly on an M3E spatial spring with
-                  surface-container-low ground and rounded-t-3xl geometry.
+                  surface-container-low ground and rounded-t-extra-large
+                  geometry.
                 </p>
                 <div className="mt-6 flex justify-end">
                   <DrawerClose asChild>
@@ -209,7 +402,7 @@ export function OverlaysFeedbackPage() {
 
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <div className="bg-surface-container-highest text-on-surface-variant cursor-context-menu rounded-2xl px-4 py-2.5 text-xs font-medium select-none">
+                <div className="bg-surface-container-highest text-on-surface-variant rounded-large cursor-context-menu px-4 py-2.5 text-xs font-medium select-none">
                   Right-click for ContextMenu
                 </div>
               </ContextMenuTrigger>
@@ -229,6 +422,165 @@ export function OverlaysFeedbackPage() {
           </div>
         </SpecimenCard>
       </div>
+
+      <SpecimenCard
+        title="DropdownMenu (Launcher Variant & A17 Pill Trigger)"
+        description="Grouped asymmetric pill rows (28px outer, 8px inner corners) with spring-rotated chevron trigger, nested launcher submenus, checkboxes, and radio groups."
+        slots={[
+          'dropdown-menu-pill-trigger',
+          'dropdown-menu-content',
+          'dropdown-menu-group',
+          'dropdown-menu-item',
+        ]}
+        code={`<DropdownMenu variant="launcher" align="start">
+  <DropdownMenuPillTrigger>
+    <SettingsRounded className="size-5" />
+    <span>Settings</span>
+  </DropdownMenuPillTrigger>
+  <DropdownMenuContent sideOffset={6}>
+    <DropdownMenuGroup>
+      <DropdownMenuItem>
+        <DescriptionRounded className="size-5" />
+        <span>Import Profile</span>
+      </DropdownMenuItem>
+    </DropdownMenuGroup>
+    <DropdownMenuGroup>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <TuneRounded className="size-5" />
+          <span>Proxy Settings</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>
+          <DropdownMenuGroup>
+            <DropdownMenuCheckboxItem checked>System Proxy</DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </DropdownMenuGroup>
+  </DropdownMenuContent>
+</DropdownMenu>`}
+      >
+        <div className="flex flex-wrap items-center gap-4">
+          <DropdownMenu variant="launcher" align="start">
+            <DropdownMenuPillTrigger>
+              <SettingsRounded className="size-5 shrink-0" />
+              <span>Trebuchet</span>
+            </DropdownMenuPillTrigger>
+            <DropdownMenuContent sideOffset={6}>
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <DescriptionRounded className="size-5 shrink-0" />
+                  <span>Import Local Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <CheckCircleRounded className="size-5 shrink-0" />
+                  <span>Check Connectivity</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuGroup>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <PaletteRounded className="size-5 shrink-0" />
+                    <span>Theme Mode</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={themeChoice}
+                      onValueChange={setThemeChoice}
+                    >
+                      <DropdownMenuRadioItem value="light">
+                        Light
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="dark">
+                        Dark
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="system">
+                        System
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <TuneRounded className="size-5 shrink-0" />
+                    <span>Proxy Settings</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuGroup>
+                      <DropdownMenuCheckboxItem
+                        checked={sysProxy}
+                        onCheckedChange={setSysProxy}
+                      >
+                        System Proxy
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={tunMode}
+                        onCheckedChange={setTunMode}
+                      >
+                        TUN Mode
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuGroup>
+
+                    <DropdownMenuRadioGroup
+                      value={proxyMode}
+                      onValueChange={setProxyMode}
+                    >
+                      <DropdownMenuRadioItem value="rule">
+                        Rule Mode
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="global">
+                        Global Mode
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="direct">
+                        Direct Mode
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuItem>
+                  <LanguageRounded className="size-5 shrink-0" />
+                  <span>Language</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <HelpRounded className="size-5 shrink-0" />
+                  <span>Documentation</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu variant="launcher" align="start">
+            <DropdownMenuTrigger asChild>
+              <Button variant="stroked">Launcher from Button</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={6}>
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <EditRounded className="size-5 shrink-0" />
+                  <span>Edit configuration</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <ShareRounded className="size-5 shrink-0" />
+                  <span>Export YAML</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuGroup>
+                <DropdownMenuItem className="text-error">
+                  <DeleteRounded className="size-5 shrink-0" />
+                  <span>Delete profile</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </SpecimenCard>
 
       <SpecimenCard
         title="Progress Indicators, Tooltips & Snackbar"
@@ -253,25 +605,98 @@ export function OverlaysFeedbackPage() {
         }
       >
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col items-center gap-2">
-                <CircularProgress indeterminate className="size-10" />
-                <span className="text-on-surface-variant text-xs">
-                  Indeterminate
-                </span>
+          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-5">
+                <div className="flex flex-col items-center gap-2">
+                  <LoadingIndicator />
+                  <span className="text-on-surface-variant text-xs">
+                    Loading (Default)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <LoadingIndicator variant="contained" />
+                  <span className="text-on-surface-variant text-xs">
+                    Loading (Contained)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress indeterminate />
+                  <span className="text-on-surface-variant text-xs">
+                    Circular Flat
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress indeterminate variant="wavy" />
+                  <span className="text-on-surface-variant text-xs">
+                    Circular Wavy
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-col items-center gap-2">
-                <CircularProgress value={progress} className="size-10" />
-                <span className="text-on-surface-variant text-xs">
-                  Determinate ({progress}%)
-                </span>
+
+              <div className="flex flex-wrap items-center gap-5">
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} />
+                  <span className="text-on-surface-variant text-xs">
+                    Flat ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} thickness="thick" />
+                  <span className="text-on-surface-variant text-xs">
+                    Thick ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} variant="wavy" />
+                  <span className="text-on-surface-variant text-xs">
+                    Wavy ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress
+                    value={progress}
+                    variant="wavy"
+                    thickness="thick"
+                  />
+                  <span className="text-on-surface-variant text-xs">
+                    Wavy Thick
+                  </span>
+                </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
-              <LinearProgress indeterminate />
-              <LinearProgress value={progress} />
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Hero Storage Bar (flat · size=&quot;lg&quot;)
+                </span>
+                <LinearProgress size="lg" value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  List Progress Bar (flat · default size=&quot;sm&quot;)
+                </span>
+                <LinearProgress value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Wavy Determinate (wavy · size=&quot;md&quot;)
+                </span>
+                <LinearProgress variant="wavy" size="md" value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Wavy Indeterminate
+                </span>
+                <LinearProgress variant="wavy" size="md" indeterminate />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Flat Indeterminate
+                </span>
+                <LinearProgress indeterminate />
+              </div>
             </div>
           </div>
 

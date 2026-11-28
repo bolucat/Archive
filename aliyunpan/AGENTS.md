@@ -1,4 +1,4 @@
-# boxplayer — Agent 入口
+# boxplayer-tauri — Agent 入口
 
 ## 开始工作
 
@@ -8,7 +8,7 @@
 
 ## 不可遗漏的约束
 
-- Electron 默认连接用户已运行的开发应用；未明确要求 E2E 不另启应用或执行 E2E。build 会递增版本并清理 dist/release；不要作为无副作用检查。
+- `main` 的桌面工程在 `tauri-app/`，Electron 工程在 `electron` 分支。浏览器预览用 `pnpm dev`，原生运行用 `pnpm tauri dev`。开发数据使用独立的 Tauri 目录。
 - AI 每次犯错都必须在修正后、结束当前任务前追加工作区根 LESSONS.md；包括用户指出、自行发现和重复发生的错误。记录事实、原因、修正、预防与证据；根文件缺失或不可写时暂存本仓库 [LESSONS.md](LESSONS.md)。
 - 保留其他任务的改动、暂存状态、账号、签名与数据；不把本文档整理扩展为业务发布授权。
 

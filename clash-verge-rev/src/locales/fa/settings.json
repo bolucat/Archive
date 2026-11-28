@@ -305,6 +305,11 @@
       "variants": {
         "release": "نسخه نهایی",
         "alpha": "نسخه آلفا"
+      },
+      "download": {
+        "title": "دانلود هسته",
+        "message": "{{name}} همراه برنامه ارائه نمی‌شود و پیش از استفاده باید دانلود شود.",
+        "confirm": "دانلود"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "بستن خودکار اتصالات",
+        "autoSwitchSelectorGroup": "تغییر خودکار گروه select",
         "autoCheckUpdate": "بررسی خودکار به‌روزرسانی",
         "enableBuiltinEnhanced": "فعال کردن تقویت داخلی",
         "proxyLayoutColumns": "ستون چیدمان پراکسی",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "اتصالات برقرار شده را هنگام تغییر انتخاب گروه پروکسی یا حالت پروکسی خاتمه دهید",
+        "autoSwitchSelectorGroup": "در حالت قانون، با انتخاب یک گره در گروهی که ترافیک قوانین از آن عبور نمی‌کند، اولین گروه select شامل آن نیز به همان گروه تغییر می‌کند",
         "enableBuiltinEnhanced": "مدیریت سازگاری برای فایل پیکربندی",
         "autoDelayDetection": "به‌صورت دوره‌ای تأخیر گره فعلی را در پس‌زمینه آزمایش می‌کند",
         "defaultLatencyTest": "فقط برای تست درخواست‌های کلاینت HTTP استفاده می‌شود و بر فایل پیکربندی تأثیری نخواهد داشت"
@@ -443,7 +450,6 @@
         "update": "به‌روزرسانی"
       },
       "messages": {
-        "breakChangeError": "این نسخه یک به‌روزرسانی اساسی است و پشتیبانی از به‌روزرسانی درون برنامه را پشتیبانی نمی‌کند. لطفاً پس از حذف، دستی دانلود و نصب کنید.",
         "available": "نسخه جدیدی در دسترس است"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "در حال حاضر از آخرین نسخه هسته استفاده می‌کنید",
         "changeSuccess": "هسته با موفقیت تغییر کرد",
         "changeFailed": "تغییر هسته ناموفق بود",
+        "coreFallback": "Mihomo Alpha دیگر همراه برنامه ارائه نمی‌شود، بنابراین هسته به Mihomo بازگردانده شد. برای دانلود، آن را دوباره در تنظیمات هسته Clash انتخاب کنید.",
         "geoDataUpdated": "GeoData به‌روزرسانی شد"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "در حال نصب سرویس...",
       "uninstalling": "در حال حذف سرویس..."
     }
+  },
+  "search": {
+    "placeholder": "جستجوی تنظیمات",
+    "clear": "پاک کردن جستجو",
+    "back": "بازگشت به نتایج",
+    "results": "نتایج جستجو",
+    "empty": "تنظیماتی یافت نشد"
   }
 }

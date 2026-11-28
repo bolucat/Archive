@@ -1,5 +1,4 @@
 using System.Globalization;
-using Microsoft.VisualStudio.Threading;
 using Netch.Controllers;
 using Netch.Utils;
 using Serilog.Events;
@@ -13,6 +12,9 @@ public static class Bootstrap
 
     /// <summary>False when Netch.App.exe was started without the rest of the release archive.</summary>
     public static bool BinariesPresent => Directory.Exists(BinDirectory) && Directory.EnumerateFileSystemEntries(BinDirectory).Any();
+
+    /// <summary>Returns missing base core files under the bin directory.</summary>
+    public static IReadOnlyList<string> GetMissingCoreFiles() => EnvironmentChecker.Inspect(Global.NetchDir).MissingCoreFiles;
 
     /// <summary>Makes the install directory the working directory and puts .\bin on PATH.</summary>
     public static void SetWorkingDirectory()

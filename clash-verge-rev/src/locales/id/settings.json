@@ -305,6 +305,11 @@
       "variants": {
         "release": "Versi Rilis",
         "alpha": "Versi Alpha"
+      },
+      "download": {
+        "title": "Unduh Inti",
+        "message": "{{name}} tidak disertakan dalam aplikasi dan harus diunduh sebelum dapat digunakan.",
+        "confirm": "Unduh"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "Tutup Koneksi Otomatis",
+        "autoSwitchSelectorGroup": "Alihkan Grup Select Otomatis",
         "autoCheckUpdate": "Periksa Pembaruan Otomatis",
         "enableBuiltinEnhanced": "Aktifkan Peningkatan Bawaan",
         "proxyLayoutColumns": "Kolom Tata Letak Proksi",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Hentikan koneksi yang sudah ada saat pemilihan grup proksi atau mode proksi berubah",
+        "autoSwitchSelectorGroup": "Dalam mode aturan, memilih node di grup yang tidak dilalui lalu lintas aturan juga mengalihkan grup select pertama yang memuatnya ke grup tersebut",
         "enableBuiltinEnhanced": "Penanganan kompatibilitas untuk file konfigurasi",
         "autoDelayDetection": "Secara berkala menguji latensi node saat ini di latar belakang",
         "defaultLatencyTest": "Digunakan hanya untuk pengujian permintaan klien HTTP dan tidak akan mempengaruhi file konfigurasi"
@@ -443,7 +450,6 @@
         "update": "Perbarui"
       },
       "messages": {
-        "breakChangeError": "Versi ini adalah pembaruan besar dan tidak mendukung pembaruan dalam aplikasi. Harap hapus instalasi dan unduh serta instal versi baru secara manual",
         "available": "Versi baru tersedia"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Sudah menggunakan versi inti terbaru",
         "changeSuccess": "Inti berhasil diubah",
         "changeFailed": "Gagal mengubah inti",
+        "coreFallback": "Mihomo Alpha tidak lagi disertakan dalam aplikasi, sehingga inti dikembalikan ke Mihomo. Pilih lagi di pengaturan Inti Clash untuk mengunduhnya.",
         "geoDataUpdated": "GeoData Diperbarui"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Memasang Layanan...",
       "uninstalling": "Uninstalling Service..."
     }
+  },
+  "search": {
+    "placeholder": "Cari pengaturan",
+    "clear": "Hapus pencarian",
+    "back": "Kembali ke hasil",
+    "results": "Hasil pencarian",
+    "empty": "Pengaturan tidak ditemukan"
   }
 }

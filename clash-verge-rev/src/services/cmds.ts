@@ -19,7 +19,7 @@ import type {
 
 export type {
   RunningMode,
-  RunStateView as RunState,
+  RunStateView_Serialize as RunState,
   FailedOperation,
   PendingFailure,
   SidecarFailureSnapshot,
@@ -152,17 +152,17 @@ export async function patchClashMode(payload: string) {
   return commands.patchClashMode(payload)
 }
 
-export async function syncTrayProxySelection() {
-  return commands.syncTrayProxySelection()
-}
-
 /** Sends one selection pair so the backend can merge against current profile state. */
 export async function recordSelectedNode(groupName: string, node: string) {
   return commands.recordSelectedNode(groupName, node)
 }
 
-export async function forgetSelectedNode(groupName: string) {
-  return commands.forgetSelectedNode(groupName)
+export async function switchProxyNode(
+  groupName: string,
+  proxyName: string,
+  unfix: boolean,
+) {
+  return commands.switchProxyNode(groupName, proxyName, unfix)
 }
 
 export async function getProxyView(): Promise<ProxyViewV1> {
@@ -173,13 +173,15 @@ export async function getProxyView(): Promise<ProxyViewV1> {
   return view
 }
 
+// getClashLogs matches both patterns against every log line.
+const CLASH_LOG_REGEX = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/
+const CLASH_LOG_NEW_REGEX = /(.+?)\s+(.+?)\s+(.+)/
+
 export async function getClashLogs() {
-  const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/
-  const newRegex = /(.+?)\s+(.+?)\s+(.+)/
   const logs = await commands.getClashLogs()
 
   return logs.reduce<ILogItem[]>((acc, log) => {
-    const result = log.match(regex)
+    const result = log.match(CLASH_LOG_REGEX)
     if (result) {
       const [_, _time, type, payload] = result
       const time = dayjs(_time).format('MM-DD HH:mm:ss')
@@ -187,7 +189,7 @@ export async function getClashLogs() {
       return acc
     }
 
-    const result2 = log.match(newRegex)
+    const result2 = log.match(CLASH_LOG_NEW_REGEX)
     if (result2) {
       const [_, time, type, payload] = result2
       acc.push({ time, type, payload })
@@ -285,6 +287,27 @@ export async function restartCore() {
 
 export async function upgradeClashCore(force = false) {
   return commands.upgradeClashCore(force)
+}
+
+export async function isClashCoreInstalled(clashCore: string) {
+  return commands.isClashCoreInstalled(clashCore)
+}
+
+export async function downloadClashCore(
+  clashCore: string,
+  onEvent: (event: DownloadEvent) => void,
+) {
+  const channel = new Channel<DownloadEvent>()
+  channel.onmessage = onEvent
+  return commands.downloadClashCore(clashCore, channel)
+}
+
+export async function cancelClashCoreDownload() {
+  return commands.cancelClashCoreDownload()
+}
+
+export async function takeCoreFallbackNotice() {
+  return commands.takeCoreFallbackNotice()
 }
 
 export async function restartApp() {

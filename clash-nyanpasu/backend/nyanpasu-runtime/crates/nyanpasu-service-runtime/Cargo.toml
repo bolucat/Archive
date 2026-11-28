@@ -43,7 +43,6 @@ anyhow = { workspace = true }
 axum = { workspace = true, features = ["macros"] }
 bounded-vec-deque = "0.1.1"
 camino = { version = "1.1", features = ["serde1"] }
-chrono = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 colored = "3.0.0"
@@ -58,6 +57,7 @@ constcat = "0.6.0"
 ctrlc = { version = "3", features = ["termination"] }
 dunce = "1.0.5"
 futures-util = { workspace = true }
+jiff = { workspace = true }
 parking_lot = "0.12"
 semver = "1"
 yaml_serde = "0.10"
@@ -68,7 +68,7 @@ simd-json = { workspace = true }
 supports-color = "3.0.2"
 sysinfo = "0.39.0"
 thiserror.workspace = true
-timeago = "0.6"
+timeago = { version = "0.6", default-features = false }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = { workspace = true }
 tower-http = { version = "0.7", features = ["catch-panic", "request-id", "trace"] }
@@ -92,7 +92,7 @@ tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 
 [build-dependencies]
-chrono = { workspace = true }
+jiff = { workspace = true }
 rustc_version = "0.4"
 
 [target."cfg(unix)".dependencies]

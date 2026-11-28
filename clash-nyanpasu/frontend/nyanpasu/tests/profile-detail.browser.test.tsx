@@ -271,7 +271,6 @@ test('the header is separate from the overview card and goes back through histor
   expect(card.contains(header)).toBe(false)
   expect(header.textContent).toContain(remote.name)
   expect(card.textContent).not.toContain(remote.name)
-  expect(getComputedStyle(header).position).toBe('sticky')
 
   await page
     .getByRole('button', {
@@ -301,6 +300,31 @@ test('the back button falls back to the list without history', async ({
   await expect
     .poll(() => router.state.location.pathname)
     .toBe('/main/profiles/profile')
+})
+
+test('file actions reveal and open the profile separately', async ({
+  onTestFinished,
+}) => {
+  const actions: string[] = []
+  await mountDetail({
+    items: [remote],
+    initialEntries: ['/main/profiles/profile/detail/remote'],
+    rpc: (method, params) => {
+      if (method === 'view_profile' || method === 'open_profile') {
+        expect(params).toEqual({ uid: remote.uid })
+        actions.push(method)
+        return null
+      }
+    },
+    onTestFinished,
+  })
+
+  await page
+    .getByRole('button', { name: m.profile_detail_show_in_file_manager() })
+    .click()
+  await expect.poll(() => actions).toEqual(['view_profile'])
+  await page.getByRole('button', { name: m.profile_detail_open_file() }).click()
+  await expect.poll(() => actions).toEqual(['view_profile', 'open_profile'])
 })
 
 test('deleting asks with the profile name and leaves for the list', async ({

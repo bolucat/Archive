@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 nyanpasu-serde = { path = "../nyanpasu-serde", features = ["indexmap"] }
 backon = "1"
-chrono.workspace = true
+jiff.workspace = true
 futures-core = "0.3"
 futures-util.workspace = true
 indexmap = { version = "2", features = ["serde"] }
@@ -20,7 +20,7 @@ serde.workspace = true
 serde_json = "1"
 specta = {
   version = "^2.0.0-rc.28",
-  features = ["chrono", "derive", "indexmap", "serde_json", "url", "uuid"]
+  features = ["derive", "indexmap", "serde_json", "url", "uuid"]
 }
 thiserror.workspace = true
 tokio.workspace = true

@@ -305,6 +305,11 @@
       "variants": {
         "release": "Release Version",
         "alpha": "Alpha Version"
+      },
+      "download": {
+        "title": "Download Core",
+        "message": "{{name}} is not bundled with the app and must be downloaded before it can be used.",
+        "confirm": "Download"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "Auto Close Connections",
+        "autoSwitchSelectorGroup": "Auto Switch Select Group",
         "autoCheckUpdate": "Auto Check Update",
         "enableBuiltinEnhanced": "Enable Builtin Enhanced",
         "proxyLayoutColumns": "Proxy Layout Columns",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Terminate established connections when the proxy group selection or proxy mode changes",
+        "autoSwitchSelectorGroup": "In rule mode, selecting a node in a group that rule traffic does not reach also switches the first select group containing it to that group",
         "enableBuiltinEnhanced": "Compatibility handling for the configuration file",
         "autoDelayDetection": "Periodically test the current node latency in the background",
         "defaultLatencyTest": "Used for HTTP client request testing only and won't make a difference to the configuration file"
@@ -443,7 +450,6 @@
         "update": "Update"
       },
       "messages": {
-        "breakChangeError": "This version is a major update and does not support in-app updates. Please uninstall it and manually download and install the new version",
         "available": "A new version is available"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Already Using Latest Core Version",
         "changeSuccess": "Core changed successfully",
         "changeFailed": "Failed to change core",
+        "coreFallback": "Mihomo Alpha is no longer bundled with the app, so the core was switched back to Mihomo. Select it again in the Clash Core settings to download it.",
         "geoDataUpdated": "GeoData Updated"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Installing Service...",
       "uninstalling": "Uninstalling Service..."
     }
+  },
+  "search": {
+    "placeholder": "Search settings",
+    "clear": "Clear search",
+    "back": "Back to results",
+    "results": "Search results",
+    "empty": "No settings found"
   }
 }

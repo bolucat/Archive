@@ -378,7 +378,7 @@ const CurrentCoreCard = ({
     <Button
       variant="raised"
       className={cn(
-        'group grid h-auto min-w-0 flex-1 rounded-[20px] px-2.5 py-0 text-left',
+        'group grid h-auto min-w-0 flex-1 grid-cols-1 justify-stretch rounded-[20px] px-2.5 py-0 text-left',
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
@@ -393,7 +393,7 @@ const CurrentCoreCard = ({
         <div className="flex w-full min-w-0 shrink-0 items-center gap-3">
           <div
             className={cn(
-              'bg-surface/60 grid shrink-0 place-items-center rounded-xl',
+              'bg-surface/60 rounded-medium grid shrink-0 place-items-center',
               'size-10',
             )}
           >
@@ -486,7 +486,7 @@ function CoreShortcutsPreviewCard({
       variant="raised"
       disabled
       className={cn(
-        'grid h-full w-full min-w-0 rounded-[20px] px-2.5 py-0 text-left',
+        'grid h-full w-full min-w-0 grid-cols-1 justify-stretch rounded-[20px] px-2.5 py-0 text-left',
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
@@ -496,7 +496,7 @@ function CoreShortcutsPreviewCard({
       data-slot="current-core-card"
     >
       <div className="flex w-full min-w-0 items-center gap-3">
-        <div className="bg-surface/60 grid size-10 shrink-0 place-items-center rounded-xl">
+        <div className="bg-surface/60 rounded-medium grid size-10 shrink-0 place-items-center">
           <img
             src={previewCoreIcon}
             alt=""

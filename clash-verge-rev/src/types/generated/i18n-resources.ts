@@ -36,6 +36,42 @@ export interface TranslationResources {
       page: {
         title: string
       }
+      ruleDialog: {
+        addAndApply: string
+        allSubdomains: string
+        applyFailed: string
+        connectionHost: string
+        destination: string
+        destinationHint: string
+        destinationIp: string
+        domain: string
+        domainScope: string
+        editDestination: string
+        entry: string
+        exactDomain: string
+        fullPath: string
+        invalidDomain: string
+        invalidIp: string
+        matchBy: string
+        matchingDomain: string
+        modifyTitle: string
+        newConnections: string
+        noMetadata: string
+        noProfile: string
+        policyUnavailable: string
+        processNameHint: string
+        processPathHint: string
+        profileChanged: string
+        rootDomain: string
+        ruleModeHint: string
+        saveAndApply: string
+        saved: string
+        sourceHint: string
+        sourceIp: string
+        title: string
+        unavailable: string
+        unsupportedValue: string
+      }
     }
     home: {
       components: {
@@ -69,11 +105,14 @@ export interface TranslationResources {
             refreshDelay: string
           }
           labels: {
+            defaultRoute: string
             directMode: string
             globalMode: string
             group: string
             noActiveNode: string
             proxy: string
+            ruleCount: string
+            ruleTarget: string
           }
           status: {
             error: string
@@ -844,6 +883,7 @@ export interface TranslationResources {
             alreadyLatestVersion: string
             changeFailed: string
             changeSuccess: string
+            coreFallback: string
             geoDataUpdated: string
             restartSuccess: string
             versionUpdated: string
@@ -945,6 +985,11 @@ export interface TranslationResources {
           }
         }
         clashCore: {
+          download: {
+            confirm: string
+            message: string
+            title: string
+          }
           variants: {
             alpha: string
             release: string
@@ -1123,6 +1168,7 @@ export interface TranslationResources {
             autoDelayDetection: string
             autoDelayDetectionInterval: string
             autoLogClean: string
+            autoSwitchSelectorGroup: string
             defaultLatencyTest: string
             defaultLatencyTimeout: string
             enableBuiltinEnhanced: string
@@ -1141,6 +1187,7 @@ export interface TranslationResources {
           tooltips: {
             autoCloseConnections: string
             autoDelayDetection: string
+            autoSwitchSelectorGroup: string
             defaultLatencyTest: string
             enableBuiltinEnhanced: string
           }
@@ -1222,7 +1269,6 @@ export interface TranslationResources {
           }
           messages: {
             available: string
-            breakChangeError: string
           }
           title: string
         }
@@ -1250,6 +1296,13 @@ export interface TranslationResources {
         }
         actionsGroupLabel: string
         title: string
+      }
+      search: {
+        back: string
+        clear: string
+        empty: string
+        placeholder: string
+        results: string
       }
       sections: {
         appearance: {
@@ -1589,6 +1642,7 @@ export interface TranslationResources {
           noDisney: string
           originalsOnly: string
           pending: string
+          risky: string
           unsupportedRegion: string
           yes: string
         }

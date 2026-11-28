@@ -7,7 +7,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use chrono::NaiveTime;
 use clash_api::{Client, ConnectionStreamQuery, LogLevel, LogQuery, StructuredLogLevel};
 use futures_util::StreamExt;
 use indexmap::IndexMap;
@@ -51,7 +50,7 @@ async fn memory_and_structured_logs_use_distinct_typed_streams() {
         .await
         .unwrap();
     let log = logs.next().await.unwrap().unwrap();
-    assert_eq!(log.time, NaiveTime::from_hms_opt(12, 34, 56).unwrap());
+    assert_eq!(log.time, jiff::civil::time(12, 34, 56, 0));
     assert_eq!(log.level, StructuredLogLevel::Warn);
     server.abort();
 }

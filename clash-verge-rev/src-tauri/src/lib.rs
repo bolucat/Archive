@@ -54,7 +54,6 @@ mod app_init {
                     .build(),
             )
             .plugin(tauri_plugin_clipboard_manager::init())
-            .plugin(tauri_plugin_process::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             .plugin(tauri_plugin_fs::init())
             .plugin(tauri_plugin_dialog::init())
@@ -154,7 +153,7 @@ fn handle_singleton_startup(
 }
 
 pub fn run() -> std::process::ExitCode {
-    #[cfg(all(target_os = "macos", not(debug_assertions), not(test), not(feature = "verge-dev")))]
+    #[cfg(all(target_os = "macos", not(debug_assertions), not(test)))]
     if utils::macos_launch_guard::enforce_before_initialization() == utils::macos_launch_guard::LaunchDisposition::Exit
     {
         return std::process::ExitCode::SUCCESS;

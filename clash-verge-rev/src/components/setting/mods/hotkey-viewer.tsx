@@ -1,11 +1,13 @@
 import { styled, Typography } from '@mui/material'
 import { useLockFn } from 'ahooks'
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BaseDialog, DialogRef, Switch } from '@/components/base'
 import { useVerge } from '@/hooks/use-verge'
 import { showNotice } from '@/services/notice-service'
+
+import { useSettingDialog } from '../settings-search-context'
 
 import { HotkeyInput } from './hotkey-input'
 
@@ -40,6 +42,8 @@ const HOTKEY_FUNC_LABELS: Record<(typeof HOTKEY_FUNC)[number], string> = {
   reactivate_profiles: 'settings.modals.hotkey.functions.reactivateProfiles',
 }
 
+const EMPTY_KEYS: string[] = []
+
 export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -51,7 +55,7 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
     verge?.enable_global_hotkey ?? true,
   )
 
-  useImperativeHandle(ref, () => ({
+  useSettingDialog(ref, 'hotkey-viewer', open, () => ({
     open: () => {
       setOpen(true)
 
@@ -111,7 +115,11 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
       onCancel={() => setOpen(false)}
       onOk={onSave}
     >
-      <ItemWrapper style={{ marginBottom: 16 }}>
+      <span data-settings-dialog="hotkey-viewer" />
+      <ItemWrapper
+        data-setting-target="settings.modals.hotkey.toggles.enableGlobal"
+        style={{ marginBottom: 16 }}
+      >
         <Typography>
           {t('settings.modals.hotkey.toggles.enableGlobal')}
         </Typography>
@@ -123,10 +131,10 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
       </ItemWrapper>
 
       {HOTKEY_FUNC.map((func) => (
-        <ItemWrapper key={func}>
+        <ItemWrapper key={func} data-setting-target={HOTKEY_FUNC_LABELS[func]}>
           <Typography>{t(HOTKEY_FUNC_LABELS[func])}</Typography>
           <HotkeyInput
-            value={hotkeyMap[func] ?? []}
+            value={hotkeyMap[func] ?? EMPTY_KEYS}
             onChange={(v) => setHotkeyMap((m) => ({ ...m, [func]: v }))}
           />
         </ItemWrapper>

@@ -305,6 +305,11 @@
       "variants": {
         "release": "Рәсми версия",
         "alpha": "Альфа-версия"
+      },
+      "download": {
+        "title": "Ядроны йөкләү",
+        "message": "{{name}} кушымта белән бергә килми, куллану алдыннан аны йөкләргә кирәк.",
+        "confirm": "Йөкләү"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "Тоташуларны автоматик ябу",
+        "autoSwitchSelectorGroup": "Select төркемен автоматик күчерү",
         "autoCheckUpdate": "Яңартуларны автоматик тикшерү",
         "enableBuiltinEnhanced": "Эчке камилләштерүне кабызу",
         "proxyLayoutColumns": "Прокси күрсәтү баганалары саны",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Прокси төркеме яисә режимын үзгәрткәндә актив тоташуларны өзү",
+        "autoSwitchSelectorGroup": "Кагыйдәләр режимында кагыйдәләр трафигы үтми торган төркемдә төен сайлаганда, аны эченә алган беренче select төркеме дә шул төркемгә күчә",
         "enableBuiltinEnhanced": "Конфигурация файлы белән туры килә торган өстәмә оптимизация",
         "autoDelayDetection": "Фон режимында хәзерге төен тоткарлыгын периодик тикшерә",
         "defaultLatencyTest": "Бу фәкать клиентның HTTP сораулары тесты өчен кулланыла, конфигурация файлына йогынты ясамый"
@@ -443,7 +450,6 @@
         "update": "Яңарту"
       },
       "messages": {
-        "breakChangeError": "Бу зур яңарту, ул кушымта эчендә яңартылмый. Борып алып ташлап, яңадан урнаштыру сорала.",
         "available": "Яңа версия бар"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Сез инде ядроның соңгы версиясен кулланасыз",
         "changeSuccess": "Ядро уңышлы алыштырылды",
         "changeFailed": "Ядро алыштыру уңышсыз булды",
+        "coreFallback": "Mihomo Alpha инде кушымта белән бергә килми, шуңа күрә Mihomo ядросына күчерелде. Аны йөкләү өчен Clash ядросы көйләүләрендә яңадан сайлагыз.",
         "geoDataUpdated": "GeoData яңартылды"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Хезмәт урнаштырыла...",
       "uninstalling": "Uninstalling Service..."
     }
+  },
+  "search": {
+    "placeholder": "Көйләүләрне эзләү",
+    "clear": "Эзләүне чистарту",
+    "back": "Нәтиҗәләргә кайту",
+    "results": "Эзләү нәтиҗәләре",
+    "empty": "Көйләүләр табылмады"
   }
 }

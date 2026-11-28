@@ -15,7 +15,7 @@ import {
 } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
-import { checkUpdateSafe as checkUpdate } from '@/services/update'
+import { checkForUpdate as checkUpdate } from '@/services/update'
 import { version } from '@root/package.json'
 
 import { BackupViewer } from './mods/backup-viewer'
@@ -26,7 +26,7 @@ import { LiteModeViewer } from './mods/lite-mode-viewer'
 import { MiscViewer } from './mods/misc-viewer'
 import { SettingItem, SettingList } from './mods/setting-comp'
 import { ThemeViewer } from './mods/theme-viewer'
-import { UpdateViewer } from './mods/update-viewer'
+import { UpdateViewer, type UpdateViewerRef } from './mods/update-viewer'
 
 interface Props {
   onError?: (err: Error) => void
@@ -40,7 +40,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
   const miscRef = useRef<DialogRef>(null)
   const themeRef = useRef<DialogRef>(null)
   const layoutRef = useRef<DialogRef>(null)
-  const updateRef = useRef<DialogRef>(null)
+  const updateRef = useRef<UpdateViewerRef>(null)
   const backupRef = useRef<DialogRef>(null)
   const liteModeRef = useRef<DialogRef>(null)
 
@@ -53,7 +53,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
           'settings.components.verge.advanced.notifications.latestVersion',
         )
       } else {
-        updateRef.current?.open()
+        updateRef.current?.open(info)
       }
     } catch (err) {
       console.warn('update check failed:', err)
@@ -90,6 +90,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       <LiteModeViewer ref={liteModeRef} />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.backupSetting"
         onClick={() => backupRef.current?.open()}
         label={t('settings.components.verge.advanced.fields.backupSetting')}
         extra={
@@ -101,11 +102,13 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.runtimeConfig"
         onClick={() => configRef.current?.open()}
         label={t('settings.components.verge.advanced.fields.runtimeConfig')}
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.openConfDir"
         onClick={openAppDir}
         label={t('settings.components.verge.advanced.fields.openConfDir')}
         extra={
@@ -117,21 +120,25 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.openCoreDir"
         onClick={openCoreDir}
         label={t('settings.components.verge.advanced.fields.openCoreDir')}
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.openLogsDir"
         onClick={openLogsDir}
         label={t('settings.components.verge.advanced.fields.openLogsDir')}
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.checkUpdates"
         onClick={onCheckUpdate}
         label={t('settings.components.verge.advanced.fields.checkUpdates')}
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.openDevTools"
         onClick={() => {
           void mutate(() => openDevTools(), {
             id: 'open-devtools',
@@ -142,6 +149,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.liteModeSettings"
         label={t('settings.components.verge.advanced.fields.liteModeSettings')}
         extra={
           <TooltipIcon
@@ -153,6 +161,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.exit"
         onClick={() => {
           void mutate(() => exitApp(), {
             id: 'exit-app',
@@ -163,6 +172,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       />
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.exportDiagnostics"
         label={t('settings.components.verge.advanced.fields.exportDiagnostics')}
         extra={
           <TooltipIcon
@@ -173,6 +183,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       ></SettingItem>
 
       <SettingItem
+        data-setting-target="settings.components.verge.advanced.fields.vergeVersion"
         label={t('settings.components.verge.advanced.fields.vergeVersion')}
         extra={
           <TooltipIcon

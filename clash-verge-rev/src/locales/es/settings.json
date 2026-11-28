@@ -305,6 +305,11 @@
       "variants": {
         "release": "Versión estable",
         "alpha": "Versión alfa"
+      },
+      "download": {
+        "title": "Descargar núcleo",
+        "message": "{{name}} no viene incluido en la aplicación y debe descargarse antes de poder usarlo.",
+        "confirm": "Descargar"
       }
     },
     "liteMode": {
@@ -328,24 +333,24 @@
     "backup": {
       "title": "Configuración de copia de seguridad",
       "tabs": {
-        "local": "Local backup",
-        "webdav": "WebDAV backup"
+        "local": "Copia de seguridad local",
+        "webdav": "Copia de seguridad en WebDAV"
       },
       "actions": {
-        "selectTarget": "Select backup target",
+        "selectTarget": "Seleccionar destino de la copia de seguridad",
         "backup": "Copia de seguridad",
-        "export": "Export",
-        "exportBackup": "Export Backup",
-        "importBackup": "Import Backup",
+        "export": "Exportar",
+        "exportBackup": "Exportar copia de seguridad",
+        "importBackup": "Importar copia de seguridad",
         "deleteBackup": "Eliminar copia de seguridad",
         "restore": "Restaurar",
         "restoreBackup": "Restaurar copia de seguridad",
-        "viewHistory": "View history"
+        "viewHistory": "Ver historial"
       },
       "fields": {
         "webdavUrl": "Dirección del servidor WebDAV http(s)://",
         "username": "Nombre de usuario",
-        "info": "Backups are stored locally in the application data directory. Use the list below to restore or delete backups."
+        "info": "Las copias de seguridad se guardan en el directorio de datos de la aplicación. Usa la lista de abajo para restaurarlas o eliminarlas."
       },
       "messages": {
         "webdavUrlRequired": "La dirección del servidor WebDAV no puede estar vacía",
@@ -356,52 +361,52 @@
         "webdavConfigSaveFailed": "Error al guardar la configuración de WebDAV: {{error}}",
         "backupCreated": "Copia de seguridad creada con éxito",
         "backupFailed": "Error al crear la copia de seguridad: {{error}}",
-        "localBackupCreated": "Local backup created successfully",
-        "localBackupFailed": "Local backup failed",
+        "localBackupCreated": "Copia de seguridad local creada con éxito",
+        "localBackupFailed": "No se pudo crear la copia de seguridad local",
         "restoreSuccess": "Restauración exitosa. La aplicación se reiniciará en 1 segundo",
-        "localBackupExported": "Local backup exported successfully",
-        "localBackupExportFailed": "Failed to export local backup",
-        "localBackupImported": "Local backup imported successfully",
-        "localBackupImportFailed": "Failed to import local backup: {{error}}",
-        "webdavRefreshSuccess": "WebDAV refresh succeeded",
-        "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
-        "confirmDelete": "Confirm to delete this backup file?",
-        "confirmRestore": "Confirm to restore this backup file?"
+        "localBackupExported": "Copia de seguridad local exportada con éxito",
+        "localBackupExportFailed": "No se pudo exportar la copia de seguridad local",
+        "localBackupImported": "Copia de seguridad local importada con éxito",
+        "localBackupImportFailed": "No se pudo importar la copia de seguridad local: {{error}}",
+        "webdavRefreshSuccess": "WebDAV actualizado con éxito",
+        "webdavRefreshFailed": "No se pudo actualizar WebDAV: {{error}}",
+        "confirmDelete": "¿Quieres eliminar este archivo de copia de seguridad?",
+        "confirmRestore": "¿Quieres restaurar este archivo de copia de seguridad?"
       },
       "auto": {
-        "title": "Automatic backup",
-        "scheduleLabel": "Enable scheduled backup",
-        "scheduleHelper": "Create local backups in the background at the configured interval.",
-        "intervalLabel": "Backup frequency",
-        "changeLabel": "Backup on critical changes",
-        "changeHelper": "Automatically backup when Global Extend Config/Script changes.",
+        "title": "Copia de seguridad automática",
+        "scheduleLabel": "Activar copias de seguridad programadas",
+        "scheduleHelper": "Crea copias de seguridad locales en segundo plano con el intervalo configurado.",
+        "intervalLabel": "Frecuencia de las copias de seguridad",
+        "changeLabel": "Hacer una copia de seguridad al detectar cambios críticos",
+        "changeHelper": "Crea una copia de seguridad automáticamente cuando cambia la configuración o el script de extensión global.",
         "options": {
-          "hours": "Every {{n}} hours",
-          "days": "Every {{n}} days"
+          "hours": "Cada {{n}} horas",
+          "days": "Cada {{n}} días"
         }
       },
       "manual": {
-        "title": "Manual backup",
-        "local": "Creates a snapshot on this device, stored under the app data directory.",
-        "webdav": "Upload a snapshot to your WebDAV server once credentials are set.",
-        "configureWebdav": "Configure WebDAV"
+        "title": "Copia de seguridad manual",
+        "local": "Crea una copia en este dispositivo y la guarda en el directorio de datos de la aplicación.",
+        "webdav": "Sube una copia al servidor WebDAV una vez configuradas las credenciales.",
+        "configureWebdav": "Configurar WebDAV"
       },
       "history": {
-        "title": "Backup history",
-        "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available",
-        "unknownPlatform": "unknown",
-        "unknownTime": "Unknown time"
+        "title": "Historial de copias de seguridad",
+        "summary": "{{count}} copias de seguridad • última: {{recent}}",
+        "empty": "No hay copias de seguridad disponibles",
+        "unknownPlatform": "Desconocida",
+        "unknownTime": "Hora desconocida"
       },
       "webdav": {
-        "title": "WebDAV settings"
+        "title": "Configuración de WebDAV"
       },
       "table": {
         "filename": "Nombre del archivo",
         "backupTime": "Tiempo de copia de seguridad",
         "actions": "Acciones",
         "noBackups": "No hay copias de seguridad",
-        "rowsPerPage": "Rows per page"
+        "rowsPerPage": "Filas por página"
       }
     },
     "misc": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "Cerrar conexiones automáticamente",
+        "autoSwitchSelectorGroup": "Cambiar grupo select automáticamente",
         "autoCheckUpdate": "Comprobar actualizaciones automáticamente",
         "enableBuiltinEnhanced": "Habilitar funciones mejoradas integradas",
         "proxyLayoutColumns": "Número de columnas en la disposición de la página de proxy",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Cierra las conexiones establecidas cuando se cambia el nodo seleccionado en el grupo de proxy o el modo de proxy.",
+        "autoSwitchSelectorGroup": "En modo de reglas, al elegir un nodo en un grupo al que no llega tráfico de reglas, el primer grupo select que lo contiene también cambia a ese grupo.",
         "enableBuiltinEnhanced": "Procesamiento de compatibilidad de archivos de configuración",
         "autoDelayDetection": "Prueba periódicamente la latencia del nodo actual en segundo plano",
         "defaultLatencyTest": "Solo se utiliza para pruebas de solicitudes de clientes HTTP y no afectará al archivo de configuración."
@@ -443,7 +450,6 @@
         "update": "Actualizar"
       },
       "messages": {
-        "breakChangeError": "Esta es una actualización importante y no se admite la actualización desde dentro de la aplicación. Desinstale e instale manualmente la nueva versión.",
         "available": "Hay una nueva versión disponible"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Ya estás utilizando la versión más reciente del núcleo",
         "changeSuccess": "Núcleo cambiado con éxito",
         "changeFailed": "No se pudo cambiar el núcleo",
+        "coreFallback": "Mihomo Alpha ya no viene incluido en la aplicación, por lo que se ha vuelto al núcleo Mihomo. Selecciónelo de nuevo en los ajustes del núcleo de Clash para descargarlo.",
         "geoDataUpdated": "GeoData actualizado"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Instalando servicio...",
       "uninstalling": "Desinstalando servicio..."
     }
+  },
+  "search": {
+    "placeholder": "Buscar ajustes",
+    "clear": "Borrar búsqueda",
+    "back": "Volver a resultados",
+    "results": "Resultados de búsqueda",
+    "empty": "No se encontraron ajustes"
   }
 }

@@ -305,6 +305,11 @@
       "variants": {
         "release": "Kararlı Sürüm",
         "alpha": "Alfa Sürümü"
+      },
+      "download": {
+        "title": "Çekirdeği İndir",
+        "message": "{{name}} uygulamayla birlikte gelmez ve kullanılmadan önce indirilmesi gerekir.",
+        "confirm": "İndir"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "Uygulama Günlüğü En Büyük Boyutu",
         "appLogMaxCount": "Uygulama Günlüğü En Fazla Dosya Sayısı",
         "autoCloseConnections": "Bağlantıları Otomatik Kapat",
+        "autoSwitchSelectorGroup": "Select Grubunu Otomatik Değiştir",
         "autoCheckUpdate": "Otomatik Güncelleme Kontrolü",
         "enableBuiltinEnhanced": "Yerleşik Geliştirilmiş Modu Etkinleştir",
         "proxyLayoutColumns": "Vekil Düzeni Sütunları",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Vekil grup seçimi veya vekil modu değiştiğinde kurulan bağlantıları sonlandır",
+        "autoSwitchSelectorGroup": "Kural modunda, kural trafiğinin ulaşmadığı bir grupta düğüm seçildiğinde, bu grubu içeren ilk select grubu da o gruba geçer",
         "enableBuiltinEnhanced": "Yapılandırma dosyası için uyumluluk işleme",
         "autoDelayDetection": "Arka planda mevcut düğümün gecikmesini periyodik olarak test eder",
         "defaultLatencyTest": "Yalnızca HTTP istemci isteği testi için kullanılır ve yapılandırma dosyasında bir fark yaratmaz"
@@ -443,7 +450,6 @@
         "update": "Güncelle"
       },
       "messages": {
-        "breakChangeError": "Bu sürüm büyük bir güncellemedir ve uygulama içi güncellemeleri desteklemez. Lütfen kaldırın ve yeni sürümü manuel olarak indirip kurun",
         "available": "Yeni bir sürüm mevcut"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Zaten en yeni çekirdek sürümünü kullanıyorsunuz",
         "changeSuccess": "Çekirdek başarıyla değiştirildi",
         "changeFailed": "Çekirdek değiştirilemedi",
+        "coreFallback": "Mihomo Alpha artık uygulamayla birlikte gelmediği için Mihomo çekirdeğine geri dönüldü. İndirmek için Clash Çekirdeği ayarlarından yeniden seçin.",
         "geoDataUpdated": "GeoData Güncellendi"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Hizmet Kuruluyor...",
       "uninstalling": "Hizmet Kaldırılıyor..."
     }
+  },
+  "search": {
+    "placeholder": "Ayarları ara",
+    "clear": "Aramayı temizle",
+    "back": "Sonuçlara dön",
+    "results": "Arama sonuçları",
+    "empty": "Ayar bulunamadı"
   }
 }

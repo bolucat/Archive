@@ -12,6 +12,9 @@
     "rust-toolchain"
   ],
   "labels": ["dependencies"],
+  "prBodyNotes": [
+    "{{#if isMinor}}<!-- renovate-update\n{{encodeURIComponent datasource}}|{{encodeURIComponent depName}}|{{#if currentVersion}}{{encodeURIComponent currentVersion}}{{else}}{{encodeURIComponent currentValue}}{{/if}}|{{encodeURIComponent newVersion}}|{{updateType}}\n-->{{/if}}"
+  ],
   "ignorePaths": [
     "**/node_modules/**",
     "**/bower_components/**",
@@ -47,12 +50,7 @@
     },
     {
       "description": "Update Tauri npm packages and Cargo crates together so frontend and backend stay in sync",
-      "matchPackageNames": [
-        "@tauri-apps/**",
-        "@wdio/tauri-service",
-        "tauri",
-        "tauri-*"
-      ],
+      "matchPackageNames": ["@tauri-apps/**", "tauri", "tauri-*"],
       "groupName": "tauri",
       "addLabels": ["tauri"]
     },
@@ -68,10 +66,12 @@
       "enabled": false
     },
     {
-      "description": "Ignore gh-aw dependency updates in workflow files; upgrade agentic workflows with gh aw upgrade instead",
-      "matchFileNames": [".github/workflows/**"],
-      "matchPackageNames": ["/gh-aw/"],
-      "enabled": false
+      "description": "Group gh-aw compiler and setup action updates; recompile workflow locks before merging",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["github/gh-aw", "github/gh-aw-actions"],
+      "groupName": "gh-aw",
+      "groupSlug": "gh-aw",
+      "automerge": false
     },
     {
       "description": "Skip TypeScript 7.0 series",
@@ -113,6 +113,27 @@
         "ghcr.io/devcontainers/features/rust"
       ],
       "groupName": "Rust toolchain"
+    },
+    {
+      "description": "Update the Specta contract toolchain together",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["specta", "tauri-specta", "specta-typescript"],
+      "groupName": "specta",
+      "groupSlug": "specta",
+      "prCreation": "immediate",
+      "automerge": false
+    },
+    {
+      "description": "Keep Specta aligned with the supported tauri-specta release",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["specta", "tauri-specta"],
+      "allowedVersions": "/^2\\.0\\.0-rc\\.26$/"
+    },
+    {
+      "description": "Keep the TypeScript exporter compatible with Specta rc.26",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["specta-typescript"],
+      "allowedVersions": "/^0\\.0\\.13$/"
     }
   ],
   "customManagers": [

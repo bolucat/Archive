@@ -1,10 +1,9 @@
 use std::time::Duration;
 
-use chrono::{DateTime, FixedOffset};
 use reqwest::Method;
 use uuid::Uuid;
 
-use crate::{Client, Error, Result, retry::RequestMetadata};
+use crate::{Client, Error, OffsetTimestamp, Result, retry::RequestMetadata};
 
 /// Snapshot returned by `GET /connections` and each WebSocket frame.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
@@ -39,7 +38,7 @@ pub struct Connection {
     pub metadata: Option<ConnectionMetadata>,
     pub upload: i64,
     pub download: i64,
-    pub start: DateTime<FixedOffset>,
+    pub start: OffsetTimestamp,
     pub chains: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_chains: Option<Vec<String>>,
@@ -68,7 +67,7 @@ struct ConnectionWire {
     metadata: Option<ConnectionMetadata>,
     upload: i64,
     download: i64,
-    start: DateTime<FixedOffset>,
+    start: OffsetTimestamp,
     chains: Vec<String>,
     #[serde(default)]
     provider_chains: Option<Vec<String>>,

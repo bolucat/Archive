@@ -27,9 +27,9 @@ pub struct SysInfo {
 impl Default for SysInfo {
     #[inline]
     fn default() -> Self {
-        let system_name = System::name().unwrap_or_else(|| "Null".into());
-        let system_version = System::long_os_version().unwrap_or_else(|| "Null".into());
-        let system_kernel_version = System::kernel_version().unwrap_or_else(|| "Null".into());
+        let system_name = System::name().unwrap_or_else(|_| "Null".into());
+        let system_version = System::long_os_version().unwrap_or_else(|_| "Null".into());
+        let system_kernel_version = System::kernel_version().unwrap_or_else(|_| "Null".into());
         let system_arch = System::cpu_arch();
         Self {
             system_name,
@@ -118,8 +118,7 @@ fn is_binary_admin() -> bool {
     #[cfg(windows)]
     Token::with_current_process()
         .and_then(|token| token.privilege_level())
-        .map(|level| level != PrivilegeLevel::NotPrivileged)
-        .unwrap_or(false)
+        .is_ok_and(|level| level != PrivilegeLevel::NotPrivileged)
 }
 
 #[inline]
@@ -130,9 +129,14 @@ pub fn current_gid() -> u32 {
 
 #[inline]
 pub fn list_network_interfaces() -> Vec<String> {
-    let mut networks = Networks::new();
+    let Ok(mut networks) = Networks::new() else {
+        return Vec::new();
+    };
     networks.refresh(false);
-    networks.keys().map(|name| name.to_owned()).collect()
+    networks
+        .keys()
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect()
 }
 
 #[inline]

@@ -8,7 +8,7 @@ mod tun;
 
 use self::{
     chain::{AsyncChainItemFrom as _, ChainItem, ChainType},
-    field::{use_keys, use_lowercase_owned, use_sort},
+    field::{use_keys, use_lowercase, use_sort},
     merge::use_merge,
     script::use_script,
     seq::{SeqMap, use_seq},
@@ -26,15 +26,16 @@ use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging};
 use parking_lot::Mutex;
 use serde_yaml_ng::{Mapping, Value};
-use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash as _, Hasher as _};
+use std::sync::Arc;
 use tokio::fs;
+use tristr::alias::String;
 
 type ResultLog = Vec<(String, String)>;
 #[derive(Debug)]
 struct ConfigValues {
     clash_config: Mapping,
-    clash_core: Option<String>,
     enable_tun: bool,
     enable_builtin: bool,
     socks_enabled: bool,
@@ -51,13 +52,13 @@ struct ConfigValues {
 #[derive(Debug)]
 struct ProfileItems {
     config: Mapping,
-    merge_item: ChainItem,
-    script_item: ChainItem,
-    rules_item: ChainItem,
-    proxies_item: ChainItem,
-    groups_item: ChainItem,
-    global_merge: ChainItem,
-    global_script: ChainItem,
+    merge_item: Arc<ChainItem>,
+    script_item: Arc<ChainItem>,
+    rules_item: Arc<ChainItem>,
+    proxies_item: Arc<ChainItem>,
+    groups_item: Arc<ChainItem>,
+    global_merge: Arc<ChainItem>,
+    global_script: Arc<ChainItem>,
     profile_name: String,
 }
 
@@ -66,41 +67,46 @@ impl Default for ProfileItems {
         Self {
             config: Default::default(),
             profile_name: Default::default(),
-            merge_item: ChainItem {
+            merge_item: Arc::new(ChainItem {
                 uid: "".into(),
                 data: ChainType::Merge(Mapping::new()),
-            },
-            script_item: ChainItem {
+            }),
+            script_item: Arc::new(ChainItem {
                 uid: "".into(),
                 data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-            },
-            rules_item: ChainItem {
+            }),
+            rules_item: Arc::new(ChainItem {
                 uid: "".into(),
                 data: ChainType::Rules(SeqMap::default()),
-            },
-            proxies_item: ChainItem {
+            }),
+            proxies_item: Arc::new(ChainItem {
                 uid: "".into(),
                 data: ChainType::Proxies(SeqMap::default()),
-            },
-            groups_item: ChainItem {
+            }),
+            groups_item: Arc::new(ChainItem {
                 uid: "".into(),
                 data: ChainType::Groups(SeqMap::default()),
-            },
-            global_merge: ChainItem {
+            }),
+            global_merge: Arc::new(ChainItem {
                 uid: "Merge".into(),
                 data: ChainType::Merge(Mapping::new()),
-            },
-            global_script: ChainItem {
+            }),
+            global_script: Arc::new(ChainItem {
                 uid: "Script".into(),
                 data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-            },
+            }),
         }
     }
 }
 
-async fn chain_item_or_default(item: Option<&PrfItem>, default_item: impl FnOnce() -> ChainItem) -> ChainItem {
+async fn chain_item_or_default(
+    item: Option<&PrfItem>,
+    default_item: impl FnOnce() -> Arc<ChainItem>,
+) -> Arc<ChainItem> {
     if let Some(item) = item {
-        <Option<ChainItem>>::from_async(item).await.unwrap_or_else(default_item)
+        <Option<Arc<ChainItem>>>::from_async(item)
+            .await
+            .unwrap_or_else(default_item)
     } else {
         default_item()
     }
@@ -128,8 +134,7 @@ async fn get_config_values(profile_uid: &str) -> ConfigValues {
     let dns_settings = verge_arc.dns_settings_for(profile_uid);
     let dns_override_confirmation = dns_settings.confirmation;
 
-    let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
-        Some(verge_arc.get_valid_clash_core()),
+    let (enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         enable_tun_mode.unwrap_or(false),
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
@@ -148,7 +153,6 @@ async fn get_config_values(profile_uid: &str) -> ConfigValues {
 
     ConfigValues {
         clash_config,
-        clash_core,
         enable_tun,
         enable_builtin,
         socks_enabled,
@@ -199,35 +203,25 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
 
     let name = current_item.name.clone().unwrap_or_default();
 
+    let ProfileItems {
+        merge_item: default_merge,
+        script_item: default_script,
+        rules_item: default_rules,
+        proxies_item: default_proxies,
+        groups_item: default_groups,
+        global_merge: default_global_merge,
+        global_script: default_global_script,
+        ..
+    } = ProfileItems::default();
+
     let (merge_item, script_item, rules_item, proxies_item, groups_item, global_merge, global_script) = tokio::join!(
-        chain_item_or_default(profiles.get_item(&merge_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Merge(Mapping::new()),
-        },),
-        chain_item_or_default(profiles.get_item(&script_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-        },),
-        chain_item_or_default(profiles.get_item(&rules_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Rules(SeqMap::default()),
-        },),
-        chain_item_or_default(profiles.get_item(&proxies_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Proxies(SeqMap::default()),
-        },),
-        chain_item_or_default(profiles.get_item(&groups_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Groups(SeqMap::default()),
-        },),
-        chain_item_or_default(profiles.get_item("Merge").ok(), || ChainItem {
-            uid: "Merge".into(),
-            data: ChainType::Merge(Mapping::new()),
-        },),
-        chain_item_or_default(profiles.get_item("Script").ok(), || ChainItem {
-            uid: "Script".into(),
-            data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-        },),
+        chain_item_or_default(profiles.get_item(&merge_uid).ok(), || default_merge,),
+        chain_item_or_default(profiles.get_item(&script_uid).ok(), || default_script,),
+        chain_item_or_default(profiles.get_item(&rules_uid).ok(), || default_rules,),
+        chain_item_or_default(profiles.get_item(&proxies_uid).ok(), || default_proxies,),
+        chain_item_or_default(profiles.get_item(&groups_uid).ok(), || default_groups,),
+        chain_item_or_default(profiles.get_item("Merge").ok(), || default_global_merge,),
+        chain_item_or_default(profiles.get_item("Script").ok(), || default_global_script,),
     );
 
     Ok(ProfileItems {
@@ -243,32 +237,32 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
     })
 }
 
-async fn process_global_items(
+async fn process_override_items(
     mut config: Mapping,
     mut exists_keys: Vec<String>,
     mut result_map: HashMap<String, ResultLog>,
-    global_merge: ChainItem,
-    global_script: ChainItem,
-    profile_name: &String,
+    merge_item: Arc<ChainItem>,
+    script_item: Arc<ChainItem>,
+    profile_name: &str,
     authoritative: &AuthoritativeFields,
 ) -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
-    if let ChainType::Merge(merge) = global_merge.data {
-        exists_keys.extend(use_keys(&merge));
+    if let ChainType::Merge(merge) = &merge_item.data {
+        exists_keys.extend(use_keys(merge));
         let before = authoritative.current(&config);
-        config = use_merge(&merge, config);
+        config = use_merge(merge.clone(), config);
         let notes: ResultLog = authoritative
             .overridden(&before, &authoritative.current(&config))
             .into_iter()
             .map(discarded_note)
             .collect();
         if !notes.is_empty() {
-            result_map.entry(global_merge.uid).or_default().extend(notes);
+            result_map.entry(merge_item.uid.clone()).or_default().extend(notes);
         }
     }
 
-    if let ChainType::Script(script) = global_script.data {
+    if let ChainType::Script(script) = &script_item.data {
         let before = authoritative.current(&config);
-        let (res_config, changed_keys, mut logs) = use_script(script, config, profile_name.clone()).await;
+        let (res_config, changed_keys, mut logs) = use_script(script.clone(), config, profile_name.into()).await;
         exists_keys.extend(changed_keys);
         config = res_config;
         logs.extend(
@@ -277,7 +271,7 @@ async fn process_global_items(
                 .into_iter()
                 .map(discarded_note),
         );
-        result_map.insert(global_script.uid, logs);
+        result_map.insert(script_item.uid.clone(), logs);
     }
 
     (config, exists_keys, result_map)
@@ -285,20 +279,20 @@ async fn process_global_items(
 
 fn process_seq_items(
     mut config: Mapping,
-    rules_item: ChainItem,
-    proxies_item: ChainItem,
-    groups_item: ChainItem,
+    rules_item: Arc<ChainItem>,
+    proxies_item: Arc<ChainItem>,
+    groups_item: Arc<ChainItem>,
 ) -> Mapping {
-    if let ChainType::Rules(rules) = rules_item.data {
-        config = use_seq(rules, config, "rules");
+    if let ChainType::Rules(rules) = &rules_item.data {
+        config = use_seq(rules.clone(), config, "rules");
     }
 
-    if let ChainType::Proxies(proxies) = proxies_item.data {
-        config = use_seq(proxies, config, "proxies");
+    if let ChainType::Proxies(proxies) = &proxies_item.data {
+        config = use_seq(proxies.clone(), config, "proxies");
     }
 
-    if let ChainType::Groups(groups) = groups_item.data {
-        config = use_seq(groups, config, "proxy-groups");
+    if let ChainType::Groups(groups) = &groups_item.data {
+        config = use_seq(groups.clone(), config, "proxy-groups");
     }
 
     config
@@ -333,15 +327,45 @@ struct AuthoritativeFields {
     tun: Mapping,
     dns: Mapping,
     hosts: Option<Value>,
+    fingerprints: FieldFingerprints,
+}
+
+#[derive(Default)]
+struct FieldFingerprints {
+    control_plane: Vec<Option<u64>>,
+    tun: Vec<Option<u64>>,
+    dns: Vec<Option<u64>>,
+    hosts: Option<u64>,
+}
+
+fn fingerprint(value: Option<&Value>) -> Option<u64> {
+    let value = value?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    Some(hasher.finish())
 }
 
 impl AuthoritativeFields {
     fn capture(config: &Mapping, gui_tun_keys: &[Value], mut dns_settings: Mapping) -> Self {
+        let control_plane = snapshot_control_plane(config);
+        let tun = snapshot_tun(config, gui_tun_keys);
+        let dns = take_mapping(&mut dns_settings, "dns");
+        let hosts = dns_settings.remove("hosts");
+        let fingerprints = FieldFingerprints {
+            control_plane: CONTROL_PLANE_KEYS
+                .iter()
+                .map(|&key| fingerprint(control_plane.get(Value::from(key))))
+                .collect(),
+            tun: tun.iter().map(|(_, value)| fingerprint(Some(value))).collect(),
+            dns: dns.iter().map(|(_, value)| fingerprint(Some(value))).collect(),
+            hosts: fingerprint(hosts.as_ref()),
+        };
         Self {
-            control_plane: snapshot_control_plane(config),
-            tun: snapshot_tun(config, gui_tun_keys),
-            dns: take_mapping(&mut dns_settings, "dns"),
-            hosts: dns_settings.remove("hosts"),
+            control_plane,
+            tun,
+            dns,
+            hosts,
+            fingerprints,
         }
     }
 
@@ -359,43 +383,50 @@ impl AuthoritativeFields {
         config
     }
 
-    /// The owned values as `config` holds them now, for diffing one override.
-    fn current(&self, config: &Mapping) -> Self {
-        let tun_keys: Vec<Value> = self.tun.keys().cloned().collect();
+    /// What `config` holds now, for diffing one override.
+    fn current(&self, config: &Mapping) -> FieldFingerprints {
+        let tun = config.get("tun").and_then(Value::as_mapping);
         let dns = config.get("dns").and_then(Value::as_mapping);
-        Self {
-            control_plane: snapshot_control_plane(config),
-            tun: snapshot_tun(config, &tun_keys),
+        FieldFingerprints {
+            control_plane: CONTROL_PLANE_KEYS
+                .iter()
+                .map(|&key| fingerprint(config.get(key)))
+                .collect(),
+            tun: self
+                .tun
+                .keys()
+                .map(|key| fingerprint(tun.and_then(|map| map.get(key))))
+                .collect(),
             dns: self
                 .dns
                 .keys()
-                .filter_map(|key| Some((key.clone(), dns?.get(key)?.clone())))
+                .map(|key| fingerprint(dns.and_then(|map| map.get(key))))
                 .collect(),
-            hosts: self.hosts.as_ref().and_then(|_| config.get("hosts")).cloned(),
+            hosts: self.hosts.as_ref().and_then(|_| fingerprint(config.get("hosts"))),
         }
     }
 
     /// Owned keys an override moved off the app value; `enforce` discards those writes.
-    fn overridden(&self, before: &Self, after: &Self) -> Vec<String> {
+    fn overridden(&self, before: &FieldFingerprints, after: &FieldFingerprints) -> Vec<String> {
         let mut keys = Vec::new();
-        for &key in CONTROL_PLANE_KEYS {
-            if before.control_plane.get(key) != after.control_plane.get(key)
-                && after.control_plane.get(key) != self.control_plane.get(key)
+        for (index, &key) in CONTROL_PLANE_KEYS.iter().enumerate() {
+            if before.control_plane[index] != after.control_plane[index]
+                && after.control_plane[index] != self.fingerprints.control_plane[index]
             {
                 keys.push(key.into());
             }
         }
-        for key in self.tun.keys() {
-            if before.tun.get(key) != after.tun.get(key) && after.tun.get(key) != self.tun.get(key) {
+        for (index, key) in self.tun.keys().enumerate() {
+            if before.tun[index] != after.tun[index] && after.tun[index] != self.fingerprints.tun[index] {
                 keys.push(format!("tun.{}", key.as_str().unwrap_or_default()).into());
             }
         }
-        for key in self.dns.keys() {
-            if before.dns.get(key) != after.dns.get(key) && after.dns.get(key) != self.dns.get(key) {
+        for (index, key) in self.dns.keys().enumerate() {
+            if before.dns[index] != after.dns[index] && after.dns[index] != self.fingerprints.dns[index] {
                 keys.push(format!("dns.{}", key.as_str().unwrap_or_default()).into());
             }
         }
-        if self.hosts.is_some() && before.hosts != after.hosts && after.hosts != self.hosts {
+        if self.hosts.is_some() && before.hosts != after.hosts && after.hosts != self.fingerprints.hosts {
             keys.push("hosts".into());
         }
         keys
@@ -472,7 +503,7 @@ fn gui_tun_keys(clash_config: &Mapping) -> Vec<Value> {
         keys.extend(
             constants::tun::GUI_KEYS
                 .iter()
-                .filter(|key| tun.contains_key(**key))
+                .filter(|key| tun.get(**key).is_some_and(|value| !value.is_null()))
                 .map(|key| Value::from(*key)),
         );
     }
@@ -495,11 +526,7 @@ fn enforce_tun(mut config: Mapping, snapshot: Mapping) -> Mapping {
     if snapshot.is_empty() {
         return config;
     }
-    let mut tun = config
-        .get("tun")
-        .and_then(Value::as_mapping)
-        .cloned()
-        .unwrap_or_default();
+    let mut tun = take_mapping(&mut config, "tun");
     tun.extend(snapshot);
     config.insert(Value::from("tun"), Value::Mapping(tun));
     config
@@ -544,44 +571,14 @@ fn ensure_lan_bind_address(mut config: Mapping) -> Mapping {
     config
 }
 
-async fn process_profile_items(
-    mut config: Mapping,
-    mut exists_keys: Vec<String>,
-    mut result_map: HashMap<String, ResultLog>,
-    merge_item: ChainItem,
-    script_item: ChainItem,
-    profile_name: &String,
-    authoritative: &AuthoritativeFields,
-) -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
-    if let ChainType::Merge(merge) = merge_item.data {
-        exists_keys.extend(use_keys(&merge));
-        let before = authoritative.current(&config);
-        config = use_merge(&merge, config);
-        let notes: ResultLog = authoritative
-            .overridden(&before, &authoritative.current(&config))
-            .into_iter()
-            .map(discarded_note)
-            .collect();
-        if !notes.is_empty() {
-            result_map.entry(merge_item.uid).or_default().extend(notes);
-        }
+fn ensure_tun_default_mtu(mut config: Mapping) -> Mapping {
+    if let Some(Value::Mapping(tun)) = config.get_mut("tun")
+        && matches!(tun.get("mtu"), None | Some(Value::Null))
+    {
+        tun.insert(Value::from("mtu"), Value::from(constants::tun::DEFAULT_MTU));
     }
 
-    if let ChainType::Script(script) = script_item.data {
-        let before = authoritative.current(&config);
-        let (res_config, changed_keys, mut logs) = use_script(script, config, profile_name.clone()).await;
-        exists_keys.extend(changed_keys);
-        config = res_config;
-        logs.extend(
-            authoritative
-                .overridden(&before, &authoritative.current(&config))
-                .into_iter()
-                .map(discarded_note),
-        );
-        result_map.insert(script_item.uid, logs);
-    }
-
-    (config, exists_keys, result_map)
+    config
 }
 
 /// Merges the app's clash config over the profile; switches are parameters to keep it pure.
@@ -596,14 +593,15 @@ fn merge_default_config(
 ) -> Mapping {
     for (key, value) in clash_config.into_iter() {
         if key.as_str() == Some("tun") {
-            let mut tun = config.get_mut("tun").map_or_else(Mapping::new, |val| {
-                val.as_mapping().cloned().unwrap_or_else(Mapping::new)
-            });
-            let patch_tun = value.as_mapping().cloned().unwrap_or_else(Mapping::new);
-            for (key, value) in patch_tun.into_iter() {
-                tun.insert(key, value);
+            if let Value::Mapping(patch_tun) = value {
+                let mut tun = take_mapping(&mut config, "tun");
+                for (key, value) in patch_tun {
+                    if !value.is_null() {
+                        tun.insert(key, value);
+                    }
+                }
+                config.insert(Value::from("tun"), Value::Mapping(tun));
             }
-            config.insert("tun".into(), tun.into());
         } else {
             if key.as_str() == Some("socks-port") && !socks_enabled {
                 config.remove("socks-port");
@@ -655,25 +653,12 @@ fn merge_default_config(
     config
 }
 
-fn apply_builtin_scripts(mut config: Mapping, clash_core: Option<String>, enable_builtin: bool) -> Mapping {
+fn apply_builtin_scripts(mut config: Mapping, enable_builtin: bool) -> Mapping {
     if enable_builtin {
-        let items: Vec<_> = ChainItem::builtin()
-            .into_iter()
-            .filter(|(s, _)| s.is_support(clash_core.as_ref()))
-            .map(|(_, c)| c)
-            .collect();
-        if !items.is_empty() {
-            // The JS path saw a lowercased view; lowercase once, only when a builtin runs.
-            config = use_lowercase_owned(config);
-            for item in items {
-                logging!(debug, Type::Core, "run builtin script {}", item.uid);
-                config = match item.uid.as_str() {
-                    "verge_hy_alpn" => builtin_hy_alpn(config),
-                    "verge_meta_guard" => builtin_meta_guard(config),
-                    _ => config,
-                };
-            }
-        }
+        // The JS path saw a lowercased view; lowercase once, only when the builtin runs.
+        config = use_lowercase(config);
+        logging!(debug, Type::Core, "run builtin script verge_hy_alpn");
+        config = builtin_hy_alpn(config);
     }
 
     config
@@ -684,18 +669,14 @@ fn builtin_hy_alpn(mut config: Mapping) -> Mapping {
         for proxy in proxies.iter_mut() {
             let Some(proxy) = proxy.as_mapping_mut() else { continue };
             let is_hysteria = proxy.get("type").and_then(Value::as_str) == Some("hysteria");
-            if is_hysteria && let Some(Value::String(alpn)) = proxy.get("alpn").cloned() {
-                proxy.insert("alpn".into(), Value::Sequence(vec![Value::String(alpn)]));
+            if is_hysteria
+                && let Some(alpn) = proxy.get_mut("alpn")
+                && let Value::String(text) = alpn
+            {
+                let text = std::mem::take(text);
+                *alpn = Value::Sequence(vec![Value::String(text)]);
             }
         }
-    }
-
-    config
-}
-
-fn builtin_meta_guard(mut config: Mapping) -> Mapping {
-    if config.get("mode").and_then(Value::as_str) == Some("script") {
-        config.insert(Value::from("mode"), Value::from("rule"));
     }
 
     config
@@ -708,24 +689,20 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     let proxy_names = config
         .get("proxies")
         .and_then(|v| v.as_sequence())
-        .map(|seq| {
+        .map_or_default(|seq| {
             seq.iter()
                 .filter_map(|item| match item {
-                    Value::Mapping(map) => map
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .map(|name| name.to_owned().into()),
-                    Value::String(name) => Some(name.to_owned().into()),
+                    Value::Mapping(map) => map.get("name").and_then(Value::as_str).map(Into::into),
+                    Value::String(name) => Some(name.as_str().into()),
                     _ => None,
                 })
                 .collect::<HashSet<String>>()
-        })
-        .unwrap_or_default();
+        });
 
     let group_names = config
         .get("proxy-groups")
         .and_then(|v| v.as_sequence())
-        .map(|seq| {
+        .map_or_default(|seq| {
             seq.iter()
                 .filter_map(|item| {
                     item.as_mapping()
@@ -734,19 +711,17 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
                         .map(std::convert::Into::into)
                 })
                 .collect::<HashSet<String>>()
-        })
-        .unwrap_or_default();
+        });
 
     let provider_names = config
         .get("proxy-providers")
         .and_then(Value::as_mapping)
-        .map(|map| {
+        .map_or_default(|map| {
             map.keys()
                 .filter_map(Value::as_str)
                 .map(std::convert::Into::into)
                 .collect::<HashSet<String>>()
-        })
-        .unwrap_or_default();
+        });
 
     let mut allowed_names = proxy_names;
     allowed_names.extend(group_names);
@@ -790,15 +765,13 @@ fn ensure_fake_ip_range6(dns: &mut Mapping) {
     let is_fake_ip = dns
         .get("enhanced-mode")
         .and_then(|v| v.as_str())
-        .map(|m| m == "fake-ip")
-        .unwrap_or(true);
+        .is_none_or(|m| m == "fake-ip");
 
     // Hand-edited YAML may leave the key present but empty.
     let range6_missing = dns
         .get("fake-ip-range6")
         .and_then(|v| v.as_str())
-        .map(|s| s.trim().is_empty())
-        .unwrap_or(true);
+        .is_none_or(|s| s.trim().is_empty());
 
     if ipv6_enabled && is_fake_ip && range6_missing {
         dns.insert(Value::from("fake-ip-range6"), Value::from("2001:2::0/64"));
@@ -821,8 +794,7 @@ fn take_mapping(config: &mut Mapping, key: &str) -> Mapping {
     config
         .get_mut(key)
         .and_then(Value::as_mapping_mut)
-        .map(std::mem::take)
-        .unwrap_or_default()
+        .map_or_default(std::mem::take)
 }
 
 fn merge_dns_config(mut config: Mapping, mut dns_config: Mapping) -> (Mapping, Mapping) {
@@ -879,7 +851,6 @@ pub async fn enhance(
     let cfg_vals = get_config_values(profile_uid).await;
     let ConfigValues {
         clash_config,
-        clash_core,
         enable_tun,
         enable_builtin,
         socks_enabled,
@@ -929,36 +900,37 @@ pub async fn enhance(
         tproxy_enabled,
     );
 
-    let config = apply_builtin_scripts(config, clash_core, enable_builtin);
+    let config = apply_builtin_scripts(config, enable_builtin);
     let config = use_tun(config, enable_tun);
     let (config, dns_settings) = apply_dns_settings(config, enable_dns_settings).await;
 
     let authoritative = AuthoritativeFields::capture(&config, &gui_tun_keys, dns_settings);
 
-    let (config, exists_keys, result_map) = process_global_items(
+    let (config, exists_keys, result_map) = process_override_items(
         config,
         exists_keys,
         result_map,
         global_merge,
         global_script,
-        &profile_name,
+        profile_name.as_str(),
         &authoritative,
     )
     .await;
 
-    let (config, exists_keys, result_map) = process_profile_items(
+    let (config, exists_keys, result_map) = process_override_items(
         config,
         exists_keys,
         result_map,
         merge_item,
         script_item,
-        &profile_name,
+        profile_name.as_str(),
         &authoritative,
     )
     .await;
 
-    notify_discarded_keys(authoritative.overridden(&authoritative, &authoritative.current(&config)));
+    notify_discarded_keys(authoritative.overridden(&authoritative.fingerprints, &authoritative.current(&config)));
     let config = authoritative.enforce(config);
+    let config = ensure_tun_default_mtu(config);
     let config = ensure_lan_bind_address(config);
 
     let config = cleanup_proxy_groups(config);
@@ -1428,9 +1400,10 @@ mod authoritative_field_tests {
 mod tests {
     use super::{
         AuthoritativeFields, ChainItem, ChainType, Mapping, cleanup_proxy_groups, ensure_lan_bind_address,
-        process_global_items, process_profile_items, use_keys,
+        process_override_items, use_keys,
     };
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn mapping(yaml: &str) -> serde_yaml_ng::Mapping {
         serde_yaml_ng::from_str(yaml).expect("test config should be valid")
@@ -1471,28 +1444,36 @@ mod tests {
                 (profile.clone(), Mapping::new())
             };
             let authoritative = AuthoritativeFields::capture(&config, &[], dns_settings);
-            let merge_item = |uid: &str| ChainItem {
-                uid: uid.into(),
-                data: ChainType::Merge(merge.clone()),
+            let merge_item = |uid: &str| {
+                Arc::new(ChainItem {
+                    uid: uid.into(),
+                    data: ChainType::Merge(merge.clone()),
+                })
             };
-            let profile_name = "test-profile".into();
-            let (config, keys, logs) = process_global_items(
+            let profile_name = "test-profile";
+            let (config, keys, logs) = process_override_items(
                 config,
                 vec![],
                 HashMap::new(),
                 merge_item("global-merge"),
-                ChainItem::to_script("global-script", script),
-                &profile_name,
+                Arc::new(ChainItem {
+                    uid: "global-script".into(),
+                    data: ChainType::Script(script.into()),
+                }),
+                profile_name,
                 &authoritative,
             )
             .await;
-            let (config, _, logs) = process_profile_items(
+            let (config, _, logs) = process_override_items(
                 config,
                 keys,
                 logs,
                 merge_item("profile-merge"),
-                ChainItem::to_script("profile-script", script),
-                &profile_name,
+                Arc::new(ChainItem {
+                    uid: "profile-script".into(),
+                    data: ChainType::Script(script.into()),
+                }),
+                profile_name,
                 &authoritative,
             )
             .await;
@@ -1528,59 +1509,65 @@ mod tests {
         let exists_keys = use_keys(&config).collect();
         config.insert("application-only".into(), true.into());
 
-        let global_merge = ChainItem {
+        let global_merge = Arc::new(ChainItem {
             uid: "Merge".into(),
             data: ChainType::Merge(mapping(
                 r"{global-merge-wins: global-merge, global-script-wins: global-merge,
                    profile-merge-wins: global-merge, profile-script-wins: global-merge,
                    nested: {winner: global-merge}, dns: {enable: false}, tun: {enable: false}}",
             )),
-        };
-        let global_script = ChainItem::to_script(
-            "Script",
-            r#"function main(config) {
+        });
+        let global_script = Arc::new(ChainItem {
+            uid: "Script".into(),
+            data: ChainType::Script(
+                r#"function main(config) {
               config["global-script-wins"] = "global-script";
               config["profile-merge-wins"] = "global-script";
               config["profile-script-wins"] = "global-script";
               config.nested.winner = "global-script";
               return config;
-            }"#,
-        );
-        let profile_merge = ChainItem {
+            }"#
+                .into(),
+            ),
+        });
+        let profile_merge = Arc::new(ChainItem {
             uid: "profile-merge".into(),
             data: ChainType::Merge(mapping(
                 r"{profile-merge-wins: profile-merge, profile-script-wins: profile-merge,
                    nested: {winner: profile-merge}}",
             )),
-        };
-        let profile_script = ChainItem::to_script(
-            "profile-script",
-            r#"function main(config) {
+        });
+        let profile_script = Arc::new(ChainItem {
+            uid: "profile-script".into(),
+            data: ChainType::Script(
+                r#"function main(config) {
               config["profile-script-wins"] = "profile-script";
               config.nested.winner = "profile-script";
               return config;
-            }"#,
-        );
+            }"#
+                .into(),
+            ),
+        });
 
-        let profile_name = "test-profile".into();
+        let profile_name = "test-profile";
         let authoritative = AuthoritativeFields::capture(&config, &[], Mapping::new());
-        let (config, exists_keys, result_map) = process_global_items(
+        let (config, exists_keys, result_map) = process_override_items(
             config,
             exists_keys,
             HashMap::new(),
             global_merge,
             global_script,
-            &profile_name,
+            profile_name,
             &authoritative,
         )
         .await;
-        let (config, exists_keys, _) = process_profile_items(
+        let (config, exists_keys, _) = process_override_items(
             config,
             exists_keys,
             result_map,
             profile_merge,
             profile_script,
-            &profile_name,
+            profile_name,
             &authoritative,
         )
         .await;

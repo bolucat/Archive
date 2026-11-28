@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, FixedOffset};
 use indexmap::IndexMap;
 use reqwest::Method;
 
-use crate::{Client, ProviderType, Result, VehicleType, retry::RequestMetadata};
+use crate::{Client, OffsetTimestamp, ProviderType, Result, VehicleType, retry::RequestMetadata};
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct Rule {
@@ -26,9 +25,9 @@ pub struct Rule {
 pub struct RuleExtra {
     pub disabled: bool,
     pub hit_count: u64,
-    pub hit_at: DateTime<FixedOffset>,
+    pub hit_at: OffsetTimestamp,
     pub miss_count: u64,
-    pub miss_at: DateTime<FixedOffset>,
+    pub miss_at: OffsetTimestamp,
 }
 
 /// Batch of rule indices to enable (`false`) or disable (`true`).
@@ -138,7 +137,7 @@ pub struct RuleProvider {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vehicle_type: Option<VehicleType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<DateTime<FixedOffset>>,
+    pub updated_at: Option<OffsetTimestamp>,
     #[serde(default)]
     pub payload: Option<Vec<String>>,
 }

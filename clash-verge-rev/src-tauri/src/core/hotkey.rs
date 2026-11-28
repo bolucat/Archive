@@ -7,7 +7,6 @@ use crate::{config::Config, core::handle, core::lightweight::entry_lightweight_m
 use anyhow::{Result, bail};
 use arc_swap::ArcSwap;
 use clash_verge_logging::{Type, logging};
-use smartstring::alias::String;
 use std::{
     collections::HashMap,
     fmt,
@@ -18,6 +17,7 @@ use std::{
     },
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt as _, ShortcutState};
+use tristr::alias::String;
 
 /// Enum representing all available hotkey functions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -464,14 +464,5 @@ impl Hotkey {
         });
 
         (del_list, add_list)
-    }
-}
-
-impl Drop for Hotkey {
-    fn drop(&mut self) {
-        let app_handle = handle::Handle::app_handle();
-        if let Err(e) = app_handle.global_shortcut().unregister_all() {
-            logging!(error, Type::Hotkey, "Error unregistering all hotkeys: {:?}", e);
-        }
     }
 }

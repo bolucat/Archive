@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.15.0-alpha.15
+
+* Fixes and improvements
+
+#### 1.14.6
+
+* Fixes and improvements
+
 #### 1.15.0-alpha.14
 
 * Drop support for go1.25 **1**

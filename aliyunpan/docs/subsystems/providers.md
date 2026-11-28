@@ -1,29 +1,35 @@
-# 网盘接入与下载
+# provider 与旧工程边界
 
 路径按本仓库根目录解释。修改前核对当前源码和调用者；本文不宣称已完成运行验收。
 
+本文涉及的 Tauri 迁移源码随 `codex/dev-tauri` 分支版本管理。原生验收使用 `tauri-app/`，不能用旧 Electron 根工程代替；源码已提交不代表目标平台已验收。
+
 ## 职责与源码
 
-- [file.ts](../../src/aliapi/file.ts)：统一文件详情和下载地址入口。
-- [filecmd.ts](../../src/aliapi/filecmd.ts)：文件操作分流。
-- [pandal.ts](../../src/pan/pandal.ts)：目录和搜索加载。
-- [uploader.ts](../../src/workerpage/uploader.ts)：上传 worker 的 provider 分流。
+- `tauri-app/src/features/files/adapters/sourceServices.ts`（`codex/dev-tauri` 迁移源码）：文件来源服务适配。
+- `tauri-app/src-tauri/src/accounts.rs`（`codex/dev-tauri` 迁移源码）：原生账号与请求身份。
+- `tauri-app/src-tauri/src/file_manager.rs`（`codex/dev-tauri` 迁移源码）：本机文件管理。
+- `tauri-app/src-tauri/src/network_share.rs`（`codex/dev-tauri` 迁移源码）：网络共享。
 
 ## 运行路径与状态
 
-账号/provider 识别 → 目录和模型映射 → 操作能力 → 地址解析/上传/下载 → 扫描与字幕。每个入口都应按文件所属账号分流，不能掉入阿里云默认路径。
+新 files 入口 → sourceServices/移植层 → 原生 provider 请求或文件管理。仅在确认运行路径后修改；不能因根目录有同名旧文件就当它仍被使用。
 
 ## 失败与兼容边界
 
-提供商能力来自实际 API；不支持的分享、回收站、版本、转码或加密操作应隐藏或明确报错。CLI 破坏性操作先 dry-run，保留现有账号与文件。
+Tauri 沿用 iOS 的 Emby 兼容 User-Agent 匹配规则：`drivemby.com` 与其子域，或主机名包含 `younoyes`、`onatoshi`。这些地址的 Emby 登录/API/封面，以及匹配的媒体播放、字幕和文件下载使用 `SenPlayer`。网关按每次跳转的目标主机重新判定，跨源凭据限制照常生效。
 
-Electron 重建百度网盘下载任务时，使用文件所属账号重新解析临时直链及请求头。旧任务保存的直链也按此规则处理，下载目标和已有断点保留。手工添加的直链和种子保留原行为。对应 BP-000143。
+下方从旧入口迁移的 15 步 checklist 属于 Electron 接入参考。Tauri 应映射到自己的真实实现，不照抄 Electron IPC 命令或把旧测试作为原生通过。
+
+OAuth 遇到构建时注入的 `synthetic-*` 注册占位值时按缺少注册配置处理。真实登录验收使用相应应用的有效注册，并以目标平台的授权回调与保存结果为准。
 
 ## 验证与维护
 
 先读 [开发与执行约束](../agent-development.md) 和 [代码标准](../code-standards.md)。验证按本次用户要求及平台限制执行；未运行的测试、构建和真实设备检查要明确标注。契约改变时同步本文，并核对旧调用者。
 
 ## 既有产品规则
+
+阿里云盘双授权账号优先沿用网页目录。网页会话认证被拒绝时，首屏只读列目录可使用同一账号的 OpenAPI 授权，后续分页沿用 OpenAPI 游标。未绑定开放授权或已开始网页分页时保留原错误。写入、下载及播放地址仍按各自接口授权。
 
 ## Provider Integration Checklist
 
@@ -178,3 +184,13 @@ Standalone CLI + MCP server for agent-driven cloud-drive operations. Docs: `clou
 ## CLI 操作规则
 
 使用 clouddrive-cli 时，先运行 `clouddrive-cli list --format json` 发现命令，再用 `clouddrive-cli providers capabilities --format json` 检查能力。破坏性操作先 dry-run；文件 ID 必须来自实际 list/walk/search/tree 结果，不能猜测；大结果用 `--output <file.json>`。
+
+### 139 云盘官方登录
+
+Tauri 支持在独立登录窗口使用 139 官网提供的认证方式。网页登录完成后，从成功的官方文件列表请求接收云盘凭据，再通过原生路由校验和账号存储保存来源。密码和短信验证码由官网处理。
+
+## 已添加来源编辑与连接测试（2026-11-19）
+
+Tauri 添加来源的已保存共享列表与旧来源管理入口均提供独立铅笔入口。编辑页复用原 accountId 更新名称/连接，不创建重复账号；密码留空沿用安全存储中的凭据，不回显密码。右上角“移除此共享”经过确认后仅移除本机账号，底部保存/网速测试/端点按钮等宽对齐；媒体服务器网速测试与端点管理复用既有实现。
+
+添加共享时先显示连接测试反馈；SMB/NFS/FTP 和媒体服务器沿用原生连接/鉴权成功后保存的链路，WebDAV 改为使用尚未保存的草稿凭据执行根路径 PROPFIND（Depth 0），成功且返回有效 multistatus 后才 account_save。AList 令牌方式验证根目录列表后才保存。失败不生成账号，保留表单并用确认弹窗提示；取消中断原生 auth job 或前端 HTTP 测试，测试被取消后不继续 account_save。独立原生来源窗口使用 NativeServerRegistry/useNativeLogin 的同一反馈路径。

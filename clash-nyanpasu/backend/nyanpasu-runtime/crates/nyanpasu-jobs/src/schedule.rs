@@ -1,6 +1,6 @@
 use crate::Error;
-use jiff::{RoundMode, Timestamp, TimestampRound, Unit, tz::TimeZone};
-use jiff_cron::Schedule as CronSchedule;
+use croner::parser::{CronParser, FixedTimeRule, Seconds, Year};
+use jiff::{Timestamp, tz::TimeZone};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -41,30 +41,16 @@ impl Schedule {
         };
         let timezone =
             TimeZone::get(timezone).map_err(|_| Error::Invalid("unknown IANA timezone".into()))?;
-        let expression = if expression.starts_with('@') {
-            expression.clone()
-        } else {
-            match expression.split_whitespace().count() {
-                5 => format!("0 {expression}"),
-                6 => expression.clone(),
-                _ => return Err(Error::Invalid("cron requires five or six fields".into())),
-            }
-        };
-        let cron: CronSchedule = expression
-            .parse()
-            .map_err(|e| Error::Invalid(format!("{e}")))?;
-        // Cron fires on whole seconds. Floor before searching to avoid the
-        // library's fractional-second fast path skipping weekday checks.
-        let after = after
-            .round(
-                TimestampRound::new()
-                    .smallest(Unit::Second)
-                    .mode(RoundMode::Floor),
-            )
+        let cron = CronParser::builder()
+            .seconds(Seconds::Optional)
+            .year(Year::Disallowed)
+            .fixed_time_rule(FixedTimeRule::NoWildcard)
+            .build()
+            .parse(expression)
             .map_err(|e| Error::Invalid(e.to_string()))?;
-        cron.after(after.to_zoned(timezone))
-            .next()
+        let after = after.to_zoned_datetime(timezone);
+        cron.find_next_occurrence(&after, false)
             .map(|zoned| zoned.timestamp())
-            .ok_or_else(|| Error::Invalid("no future cron occurrence".into()))
+            .map_err(|e| Error::Invalid(e.to_string()))
     }
 }

@@ -3,6 +3,7 @@ pub mod client;
 pub mod error;
 pub mod retry;
 pub mod stream;
+mod timestamp;
 
 pub use api::{
     BrutalOptions, Bytes, BytesPerSecond, ConfigEnum, ConfigPatch, Connection, ConnectionMetadata,
@@ -21,3 +22,4 @@ pub use error::{Error, ErrorBody, Result};
 pub use indexmap::IndexMap;
 pub use retry::{DelayRange, ExponentialRetry, NoRetry, RequestMetadata, RetryPolicy};
 pub use stream::{HttpStream, WebSocketStream};
+pub use timestamp::OffsetTimestamp;

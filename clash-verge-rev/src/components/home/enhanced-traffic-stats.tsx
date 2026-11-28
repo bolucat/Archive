@@ -3,10 +3,14 @@ import {
   ArrowUpwardRounded,
   CloudDownloadRounded,
   CloudUploadRounded,
+  ErrorOutlineRounded,
   LinkRounded,
   MemoryRounded,
 } from '@mui/icons-material'
 import {
+  Alert,
+  Box,
+  Button,
   Grid,
   PaletteColor,
   Paper,
@@ -15,9 +19,9 @@ import {
   useTheme,
 } from '@mui/material'
 import { ReactNode, memo, useMemo, useRef } from 'react'
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 import { useTranslation } from 'react-i18next'
 
-import { TrafficErrorBoundary } from '@/components/shared/traffic-error-boundary'
 import { useConnectionSummaryData } from '@/hooks/use-connection-data'
 import { useMemoryData } from '@/hooks/use-memory-data'
 import { useTrafficData } from '@/hooks/use-traffic-data'
@@ -127,6 +131,59 @@ const CompactStatCard = memo(
 // 添加显示名称
 CompactStatCard.displayName = 'CompactStatCard'
 
+// Element identity is stable, so CompactStatCard's memo comparison holds
+// across per-second parsedData updates.
+const uploadSpeedIcon = <ArrowUpwardRounded fontSize="small" />
+const downloadSpeedIcon = <ArrowDownwardRounded fontSize="small" />
+const activeConnectionsIcon = <LinkRounded fontSize="small" />
+const uploadedIcon = <CloudUploadRounded fontSize="small" />
+const downloadedIcon = <CloudDownloadRounded fontSize="small" />
+const memoryUsageIcon = <MemoryRounded fontSize="small" />
+
+const fallbackSx = {
+  p: 2,
+  minHeight: 200,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: '1px dashed',
+  borderColor: 'error.main',
+  borderRadius: 2,
+  bgcolor: 'error.light',
+}
+
+const reloadPage = () => window.location.reload()
+
+const TrafficFallback = ({ error, resetErrorBoundary }: FallbackProps) => {
+  const { t } = useTranslation()
+
+  return (
+    <Box sx={fallbackSx}>
+      <ErrorOutlineRounded color="error" sx={{ fontSize: 48, mb: 2 }} />
+      <Typography variant="h6" gutterBottom>
+        {t('shared.feedback.errors.trafficStats')}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {t('shared.feedback.errors.trafficStatsDescription')}
+      </Typography>
+      <Alert severity="error" sx={{ mb: 2, maxWidth: 400 }}>
+        {error instanceof Error
+          ? error.message
+          : t('shared.feedback.errors.unknown')}
+      </Alert>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button variant="contained" size="small" onClick={resetErrorBoundary}>
+          {t('shared.actions.retry')}
+        </Button>
+        <Button variant="outlined" size="small" onClick={reloadPage}>
+          {t('shared.actions.refreshPage')}
+        </Button>
+      </Box>
+    </Box>
+  )
+}
+
 export const EnhancedTrafficStats = () => {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -204,35 +261,35 @@ export const EnhancedTrafficStats = () => {
   const statCards = useMemo(() => {
     const cards: StatCardProps[] = [
       {
-        icon: <ArrowUpwardRounded fontSize="small" />,
+        icon: uploadSpeedIcon,
         title: t('home.components.traffic.metrics.uploadSpeed'),
         value: parsedData.up,
         unit: `${parsedData.upUnit}/s`,
         color: 'secondary' as const,
       },
       {
-        icon: <ArrowDownwardRounded fontSize="small" />,
+        icon: downloadSpeedIcon,
         title: t('home.components.traffic.metrics.downloadSpeed'),
         value: parsedData.down,
         unit: `${parsedData.downUnit}/s`,
         color: 'primary' as const,
       },
       {
-        icon: <LinkRounded fontSize="small" />,
+        icon: activeConnectionsIcon,
         title: t('home.components.traffic.metrics.activeConnections'),
         value: parsedData.connectionsCount,
         unit: '',
         color: 'success' as const,
       },
       {
-        icon: <CloudUploadRounded fontSize="small" />,
+        icon: uploadedIcon,
         title: t('shared.labels.uploaded'),
         value: parsedData.uploadTotal,
         unit: parsedData.uploadTotalUnit,
         color: 'secondary' as const,
       },
       {
-        icon: <CloudDownloadRounded fontSize="small" />,
+        icon: downloadedIcon,
         title: t('shared.labels.downloaded'),
         value: parsedData.downloadTotal,
         unit: parsedData.downloadTotalUnit,
@@ -242,7 +299,7 @@ export const EnhancedTrafficStats = () => {
 
     if (displayMemory) {
       cards.push({
-        icon: <MemoryRounded fontSize="small" />,
+        icon: memoryUsageIcon,
         title: t('home.components.traffic.metrics.memoryUsage'),
         value: parsedData.inuse,
         unit: parsedData.inuseUnit,
@@ -254,10 +311,11 @@ export const EnhancedTrafficStats = () => {
   }, [t, parsedData, displayMemory])
 
   return (
-    <TrafficErrorBoundary
-      onError={(error, errorInfo) => {
-        console.error('[EnhancedTrafficStats] 组件错误:', error, errorInfo)
-      }}
+    <ErrorBoundary
+      FallbackComponent={TrafficFallback}
+      onError={(error, errorInfo) =>
+        console.error('[EnhancedTrafficStats]', error, errorInfo)
+      }
     >
       <Grid container spacing={1} columns={{ xs: 8, sm: 8, md: 12 }}>
         {trafficGraph && (
@@ -273,6 +331,6 @@ export const EnhancedTrafficStats = () => {
           </Grid>
         ))}
       </Grid>
-    </TrafficErrorBoundary>
+    </ErrorBoundary>
   )
 }

@@ -1,4 +1,4 @@
-use chrono::NaiveTime;
+use jiff::civil::Time;
 use reqwest::Method;
 
 use crate::{Client, HttpStream, Result, retry::RequestMetadata};
@@ -68,10 +68,27 @@ pub struct LogField {
 /// A `format=structured` Mihomo log event.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct StructuredLogEntry {
-    pub time: NaiveTime,
+    #[serde(serialize_with = "serialize_time")]
+    #[specta(type = String)]
+    pub time: Time,
     pub level: StructuredLogLevel,
     pub message: String,
     pub fields: Vec<LogField>,
+}
+
+/// jiff trims fraction zeros one by one; the wire form uses 0, 3, 6 or 9 digits.
+fn serialize_time<S: serde::Serializer>(
+    time: &Time,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    let nanos = time.subsec_nanosecond();
+    let precision = match nanos {
+        0 => 0,
+        _ if nanos % 1_000_000 == 0 => 3,
+        _ if nanos % 1_000 == 0 => 6,
+        _ => 9,
+    };
+    serializer.collect_str(&format_args!("{time:.precision$}"))
 }
 
 impl Client {
@@ -134,7 +151,7 @@ mod tests {
             serde_json::from_str(r#"{"time":"12:34:56","level":"warn","message":"x","fields":[]}"#)
                 .unwrap();
 
-        assert_eq!(entry.time, NaiveTime::from_hms_opt(12, 34, 56).unwrap());
+        assert_eq!(entry.time, jiff::civil::time(12, 34, 56, 0));
         assert_eq!(entry.level, StructuredLogLevel::Warn);
     }
 }

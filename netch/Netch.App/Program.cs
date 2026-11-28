@@ -1,6 +1,5 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.VisualStudio.Threading;
 using Netch.Services;
 using Netch.Utils;
 using SingleInstance;
@@ -23,6 +22,16 @@ public static class Program
             Flags.AlwaysShowNewVersionFound = true;
 
         Bootstrap.SetWorkingDirectory();
+
+        if (!EnvironmentChecker.IsOsSupported)
+        {
+            i18N.Load("System");
+            PInvoke.MessageBox(HWND.Null,
+                i18N.Translate("Netch requires Windows 10 version 1809 (Build 17763) or Windows 11 (x64)."),
+                "Netch",
+                MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONERROR);
+            Environment.Exit(3);
+        }
 
 #if !DEBUG
         if (!Bootstrap.BinariesPresent)

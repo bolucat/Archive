@@ -199,17 +199,21 @@ pub async fn process() -> Result<(), CommandError> {
 pub fn print_version() {
     use crate::consts::*;
     use ansi_str::AnsiStr;
-    use chrono::{DateTime, Utc};
     use colored::*;
+    use jiff::Timestamp;
     use timeago::Formatter;
 
-    let now = Utc::now();
+    let now = Timestamp::now();
     let formatter = Formatter::new();
-    let commit_time =
-        formatter.convert_chrono(DateTime::parse_from_rfc3339(COMMIT_DATE).unwrap(), now);
+    // A date in the future (clock skew) has no "ago" form.
+    let time_ago = |date: &str| {
+        let elapsed = now.duration_since(date.parse().unwrap());
+        std::time::Duration::try_from(elapsed)
+            .map_or_else(|_| "???".to_owned(), |elapsed| formatter.convert(elapsed))
+    };
+    let commit_time = time_ago(COMMIT_DATE);
     let commit_time_width = commit_time.len() + COMMIT_DATE.len() + 3;
-    let build_time =
-        formatter.convert_chrono(DateTime::parse_from_rfc3339(BUILD_DATE).unwrap(), now);
+    let build_time = time_ago(BUILD_DATE);
     let build_time_width = build_time.len() + BUILD_DATE.len() + 3;
     let commit_info_width = COMMIT_HASH.len() + COMMIT_AUTHOR.len() + 4;
     let col_width = commit_info_width

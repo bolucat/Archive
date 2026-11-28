@@ -12,8 +12,8 @@ redb-store = ["dep:redb"]
 specta = ["dep:specta"]
 
 [dependencies]
-jiff = { version = "0.2", features = ["serde"] }
-jiff-cron = "=0.3.0"
+jiff = { version = "1", features = ["serde"] }
+croner = { version = "=5.0.1", default-features = false, features = ["std", "jiff"] }
 futures-util.workspace = true
 ractor = "0.16.5"
 redb = { version = "5.0.0", optional = true }

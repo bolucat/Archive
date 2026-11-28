@@ -7,7 +7,11 @@
 
 use std::borrow::Borrow;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeZone};
+use clash_api::OffsetTimestamp;
+use jiff::{
+    Timestamp, civil,
+    tz::{Offset, TimeZone},
+};
 
 pub use nyanpasu_core_metadata::{LogField, LogFrame, LogLevel, LogStream, LogTimestamp};
 
@@ -152,20 +156,22 @@ impl LogParser {
     }
 
     pub(crate) fn push(&mut self, stream: LogStream, line: String) -> ParsedFrames {
-        self.push_at(stream, line, chrono::Local::now().fixed_offset())
+        let now = Timestamp::now();
+        let observed_at = OffsetTimestamp::new(now, TimeZone::system().to_offset(now));
+        self.push_at(stream, line, observed_at)
     }
 
     pub(crate) fn push_at(
         &mut self,
         stream: LogStream,
         line: String,
-        observed_at: DateTime<FixedOffset>,
+        observed_at: OffsetTimestamp,
     ) -> ParsedFrames {
         let line = strip_ansi(line);
-        if let Some(parsed) = self.parse_header(&line, observed_at) {
+        if let Some(parsed) = self.parse_header(&line, observed_at.offset()) {
             let hold = parsed.level >= LogLevel::Error;
             let mut frame = LogFrame {
-                at: observed_at.timestamp_millis(),
+                at: observed_at.timestamp().as_millisecond(),
                 epoch: self.epoch,
                 kind: self.kind,
                 stream,
@@ -198,7 +204,7 @@ impl LogParser {
             (.., LogStream::Stderr) => LogLevel::Warning,
         };
         let mut frame = LogFrame {
-            at: observed_at.timestamp_millis(),
+            at: observed_at.timestamp().as_millisecond(),
             epoch: self.epoch,
             kind: self.kind,
             stream,
@@ -227,11 +233,11 @@ impl LogParser {
         }
     }
 
-    fn parse_header(&self, line: &str, observed_at: DateTime<FixedOffset>) -> Option<ParsedLine> {
+    fn parse_header(&self, line: &str, observed_offset: Offset) -> Option<ParsedLine> {
         match self.kind {
             CoreKind::Mihomo => parse_mihomo(line),
             CoreKind::Meow => parse_meow(line),
-            CoreKind::ClashRust => parse_clash_rs(line, observed_at),
+            CoreKind::ClashRust => parse_clash_rs(line, observed_offset),
         }
     }
 
@@ -493,7 +499,7 @@ fn parse_meow(line: &str) -> Option<ParsedLine> {
 /// `<timestamp> <LEVEL> [ThreadId(N)] [target] <file:line>: message`. The two
 /// middle segments only exist in debug builds of the core, so the header ends at
 /// the first `file:line` anchor rather than at a fixed offset from the level.
-fn parse_clash_rs(line: &str, observed_at: DateTime<FixedOffset>) -> Option<ParsedLine> {
+fn parse_clash_rs(line: &str, observed_offset: Offset) -> Option<ParsedLine> {
     let timestamp_end = clash_rs_timestamp_end(line)?;
     let raw_time = line.get(..timestamp_end)?;
     let (level, rest) = take_token(line.get(timestamp_end..)?)?;
@@ -501,7 +507,7 @@ fn parse_clash_rs(line: &str, observed_at: DateTime<FixedOffset>) -> Option<Pars
     let (target, message) = clash_rs_source(rest)?;
     Some(ParsedLine {
         timestamp: Some(LogTimestamp {
-            unix_ms: clash_rs_unix_ms(raw_time, observed_at.offset()),
+            unix_ms: clash_rs_unix_ms(raw_time, observed_offset),
             raw: raw_time.to_owned(),
             inferred: true,
         }),
@@ -544,14 +550,18 @@ fn clash_rs_timestamp_end(line: &str) -> Option<usize> {
     ((1..=9).contains(&digits) && bytes.get(18 + digits) == Some(&b' ')).then_some(18 + digits)
 }
 
-fn clash_rs_unix_ms(raw: &str, offset: &FixedOffset) -> Option<i64> {
-    let number = |range: std::ops::Range<usize>| raw.get(range)?.parse::<u32>().ok();
+fn clash_rs_unix_ms(raw: &str, offset: Offset) -> Option<i64> {
+    let number = |range: std::ops::Range<usize>| raw.get(range)?.parse::<i8>().ok();
     let subsecond = raw.get(18..)?;
-    let nanos = subsecond.parse::<u32>().ok()? * 10_u32.pow(9 - subsecond.len() as u32);
-    let date = NaiveDate::from_ymd_opt(2000 + number(0..2)? as i32, number(3..5)?, number(6..8)?)?;
-    let time =
-        NaiveTime::from_hms_nano_opt(number(9..11)?, number(12..14)?, number(15..17)?, nanos)?;
-    local_unix_ms(date, time, offset)
+    let nanos = subsecond.parse::<i32>().ok()? * 10_i32.pow(9 - subsecond.len() as u32);
+    let date = civil::Date::new(
+        2000 + i16::from(number(0..2)?),
+        number(3..5)?,
+        number(6..8)?,
+    )
+    .ok()?;
+    let time = civil::Time::new(number(9..11)?, number(12..14)?, number(15..17)?, nanos).ok()?;
+    local_unix_ms(date.to_datetime(time), offset)
 }
 
 /// Scans forward: neither `ThreadId(N)` nor a tracing target can look like
@@ -579,17 +589,17 @@ fn clash_rs_source(rest: &str) -> Option<(&str, &str)> {
     None
 }
 
-fn local_unix_ms(date: NaiveDate, time: NaiveTime, offset: &FixedOffset) -> Option<i64> {
+fn local_unix_ms(local: civil::DateTime, offset: Offset) -> Option<i64> {
     offset
-        .from_local_datetime(&date.and_time(time))
-        .single()
-        .map(|timestamp| timestamp.timestamp_millis())
+        .to_timestamp(local)
+        .ok()
+        .map(|timestamp| timestamp.as_millisecond())
 }
 
 fn parse_rfc3339_ms(raw: &str) -> Option<i64> {
-    DateTime::parse_from_rfc3339(raw)
+    raw.parse::<Timestamp>()
         .ok()
-        .map(|timestamp| timestamp.timestamp_millis())
+        .map(|timestamp| timestamp.as_millisecond())
 }
 
 fn take_token(input: &str) -> Option<(&str, &str)> {
@@ -602,15 +612,15 @@ fn take_token(input: &str) -> Option<(&str, &str)> {
 mod tests {
     use super::*;
 
-    fn observed(raw: &str) -> DateTime<FixedOffset> {
-        DateTime::parse_from_rfc3339(raw).expect("test observation instant")
+    fn observed(raw: &str) -> OffsetTimestamp {
+        raw.parse().expect("test observation instant")
     }
 
     fn unix_ms(raw: &str) -> Option<i64> {
         Some(
-            DateTime::parse_from_rfc3339(raw)
+            raw.parse::<Timestamp>()
                 .expect("test timestamp")
-                .timestamp_millis(),
+                .as_millisecond(),
         )
     }
 
@@ -624,7 +634,7 @@ mod tests {
         frames.extend(parser.finish().into_iter().flatten());
         assert_eq!(frames.len(), 1, "expected exactly one frame for {line:?}");
         let frame = frames.remove(0);
-        assert_eq!(frame.at, observed(at).timestamp_millis());
+        assert_eq!(frame.at, observed(at).timestamp().as_millisecond());
         frame
     }
 
@@ -905,7 +915,7 @@ mod tests {
             );
         }
         let frame = collect(parser.finish()).remove(0);
-        assert_eq!(frame.at, root_at.timestamp_millis());
+        assert_eq!(frame.at, root_at.timestamp().as_millisecond());
         assert_eq!(frame.level, LogLevel::Error);
         assert!(!frame.truncated);
         assert_eq!(
@@ -996,7 +1006,7 @@ mod tests {
         );
         assert!(frame.raw.len() < MAX_LOG_TEXT_BYTES);
         assert!(frame.truncated);
-        assert_eq!(frame.at, root_at.timestamp_millis());
+        assert_eq!(frame.at, root_at.timestamp().as_millisecond());
     }
 
     /// The append budget at its edges. `raw` and `message` run out at different

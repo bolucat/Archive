@@ -4,8 +4,11 @@ import { asyncRetry } from 'foxts/async-retry'
 import { extractErrorMessage } from 'foxts/extract-error-message'
 import { once } from 'foxts/once'
 import i18n from 'i18next'
+import { getBaseConfig } from 'tauri-plugin-mihomo-api'
 
 import { debugLog } from '@/utils/debug'
+
+import { getRuntimeConfig } from './cmds'
 
 const getUserAgentPromise = once(async () => {
   try {
@@ -35,7 +38,6 @@ interface IpInfo {
 interface ServiceConfig {
   url: string
   mapping: (data: any) => IpInfo
-  timeout?: number // 保留timeout字段（如有需要）
 }
 
 // 可用的IP检测服务列表及字段映射
@@ -138,6 +140,95 @@ const IP_CHECK_SERVICES: ServiceConfig[] = [
   },
 ]
 
+const getProxyHost = (allowLan: boolean, bindAddress: string) => {
+  const address = bindAddress.trim().replace(/^\[|\]$/g, '')
+  const normalizedAddress = address.toLowerCase()
+  const isIpv6 = normalizedAddress.includes(':')
+  const isIpv6Wildcard =
+    isIpv6 &&
+    normalizedAddress
+      .split(':')
+      .every((part) => part === '' || /^0+$/.test(part))
+  const isWildcard =
+    normalizedAddress === '*' ||
+    normalizedAddress === '0.0.0.0' ||
+    isIpv6Wildcard
+
+  if (!allowLan) return '127.0.0.1'
+
+  if (!address || isWildcard || normalizedAddress === 'localhost') {
+    return isIpv6Wildcard ? '[::1]' : '127.0.0.1'
+  }
+
+  return isIpv6 ? `[${address}]` : address
+}
+
+interface ProxyBasicAuth {
+  username: string
+  password: string
+}
+
+const parseProxyBasicAuth = (entry: string): ProxyBasicAuth | undefined => {
+  const separator = entry.indexOf(':')
+  if (separator < 0) return undefined
+  return {
+    username: entry.slice(0, separator),
+    password: entry.slice(separator + 1),
+  }
+}
+
+// `/configs` only exposes usernames, so the password has to come from the
+// generated runtime config.
+const resolveProxyBasicAuth = async (
+  enabledAuthentication: string[],
+): Promise<ProxyBasicAuth | undefined> => {
+  const inline = enabledAuthentication
+    .map(parseProxyBasicAuth)
+    .find((auth) => auth !== undefined)
+  if (inline) return inline
+
+  try {
+    const runtimeConfig = (await getRuntimeConfig()) as
+      | (IConfigData & { authentication?: unknown })
+      | null
+    const runtimeAuthentication = Array.isArray(runtimeConfig?.authentication)
+      ? runtimeConfig.authentication
+      : []
+    const storedAuthentication = runtimeAuthentication
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map(parseProxyBasicAuth)
+      .filter((auth): auth is ProxyBasicAuth => auth !== undefined)
+
+    return (
+      storedAuthentication.find((auth) =>
+        enabledAuthentication.includes(auth.username),
+      ) ?? storedAuthentication[0]
+    )
+  } catch (error) {
+    debugLog(
+      'Failed to read the runtime config for local proxy authentication',
+      error,
+    )
+    return undefined
+  }
+}
+
+const resolveIpProxy = async () => {
+  const { mixedPort, allowLan, bindAddress, authentication } =
+    await getBaseConfig()
+  const proxyUrl = `http://${getProxyHost(allowLan, bindAddress)}:${mixedPort}`
+  const enabledAuthentication = authentication ?? []
+
+  if (enabledAuthentication.length === 0) {
+    return { all: proxyUrl }
+  }
+
+  const basicAuth = await resolveProxyBasicAuth(enabledAuthentication)
+  return {
+    all: basicAuth ? { url: proxyUrl, basicAuth } : proxyUrl,
+  }
+}
+
 // 获取当前IP和地理位置信息
 export const getIpInfo = async (): Promise<
   IpInfo & { lastFetchTs: number }
@@ -151,53 +242,59 @@ export const getIpInfo = async (): Promise<
   )
   let lastError: unknown | null = null
   const userAgent = await getUserAgentPromise()
+  const proxy = await resolveIpProxy()
   console.debug('User-Agent for IP detection:', userAgent)
 
   for (const service of shuffledServices) {
     debugLog(`尝试IP检测服务: ${service.url}`)
-
-    const timeoutController = new AbortController()
-    const timeoutId = setTimeout(() => {
-      timeoutController.abort()
-    }, service.timeout || serviceTimeout)
 
     try {
       return await asyncRetry(
         async (bail) => {
           console.debug('Fetching IP information:', service.url)
 
-          const response = await fetch(service.url, {
-            method: 'GET',
-            signal: timeoutController.signal, // AbortSignal.timeout(service.timeout || serviceTimeout),
-            connectTimeout: service.timeout || serviceTimeout,
-            headers: {
-              'User-Agent': userAgent,
-            },
-          })
+          const timeoutController = new AbortController()
+          const timeoutId = setTimeout(() => {
+            timeoutController.abort()
+          }, serviceTimeout)
 
-          if (!response.ok) {
-            return bail(
-              new Error(
-                `IP 检测服务出错，状态码: ${response.status} from ${service.url}`,
-              ),
-            )
-          }
-
-          let data: any
           try {
-            data = await response.json()
-          } catch {
-            return bail(new Error(`无法解析 JSON 响应 from ${service.url}`))
-          }
-
-          if (data && data.ip) {
-            debugLog(`IP检测成功，使用服务: ${service.url}`)
-            return Object.assign(service.mapping(data), {
-              // use last fetch success timestamp
-              lastFetchTs: Date.now(),
+            const response = await fetch(service.url, {
+              method: 'GET',
+              proxy,
+              signal: timeoutController.signal,
+              connectTimeout: serviceTimeout,
+              headers: {
+                'User-Agent': userAgent,
+              },
             })
-          } else {
-            return bail(new Error(`无效的响应格式 from ${service.url}`))
+
+            if (!response.ok) {
+              return bail(
+                new Error(
+                  `IP 检测服务出错，状态码: ${response.status} from ${service.url}`,
+                ),
+              )
+            }
+
+            let data: any
+            try {
+              data = await response.json()
+            } catch {
+              return bail(new Error(`无法解析 JSON 响应 from ${service.url}`))
+            }
+
+            if (data && data.ip) {
+              debugLog(`IP检测成功，使用服务: ${service.url}`)
+              return Object.assign(service.mapping(data), {
+                // use last fetch success timestamp
+                lastFetchTs: Date.now(),
+              })
+            } else {
+              return bail(new Error(`无效的响应格式 from ${service.url}`))
+            }
+          } finally {
+            clearTimeout(timeoutId)
           }
         },
         {
@@ -210,8 +307,6 @@ export const getIpInfo = async (): Promise<
     } catch (error) {
       debugLog(`IP检测服务失败: ${service.url}`, error)
       lastError = error
-    } finally {
-      clearTimeout(timeoutId)
     }
   }
 

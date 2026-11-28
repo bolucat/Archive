@@ -48,13 +48,16 @@ export const useSystemProxyState = () => {
   // Coalesce rapid clicks so only the latest requested state is applied.
   const pendingRef = useRef<boolean | null>(null)
   const busyRef = useRef(false)
+  // The drain loop outlives the render it started in; reading the config
+  // through a ref keeps mid-loop revalidations visible to later iterations.
+  const vergeRef = useRef(verge)
+  vergeRef.current = verge
 
   const toggleSystemProxy = async (enabled: boolean) => {
     // Roll failed optimistic writes back to the latest confirmed state.
-    let confirmed = verge?.enable_system_proxy ?? false
-    mutateVerge(
-      (prev) => (prev ? { ...prev, enable_system_proxy: enabled } : prev),
-      false,
+    let confirmed = vergeRef.current?.enable_system_proxy ?? false
+    mutateVerge((prev) =>
+      prev ? { ...prev, enable_system_proxy: enabled } : prev,
     )
     pendingRef.current = enabled
 
@@ -70,7 +73,7 @@ export const useSystemProxyState = () => {
           errorNotice: false,
         })
         confirmed = target
-        if (!target && verge?.auto_close_connection) {
+        if (!target && vergeRef.current?.auto_close_connection) {
           await mutate(() => closeAllConnections(), {
             id: 'close-all-connections',
             errorNotice: false,
@@ -78,9 +81,8 @@ export const useSystemProxyState = () => {
         }
       }
     } catch (error) {
-      mutateVerge(
-        (prev) => (prev ? { ...prev, enable_system_proxy: confirmed } : prev),
-        false,
+      mutateVerge((prev) =>
+        prev ? { ...prev, enable_system_proxy: confirmed } : prev,
       )
       // Queued requests were based on a state that never landed.
       pendingRef.current = null

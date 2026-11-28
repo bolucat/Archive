@@ -305,6 +305,11 @@
       "variants": {
         "release": "Stabile Version",
         "alpha": "Alpha-Version"
+      },
+      "download": {
+        "title": "Kern herunterladen",
+        "message": "{{name}} ist nicht in der App enthalten und muss vor der Verwendung heruntergeladen werden.",
+        "confirm": "Herunterladen"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "Maximale Größe des Anwendungsprotokolls",
         "appLogMaxCount": "Maximale Anzahl der Anwendungsprotokolle",
         "autoCloseConnections": "Verbindungen automatisch schließen",
+        "autoSwitchSelectorGroup": "Select-Gruppe automatisch umschalten",
         "autoCheckUpdate": "Automatisch auf Updates prüfen",
         "enableBuiltinEnhanced": "Eingebaute Verbesserungen aktivieren",
         "proxyLayoutColumns": "Anzahl der Spalten im Proxy-Layout",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "Wenn der ausgewählte Knoten in der Proxy-Gruppe oder der Proxy-Modus geändert wird, werden die bestehenden Verbindungen geschlossen.",
+        "autoSwitchSelectorGroup": "Wird im Regelmodus ein Knoten in einer Gruppe gewählt, die kein Regelverkehr erreicht, wechselt auch die erste select-Gruppe, die diese Gruppe enthält, auf diese Gruppe.",
         "enableBuiltinEnhanced": "Kompatibilitätsbehandlung der Konfigurationsdatei",
         "autoDelayDetection": "Überprüft regelmäßig im Hintergrund die Latenz des aktuellen Knotens",
         "defaultLatencyTest": "Dies wird nur für HTTP-Client-Anfragentests verwendet und hat keine Auswirkungen auf die Konfigurationsdatei."
@@ -443,7 +450,6 @@
         "update": "Aktualisieren"
       },
       "messages": {
-        "breakChangeError": "Dies ist eine wichtige Aktualisierung. Die In-App-Aktualisierung wird nicht unterstützt. Bitte deinstallieren Sie die Software und laden Sie die neue Version manuell herunter und installieren Sie sie.",
         "available": "Eine neue Version ist verfügbar"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "Bereits die neueste Kernversion in Verwendung",
         "changeSuccess": "Kern erfolgreich gewechselt",
         "changeFailed": "Kernwechsel fehlgeschlagen",
+        "coreFallback": "Mihomo Alpha ist nicht mehr in der App enthalten, daher wurde auf den Mihomo-Kern zurückgewechselt. Wählen Sie ihn in den Clash-Kern-Einstellungen erneut aus, um ihn herunterzuladen.",
         "geoDataUpdated": "Geo-Daten wurden aktualisiert"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "Service wird installiert...",
       "uninstalling": "Service wird deinstalliert..."
     }
+  },
+  "search": {
+    "placeholder": "Einstellungen suchen",
+    "clear": "Suche löschen",
+    "back": "Zurück zu Ergebnissen",
+    "results": "Suchergebnisse",
+    "empty": "Keine Einstellungen gefunden"
   }
 }

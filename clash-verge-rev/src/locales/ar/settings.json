@@ -305,6 +305,11 @@
       "variants": {
         "release": "الإصدار المستقر",
         "alpha": "الإصدار التجريبي"
+      },
+      "download": {
+        "title": "تنزيل النواة",
+        "message": "{{name}} غير مضمّنة في التطبيق ويجب تنزيلها قبل استخدامها.",
+        "confirm": "تنزيل"
       }
     },
     "liteMode": {
@@ -411,6 +416,7 @@
         "appLogMaxSize": "App Log Max Size",
         "appLogMaxCount": "App Log Max Count",
         "autoCloseConnections": "إغلاق الاتصالات تلقائيًا",
+        "autoSwitchSelectorGroup": "تبديل مجموعة select تلقائيًا",
         "autoCheckUpdate": "فحص التحديث تلقائيًا",
         "enableBuiltinEnhanced": "تفعيل التحسين المدمج",
         "proxyLayoutColumns": "أعمدة عرض الوكيل",
@@ -422,6 +428,7 @@
       },
       "tooltips": {
         "autoCloseConnections": "إنهاء الاتصالات القائمة عند تغيير اختيار مجموعة الوكيل أو وضع الوكيل",
+        "autoSwitchSelectorGroup": "في وضع القواعد، عند اختيار عقدة في مجموعة لا تمر بها حركة القواعد يتم أيضًا تحويل أول مجموعة select تحتوي عليها إلى تلك المجموعة",
         "enableBuiltinEnhanced": "معالجة توافق ملف التكوين",
         "autoDelayDetection": "يختبر زمن استجابة العقدة الحالية على نحو دوري في الخلفية",
         "defaultLatencyTest": "يُستخدم فقط لاختبار طلب HTTP العميل. لن يؤثر على ملف التكوين"
@@ -443,7 +450,6 @@
         "update": "تحديث"
       },
       "messages": {
-        "breakChangeError": "هذا الإصدار هو تحديث رئيسي ولا يدعم التحديث داخل التطبيق. يرجى إلغاء التثبيت وتنزيل الإصدار الجديد وتثبيته يدويًا",
         "available": "يتوفّر إصدار جديد"
       },
       "alerts": {
@@ -687,6 +693,7 @@
         "alreadyLatestVersion": "أنت تستخدم بالفعل أحدث إصدار من النواة",
         "changeSuccess": "تم تغيير النواة بنجاح",
         "changeFailed": "فشل تغيير النواة",
+        "coreFallback": "لم تعد Mihomo Alpha مضمّنة في التطبيق، لذلك تم الرجوع إلى نواة Mihomo. اخترها مجددًا من إعدادات نواة Clash لتنزيلها.",
         "geoDataUpdated": "تم تحديث البيانات الجغرافية"
       },
       "clashService": {
@@ -714,5 +721,12 @@
       "installing": "جاري تثبيت الخدمة...",
       "uninstalling": "Uninstalling Service..."
     }
+  },
+  "search": {
+    "placeholder": "البحث في الإعدادات",
+    "clear": "مسح البحث",
+    "back": "العودة إلى النتائج",
+    "results": "نتائج البحث",
+    "empty": "لم يتم العثور على إعدادات"
   }
 }

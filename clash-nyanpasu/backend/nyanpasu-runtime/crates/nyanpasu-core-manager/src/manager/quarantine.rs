@@ -166,7 +166,7 @@ pub(super) async fn sweep_orphans(
             Err(error @ OrphanReapError::RecordUnusable { .. }) => {
                 let renamed = pid_path.with_file_name(format!(
                     "core-{artifact}.pid.corrupt-{}",
-                    chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+                    jiff::Timestamp::now().strftime("%Y%m%dT%H%M%SZ")
                 ));
                 // A same-second collision must preserve the earlier evidence.
                 match tokio::fs::symlink_metadata(&renamed).await {

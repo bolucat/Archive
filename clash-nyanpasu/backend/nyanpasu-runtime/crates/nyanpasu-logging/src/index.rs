@@ -177,8 +177,8 @@ impl Index {
         let object = parsed.as_ref().filter(|v| v.is_object());
         let timestamp = object
             .and_then(|v| v["timestamp"].as_str())
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|t| t.timestamp_millis());
+            .and_then(|s| s.parse::<jiff::Timestamp>().ok())
+            .map(|t| t.as_millisecond());
         let level = object
             .and_then(|v| v["level"].as_str())
             .map(Level::parse)
@@ -365,9 +365,7 @@ mod tests {
                 .append(index.next_read(), line(t, "TRACE", "mod").as_bytes())
                 .unwrap();
         }
-        let t = chrono::DateTime::parse_from_rfc3339(rows[0])
-            .unwrap()
-            .timestamp_millis();
+        let t = rows[0].parse::<jiff::Timestamp>().unwrap().as_millisecond();
         let scan = index.scan(
             &Filter {
                 from_ms: Some(t),

@@ -1,0 +1,424 @@
+name: Tauri Cross-OS UI & Playback QA
+
+on:
+  push:
+    branches:
+      - main
+      - 'fleet/**'
+    paths:
+      - 'tauri-app/**'
+      - '.github/workflows/tauri-qa.yml'
+  workflow_dispatch:
+    inputs:
+      run_playback_tests:
+        description: Run headless libmpv playback integration tests
+        required: false
+        default: true
+        type: boolean
+  pull_request:
+    branches:
+      - main
+      - 'fleet/**'
+    paths:
+      - 'tauri-app/**'
+      - '.github/workflows/tauri-qa.yml'
+
+jobs:
+  tauri-typecheck:
+    name: Tauri Typecheck & Upstream Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10.32.1
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+          cache-dependency-path: tauri-app/pnpm-lock.yaml
+
+      - name: Run vue-tsc and soia upstream check
+        working-directory: tauri-app
+        run: |
+          pnpm --ignore-workspace install --frozen-lockfile
+          pnpm typecheck
+          node scripts/check-soia-upstream.mjs
+
+  tauri-qa:
+    name: Tauri QA & package (${{ matrix.os_id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os_id: windows
+            runner: windows-2025
+          - os_id: linux
+            runner: ubuntu-24.04
+          - os_id: macos
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tauri-app
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10.32.1
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+          cache-dependency-path: tauri-app/pnpm-lock.yaml
+
+      - id: bun
+        shell: bash
+        working-directory: tauri-app
+        run: echo "version=$(node -p 'require("./package.json").devDependencies["@types/bun"]')" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri-app/src-tauri
+
+      - name: Install Linux Tauri, WebDriver, libmpv, and ffmpeg dependencies
+        if: matrix.os_id == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            webkit2gtk-driver \
+            xvfb \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libmpv-dev \
+            libmpv2 \
+            ffmpeg
+          MPV_LIB_PATH="$(ldconfig -p | awk '/libmpv\.so\.2/{print $NF; exit}')"
+          if [ -z "$MPV_LIB_PATH" ] || [ ! -f "$MPV_LIB_PATH" ]; then
+            echo "libmpv.so.2 not found after apt-get install" >&2
+            exit 1
+          fi
+          MPV_DIR="$(dirname "$MPV_LIB_PATH")"
+          echo "BOXPLAYER_MPV_RUNTIME=$MPV_DIR" >> "$GITHUB_ENV"
+
+      - name: Prepare macOS libmpv and its dynamic libraries
+        if: matrix.os_id == 'macos'
+        shell: bash
+        working-directory: tauri-app
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install mpv ffmpeg dylibbundler
+          runtime="$PWD/.local/runtime/macos"
+          mkdir -p "$runtime"
+          cp -L "$(brew --prefix mpv)/lib/libmpv.dylib" "$runtime/"
+          chmod u+w "$runtime/libmpv.dylib"
+          dylibbundler -of -b -x "$runtime/libmpv.dylib" -d "$runtime/" -p '@loader_path/'
+          # dylibbundler can rewrite multiple original LC_RPATH entries to the same path.
+          for library in "$runtime/"*.dylib; do
+            count="$(otool -l "$library" | awk '$1=="path" && $2=="@loader_path/" {count++} END {print count+0}')"
+            if (( count > 1 )); then
+              chmod u+w "$library"
+              while (( count > 1 )); do
+                install_name_tool -delete_rpath '@loader_path/' "$library"
+                count=$((count - 1))
+              done
+              codesign --force --sign - --timestamp=none "$library"
+            fi
+          done
+          python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1])' "$runtime/libmpv.dylib"
+          echo "BOXPLAYER_MPV_RUNTIME=$runtime" >> "$GITHUB_ENV"
+
+      - name: Setup MSYS2 libmpv and ffmpeg on Windows
+        if: matrix.os_id == 'windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-mpv
+            mingw-w64-clang-x86_64-ffmpeg
+
+      - name: Configure Windows libmpv and ffmpeg environment
+        if: matrix.os_id == 'windows'
+        shell: pwsh
+        working-directory: tauri-app
+        run: |
+          $msysRoot = "${{ steps.msys2.outputs.msys2-location }}"
+          $candidates = @()
+          if ($msysRoot) { $candidates += (Join-Path $msysRoot "clang64\bin") }
+          $candidates += @("C:\msys64\clang64\bin", "D:\a\_temp\msys64\clang64\bin")
+          $bin = $candidates | Where-Object { Test-Path (Join-Path $_ "libmpv-2.dll") } | Select-Object -First 1
+          if (-not $bin) {
+            $found = Get-ChildItem -Path $env:RUNNER_TEMP, "C:\", "D:\" -Filter "libmpv-2.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $bin = $found.DirectoryName }
+          }
+          if (-not $bin -or -not (Test-Path (Join-Path $bin "libmpv-2.dll"))) {
+            Write-Error "libmpv-2.dll not found (msys2-location=$msysRoot)"
+            exit 1
+          }
+          if (-not (Test-Path (Join-Path $bin "ffmpeg.exe"))) {
+            Write-Error "ffmpeg.exe not found in $bin"
+            exit 1
+          }
+          Write-Host "Using MSYS2 runtime dir: $bin"
+          $runtime = Join-Path $PWD ".local/runtime/windows"
+          $readobj = Join-Path $env:ProgramFiles 'LLVM/bin/llvm-readobj.exe'
+          node scripts/stage-windows-mpv.mjs $bin $runtime $readobj (Join-Path $env:SystemRoot 'System32')
+          if ($LASTEXITCODE -ne 0) { throw "Could not stage the libmpv runtime" }
+          "BOXPLAYER_FFMPEG=$(Join-Path $bin 'ffmpeg.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare isolated build inputs
+        shell: bash
+        working-directory: tauri-app
+        run: |
+          test ! -e ../electron && test ! -e ../src && test ! -e ../package.json
+          node --input-type=module <<'JS'
+          import { appendFileSync } from 'node:fs'
+          import { registrationKeys } from './scripts/provider-registration.mjs'
+          const entries = registrationKeys.map(key =>
+            `BOXPLAYER_${key}=${key === 'BOXPLAYER_SITE_URL' ? 'https://example.invalid' : 'synthetic-' + key}`
+          )
+          appendFileSync(process.env.GITHUB_ENV, entries.join('\n') + '\n')
+          JS
+          pnpm --ignore-workspace install --frozen-lockfile
+
+      - name: Build and verify the native QA package
+        id: package
+        shell: bash
+        working-directory: tauri-app
+        run: |
+          output=.local/ci-packages
+          mkdir -p "$output"
+          case "$RUNNER_OS" in
+            Windows)
+              test -f .local/runtime/windows/libmpv-2.dll
+              pnpm tauri build --debug --bundles nsis --config '{"bundle":{"active":true,"resources":{"../.local/runtime/windows/":"runtime/"},"windows":{"nsis":{"compression":"lzma"}}}}' -- --locked
+              test -f src-tauri/target/debug/boxplayer-tauri-dev.exe
+              test -f src-tauri/binaries/boxplayer-host-x86_64-pc-windows-msvc.exe
+              cp src-tauri/target/debug/bundle/nsis/*.exe "$output/"
+              ;;
+            Linux)
+              CARGO_PROFILE_RELEASE_STRIP=symbols pnpm tauri build --bundles deb --config '{"bundle":{"active":true,"linux":{"deb":{"depends":["libmpv2"]}}}}' -- --locked
+              cp src-tauri/target/release/bundle/deb/*.deb "$output/"
+              dpkg-deb --field "$output"/*.deb Depends | grep -w libmpv2
+              installed="$PWD/.local/qa-installed"
+              dpkg-deb --extract "$output"/*.deb "$installed"
+              grep -Eq '^Exec=.* %u$' "$installed"/usr/share/applications/*.desktop
+              test -x "$installed/usr/bin/boxplayer-tauri-dev"
+              test -x "$installed/usr/bin/boxplayer-host"
+              echo "BOXPLAYER_L2_BINARY=$installed/usr/bin/boxplayer-tauri-dev" >> "$GITHUB_ENV"
+              ;;
+            macOS)
+              pnpm tauri build --debug --bundles app --config '{"bundle":{"active":true}}' -- --locked
+              app="src-tauri/target/debug/bundle/macos/BoxPlayer Dev.app"
+              test -x "$app/Contents/MacOS/boxplayer-tauri-dev"
+              test -x "$app/Contents/MacOS/boxplayer-host"
+              test -f "$app/Contents/Resources/runtime/libmpv.dylib"
+              ditto -c -k --sequesterRsrc --keepParent "$app" "$output/BoxPlayer-macos-debug.zip"
+              ;;
+          esac
+          wc -c "$output"/*
+          cp ../LICENSE THIRD_PARTY_NOTICES.md "$output/"
+          git diff --exit-code -- pnpm-lock.yaml src-tauri/Cargo.lock
+
+      - name: Extract and verify the packaged Windows libmpv runtime
+        if: matrix.os_id == 'windows'
+        shell: pwsh
+        working-directory: tauri-app
+        run: |
+          $installer = Get-ChildItem '.local/ci-packages' -Filter '*.exe'
+          $installed = Join-Path $PWD '.local/qa-installed'
+          & "$env:ProgramFiles/7-Zip/7z.exe" x $installer.FullName "-o$installed" -y
+          if ($LASTEXITCODE -ne 0) { throw "Could not extract the NSIS installer" }
+          $runtime = Join-Path $installed 'runtime'
+          $staged = Get-ChildItem '.local/runtime/windows' -Filter '*.dll' | Select-Object -ExpandProperty Name
+          $packaged = Get-ChildItem $runtime -Filter '*.dll' | Select-Object -ExpandProperty Name
+          if (Compare-Object $staged $packaged) { throw "Installer DLLs differ from the staged runtime" }
+          "BOXPLAYER_MPV_RUNTIME=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload QA package
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-qa-package-${{ matrix.os_id }}
+          path: tauri-app/.local/ci-packages/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cache tauri-driver
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id != 'macos' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/tauri-driver
+            ~/.cargo/bin/tauri-driver.exe
+          key: tauri-driver-${{ runner.os }}-2.1.0
+
+      - name: Ensure tauri-driver is installed
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id != 'macos' }}
+        shell: bash
+        run: |
+          if ! command -v tauri-driver >/dev/null 2>&1; then
+            cargo install tauri-driver --version 2.1.0 --locked
+          fi
+          command -v tauri-driver
+
+      - name: Install temporary Playwright runner (no lockfile changes)
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id != 'linux' }}
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/pw-runner"
+          cd "${RUNNER_TEMP}/pw-runner"
+          npm init -y >/dev/null 2>&1
+          npm install --no-audit --no-fund playwright
+          npx playwright install chromium
+
+      - name: Install temporary Playwright runner on Linux
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id == 'linux' }}
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/pw-runner"
+          cd "${RUNNER_TEMP}/pw-runner"
+          npm init -y >/dev/null 2>&1
+          npm install --no-audit --no-fund playwright
+          npx playwright install chromium
+          sudo npx playwright install-deps chromium
+
+      - name: Run L1 Tauri UI render & screenshot smoke
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        working-directory: tauri-app
+        env:
+          PLAYWRIGHT_MODULE_PATH: ${{ runner.temp }}/pw-runner/node_modules/playwright
+          BOXPLAYER_UI_OUT_DIR: ${{ runner.temp }}/tauri-ui-screenshots
+        run: node scripts/ci-ui-smoke.mjs
+
+      - name: Upload L1 Tauri UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-ui-screenshots-${{ matrix.os_id }}
+          path: ${{ runner.temp }}/tauri-ui-screenshots
+          if-no-files-found: warn
+
+      - name: Run L2 Native Tauri Window E2E (Windows Edge WebDriver)
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id == 'windows' }}
+        working-directory: tauri-app
+        shell: pwsh
+        env:
+          BOXPLAYER_L2_OUT_DIR: ${{ runner.temp }}/tauri-native-l2
+        run: |
+          # WebView2 150+ ignores the driver's debugging switch in elevated hosts.
+          # https://github.com/tauri-apps/wry/issues/1782
+          choco install gsudo --version=2.6.1 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Could not install gsudo" }
+
+          $edgeDriver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe'
+          $webviewClient = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $runtimeVersion = Get-ItemPropertyValue "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$webviewClient" pv -ErrorAction SilentlyContinue
+          if (-not $runtimeVersion) {
+            $runtimeVersion = Get-ItemPropertyValue "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$webviewClient" pv -ErrorAction SilentlyContinue
+          }
+          if ($runtimeVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw "WebView2 Runtime version unavailable" }
+          $driverVersion = (Get-Item $edgeDriver -ErrorAction SilentlyContinue).VersionInfo.FileVersion
+          $runtimeBuild = ([version]$runtimeVersion).ToString(3)
+          if ($driverVersion -notlike "$runtimeBuild.*") {
+            $driverDir = Join-Path $env:RUNNER_TEMP 'boxplayer-edge-driver'
+            $driverZip = "$driverDir.zip"
+            Invoke-WebRequest "https://msedgedriver.microsoft.com/$runtimeVersion/edgedriver_win64.zip" -OutFile $driverZip
+            Expand-Archive $driverZip $driverDir
+            $edgeDriver = Join-Path $driverDir 'msedgedriver.exe'
+          }
+          Write-Host "WebView2 Runtime $runtimeVersion"
+          & $edgeDriver --version
+
+          $dataDir = Join-Path $env:RUNNER_TEMP "boxplayer-l2-$([guid]::NewGuid())"
+          foreach ($dir in @($dataDir, $env:BOXPLAYER_L2_OUT_DIR)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          }
+          & "$env:ChocolateyInstall/lib/gsudo/tools/x64/gsudo.exe" --integrity Medium --direct pwsh -NoProfile -NonInteractive -File scripts/ci-tauri-native-windows.ps1 `
+            -TauriDriver (Get-Command tauri-driver.exe).Source -EdgeDriver $edgeDriver `
+            -Node (Get-Command node.exe).Source -OutputDir $env:BOXPLAYER_L2_OUT_DIR -DataDir $dataDir
+          if ($LASTEXITCODE -ne 0) { throw "Windows WebDriver test failed with exit code $LASTEXITCODE" }
+
+      - name: Run L2 Native Tauri Window E2E (Linux WebKitGTK + tauri-driver)
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id == 'linux' }}
+        working-directory: tauri-app
+        env:
+          BOXPLAYER_L2_OUT_DIR: ${{ runner.temp }}/tauri-native-l2
+        shell: bash
+        run: |
+          DATA_DIR="$(mktemp -d)"
+          export BOXPLAYER_DEV_DATA_DIR="$DATA_DIR"
+          trap 'rm -rf "$DATA_DIR"' EXIT
+          dbus-run-session -- xvfb-run -a bash -c '
+            tauri-driver --port 4444 >/tmp/tauri-driver.log 2>&1 &
+            TD_PID=$!
+            trap "kill $TD_PID 2>/dev/null || true" EXIT
+            sleep 2
+            node scripts/ci-tauri-native-l2.mjs --mode linux-webdriver
+          '
+
+      - name: Run L2 Native Tauri Process E2E (macOS)
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && matrix.os_id == 'macos' }}
+        working-directory: tauri-app
+        env:
+          BOXPLAYER_L2_OUT_DIR: ${{ runner.temp }}/tauri-native-l2
+        run: node scripts/ci-tauri-native-l2.mjs --mode macos-native
+
+      - name: Upload L2 Native Tauri screenshots & summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-native-l2-${{ matrix.os_id }}
+          path: ${{ runner.temp }}/tauri-native-l2
+          if-no-files-found: warn
+
+      - name: Run frontend and sidecar unit tests
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        shell: bash
+        working-directory: tauri-app
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            export BOXPLAYER_TEST_POSIX_SHELL="$(cygpath -w "$(command -v sh)")"
+          fi
+          pnpm test
+          pnpm test:boxplayer
+
+      - name: Run Rust unit tests
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        working-directory: tauri-app
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Run headless libmpv playback integration tests
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.run_playback_tests) }}
+        shell: bash
+        working-directory: tauri-app
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml player::integration_tests::libmpv_decodes_header_authenticated_http_after_403_and_loads_separate_subtitle -- --ignored --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml player::integration_tests::libmpv_decodes_authenticated_nested_hls_without_exposing_segment_credentials -- --ignored --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml player::hls_fmp4_test::authenticated_fmp4_initialization_segments_reload_and_resume -- --ignored --nocapture

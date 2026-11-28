@@ -68,10 +68,11 @@ export type SegmentedButtonVariantsProps = VariantProps<
 export const segmentedButtonItemVariants = cva(
   [
     'group relative overflow-hidden',
-    'flex min-w-0 flex-1 items-center justify-center',
+    'flex min-w-0 flex-1 items-center justify-center whitespace-nowrap',
     'cursor-pointer select-none',
     'font-medium outline-hidden',
     'transition-[color,filter]',
+    '[&_svg]:shrink-0',
     'data-disabled:cursor-not-allowed data-disabled:text-on-surface/40',
   ],
   {
@@ -323,6 +324,7 @@ export const SegmentedButtonItem = ({
   children,
   hideIndicator,
   onClick,
+  onPointerDown,
   disabled,
   value,
   ...props
@@ -332,6 +334,9 @@ export const SegmentedButtonItem = ({
   const ripple = useRipple()
 
   const handleClick = disabled ? undefined : chains(onClick, ripple.onClick)
+  const handlePointerDown = disabled
+    ? onPointerDown
+    : chains(onPointerDown, ripple.onPointerDown)
 
   const handleClear = useCallback(
     (key: React.Key) => {
@@ -355,6 +360,7 @@ export const SegmentedButtonItem = ({
       className={cn(segmentedButtonItemVariants({ variant }), className)}
       disabled={disabled}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
       value={value}
       {...props}
     >
@@ -376,7 +382,7 @@ export const SegmentedButtonItem = ({
       <span
         data-slot="segmented-button-item-content"
         className={cn(
-          'relative z-10 flex max-w-full min-w-0 items-center justify-center gap-2',
+          'relative z-10 flex max-w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap',
         )}
       >
         {showCheck && (
@@ -393,7 +399,11 @@ export const SegmentedButtonItem = ({
           />
         )}
 
-        <span className="truncate">{children}</span>
+        {typeof children === 'string' || typeof children === 'number' ? (
+          <span className="truncate">{children}</span>
+        ) : (
+          children
+        )}
       </span>
 
       <Suspense>

@@ -1,4 +1,3 @@
-/* eslint-disable @eslint-react/set-state-in-effect */
 import {
   AccessTimeRounded,
   ArrowDropDown,
@@ -31,7 +30,16 @@ import {
   useTheme,
 } from '@mui/material'
 import { useLockFn } from 'ahooks'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
@@ -46,6 +54,7 @@ import {
   useClashConfigData,
   useCoreDataStatus,
   useProxiesData,
+  useRulesData,
 } from '@/providers/app-data-context'
 import delayManager from '@/services/delay'
 import {
@@ -54,7 +63,9 @@ import {
   isInteractableMember,
   memberDetails,
   resolveMember,
+  type InteractableProxyMemberOccurrence,
   type ProxyGroupView,
+  type ProxyViewV1,
   type ResolvedProxyMember,
 } from '@/types/proxy-view'
 import { debugLog } from '@/utils/debug'
@@ -109,7 +120,37 @@ interface ProxyOption {
   disabled: boolean
 }
 
-type OpenSelect = 'group' | 'proxy' | null
+interface RuleEntry {
+  group: ProxyGroupView
+  ruleCount: number
+  isDefault: boolean
+}
+
+interface ChainLevel {
+  group: Pick<ProxyGroupView, 'name' | 'members' | 'fixed'>
+  current?: InteractableProxyMemberOccurrence
+}
+
+const SELECTABLE_GROUP_TYPES = ['Selector', 'URLTest', 'Fallback']
+
+const ENTRY_SELECT = 'entry'
+const levelSelect = (groupName: string) => `level:${groupName}`
+
+const resolveChain = (view: ProxyViewV1, entry: ProxyGroupView) => {
+  const levels: ChainLevel[] = []
+  let group: ProxyGroupView | undefined = entry
+  while (group) {
+    const current = findCurrentGroupMember(view, group)
+    levels.push({ group, current })
+    // A load-balance member has no single active node, so the chain ends on it.
+    group =
+      current?.member.kind === 'group' &&
+      SELECTABLE_GROUP_TYPES.includes(current.member.group.type)
+        ? current.member.group
+        : undefined
+  }
+  return levels
+}
 
 function convertDelayColor(
   delayValue: number,
@@ -197,14 +238,11 @@ const optionValue = (memberIndex: number, member: ResolvedProxyMember) =>
 
 const sortProxyOptions = (
   options: ProxyOption[],
-  sortType: ProxySortType,
+  sortType: 0 | 1,
   delayOf: (member: ResolvedProxyMember) => number,
   latencyTimeout?: number,
 ) => {
   if (sortType === 0) return options
-  if (sortType === 2) {
-    return [...options].sort((a, b) => a.name.localeCompare(b.name))
-  }
 
   const effectiveTimeout =
     typeof latencyTimeout === 'number' && latencyTimeout > 0
@@ -405,6 +443,13 @@ const PersistentSelect = ({
               role="listbox"
               aria-labelledby={labelId}
               variant="selectedMenu"
+              onClick={(event) => {
+                // A disabled option passes its click to the list itself.
+                if (!(event.target as Element).closest('[role="option"]'))
+                  return
+                onOpenChange(false)
+                anchorRef.current?.focus({ preventScroll: true })
+              }}
             >
               {open && renderOptions()}
             </MenuList>
@@ -417,26 +462,122 @@ const PersistentSelect = ({
 
 interface PersistentProxySelectProps
   extends Omit<PersistentSelectProps, 'displayValue' | 'renderOptions'> {
-  value: string
-  selectedName: string
-  groupName: string
-  fixed?: string | null
-  selectedDelay: number
-  options: ProxyOption[]
-  onChange: (value: string) => void
+  view: ProxyViewV1
+  level: ChainLevel
+  sortType: ProxySortType
+  latencyTimeout?: number
+  onChange: (groupName: string, proxyName: string, fixed?: string) => void
 }
 
+const ProxyMenuOption = memo(function ProxyMenuOption({
+  option,
+  selected,
+  isFixed,
+  fixedProxyInUsed,
+  delay,
+  onChange,
+}: {
+  option: ProxyOption
+  selected: boolean
+  isFixed: boolean
+  fixedProxyInUsed: boolean
+  delay: number
+  onChange: (proxyName: string) => void
+}) {
+  return (
+    <MenuItem
+      role="option"
+      aria-selected={selected}
+      selected={selected}
+      disabled={option.disabled}
+      onClick={() => {
+        if (!option.disabled) onChange(option.name)
+      }}
+      sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        pr: 1,
+      }}
+    >
+      {isFixed && (
+        <span
+          style={{
+            position: 'absolute',
+            fontSize: '12px',
+            top: '-5px',
+            right: '5px',
+            ...(!fixedProxyInUsed && {
+              filter: 'grayscale(1)',
+            }),
+          }}
+        >
+          📌
+        </span>
+      )}
+      <Typography noWrap sx={{ flex: 1, mr: 1 }}>
+        {option.name}
+      </Typography>
+      {!option.disabled && (
+        <Chip
+          size="small"
+          label={delayManager.formatDelay(delay)}
+          color={convertDelayColor(delay)}
+          sx={{
+            minWidth: '60px',
+            height: '22px',
+            flexShrink: 0,
+          }}
+        />
+      )}
+    </MenuItem>
+  )
+})
+
 const PersistentProxySelect = ({
-  groupName,
-  fixed,
-  selectedName,
-  selectedDelay,
-  options,
-  value,
+  view,
+  level: { group, current },
+  sortType,
+  latencyTimeout,
   onChange,
   ...props
 }: PersistentProxySelectProps) => {
+  const groupName = group.name
+  const fixed = group.fixed
+  const selectedName = current?.member.ref.name ?? ''
+  const value = current ? optionValue(current.memberIndex, current.member) : ''
   const fixedProxyInUsed = selectedName === fixed
+
+  const delays = useGroupDelays(groupName, current?.member, props.open)
+  const selectedDelay =
+    typeof delays === 'number'
+      ? delays
+      : current
+        ? delays.of(current.member)
+        : -1
+
+  const options = useMemo(() => {
+    if (typeof delays === 'number') return []
+    const unsorted = group.members.map((memberRef, memberIndex) => {
+      const member = resolveMember(view, memberRef)
+      return {
+        memberIndex,
+        member,
+        value: optionValue(memberIndex, member),
+        name: member.ref.name,
+        disabled: !isInteractableMember(member),
+      }
+    })
+    return sortType === 2
+      ? unsorted.sort((a, b) => a.name.localeCompare(b.name))
+      : sortProxyOptions(unsorted, sortType, delays.of, latencyTimeout)
+  }, [delays, group.members, latencyTimeout, sortType, view])
+
+  const handleChange = useCallback(
+    (proxyName: string) => onChange(groupName, proxyName, fixed),
+    [fixed, groupName, onChange],
+  )
 
   return (
     <PersistentSelect
@@ -478,54 +619,15 @@ const PersistentProxySelect = ({
             : delayManager.getDelayFix(option.member, groupName)
 
           return (
-            <MenuItem
+            <ProxyMenuOption
               key={option.value}
-              role="option"
-              aria-selected={selected}
+              option={option}
               selected={selected}
-              disabled={option.disabled}
-              onClick={() => {
-                if (!option.disabled) onChange(option.value)
-              }}
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                width: '100%',
-                pr: 1,
-              }}
-            >
-              {isFixed && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    fontSize: '12px',
-                    top: '-5px',
-                    right: '5px',
-                    ...(!fixedProxyInUsed && {
-                      filter: 'grayscale(1)',
-                    }),
-                  }}
-                >
-                  📌
-                </span>
-              )}
-              <Typography noWrap sx={{ flex: 1, mr: 1 }}>
-                {option.name}
-              </Typography>
-              {!option.disabled && (
-                <Chip
-                  size="small"
-                  label={delayManager.formatDelay(delay)}
-                  color={convertDelayColor(delay)}
-                  sx={{
-                    minWidth: '60px',
-                    height: '22px',
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-            </MenuItem>
+              isFixed={isFixed}
+              fixedProxyInUsed={fixedProxyInUsed}
+              delay={delay}
+              onChange={handleChange}
+            />
           )
         })
       }
@@ -538,6 +640,7 @@ export const CurrentProxyCard = () => {
   const navigate = useNavigate()
   const theme = useTheme()
   const { proxyView } = useProxiesData()
+  const { rules } = useRulesData()
   const { clashConfig } = useClashConfigData()
   const { refreshProxy } = useAppRefreshers()
   const { isCoreDataPending } = useCoreDataStatus()
@@ -570,19 +673,21 @@ export const CurrentProxyCard = () => {
         return profileValue
       }
 
-      if (profileKey !== baseKey) {
-        const legacyValue = localStorage.getItem(baseKey)
-        if (legacyValue != null) {
-          localStorage.removeItem(baseKey)
-          localStorage.setItem(profileKey, legacyValue)
-          return legacyValue
-        }
-      }
-
-      return null
+      return profileKey !== baseKey ? localStorage.getItem(baseKey) : null
     },
     [getProfileStorageKey],
   )
+
+  // Hand the pre-profile-scoping group key to the first profile that shows the card.
+  useEffect(() => {
+    const profileKey = getProfileStorageKey(STORAGE_KEY_GROUP)
+    if (profileKey === STORAGE_KEY_GROUP) return
+    if (localStorage.getItem(profileKey) != null) return
+    const legacyValue = localStorage.getItem(STORAGE_KEY_GROUP)
+    if (legacyValue == null) return
+    localStorage.removeItem(STORAGE_KEY_GROUP)
+    localStorage.setItem(profileKey, legacyValue)
+  }, [getProfileStorageKey])
 
   const writeProfileScopedItem = useCallback(
     (baseKey: string, value: string) => {
@@ -596,15 +701,14 @@ export const CurrentProxyCard = () => {
     [getProfileStorageKey],
   )
 
-  const { handleSelectChange } = useProxySelection({
-    onSuccess: () => {
-      refreshProxy()
-    },
-    onError: (error) => {
+  const onSelectionError = useCallback(
+    (error: unknown) => {
       console.error('代理切换失败', error)
       refreshProxy()
     },
-  })
+    [refreshProxy],
+  )
+  const { select } = useProxySelection({ onError: onSelectionError })
 
   const mode = clashConfig?.mode?.toLowerCase() || 'rule'
   const isGlobalMode = mode === 'global'
@@ -615,180 +719,142 @@ export const CurrentProxyCard = () => {
     return savedSortType ? (Number(savedSortType) as ProxySortType) : 0
   })
 
-  const [selectedGroupName, setSelectedGroupName] = useState('')
-  const [openSelect, setOpenSelect] = useState<OpenSelect>(null)
-
-  useEffect(() => {
+  const [pickedGroupName, setPickedGroupName] = useState('')
+  const [openSelect, setOpenSelect] = useState<string | null>(null)
+  const [openSelectMode, setOpenSelectMode] = useState(mode)
+  if (openSelectMode !== mode) {
+    setOpenSelectMode(mode)
     setOpenSelect(null)
-  }, [mode])
+  }
 
   const delayButtonRef = useRef<HTMLButtonElement>(null)
-  const delays = useGroupDelays(selectedGroupName || null)
 
   const autoCheckInProgressRef = useRef(false)
-  const latestTimeoutRef = useRef<number>(
-    verge?.default_latency_timeout || 10000,
-  )
-  const latestProxyMemberRef = useRef<ResolvedProxyMember | null>(null)
 
-  useEffect(() => {
-    latestTimeoutRef.current = verge?.default_latency_timeout || 10000
-  }, [verge?.default_latency_timeout])
-
-  const selectableGroups = useMemo(() => {
+  const entries = useMemo<RuleEntry[]>(() => {
     if (!proxyView) return []
-    return proxyView.groups.filter(
-      (group) =>
-        !group.hidden &&
-        (group.type === 'Selector' || group.type === 'URLTest'),
-    )
-  }, [proxyView])
-
-  const selectedGroup = useMemo<ProxyGroupView | null>(() => {
-    if (!proxyView || isDirectMode) return null
-    if (isGlobalMode) return proxyView.global
-    return (
-      selectableGroups.find(({ name }) => name === selectedGroupName) ?? null
-    )
-  }, [
-    isDirectMode,
-    isGlobalMode,
-    proxyView,
-    selectableGroups,
-    selectedGroupName,
-  ])
-
-  const optionsForGroup = useCallback(
-    (group: ProxyGroupView | null): ProxyOption[] =>
-      proxyView && group
-        ? group.members.map((memberRef, memberIndex) => {
-            const member = resolveMember(proxyView, memberRef)
-            return {
-              memberIndex,
-              member,
-              value: optionValue(memberIndex, member),
-              name: member.ref.name,
-              disabled: !isInteractableMember(member),
-            }
-          })
-        : [],
-    [proxyView],
-  )
-
-  const unsortedProxyOptions = useMemo(
-    () => optionsForGroup(selectedGroup),
-    [optionsForGroup, selectedGroup],
-  )
-
-  useEffect(() => {
-    if (!proxyView) return
-    if (isDirectMode) {
-      setSelectedGroupName('DIRECT')
-      return
+    const isSelectable = (group: ProxyGroupView) =>
+      !group.hidden && SELECTABLE_GROUP_TYPES.includes(group.type)
+    const ruleCounts = new Map<string, number>()
+    for (const { proxy } of rules) {
+      ruleCounts.set(proxy, (ruleCounts.get(proxy) ?? 0) + 1)
     }
-    if (isGlobalMode) {
-      setSelectedGroupName(proxyView.global?.name ?? 'GLOBAL')
-      return
-    }
+    const matchTarget = rules.find(({ type }) => type === 'Match')?.proxy
+    // The view keeps GLOBAL out of `groups`, yet rules may name it.
+    const ruleEntries = [
+      ...proxyView.groups,
+      ...(proxyView.global ? [proxyView.global] : []),
+    ]
+      .filter(isSelectable)
+      .flatMap((group) => {
+        const ruleCount = ruleCounts.get(group.name)
+        return ruleCount
+          ? [{ group, ruleCount, isDefault: group.name === matchTarget }]
+          : []
+      })
+    // Rules that failed to load, or that name no selectable group, leave nothing to anchor on.
+    return ruleEntries.length > 0
+      ? ruleEntries
+      : proxyView.groups.filter(isSelectable).map((group) => ({
+          group,
+          ruleCount: 0,
+          isDefault: false,
+        }))
+  }, [proxyView, rules])
 
+  const selectedGroupName = useMemo(() => {
+    if (isDirectMode) return 'DIRECT'
+    if (!proxyView) return ''
+    if (isGlobalMode) return proxyView.global?.name ?? 'GLOBAL'
+
+    const hasEntry = (name: string | null) =>
+      !!name && entries.some(({ group }) => group.name === name)
+    if (hasEntry(pickedGroupName)) return pickedGroupName
     const savedGroup = readProfileScopedItem(STORAGE_KEY_GROUP)
-    const primaryKeywords = ['auto', 'select', 'proxy', '节点选择', '自动选择']
-    const primaryGroup =
-      selectableGroups.find((group) =>
-        primaryKeywords.some((keyword) =>
-          group.name.toLowerCase().includes(keyword.toLowerCase()),
-        ),
-      ) ?? selectableGroups[0]
-    const nextGroup = selectableGroups.some(
-      ({ name }) => name === selectedGroupName,
-    )
-      ? selectedGroupName
-      : selectableGroups.some(({ name }) => name === savedGroup)
-        ? savedGroup!
-        : (primaryGroup?.name ?? '')
-    if (nextGroup !== selectedGroupName) {
-      setSelectedGroupName(nextGroup)
-      if (nextGroup) writeProfileScopedItem(STORAGE_KEY_GROUP, nextGroup)
-    }
+    if (hasEntry(savedGroup)) return savedGroup!
+
+    const defaultEntry =
+      entries.find(({ isDefault }) => isDefault) ??
+      entries.reduce<RuleEntry | undefined>(
+        (most, entry) =>
+          most && most.ruleCount >= entry.ruleCount ? most : entry,
+        undefined,
+      )
+    return defaultEntry?.group.name ?? ''
   }, [
+    entries,
     isDirectMode,
     isGlobalMode,
+    pickedGroupName,
     proxyView,
     readProfileScopedItem,
-    selectableGroups,
-    selectedGroupName,
-    writeProfileScopedItem,
   ])
 
-  const currentOption = useMemo(() => {
-    if (!proxyView) return undefined
+  const selectedEntry =
+    isGlobalMode || isDirectMode
+      ? undefined
+      : entries.find(({ group }) => group.name === selectedGroupName)
+  const selectedGroup = isGlobalMode ? proxyView?.global : selectedEntry?.group
+
+  const levels = useMemo<ChainLevel[]>(() => {
+    if (!proxyView) return []
     if (isDirectMode) {
       const node =
         proxyView.direct == null
           ? undefined
           : getRecord(proxyView, proxyView.direct)
       return node
-        ? ({
-            memberIndex: 0,
-            member: {
-              kind: 'node',
-              ref: { kind: 'node', name: node.name, recordId: node.recordId },
-              node,
+        ? [
+            {
+              group: { name: 'DIRECT', members: [] },
+              current: {
+                memberIndex: 0,
+                member: {
+                  kind: 'node',
+                  ref: {
+                    kind: 'node',
+                    name: node.name,
+                    recordId: node.recordId,
+                  },
+                  node,
+                },
+              },
             },
-          } satisfies Pick<ProxyOption, 'memberIndex' | 'member'>)
-        : undefined
+          ]
+        : []
     }
-    return selectedGroup
-      ? findCurrentGroupMember(proxyView, selectedGroup)
-      : undefined
+    return selectedGroup ? resolveChain(proxyView, selectedGroup) : []
   }, [isDirectMode, proxyView, selectedGroup])
-
-  latestProxyMemberRef.current = currentOption?.member ?? null
+  // A chain deeper than two groups shares one row above the node list so the card stays three rows tall.
+  const levelRows =
+    levels.length > 2
+      ? [levels.slice(0, -1), levels.slice(-1)]
+      : levels.map((level) => [level])
+  const leafLevel = levels.at(-1)
+  const leafGroupName = leafLevel?.group.name ?? ''
 
   const handleGroupChange = useCallback(
     (newGroupName: string) => {
       if (isGlobalMode || isDirectMode) return
-      setSelectedGroupName(newGroupName)
+      setPickedGroupName(newGroupName)
       writeProfileScopedItem(STORAGE_KEY_GROUP, newGroupName)
     },
     [isDirectMode, isGlobalMode, writeProfileScopedItem],
-  )
-
-  const handleProxyChange = useCallback(
-    (value: string) => {
-      if (isDirectMode) return
-      const option = unsortedProxyOptions.find(
-        (candidate) => candidate.value === value,
-      )
-      if (!selectedGroup || !option || !isInteractableMember(option.member)) {
-        return
-      }
-      const previousProxy = selectedGroup.now
-      const nextName = option.member.ref.name
-      // The profile selection is the durable source across core restarts and run modes.
-      handleSelectChange(
-        selectedGroup.name,
-        previousProxy!,
-        selectedGroup.fixed!,
-      )({
-        target: { value: nextName },
-      })
-    },
-    [handleSelectChange, isDirectMode, selectedGroup, unsortedProxyOptions],
   )
 
   const goToProxies = useCallback(() => {
     navigate('/proxies')
   }, [navigate])
 
-  const currentMember = currentOption?.member
+  const currentMember = leafLevel?.current?.member
   const currentProxy = currentMember ? memberDetails(currentMember) : undefined
   const selectedProxyName = currentMember?.ref.name ?? ''
 
-  const currentDelay =
-    currentMember && selectedGroupName
-      ? delayManager.getDelayFix(currentMember, selectedGroupName)
-      : -1
+  const currentDelay = useGroupDelays(
+    leafGroupName,
+    currentMember,
+    false,
+  ) as number
 
   const signalInfo =
     currentProxy && selectedGroupName
@@ -799,26 +865,19 @@ export const CurrentProxyCard = () => {
           color: 'text.secondary',
         }
 
-  const checkCurrentProxyDelay = useCallback(async () => {
+  const checkCurrentProxyDelay = useEffectEvent(async () => {
     if (autoCheckInProgressRef.current) return
     if (isDirectMode) return
 
-    const groupName = selectedGroupName
+    const groupName = leafGroupName
     const proxyName = selectedProxyName
+    const proxyMember = currentMember
 
-    if (!groupName || !proxyName) return
-
-    const proxyMember = latestProxyMemberRef.current
-    if (!proxyMember || !isInteractableMember(proxyMember)) {
-      debugLog(
-        `[CurrentProxyCard] 自动延迟检测跳过，组: ${groupName}, 节点: ${proxyName} 未找到`,
-      )
-      return
-    }
+    if (!groupName || !proxyMember) return
 
     autoCheckInProgressRef.current = true
 
-    const timeout = latestTimeoutRef.current || 10000
+    const timeout = verge?.default_latency_timeout || 10000
 
     try {
       debugLog(
@@ -834,12 +893,12 @@ export const CurrentProxyCard = () => {
       autoCheckInProgressRef.current = false
       refreshProxy()
     }
-  }, [isDirectMode, refreshProxy, selectedGroupName, selectedProxyName])
+  })
 
   useEffect(() => {
     if (isDirectMode) return
     if (!autoDelayEnabled) return
-    if (!selectedGroupName || !selectedProxyName) return
+    if (!leafGroupName || !selectedProxyName) return
 
     let disposed = false
     let intervalTimer: ReturnType<typeof setTimeout> | null = null
@@ -864,10 +923,9 @@ export const CurrentProxyCard = () => {
       if (intervalTimer) clearTimeout(intervalTimer)
     }
   }, [
-    checkCurrentProxyDelay,
     autoDelayIntervalMs,
     isDirectMode,
-    selectedGroupName,
+    leafGroupName,
     selectedProxyName,
     autoDelayEnabled,
   ])
@@ -878,16 +936,21 @@ export const CurrentProxyCard = () => {
     localStorage.setItem(STORAGE_KEY_SORT_TYPE, newSortType.toString())
   }, [sortType])
 
+  // The button keeps an open list open, so it tests the list being looked at.
+  const delayLevel =
+    levels.find(({ group }) => openSelect === levelSelect(group.name)) ??
+    leafLevel
+
   const handleCheckDelay = useLockFn(async () => {
-    const groupName = selectedGroupName
-    if (!groupName || isDirectMode) return
+    if (!proxyView || !delayLevel || isDirectMode) return
+    const groupName = delayLevel.group.name
 
     debugLog(`[CurrentProxyCard] 开始测试所有延迟，组: ${groupName}`)
 
     const timeout = verge?.default_latency_timeout || 10000
 
-    const interactable = unsortedProxyOptions
-      .map(({ member }) => member)
+    const interactable = delayLevel.group.members
+      .map((member) => resolveMember(proxyView, member))
       .filter(isInteractableMember)
       .filter(({ ref }) => ref.name !== 'DIRECT' && ref.name !== 'REJECT')
 
@@ -909,25 +972,14 @@ export const CurrentProxyCard = () => {
     refreshProxy()
   })
 
-  const proxyOptions = useMemo(
-    () =>
-      isDirectMode || openSelect !== 'proxy'
-        ? []
-        : sortProxyOptions(
-            unsortedProxyOptions,
-            sortType,
-            delays.of,
-            defaultLatencyTimeout!,
-          ),
-    [
-      delays,
-      isDirectMode,
-      openSelect,
-      unsortedProxyOptions,
-      sortType,
-      defaultLatencyTimeout,
-    ],
-  )
+  const entrySummary = ({ ruleCount, isDefault }: RuleEntry) => {
+    const count = t('home.components.currentProxy.labels.ruleCount', {
+      count: ruleCount,
+    })
+    return isDefault
+      ? `${t('home.components.currentProxy.labels.defaultRoute')} · ${count}`
+      : count
+  }
 
   const getSortIcon = (): React.ReactElement => {
     switch (sortType) {
@@ -981,7 +1033,7 @@ export const CurrentProxyCard = () => {
                 size="small"
                 color="inherit"
                 onClick={handleCheckDelay}
-                disabled={isDirectMode || unsortedProxyOptions.length === 0}
+                disabled={isDirectMode || !delayLevel?.group.members.length}
                 aria-label={t(
                   'home.components.currentProxy.actions.refreshDelay',
                 )}
@@ -1027,8 +1079,13 @@ export const CurrentProxyCard = () => {
               border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
             }}
           >
-            <Box>
-              <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="body1"
+                noWrap
+                title={currentProxy?.name}
+                sx={{ fontWeight: 'medium' }}
+              >
                 {currentProxy?.name ??
                   t('home.components.currentProxy.labels.noActiveNode')}
               </Typography>
@@ -1082,51 +1139,105 @@ export const CurrentProxyCard = () => {
                 size="small"
                 label={delayManager.formatDelay(currentDelay)}
                 color={convertDelayColor(currentDelay)}
+                sx={{ flexShrink: 0, ml: 1 }}
               />
             )}
           </Box>
-          <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <PersistentSelect
-              label={t('home.components.currentProxy.labels.group')}
-              displayValue={<Typography noWrap>{selectedGroupName}</Typography>}
-              open={openSelect === 'group'}
+              label={t(
+                selectedEntry?.ruleCount
+                  ? 'home.components.currentProxy.labels.ruleTarget'
+                  : 'home.components.currentProxy.labels.group',
+              )}
+              displayValue={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography noWrap sx={{ minWidth: 0, flex: 1 }}>
+                    {selectedGroupName}
+                  </Typography>
+                  {!!selectedEntry?.ruleCount && (
+                    <Typography
+                      variant="caption"
+                      sx={{ flexShrink: 0, color: 'text.secondary' }}
+                    >
+                      {entrySummary(selectedEntry)}
+                    </Typography>
+                  )}
+                </Box>
+              }
+              open={openSelect === ENTRY_SELECT}
               disabled={isGlobalMode || isDirectMode}
               keepOpenRef={delayButtonRef}
-              onOpenChange={(open) => setOpenSelect(open ? 'group' : null)}
+              onOpenChange={(open) => setOpenSelect(open ? ENTRY_SELECT : null)}
               renderOptions={() =>
-                selectableGroups.map((group) => (
-                  <MenuItem
-                    key={group.name}
-                    role="option"
-                    aria-selected={group.name === selectedGroupName}
-                    selected={group.name === selectedGroupName}
-                    onClick={() => handleGroupChange(group.name)}
-                  >
-                    <Typography noWrap>{group.name}</Typography>
-                  </MenuItem>
-                ))
+                entries.map((entry) => {
+                  const { group, ruleCount } = entry
+                  const activeName = resolveChain(proxyView!, group).at(-1)
+                    ?.current?.member.ref.name
+                  return (
+                    <MenuItem
+                      key={group.name}
+                      role="option"
+                      aria-selected={group.name === selectedGroupName}
+                      selected={group.name === selectedGroupName}
+                      onClick={() => handleGroupChange(group.name)}
+                      sx={{ gap: 1 }}
+                    >
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography noWrap>{group.name}</Typography>
+                        {activeName && (
+                          <Typography
+                            noWrap
+                            component="div"
+                            variant="caption"
+                            sx={{ color: 'text.secondary' }}
+                          >
+                            → {activeName}
+                          </Typography>
+                        )}
+                      </Box>
+                      {ruleCount > 0 && (
+                        <Typography
+                          variant="caption"
+                          sx={{ flexShrink: 0, color: 'text.secondary' }}
+                        >
+                          {entrySummary(entry)}
+                        </Typography>
+                      )}
+                    </MenuItem>
+                  )
+                })
               }
             />
+            {levelRows.map((row) => (
+              <Box key={row[0].group.name} sx={{ display: 'flex', gap: 1 }}>
+                {row.map((level) => (
+                  <Box key={level.group.name} sx={{ minWidth: 0, flex: 1 }}>
+                    <PersistentProxySelect
+                      label={t(
+                        level === leafLevel
+                          ? 'home.components.currentProxy.labels.proxy'
+                          : 'home.components.currentProxy.labels.group',
+                      )}
+                      view={proxyView!}
+                      level={level}
+                      sortType={sortType}
+                      latencyTimeout={defaultLatencyTimeout ?? undefined}
+                      open={openSelect === levelSelect(level.group.name)}
+                      disabled={isDirectMode}
+                      keepOpenRef={delayButtonRef}
+                      onOpenChange={(open) =>
+                        setOpenSelect(
+                          open ? levelSelect(level.group.name) : null,
+                        )
+                      }
+                      onChange={select}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            ))}
           </Box>
-
-          <PersistentProxySelect
-            label={t('home.components.currentProxy.labels.proxy')}
-            groupName={selectedGroupName}
-            fixed={selectedGroup?.fixed}
-            value={
-              currentOption
-                ? optionValue(currentOption.memberIndex, currentOption.member)
-                : ''
-            }
-            selectedName={selectedProxyName}
-            selectedDelay={currentDelay}
-            options={proxyOptions}
-            open={openSelect === 'proxy'}
-            disabled={isDirectMode}
-            keepOpenRef={delayButtonRef}
-            onOpenChange={(open) => setOpenSelect(open ? 'proxy' : null)}
-            onChange={handleProxyChange}
-          />
         </Box>
       ) : (
         <Box sx={{ textAlign: 'center', py: 4 }}>

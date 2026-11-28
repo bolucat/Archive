@@ -18,12 +18,14 @@ import { useRipple } from './ripple'
 
 export const buttonVariants = cva(
   [
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'cursor-pointer select-none',
     'focus:outline-hidden',
     'relative overflow-hidden',
     'h-10 text-sm font-medium',
     'rounded-full',
     'transition-[background-color,color,shadow,filter]',
+    '[&_svg]:shrink-0',
   ],
   {
     variants: {
@@ -61,7 +63,7 @@ export const buttonVariants = cva(
         ],
         fab: [
           'px-4 h-14',
-          'rounded-2xl',
+          'rounded-large',
           'shadow-sm',
           'text-on-primary-container',
           'bg-primary-container',
@@ -74,7 +76,7 @@ export const buttonVariants = cva(
         false: '',
       },
       icon: {
-        true: 'p-0 grid place-content-center',
+        true: 'p-0',
         false: 'min-w-16',
       },
     },
@@ -166,6 +168,7 @@ export const Button = ({
   className,
   children,
   onClick,
+  onPointerDown,
   disableRipple = false,
   ...props
 }: ButtonProps) => {
@@ -184,12 +187,16 @@ export const Button = ({
       : content(children)
 
   const ripple = useRipple()
+  const rippleEnabled = !disableRipple && !loading && !disabled
 
   const handleClick = disabled
     ? undefined
-    : disableRipple
-      ? onClick
-      : chains(onClick, ripple.onClick)
+    : rippleEnabled
+      ? chains(onClick, ripple.onClick)
+      : onClick
+  const handlePointerDown = rippleEnabled
+    ? chains(onPointerDown, ripple.onPointerDown)
+    : onPointerDown
 
   const handleClear = useCallback(
     (key: React.Key) => {
@@ -211,6 +218,7 @@ export const Button = ({
         className,
       )}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
       disabled={disabled ?? undefined}
       data-loading={String(Boolean(loading))}
       {...props}
@@ -235,7 +243,7 @@ export const Button = ({
       </AnimatePresence>
 
       <Suspense>
-        {ripple && !disableRipple && !loading && !disabled && (
+        {rippleEnabled && (
           <LazyRipple ripples={ripple.ripples} onClear={handleClear} />
         )}
       </Suspense>

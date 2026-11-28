@@ -4,13 +4,13 @@ on:
   pull_request:
     paths:
       - "src/**"
+      - "scripts/**"
       - "**/*.js"
       - "**/*.ts"
       - "**/*.tsx"
       - "**/*.css"
       - "**/*.scss"
       - "**/*.json"
-      - "**/*.md"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "vite.config.*"
@@ -36,18 +36,18 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '26.13.0'
+          node-version: '26.13.1'
           cache: 'pnpm'
 
-      - name: Restore pnpm cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.pnpm-store
-          key: "pnpm-shared-stable-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}"
-          restore-keys: |
-            pnpm-shared-stable-${{ runner.os }}-
-
       - run: pnpm install --frozen-lockfile
+
+      - name: Check generated i18n types are up to date
+        run: |
+          pnpm i18n:types
+          if ! git diff --exit-code -- src/types/generated; then
+            echo "::error::src/types/generated is stale; run pnpm i18n:types and commit the result"
+            exit 1
+          fi
 
       - name: Run Prettier check
         run: pnpm format:check

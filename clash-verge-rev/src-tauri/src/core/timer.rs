@@ -7,8 +7,8 @@ use crate::{
 };
 use anyhow::Result;
 use clash_verge_logging::{Type, logging, logging_error};
+use futures::StreamExt as _;
 use parking_lot::{Mutex, RwLock};
-use smartstring::alias::String;
 use std::{
     collections::HashMap,
     sync::{
@@ -21,8 +21,8 @@ use tokio::{
     sync::mpsc,
     time::{sleep, timeout},
 };
-use tokio_stream::StreamExt as _;
 use tokio_util::time::{DelayQueue, delay_queue::Key};
+use tristr::alias::String;
 
 enum TimerCommand {
     Apply(HashMap<String, TaskSchedule>),
@@ -458,7 +458,7 @@ impl Timer {
         }
     }
 
-    fn emit_update_event(uid: &String, is_start: bool) {
+    fn emit_update_event(uid: &str, is_start: bool) {
         if is_start {
             super::handle::Handle::notify_profile_update_started(uid);
         } else {
@@ -501,8 +501,8 @@ impl Timer {
 mod tests {
     use super::{TaskSchedule, Timer, run_timer_profile_update_transition};
     use crate::config::{PrfItem, PrfOption};
+    use futures::StreamExt as _;
     use parking_lot::Mutex;
-    use smartstring::alias::String;
     use std::collections::HashMap;
     use std::{
         sync::{
@@ -513,8 +513,8 @@ mod tests {
         time::Duration,
     };
     use tokio::sync::Barrier;
-    use tokio_stream::StreamExt as _;
     use tokio_util::time::DelayQueue;
+    use tristr::alias::String;
 
     struct CancellationProbe {
         cancelled: Arc<AtomicBool>,

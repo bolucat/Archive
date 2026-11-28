@@ -10,7 +10,7 @@ import {
 } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import type { Ref } from 'react'
-import { useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { useImperativeHandle, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -61,32 +61,26 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
       },
     })
 
-  useImperativeHandle(ref, () => ({
-    create: () => {
-      setOpenType('new')
-      setOpen(true)
-    },
-    edit: (item: IProfileItem) => {
-      if (item) {
-        Object.entries(item).forEach(([key, value]) => {
-          setValue(key as any, value)
-        })
-      }
-      setOpenType('edit')
-      setOpen(true)
-    },
-  }))
-
-  const selfProxy = watch('option.self_proxy')
-  const withProxy = watch('option.with_proxy')
-
-  useEffect(() => {
-    if (selfProxy) setValue('option.with_proxy', false)
-  }, [selfProxy, setValue])
-
-  useEffect(() => {
-    if (withProxy) setValue('option.self_proxy', false)
-  }, [setValue, withProxy])
+  // The handle only closes over stable form/state setters.
+  useImperativeHandle(
+    ref,
+    () => ({
+      create: () => {
+        setOpenType('new')
+        setOpen(true)
+      },
+      edit: (item: IProfileItem) => {
+        if (item) {
+          Object.entries(item).forEach(([key, value]) => {
+            setValue(key as any, value)
+          })
+        }
+        setOpenType('edit')
+        setOpen(true)
+      },
+    }),
+    [setValue],
+  )
 
   const handleOk = useLockFn(
     handleSubmit(async (form) => {
@@ -419,7 +413,15 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 <InputLabel>
                   {t('profiles.modals.profileForm.fields.useSystemProxy')}
                 </InputLabel>
-                <Switch checked={field.value!} {...field} color="primary" />
+                <Switch
+                  checked={field.value!}
+                  {...field}
+                  onChange={(_, checked) => {
+                    field.onChange(checked)
+                    if (checked) setValue('option.self_proxy', false)
+                  }}
+                  color="primary"
+                />
               </StyledBox>
             )}
           />
@@ -432,7 +434,15 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 <InputLabel>
                   {t('profiles.modals.profileForm.fields.useClashProxy')}
                 </InputLabel>
-                <Switch checked={field.value!} {...field} color="primary" />
+                <Switch
+                  checked={field.value!}
+                  {...field}
+                  onChange={(_, checked) => {
+                    field.onChange(checked)
+                    if (checked) setValue('option.with_proxy', false)
+                  }}
+                  color="primary"
+                />
               </StyledBox>
             )}
           />

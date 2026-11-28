@@ -1,0 +1,60 @@
+/* Detail-specific geometry; the control material comes from glass-controls.css. */
+.media-detail {
+  --detail-glass-ink: var(--app-glass-ink);
+  --detail-glass-shine: var(--app-glass-shine);
+}
+
+/* A narrow reflective rim, rather than an opaque white stroke or frosted disk. */
+body .media-detail.media-detail :is(.play-button, .action-button, .version-button)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(150deg, rgba(255, 255, 255, .98) 4%, rgba(255, 255, 255, .22) 32%, rgba(35, 35, 55, .14) 52%, rgba(255, 255, 255, .76) 78%, rgba(255, 255, 255, .34));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.media-detail .version-button { position: relative; overflow: hidden; }
+
+/* Keep the controls anchored to the viewport edge, independently of title width. */
+.media-detail .detail-header { box-sizing: border-box; padding-right: 8px; }
+.media-detail .detail-header-actions { position: absolute; right: 8px; top: 0; bottom: 0; gap: 8px; }
+.media-detail .detail-back { max-width: calc(100% - 128px); min-width: 0; }
+/* The trigger's 60px intrinsic width must agree with its child's flex basis. */
+body .media-detail.media-detail .detail-header-actions .action-button:has(> svg + svg) {
+  width: 60px;
+  min-width: 60px;
+  flex: 0 0 60px;
+  gap: 3px;
+}
+
+/* The previous double white fade left no artwork for the glass to transmit. */
+body:not([arco-theme='dark']) .media-detail .hero-section::before {
+  background: linear-gradient(180deg, transparent 30%, rgba(250, 250, 250, .12) 58%, rgba(250, 250, 250, .68) 85%, #fafafa 100%) !important;
+}
+body:not([arco-theme='dark']) .media-detail .hero-section::after {
+  background: linear-gradient(180deg, transparent 40%, #fafafa 100%) !important;
+}
+
+.media-detail .action-buttons {
+  grid-template-columns: none;
+}
+
+.media-detail .action-buttons .action-button {
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.media-detail .play-button .play-button-label {
+  color: inherit;
+}
+
+.media-detail .play-button-progress {
+  background: color-mix(in srgb, var(--detail-glass-ink) 12%, transparent);
+  border-right-color: var(--detail-glass-shine);
+}

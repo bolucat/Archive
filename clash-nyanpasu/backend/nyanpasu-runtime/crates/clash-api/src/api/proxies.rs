@@ -1,10 +1,9 @@
 use std::{str::FromStr, time::Duration};
 
-use chrono::{DateTime, FixedOffset};
 use indexmap::IndexMap;
 use reqwest::{Method, Url};
 
-use crate::{Client, Error, Result, retry::RequestMetadata};
+use crate::{Client, Error, OffsetTimestamp, Result, retry::RequestMetadata};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(transparent)]
@@ -80,7 +79,7 @@ impl std::fmt::Display for ProviderName {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct DelayHistory {
-    pub time: DateTime<FixedOffset>,
+    pub time: OffsetTimestamp,
     pub delay: i64,
 }
 
@@ -215,7 +214,7 @@ pub struct ProxyProvider {
     pub test_url: Option<String>,
     pub expected_status: Option<String>,
     #[serde(default)]
-    pub updated_at: Option<DateTime<FixedOffset>>,
+    pub updated_at: Option<OffsetTimestamp>,
     #[serde(default)]
     pub subscription_info: Option<SubscriptionInfo>,
 }

@@ -1,8 +1,6 @@
 use crate::core::notify::NoticeStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::Result;
-
 use crate::{
     config::Config,
     core::{
@@ -82,6 +80,8 @@ async fn resolve_setup() {
         init_core_manager().await;
     });
 
+    init_silent_updater();
+
     let _ = futures::join!(
         core_init,
         init_tray(),
@@ -89,24 +89,11 @@ async fn resolve_setup() {
         init_hotkey(),
         init_auto_lightweight_boot(),
         init_auto_backup(),
-        init_silent_updater(),
     );
 
     Handle::refresh_clash();
     refresh_tray_menu().await;
     resolve_done();
-}
-
-pub async fn resolve_reset_async() -> Result<(), anyhow::Error> {
-    CoreManager::global().stop_core().await?;
-
-    #[cfg(target_os = "macos")]
-    {
-        use dns::restore_public_dns;
-        restore_public_dns().await?;
-    }
-
-    Ok(())
 }
 
 fn init_scheme() {
@@ -166,20 +153,13 @@ async fn init_auto_backup() {
     logging_error!(Type::Setup, AutoBackupManager::global().init().await);
 }
 
-async fn init_silent_updater() {
+fn init_silent_updater() {
     use crate::core::SilentUpdater;
     use crate::core::handle::Handle;
 
     logging!(debug, Type::Setup, "Initializing silent updater...");
 
     let app_handle = Handle::app_handle();
-
-    // Install cached updates before starting background checks.
-    if SilentUpdater::global().try_install_on_startup(app_handle).await {
-        logging!(info, Type::Setup, "Update installed at startup, restarting...");
-        feat::restart_app().await;
-    }
-
     let app_handle = app_handle.clone();
     tokio::spawn(async move {
         SilentUpdater::global().start_background_check(app_handle).await;
